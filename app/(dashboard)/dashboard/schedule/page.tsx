@@ -157,29 +157,31 @@
                             <tr key={time} className="border-b">
                               <td className="p-2 text-sm text-center bg-gray-50 font-medium">
                                 {formatTime(time)}
-                              <td
-                                key={`${day}-${time}`}
-                                className="p-2 border-l min-h-[60px] hover:bg-gray-50 relative"
-                                data-day={dayIndex + 1}
-                                data-time={time}
-                                style={{ minHeight: '60px' }}
-                              >
-                                {/* Check for bell schedule conflicts */}
-                                {bellSchedules.some(bell => 
-                                  bell.day_of_week === dayIndex + 1 &&
-                                  isTimeInRange(time, bell.start_time, bell.end_time)
-                                ) && (
-                                  <div className="absolute inset-0 bg-red-100 opacity-50" title="Bell Schedule Block" />
-                                )}
-
-                                {/* Check for special activity conflicts */}
-                                {specialActivities.some(activity => 
-                                  activity.day_of_week === dayIndex + 1 &&
-                                  isTimeInRange(time, activity.start_time, activity.end_time)
-                                ) && (
-                                  <div className="absolute inset-0 bg-orange-100 opacity-50" title="Special Activity Block" />
-                                )}
                               </td>
+                              {days.map((day, dayIndex) => (
+                                <td
+                                  key={`${day}-${time}`}
+                                  className="p-2 border-l min-h-[60px] hover:bg-gray-50 relative"
+                                  data-day={dayIndex + 1}
+                                  data-time={time}
+                                  style={{ minHeight: '60px' }}
+                                >
+                                  {/* Check for bell schedule conflicts */}
+                                  {bellSchedules.some(bell => 
+                                    bell.day_of_week === dayIndex + 1 &&
+                                    isTimeInRange(time, bell.start_time, bell.end_time)
+                                  ) && (
+                                    <div className="absolute inset-0 bg-red-100 opacity-50" title="Bell Schedule Block" />
+                                  )}
+
+                                  {/* Check for special activity conflicts */}
+                                  {specialActivities.some(activity => 
+                                    activity.day_of_week === dayIndex + 1 &&
+                                    isTimeInRange(time, activity.start_time, activity.end_time)
+                                  ) && (
+                                    <div className="absolute inset-0 bg-orange-100 opacity-50" title="Special Activity Block" />
+                                  )}
+                                </td>
                               ))}
                             </tr>
                           ))}
