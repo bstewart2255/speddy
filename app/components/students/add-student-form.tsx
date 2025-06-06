@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { createStudent } from '../../../lib/supabase/queries/students';
+import { Button } from '../ui/button';
+import { Label, Input, Select, FormGroup, FormSection, HelperText } from '../ui/form';
 
 interface AddStudentFormProps {
   onClose: () => void;
@@ -11,10 +13,10 @@ interface AddStudentFormProps {
 export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
   const [formData, setFormData] = useState({
     initials: '',
-    grade: '',
-    teacherName: '',
-    sessionsPerWeek: '',
-    minutesPerSession: '',
+    grade_level: '',
+    teacher_name: '',
+    sessions_per_week: 1,
+    minutes_per_session: 30,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,10 +29,10 @@ export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
     try {
       await createStudent({
         initials: formData.initials.toUpperCase(),
-        grade_level: formData.grade,  // Map grade to grade_level
-        teacher_name: formData.teacherName,
-        sessions_per_week: parseInt(formData.sessionsPerWeek),
-        minutes_per_session: parseInt(formData.minutesPerSession),
+        grade_level: formData.grade_level,  // Map grade to grade_level
+        teacher_name: formData.teacher_name,
+        sessions_per_week: formData.sessions_per_week,
+        minutes_per_session: formData.minutes_per_session,
       });
 
       onSuccess();
@@ -42,132 +44,117 @@ export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
-
+  console.log('All imports:', { Label, Input, Select, FormGroup, FormSection, HelperText });
+  
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
-          {error}
-        </div>
-      )}
-
-      <div>
-        <label htmlFor="initials" className="block text-sm font-medium text-gray-700">
+  <form onSubmit={handleSubmit} className="space-y-4">
+    <FormSection title="Student Information" description="Enter the student's details below">
+      <FormGroup>
+        <Label htmlFor="initials" required>
           Student Initials
-        </label>
-        <input
-          type="text"
-          name="initials"
+        </Label>
+        <Input
           id="initials"
+          type="text"
+          value={formData.initials}
+          onChange={(e) => setFormData({ ...formData, initials: e.target.value })}
+          placeholder="e.g., JD"
           required
           maxLength={4}
-          placeholder="JS"
-          value={formData.initials}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
         />
-      </div>
+        <HelperText>Use only initials for privacy (2-4 characters)</HelperText>
+      </FormGroup>
 
-      <div>
-        <label htmlFor="grade" className="block text-sm font-medium text-gray-700">
-          Grade
-        </label>
-        <select
-          name="grade"
-          id="grade"
+      <FormGroup>
+        <Label htmlFor="grade_level" required>
+          Grade Level
+        </Label>
+        <Select
+          id="grade_level"
+          value={formData.grade_level}
+          onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+          options={[
+            { value: 'K', label: 'Kindergarten' },
+            { value: '1', label: '1st Grade' },
+            { value: '2', label: '2nd Grade' },
+            { value: '3', label: '3rd Grade' },
+            { value: '4', label: '4th Grade' },
+            { value: '5', label: '5th Grade' },
+            { value: '6', label: '6th Grade' },
+            { value: '7', label: '7th Grade' },
+            { value: '8', label: '8th Grade' },
+          ]}
+          placeholder="Select grade level"
           required
-          value={formData.grade}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
-        >
-          <option value="">Select grade</option>
-          <option value="K">Kindergarten</option>
-          <option value="1">1st Grade</option>
-          <option value="2">2nd Grade</option>
-          <option value="3">3rd Grade</option>
-          <option value="4">4th Grade</option>
-          <option value="5">5th Grade</option>
-          <option value="6">6th Grade</option>
-          <option value="7">7th Grade</option>
-          <option value="8">8th Grade</option>
-        </select>
-      </div>
+        />
+      </FormGroup>
 
-      <div>
-        <label htmlFor="teacherName" className="block text-sm font-medium text-gray-700">
+      <FormGroup>
+        <Label htmlFor="teacher_name" required>
           Teacher Name
-        </label>
-        <input
+        </Label>
+        <Input
+          id="teacher_name"
           type="text"
-          name="teacherName"
-          id="teacherName"
+          value={formData.teacher_name}
+          onChange={(e) => setFormData({ ...formData, teacher_name: e.target.value })}
+          placeholder="e.g., Ms. Smith"
           required
-          placeholder="Mrs. Smith"
-          value={formData.teacherName}
-          onChange={handleChange}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
         />
-      </div>
+      </FormGroup>
+    </FormSection>
 
+    <FormSection title="Service Requirements">
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="sessionsPerWeek" className="block text-sm font-medium text-gray-700">
-            Sessions/Week
-          </label>
-          <input
+        <FormGroup>
+          <Label htmlFor="sessions_per_week" required>
+            Sessions per Week
+          </Label>
+          <Input
+            id="sessions_per_week"
             type="number"
-            name="sessionsPerWeek"
-            id="sessionsPerWeek"
+            value={formData.sessions_per_week}
+            onChange={(e) => setFormData({ ...formData, sessions_per_week: parseInt(e.target.value) })}
+            min={1}
+            max={5}
             required
-            min="1"
-            max="5"
-            value={formData.sessionsPerWeek}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
           />
-        </div>
+        </FormGroup>
 
-        <div>
-          <label htmlFor="minutesPerSession" className="block text-sm font-medium text-gray-700">
-            Minutes/Session
-          </label>
-          <input
-            type="number"
-            name="minutesPerSession"
-            id="minutesPerSession"
+        <FormGroup>
+          <Label htmlFor="minutes_per_session" required>
+            Minutes per Session
+          </Label>
+          <Select
+            id="minutes_per_session"
+            value={formData.minutes_per_session?.toString() || ''}
+            onChange={(e) => setFormData({ ...formData, minutes_per_session: parseInt(e.target.value) })}            
+            options={[
+              { value: '15', label: '15 minutes' },
+              { value: '20', label: '20 minutes' },
+              { value: '25', label: '25 minutes' },
+              { value: '30', label: '30 minutes' },
+              { value: '35', label: '35 minutes' },
+              { value: '40', label: '40 minutes' },
+              { value: '45', label: '45 minutes' },
+              { value: '50', label: '50 minutes' },
+              { value: '55', label: '55 minutes' },
+              { value: '60', label: '60 minutes' },
+            ]}
             required
-            min="15"
-            max="60"
-            step="5"
-            value={formData.minutesPerSession}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
           />
-        </div>
+        </FormGroup>
       </div>
+    </FormSection>
 
-      <div className="mt-6 flex gap-3 justify-end">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Adding...' : 'Add Student'}
-        </button>
-      </div>
-    </form>
+    <div className="flex justify-end space-x-3 pt-4">
+      <Button type="button" variant="secondary" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button type="submit" variant="primary" isLoading={loading}>
+        Add Student
+      </Button>
+    </div>
+  </form>  
   );
 }

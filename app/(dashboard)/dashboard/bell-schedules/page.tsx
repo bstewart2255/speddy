@@ -6,6 +6,8 @@ import { Database } from '../../../../types/database';
 import { Modal } from '../../../components/ui/modal';
 import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
+import { Card, CardHeader, CardTitle, CardBody, CardGrid } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 
@@ -64,27 +66,31 @@ export default function BellSchedulesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Bell Schedules</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+      <Card>
+        <CardHeader
+          action={
+            <Button
+              onClick={() => setShowAddModal(true)}
+              variant="primary"
+              size="md"
+            >
+              Add Bell Schedule
+            </Button>
+          }
         >
-          Add Bell Schedule
-        </button>
-      </div>
-
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Bell Schedules</h1>
-        <p className="text-gray-600 mt-2">
-          Define when each grade level is unavailable due to recess, lunch, or other activities
-        </p>
-      </div>
+          <div>
+            <CardTitle as="h1" className="text-2xl">Bell Schedules</CardTitle>
+            <p className="text-gray-600 mt-2">
+              Define when each grade level is unavailable due to recess, lunch, or other activities
+            </p>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Add this new section */}
       <div className="mb-6">
         <BellScheduleCSVImport onSuccess={fetchSchedules} />
-      </div>
+      </div>  
       
       <div className="grid gap-6">
         {grades.map(grade => (

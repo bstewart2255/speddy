@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Navbar } from '../../../components/navigation/navbar';
-import { Modal } from '../../../components/ui/modal';
+import Modal from '../../../components/ui/modal';
 import { AddStudentForm } from '../../../components/students/add-student-form';
 import { StudentsList } from '../../../components/students/students-list';
+import { Button } from '../../../components/ui/button';
 
 export default function StudentsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -17,7 +17,6 @@ export default function StudentsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
           <div className="sm:flex sm:items-center">
@@ -28,12 +27,12 @@ export default function StudentsPage() {
               </p>
             </div>
             <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-              <button 
+              <Button 
                 onClick={() => setIsAddModalOpen(true)}
-                className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                variant="primary"
               >
                 Add student
-              </button>
+              </Button>
             </div>
           </div>
           

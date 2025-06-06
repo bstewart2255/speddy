@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { getStudents, deleteStudent } from '../../../lib/supabase/queries/students';
+import { TableSkeleton } from '../ui/skeleton';
+import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card';
 
 interface Student {
   id: string;
@@ -54,7 +56,11 @@ export function StudentsList() {
   };
 
   if (loading) {
-    return <div className="text-center py-4">Loading students...</div>;
+    return (
+      <div className="mt-8">
+        <TableSkeleton rows={5} columns={5} showHeader={true} />
+      </div>
+    );
   }
 
   if (error) {

@@ -1,4 +1,4 @@
-import { supabase } from '../client';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export async function createStudent(studentData: {
   initials: string;
@@ -7,8 +7,15 @@ export async function createStudent(studentData: {
   sessions_per_week: number;
   minutes_per_session: number;
 }) {
+  
+  const supabase = createClientComponentClient();
+  
   // Get the current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+  // Add detailed logging
+  console.log('createStudent called with:', studentData);
+  console.log('Auth check result:', { user, userError });
   
   if (userError || !user) {
     throw new Error('You must be logged in to add students');
@@ -58,6 +65,7 @@ export async function createStudent(studentData: {
 }
 
 export async function getStudents() {
+  const supabase = createClientComponentClient();
   const { data, error } = await supabase
     .from('students')
     .select('*')
@@ -68,6 +76,7 @@ export async function getStudents() {
 }
 
 export async function deleteStudent(studentId: string) {
+  const supabase = createClientComponentClient();
   const { error } = await supabase
     .from('students')
     .delete()
@@ -83,6 +92,7 @@ export async function updateStudent(studentId: string, studentData: {
   sessions_per_week: number;
   minutes_per_session: number;
 }) {
+  const supabase = createClientComponentClient();
   const { data, error } = await supabase
     .from('students')
     .update(studentData)

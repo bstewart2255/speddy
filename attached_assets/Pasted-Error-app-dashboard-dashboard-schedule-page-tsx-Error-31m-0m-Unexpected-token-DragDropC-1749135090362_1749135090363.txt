@@ -1,0 +1,28 @@
+Error: ./app/(dashboard)/dashboard/schedule/page.tsx
+Error:   [31m×[0m Unexpected token `DragDropContext`. Expected jsx identifier
+     ╭─[[36;1;4m/home/runner/workspace/app/(dashboard)/dashboard/schedule/page.tsx[0m:130:1]
+ [2m127[0m │                 }
+ [2m128[0m │ 
+ [2m129[0m │                 return (
+ [2m130[0m │                   <DragDropContext onDragEnd={handleDragEnd}>
+     · [35;1m                   ───────────────[0m
+ [2m131[0m │                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+ [2m132[0m │                       <div className="mb-8">
+ [2m133[0m │                         <h1 className="text-2xl font-bold">Weekly Schedule</h1>
+     ╰────
+
+Caused by:
+    Syntax Error
+    at BuildError (webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/components/react-dev-overlay/ui/container/build-error.js:43:41)
+    at react-stack-bottom-frame (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:22429:20)
+    at renderWithHooksAgain (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:5858:20)
+    at renderWithHooks (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:5770:22)
+    at updateFunctionComponent (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:8019:19)
+    at beginWork (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:9684:18)
+    at runWithFiberInDEV (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:544:16)
+    at performUnitOfWork (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:15045:22)
+    at workLoopSync (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:14871:41)
+    at renderRootSync (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:14851:11)
+    at performWorkOnRoot (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:14335:13)
+    at performWorkOnRootViaSchedulerTask (webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:15932:7)
+    at MessagePort.performWorkUntilDeadline (webpack-internal:///(pages-dir-browser)/./node_modules/scheduler/cjs/scheduler.development.js:44:48)
