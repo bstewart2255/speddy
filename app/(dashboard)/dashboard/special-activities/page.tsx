@@ -1,218 +1,321 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../../src/types/database';
-import { Modal } from '../../../components/ui/modal';
-import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
-import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
-
-type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
+import { useState } from 'react';
+import { Button } from '../../../components/ui/button';
+import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+import { Tag, ActivityTypeTag } from '../../../components/ui/tag';
 
 export default function SpecialActivitiesPage() {
-  const [activities, setActivities] = useState<SpecialActivity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedTeacher, setSelectedTeacher] = useState<string>('');
-  const supabase = createClientComponentClient<Database>();
-  const [showTeacherModal, setShowTeacherModal] = useState(false);
-  const [newTeacherName, setNewTeacherName] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showImportSection, setShowImportSection] = useState(false);
 
-  useEffect(() => {
-    fetchActivities();
-  }, []);
+  // Sample data - replace with your actual data fetching
+  const specialActivities = [
+    { 
+      id: 1, 
+      name: 'Spring Assembly', 
+      date: 'June 15, 2025', 
+      startTime: '10:00 AM', 
+      endTime: '11:30 AM', 
+      affectedGrades: 'K-5', 
+      type: 'assembly',
+      description: 'End of year celebration assembly'
+    },
+    { 
+      id: 2, 
+      name: 'Zoo Field Trip', 
+      date: 'June 20, 2025', 
+      startTime: '9:00 AM', 
+      endTime: '3:00 PM', 
+      affectedGrades: '2-3', 
+      type: 'field-trip',
+      description: 'Educational visit to city zoo'
+    },
+    { 
+      id: 3, 
+      name: 'Fire Safety Presentation', 
+      date: 'June 25, 2025', 
+      startTime: '1:00 PM', 
+      endTime: '2:00 PM', 
+      affectedGrades: 'K-1', 
+      type: 'presentation',
+      description: 'Fire department safety education'
+    },
+    { 
+      id: 4, 
+      name: 'Book Fair', 
+      date: 'June 28, 2025', 
+      startTime: '8:00 AM', 
+      endTime: '4:00 PM', 
+      affectedGrades: 'K-5', 
+      type: 'other',
+      description: 'Annual school book fair event'
+    },
+  ];
 
-  async function fetchActivities() {
-    try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
-
-      const { data, error } = await supabase
-        .from('special_activities')
-        .select('*')
-        .order('teacher_name', { ascending: true })
-        .order('day_of_week', { ascending: true })
-        .order('start_time', { ascending: true });
-
-      if (error) throw error;
-      setActivities(data || []);
-    } catch (error) {
-      console.error('Error fetching activities:', error);
-    } finally {
-      setLoading(false);
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'assembly': return 'blue';
+      case 'field-trip': return 'green';
+      case 'presentation': return 'orange';
+      case 'other': return 'purple';
+      default: return 'gray';
     }
-  }
-
-  const handleAddActivity = (teacherName: string) => {
-    setSelectedTeacher(teacherName);
-    setShowAddModal(true);
   };
 
-  const handleDeleteActivity = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this activity?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('special_activities')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchActivities();
-    } catch (error) {
-      console.error('Error deleting activity:', error);
-      alert('Failed to delete activity');
-    }
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
-
-  const activitiesByTeacher = activities.reduce((acc, activity) => {
-    if (!acc[activity.teacher_name]) {
-      acc[activity.teacher_name] = [];
-    }
-    acc[activity.teacher_name].push(activity);
-    return acc;
-  }, {} as Record<string, SpecialActivity[]>);
-
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
-  if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading...</div>;
-  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Special Activities</h1>
-        <p className="text-gray-600 mt-2">
-          Define recurring activities that make students unavailable (assemblies, PE, library, etc.)
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-      <div className="mb-6">
-        <SpecialActivitiesCSVImport onSuccess={fetchActivities} />
-      </div>
-
-      <div className="mb-6">
-        <button
-          onClick={() => setShowTeacherModal(true)}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          Add Activity for New Teacher
-        </button>
-      </div>
-
-      {Object.keys(activitiesByTeacher).length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500">No special activities defined yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {Object.entries(activitiesByTeacher).map(([teacherName, teacherActivities]) => (
-            <div key={teacherName} className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">{teacherName}</h2>
-                <button
-                  onClick={() => handleAddActivity(teacherName)}
-                  className="text-blue-500 hover:text-blue-700 text-sm"
-                >
-                  + Add Activity
-                </button>
-              </div>
-
-              <div className="grid grid-cols-5 gap-4">
-                {daysOfWeek.map((day, dayIndex) => (
-                  <div key={day} className="border rounded p-2">
-                    <h3 className="font-medium text-sm mb-2">{day}</h3>
-                    <div className="space-y-1">
-                      {teacherActivities
-                        .filter(activity => activity.day_of_week === dayIndex + 1)
-                        .map((activity) => (
-                          <div
-                            key={activity.id}
-                            className="bg-gray-100 p-2 rounded text-xs group relative"
-                          >
-                            <div className="font-medium">{activity.activity_name}</div>
-                            <div>{activity.start_time.slice(0, 5)} - {activity.end_time.slice(0, 5)}</div>
-                            <button
-                              onClick={() => handleDeleteActivity(activity.id)}
-                              className="absolute top-1 right-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Teacher Name Modal */}
-      {showTeacherModal && (
-        <Modal
-          isOpen={showTeacherModal}
-          onClose={() => {
-            setShowTeacherModal(false);
-            setNewTeacherName('');
-          }}
-          title="Enter Teacher Name"
-        >
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={newTeacherName}
-              onChange={(e) => setNewTeacherName(e.target.value)}
-              placeholder="e.g., Mrs. Johnson"
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowTeacherModal(false);
-                  setNewTeacherName('');
-                }}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (newTeacherName.trim()) {
-                    handleAddActivity(newTeacherName.trim());
-                    setNewTeacherName('');
-                    setShowTeacherModal(false);
-                  }
-                }}
-                disabled={!newTeacherName.trim()}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-              >
-                Continue
-              </button>
-            </div>
+        {/* Page Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
+            <p className="text-gray-600">Manage assemblies, field trips, and other special events</p>
           </div>
-        </Modal>
-      )}
-      
-      {showAddModal && (
-        <Modal
-          isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          title={`Add Activity for ${selectedTeacher}`}
-        >
-          <AddSpecialActivityForm
-            teacherName={selectedTeacher}
-            onSuccess={() => {
-              setShowAddModal(false);
-              fetchActivities();
-            }}
-            onCancel={() => setShowAddModal(false)}
-          />
-        </Modal>
-      )}
+          <div className="flex gap-3">
+            <Button 
+              variant="secondary"
+              onClick={() => setShowImportSection(!showImportSection)}
+            >
+              Import CSV
+            </Button>
+            <Button variant="secondary">Export CSV</Button>
+            <Button 
+              variant="primary" 
+              onClick={() => setShowAddForm(!showAddForm)}
+            >
+              + Add Activity
+            </Button>
+          </div>
+        </div>
+
+        {/* Import Section */}
+        {showImportSection && (
+          <div className="mb-8">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Import Special Activities</CardTitle>
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowImportSection(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <div className="bg-purple-50 border-2 border-dashed border-purple-300 rounded-lg p-8 text-center">
+                  <div className="mb-4">
+                    <svg className="mx-auto h-12 w-12 text-purple-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                      <path d="M8 14v20c0 4.418 7.163 8 16 8 1.381 0 2.721-.087 4-.252M8 14c0 4.418 7.163 8 16 8s16-3.582 16-8M8 14c0-4.418 7.163-8 16-8s16 3.582 16 8m0 0v14m-16-4h.01M32 6.401V4.992c0-.552-.449-1-1.003-1H9.003C8.449 3.992 8 4.44 8 4.992v1.409" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <div className="mb-4">
+                    <p className="text-lg font-medium text-gray-900 mb-2">Upload Activities CSV</p>
+                    <p className="text-sm text-gray-600">
+                      CSV should include: Name, Date, Start Time, End Time, Affected Grades, Type
+                    </p>
+                  </div>
+                  <div className="flex justify-center gap-4">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      id="csv-upload"
+                    />
+                    <label htmlFor="csv-upload">
+                      <Button variant="primary" as="span" className="cursor-pointer">
+                        Choose File
+                      </Button>
+                    </label>
+                    <Button variant="secondary">Download Template</Button>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          </div>
+        )}
+
+        {/* Add Activity Form */}
+        {showAddForm && (
+          <div className="mb-8">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Add New Special Activity</CardTitle>
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowAddForm(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <form className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Activity Name*
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., Spring Assembly"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Type*
+                    </label>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <option value="">Select type</option>
+                      <option value="assembly">Assembly</option>
+                      <option value="field-trip">Field Trip</option>
+                      <option value="presentation">Presentation</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Date*
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Start Time*
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      End Time*
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Affected Grades*
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., K-2 or 3,4,5"
+                    />
+                  </div>
+
+                  <div className="md:col-span-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., End of year celebration assembly"
+                    />
+                  </div>
+
+                  <div className="md:col-span-6 flex justify-end gap-3 pt-4">
+                    <Button variant="secondary" onClick={() => setShowAddForm(false)}>
+                      Cancel
+                    </Button>
+                    <Button variant="primary" type="submit">
+                      Add Activity
+                    </Button>
+                  </div>
+                </form>
+              </CardBody>
+            </Card>
+          </div>
+        )}
+
+        {/* Special Activities List */}
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Upcoming Activities ({specialActivities.length})</CardTitle>
+              <div className="flex gap-2 text-sm text-gray-500">
+                <span>{specialActivities.filter(a => a.type === 'assembly').length} assemblies</span>
+                <span>•</span>
+                <span>{specialActivities.filter(a => a.type === 'field-trip').length} field trips</span>
+                <span>•</span>
+                <span>{specialActivities.filter(a => !['assembly', 'field-trip'].includes(a.type)).length} other events</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Activity Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Affected Grades</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {specialActivities.map((activity) => (
+                  <TableRow key={activity.id}>
+                    <TableCell>
+                      <span className="font-medium">{activity.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Tag variant={getTypeColor(activity.type)}>
+                        {activity.type === 'field-trip' ? 'Field Trip' : 
+                         activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
+                      </Tag>
+                    </TableCell>
+                    <TableCell>{formatDate(activity.date)}</TableCell>
+                    <TableCell>{activity.startTime} - {activity.endTime}</TableCell>
+                    <TableCell>
+                      <Tag variant="gray">{activity.affectedGrades}</Tag>
+                    </TableCell>
+                    <TableCell className="text-gray-600 max-w-xs truncate">
+                      {activity.description}
+                    </TableCell>
+                    <TableActionCell>
+                      <Button variant="secondary" size="sm">Edit</Button>
+                      <Button variant="danger" size="sm">Delete</Button>
+                    </TableActionCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardBody>
+        </Card>
+
+      </div>
     </div>
   );
 }
