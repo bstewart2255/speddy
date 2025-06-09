@@ -1,5 +1,5 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../types/database';
+import { Database } from '../../../src/types/database';
 
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type InsertSpecialActivity = Database['public']['Tables']['special_activities']['Insert'];

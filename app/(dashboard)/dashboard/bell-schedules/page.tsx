@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../../types/database';
+import { Database } from '../../../../src/types/database';
 import { Modal } from '../../../components/ui/modal';
 import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';

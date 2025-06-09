@@ -5,14 +5,13 @@ interface TimeSlotBlockProps {
   title?: string;
 }
 
-export function TimeSlotBlock({ type, title }: TimeSlotBlockProps) {
+const TimeSlotBlockComponent: React.FC<TimeSlotBlockProps> = ({ type, title }) => {
   const styles = {
-    bell: { backgroundColor: 'rgba(239, 68, 68, 0.7)' },     // Stronger red
-    special: { backgroundColor: 'rgba(245, 158, 11, 0.7)' }, // Stronger orange
-    session: { backgroundColor: 'rgba(59, 130, 246, 0.7)' },  // Stronger blue
-    'cross-provider': { backgroundColor: 'rgba(168, 85, 247, 0.7)' }  // Purple for cross-provider
+    bell: { backgroundColor: 'var(--schedule-bell)' },
+    special: { backgroundColor: 'var(--schedule-special)' },
+    session: { backgroundColor: 'var(--schedule-session)' },
+    'cross-provider': { backgroundColor: 'var(--schedule-cross)' }
   };
-
   return (
     <div 
       className="absolute inset-0 z-10"
@@ -26,4 +25,7 @@ export function TimeSlotBlock({ type, title }: TimeSlotBlockProps) {
       <span style={{ visibility: 'hidden' }}>.</span>
     </div>
   );
-}
+};
+
+const TimeSlotBlock = React.memo(TimeSlotBlockComponent);
+export default TimeSlotBlock;

@@ -6,12 +6,12 @@ export const tokens = {
       200: '#bfdbfe',
       300: '#93c5fd',
       400: '#60a5fa',
-      500: '#3b82f6',
-      600: '#2563eb',
+      500: '#3182ce',  // ← Updated to match mockups
+      600: '#2c5aa0',  // ← Updated hover state
       700: '#1d4ed8',
       800: '#1e40af',
       900: '#1e3a8a',
-    },
+    }, 
     secondary: {
       50: '#f5f3ff',
       100: '#ede9fe',
@@ -26,7 +26,7 @@ export const tokens = {
     },
     success: {
       50: '#f0fdf4',
-      500: '#10b981',
+      500: '#38a169',  // ← Change from '#10b981'
       600: '#059669',
     },
     warning: {
@@ -36,7 +36,7 @@ export const tokens = {
     },
     danger: {
       50: '#fef2f2',
-      500: '#ef4444',
+      500: '#e53e3e',  // ← Change from '#ef4444'
       600: '#dc2626',
     },
     gray: {

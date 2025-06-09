@@ -42,7 +42,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
 
       {/* Center modal properly */}
       <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh]">
           {/* Header with border */}
           <div className="border-b border-gray-200 px-6 py-4">
             <h3 className="text-lg font-medium text-gray-900">{title}</h3>
@@ -58,7 +58,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
           </div>
 
           {/* Body with scroll if needed */}
-          <div className="px-6 py-4 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+          <div className="px-6 py-4 overflow-y-auto border-2 border-red-500" style={{ height: '200px' }}>
             {children}
           </div>       
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../../types/database';
+import { Database } from '../../../../src/types/database';
 import { Modal } from '../../../components/ui/modal';
 import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
 import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';

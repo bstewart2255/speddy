@@ -1,18 +1,17 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Modal from '../../../components/ui/modal';
-import { AddStudentForm } from '../../../components/students/add-student-form';
-import { StudentsList } from '../../../components/students/students-list';
-import { Button } from '../../../components/ui/button';
+import { useState } from "react";
+import { AddStudentForm } from "../../../components/students/add-student-form";
+import { StudentsList } from "../../../components/students/students-list";
+import { Button } from "../../../components/ui/button";
 
 export default function StudentsPage() {
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleStudentAdded = () => {
     // Force refresh of the students list
-    setRefreshKey(prev => prev + 1);
+    setRefreshKey((prev) => prev + 1);
   };
 
   return (
@@ -27,31 +26,30 @@ export default function StudentsPage() {
               </p>
             </div>
             <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-              <Button 
-                onClick={() => setIsAddModalOpen(true)}
-                variant="primary"
-              >
+              <Button onClick={() => setShowAddForm(true)} variant="primary">
                 Add student
               </Button>
             </div>
           </div>
-          
+
+          {showAddForm && (
+            <div className="mb-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Add New Student
+              </h3>
+              <AddStudentForm
+                onClose={() => setShowAddForm(false)}
+                onSuccess={() => {
+                  handleStudentAdded();
+                  setShowAddForm(false);
+                }}
+              />
+            </div>
+          )}
+
           <StudentsList key={refreshKey} />
         </div>
       </div>
-
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Add New Student"
-      >
-        <AddStudentForm
-          onClose={() => setIsAddModalOpen(false)}
-          onSuccess={() => {
-            handleStudentAdded();
-          }}
-        />
-      </Modal>
     </div>
   );
 }

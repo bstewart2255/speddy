@@ -2,10 +2,10 @@
 
               import { useState, useEffect } from 'react';
               import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-              import { TimeSlotBlock } from '../../../components/schedule/time-slot-block';
+              import TimeSlotBlock from '../../../components/schedule/time-slot-block';
               import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-              import { Database, Student, BellSchedule, SpecialActivity, ScheduleSession } from '../../../../premium-scheduler/src/types/database';
-              import { ExportPDF } from '../../../components/schedule/export-pdf';
+              import { Database, Student, BellSchedule, SpecialActivity, ScheduleSession } from '../../../../src/types/database';
+              // import { ExportPDF } from '../../../components/schedule/export-pdf';
 
               export default function SchedulePage() {
                 const [crossProviderSessions, setCrossProviderSessions] = useState<any[]>([]);
@@ -28,7 +28,7 @@
                 const supabase = createClientComponentClient<Database>();
 
                 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-                const timeSlots = [];
+                const timeSlots: string[] = [];
 
                 // Generate time slots from 8:00 AM to 3:00 PM in 30-minute intervals
                 for (let hour = 8; hour < 15; hour++) {
@@ -233,14 +233,14 @@
 
                         {/* Export Button */}
                         <div className="flex justify-end">
-                          <ExportPDF
+                          {/* <ExportPDF
                             students={students}
                             sessions={sessions}
                             bellSchedules={bellSchedules}
                             specialActivities={specialActivities}
                             providerName={providerName}
                             weekOf={selectedWeek}
-                          />
+                          /> */}
                         </div>
                       </div>
                       
@@ -368,18 +368,9 @@
                                       ).map(session => {
                                         const student = students.find(s => s.id === session.student_id);
                                         return student ? (
-                                          <div 
-                                            key={session.id} 
-                                            style={{
-                                              backgroundColor: 'rgba(134, 239, 172, 0.5)',  // green-100 equivalent
-                                              color: 'rgb(22, 101, 52)',                   // green-800 equivalent
-                                              padding: '0.25rem 0.5rem',
-                                              borderRadius: '0.25rem',
-                                              fontSize: '0.875rem',
-                                              cursor: 'pointer'
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(134, 239, 172, 0.7)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(134, 239, 172, 0.5)'}
+                                            <div 
+                                              key={session.id} 
+                                              className="bg-schedule-available text-green-800 p-1 rounded text-sm cursor-pointer hover:opacity-80 transition-opacity"
                                             onClick={() => handleDeleteSession(session.id)}
                                             title="Click to remove"
                                           >

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { createStudent } from '../../../lib/supabase/queries/students';
 import { Button } from '../ui/button';
-import { Label, Input, Select, FormGroup, FormSection, HelperText } from '../ui/form';
+import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
 
 interface AddStudentFormProps {
   onClose: () => void;
@@ -20,6 +20,10 @@ export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  console.log('AddStudentForm rendering, all imports:', { 
+    Label, Input, Select, FormGroup, FormSection, HelperText 
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,8 +47,6 @@ export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
       setLoading(false);
     }
   };
-
-  console.log('All imports:', { Label, Input, Select, FormGroup, FormSection, HelperText });
   
   return (
   <form onSubmit={handleSubmit} className="space-y-4">
@@ -127,7 +129,7 @@ export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
           </Label>
           <Select
             id="minutes_per_session"
-            value={formData.minutes_per_session?.toString() || ''}
+            value={formData.minutes_per_session.toString()}
             onChange={(e) => setFormData({ ...formData, minutes_per_session: parseInt(e.target.value) })}            
             options={[
               { value: '15', label: '15 minutes' },

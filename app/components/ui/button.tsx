@@ -1,9 +1,9 @@
-import React from 'react';
-import { tokens, tw } from '../../../lib/styles/tokens';
+import React from "react";
+import { tokens, tw } from "../../../lib/styles/tokens";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
+  variant?: "primary" | "secondary" | "danger" | "ghost";
+  size?: "sm" | "md" | "lg";
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
@@ -12,14 +12,14 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({
   children,
-  variant = 'primary',
-  size = 'md',
+  variant = "primary",
+  size = "md",
   isLoading = false,
   leftIcon,
   rightIcon,
   fullWidth = false,
   disabled,
-  className = '',
+  className = "",
   ...props
 }: ButtonProps) {
   // Combine base classes with variant and size
@@ -28,11 +28,11 @@ export function Button({
     primary: tw.button.primary,
     secondary: tw.button.secondary,
     danger: tw.button.danger,
-    ghost: 'bg-transparent text-gray-700 hover:bg-gray-100',
+    ghost: "bg-transparent text-gray-700 hover:bg-gray-100",
   };
   const sizeClasses = tw.button.size[size];
-  const widthClass = fullWidth ? 'w-full' : '';
-  const disabledClass = disabled || isLoading ? tw.disabled : '';
+  const widthClass = fullWidth ? "w-full" : "";
+  const disabledClass = disabled || isLoading ? tw.disabled : "";
 
   const buttonClasses = [
     baseClasses,
@@ -41,7 +41,9 @@ export function Button({
     widthClass,
     disabledClass,
     className,
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <button
@@ -66,11 +68,11 @@ export function Button({
 }
 
 // Loading spinner component
-function LoadingSpinner({ size }: { size: 'sm' | 'md' | 'lg' }) {
+function LoadingSpinner({ size }: { size: "sm" | "md" | "lg" }) {
   const sizeClasses = {
-    sm: 'h-3 w-3',
-    md: 'h-4 w-4',
-    lg: 'h-5 w-5',
+    sm: "h-3 w-3",
+    md: "h-4 w-4",
+    lg: "h-5 w-5",
   };
 
   return (
@@ -98,23 +100,24 @@ function LoadingSpinner({ size }: { size: 'sm' | 'md' | 'lg' }) {
 }
 
 // Icon button variant
-interface IconButtonProps extends Omit<ButtonProps, 'leftIcon' | 'rightIcon' | 'children'> {
+interface IconButtonProps
+  extends Omit<ButtonProps, "leftIcon" | "rightIcon" | "children"> {
   icon: React.ReactNode;
-  'aria-label': string;
+  "aria-label": string;
 }
 
-export function IconButton({ icon, size = 'md', ...props }: IconButtonProps) {
+export function IconButton({ icon, size = "md", ...props }: IconButtonProps) {
   const paddingClasses = {
-    sm: 'p-1.5',
-    md: 'p-2',
-    lg: 'p-3',
+    sm: "p-1.5",
+    md: "p-2",
+    lg: "p-3",
   };
 
   return (
     <Button
       {...props}
       size={size}
-      className={`${paddingClasses[size]} ${props.className || ''}`}
+      className={`${paddingClasses[size]} ${props.className || ""}`}
     >
       {icon}
     </Button>
@@ -127,24 +130,23 @@ interface ButtonGroupProps {
   className?: string;
 }
 
-export function ButtonGroup({ children, className = '' }: ButtonGroupProps) {
+export function ButtonGroup({ children, className = "" }: ButtonGroupProps) {
   return (
-    <div className={`inline-flex rounded-md shadow-sm ${className}`} role="group">
+    <div
+      className={`inline-flex rounded-md shadow-sm ${className}`}
+      role="group"
+    >
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
           const isFirst = index === 0;
           const isLast = index === React.Children.count(children) - 1;
 
           return React.cloneElement(child as React.ReactElement<any>, {
-            className: `${child.props.className || ''} ${
-              !isFirst ? '-ml-px' : ''
-            } ${
-              isFirst ? 'rounded-r-none' : ''
-            } ${
-              isLast ? 'rounded-l-none' : ''
-            } ${
-              !isFirst && !isLast ? 'rounded-none' : ''
-            } focus:z-10`,
+            className: `${child.props.className || ""} ${
+              !isFirst ? "-ml-px" : ""
+            } ${isFirst ? "rounded-r-none" : ""} ${
+              isLast ? "rounded-l-none" : ""
+            } ${!isFirst && !isLast ? "rounded-none" : ""} focus:z-10`,
           });
         }
         return child;

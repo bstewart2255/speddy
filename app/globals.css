@@ -2,53 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Direct CSS test - this should ALWAYS work */
+.test-basic-red {
+  background-color: red !important;
+  color: white !important;
+  padding: 20px !important;
+  margin: 10px !important;
+  border: 3px solid black !important;
+}
+
+.test-basic-blue {
+  background-color: blue !important;
+  color: white !important;
+  padding: 20px !important;
+  margin: 10px !important;
+  border: 3px solid black !important;
+}
+
 @layer base {
   :root {
-    /* Color Palette */
+    /* Replace the Color Palette section with: */
     --color-primary-50: #eff6ff;
     --color-primary-100: #dbeafe;
     --color-primary-200: #bfdbfe;
     --color-primary-300: #93c5fd;
     --color-primary-400: #60a5fa;
-    --color-primary-500: #3b82f6;
-    --color-primary-600: #2563eb;
+    --color-primary-500: #3182ce;  /* ← Updated to match design */
+    --color-primary-600: #2c5aa0;  /* ← Updated to match design */
     --color-primary-700: #1d4ed8;
     --color-primary-800: #1e40af;
     --color-primary-900: #1e3a8a;
 
-    --color-secondary-50: #f5f3ff;
-    --color-secondary-100: #ede9fe;
-    --color-secondary-200: #ddd6fe;
-    --color-secondary-300: #c4b5fd;
-    --color-secondary-400: #a78bfa;
-    --color-secondary-500: #8b5cf6;
-    --color-secondary-600: #7c3aed;
-    --color-secondary-700: #6d28d9;
-    --color-secondary-800: #5b21b6;
-    --color-secondary-900: #4c1d95;
-
     --color-success-50: #f0fdf4;
-    --color-success-500: #10b981;
+    --color-success-500: #38a169;  /* ← Updated to match design */
     --color-success-600: #059669;
 
-    --color-warning-50: #fffbeb;
-    --color-warning-500: #f59e0b;
-    --color-warning-600: #d97706;
-
     --color-danger-50: #fef2f2;
-    --color-danger-500: #ef4444;
+    --color-danger-500: #e53e3e;   /* ← Updated to match design */
     --color-danger-600: #dc2626;
 
-    --color-gray-50: #f8fafc;
+    --color-gray-50: #f5f7fa;      /* ← Updated background color */
     --color-gray-100: #f1f5f9;
     --color-gray-200: #e2e8f0;
     --color-gray-300: #cbd5e1;
     --color-gray-400: #94a3b8;
     --color-gray-500: #64748b;
-    --color-gray-600: #475569;
+    --color-gray-600: #4a5568;     /* ← Updated text color */
     --color-gray-700: #334155;
     --color-gray-800: #1e293b;
-    --color-gray-900: #0f172a;
+    --color-gray-900: #1a202c;     /* ← Updated dark text */
 
     /* Spacing Scale */
     --spacing-xs: 0.25rem;  /* 4px */
