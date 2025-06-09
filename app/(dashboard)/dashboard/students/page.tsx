@@ -1,21 +1,138 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
 import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
+import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
+
+type Student = {
+  id: string;
+  initials: string;
+  grade_level: string;
+  teacher_name: string;
+  sessions_per_week: number;
+  minutes_per_session: number;
+  provider_id: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formData, setFormData] = useState({
+    initials: '',
+    grade_level: '',
+    teacher_name: '',
+    sessions_per_week: '',
+    minutes_per_session: '30'
+  });
 
-  // Sample data - replace with your actual data fetching
-  const students = [
-    { id: 1, initials: 'BS', grade: '3', teacher: 'Steele', sessionsPerWeek: 3, minutesPerSession: 30, scheduled: 3, required: 3 },
-    { id: 2, initials: 'JM', grade: '2', teacher: 'Johnson', sessionsPerWeek: 2, minutesPerSession: 45, scheduled: 1, required: 2 },
-    { id: 3, initials: 'AL', grade: 'K', teacher: 'Davis', sessionsPerWeek: 4, minutesPerSession: 30, scheduled: 4, required: 4 },
-    { id: 4, initials: 'MK', grade: '1', teacher: 'Wilson', sessionsPerWeek: 2, minutesPerSession: 30, scheduled: 0, required: 2 },
-  ];
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    sessions_per_week: '',
+    minutes_per_session: ''
+  });
+
+  // Fetch students on mount
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  const fetchStudents = async () => {
+    try {
+      const data = await getStudents();
+      setStudents(data);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      await createStudent({
+        initials: formData.initials,
+        grade_level: formData.grade_level,
+        teacher_name: formData.teacher_name,
+        sessions_per_week: parseInt(formData.sessions_per_week),
+        minutes_per_session: parseInt(formData.minutes_per_session)
+      });
+
+      // Reset form and close
+      setFormData({
+        initials: '',
+        grade_level: '',
+        teacher_name: '',
+        sessions_per_week: '',
+        minutes_per_session: '30'
+      });
+      setShowAddForm(false);
+
+      // Refresh student list
+      fetchStudents();
+    } catch (error) {
+      console.error('Error adding student:', error);
+      alert('Failed to add student. Please try again.');
+    }
+  };
+
+  const handleDelete = async (studentId: string, studentInitials: string) => {
+    if (confirm(`Are you sure you want to delete ${studentInitials}? This will also delete all their scheduled sessions.`)) {
+      try {
+        await deleteStudent(studentId);
+        fetchStudents();
+      } catch (error) {
+        console.error('Error deleting student:', error);
+        alert('Failed to delete student. Please try again.');
+      }
+    }
+  };
+
+  const handleEdit = (student: Student) => {
+    setEditingId(student.id);
+    setEditFormData({
+      sessions_per_week: student.sessions_per_week.toString(),
+      minutes_per_session: student.minutes_per_session.toString()
+    });
+  };
+
+  const handleUpdate = async (studentId: string) => {
+    try {
+      await updateStudent(studentId, {
+        sessions_per_week: parseInt(editFormData.sessions_per_week),
+        minutes_per_session: parseInt(editFormData.minutes_per_session)
+      });
+
+      setEditingId(null);
+      fetchStudents();
+    } catch (error) {
+      console.error('Error updating student:', error);
+      alert('Failed to update student. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditFormData({
+      sessions_per_week: '',
+      minutes_per_session: ''
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p>Loading students...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -56,13 +173,16 @@ export default function StudentsPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <form className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                  <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   <div className="md:col-span-1">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Student Initials*
                     </label>
                     <input
                       type="text"
+                      required
+                      value={formData.initials}
+                      onChange={(e) => setFormData({...formData, initials: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="e.g., JD"
                     />
@@ -72,14 +192,19 @@ export default function StudentsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Grade Level*
                     </label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option>Select grade</option>
-                      <option>K</option>
-                      <option>1</option>
-                      <option>2</option>
-                      <option>3</option>
-                      <option>4</option>
-                      <option>5</option>
+                    <select 
+                      required
+                      value={formData.grade_level}
+                      onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Select grade</option>
+                      <option value="K">K</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
                     </select>
                   </div>
 
@@ -89,6 +214,9 @@ export default function StudentsPage() {
                     </label>
                     <input
                       type="text"
+                      required
+                      value={formData.teacher_name}
+                      onChange={(e) => setFormData({...formData, teacher_name: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="e.g., Ms. Smith"
                     />
@@ -100,8 +228,11 @@ export default function StudentsPage() {
                     </label>
                     <input
                       type="number"
+                      required
                       min="1"
                       max="5"
+                      value={formData.sessions_per_week}
+                      onChange={(e) => setFormData({...formData, sessions_per_week: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="2"
                     />
@@ -111,15 +242,20 @@ export default function StudentsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Min/Session*
                     </label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option>30</option>
-                      <option>45</option>
-                      <option>60</option>
+                    <select 
+                      required
+                      value={formData.minutes_per_session}
+                      onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="30">30</option>
+                      <option value="45">45</option>
+                      <option value="60">60</option>
                     </select>
                   </div>
 
                   <div className="md:col-span-6 flex justify-end gap-3 pt-4">
-                    <Button variant="secondary" onClick={() => setShowAddForm(false)}>
+                    <Button variant="secondary" type="button" onClick={() => setShowAddForm(false)}>
                       Cancel
                     </Button>
                     <Button variant="primary" type="submit">
@@ -137,15 +273,6 @@ export default function StudentsPage() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle>Current Students ({students.length})</CardTitle>
-              <div className="flex gap-2">
-                <span className="text-sm text-gray-500">
-                  {students.filter(s => s.scheduled === s.required).length} fully scheduled
-                </span>
-                <span className="text-sm text-gray-500">•</span>
-                <span className="text-sm text-gray-500">
-                  {students.filter(s => s.scheduled < s.required).length} need scheduling
-                </span>
-              </div>
             </div>
           </CardHeader>
           <CardBody>
@@ -156,7 +283,6 @@ export default function StudentsPage() {
                   <TableHead>Grade</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Schedule Requirements</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -167,18 +293,72 @@ export default function StudentsPage() {
                       <StudentTag initials={student.initials} />
                     </TableCell>
                     <TableCell>
-                      <GradeTag grade={student.grade} />
+                      <GradeTag grade={student.grade_level} />
                     </TableCell>
-                    <TableCell>{student.teacher}</TableCell>
+                    <TableCell>{student.teacher_name}</TableCell>
                     <TableCell>
-                      {student.sessionsPerWeek}x/week, {student.minutesPerSession} min
-                    </TableCell>
-                    <TableCell>
-                      <StatusTag completed={student.scheduled} total={student.required} />
+                      {editingId === student.id ? (
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="number"
+                            min="1"
+                            max="5"
+                            value={editFormData.sessions_per_week}
+                            onChange={(e) => setEditFormData({...editFormData, sessions_per_week: e.target.value})}
+                            className="w-16 px-2 py-1 border border-gray-300 rounded"
+                          />
+                          <span>x/week,</span>
+                          <select
+                            value={editFormData.minutes_per_session}
+                            onChange={(e) => setEditFormData({...editFormData, minutes_per_session: e.target.value})}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded"
+                          >
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                            <option value="60">60</option>
+                          </select>
+                          <span>min</span>
+                        </div>
+                      ) : (
+                        `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
+                      )}
                     </TableCell>
                     <TableActionCell>
-                      <Button variant="secondary" size="sm">Edit</Button>
-                      <Button variant="danger" size="sm">Delete</Button>
+                      {editingId === student.id ? (
+                        <>
+                          <Button 
+                            variant="primary" 
+                            size="sm"
+                            onClick={() => handleUpdate(student.id)}
+                          >
+                            Save
+                          </Button>
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            onClick={handleCancelEdit}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            onClick={() => handleEdit(student)}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="danger" 
+                            size="sm"
+                            onClick={() => handleDelete(student.id, student.initials)}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
                     </TableActionCell>
                   </TableRow>
                 ))}

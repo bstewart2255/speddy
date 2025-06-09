@@ -7,34 +7,13 @@ export async function createStudent(studentData: {
   sessions_per_week: number;
   minutes_per_session: number;
 }) {
-  
   const supabase = createClientComponentClient();
-  
+
   // Get the current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  // Add detailed logging
-  console.log('createStudent called with:', studentData);
-  console.log('Auth check result:', { user, userError });
-  
   if (userError || !user) {
     throw new Error('You must be logged in to add students');
-  }
-
-  console.log('Current user ID:', user.id);
-  console.log('Current user email:', user.email);
-
-  // Check if profile exists
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', user.id)
-    .single();
-
-  console.log('Profile check:', { profile, profileError });
-
-  if (!profile) {
-    throw new Error('No profile found. Please contact support.');
   }
 
   // Try to insert the student
@@ -60,15 +39,21 @@ export async function createStudent(studentData: {
     });
     throw new Error(error.message || 'Failed to add student');
   }
-  
+
   return data;
 }
 
 export async function getStudents() {
   const supabase = createClientComponentClient();
+
+  // Get current user to filter by provider_id
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No user found');
+
   const { data, error } = await supabase
     .from('students')
     .select('*')
+    .eq('provider_id', user.id)  // Only get current provider's students
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -77,6 +62,14 @@ export async function getStudents() {
 
 export async function deleteStudent(studentId: string) {
   const supabase = createClientComponentClient();
+
+  // First delete any schedule_sessions for this student
+  await supabase
+    .from('schedule_sessions')
+    .delete()
+    .eq('student_id', studentId);
+
+  // Then delete the student
   const { error } = await supabase
     .from('students')
     .delete()
@@ -85,17 +78,19 @@ export async function deleteStudent(studentId: string) {
   if (error) throw error;
 }
 
-export async function updateStudent(studentId: string, studentData: {
-  initials: string;
-  grade_level: string;
-  teacher_name: string;
+export async function updateStudent(studentId: string, updates: {
   sessions_per_week: number;
   minutes_per_session: number;
 }) {
   const supabase = createClientComponentClient();
+
+  // Only allow updating sessions_per_week and minutes_per_session
   const { data, error } = await supabase
     .from('students')
-    .update(studentData)
+    .update({
+      sessions_per_week: updates.sessions_per_week,
+      minutes_per_session: updates.minutes_per_session
+    })
     .eq('id', studentId)
     .select()
     .single();
