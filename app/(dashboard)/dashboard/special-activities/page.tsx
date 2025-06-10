@@ -1,76 +1,90 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
-import { Tag, ActivityTypeTag } from '../../../components/ui/tag';
+import { Tag } from '../../../components/ui/tag';
+import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
+import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
+import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
+
+interface SpecialActivity {
+  id: string;
+  teacher_name: string;
+  grade?: string; // If this is stored separately
+  activity_name: string;
+  start_time: string;
+  end_time: string;
+  day_of_week: number;
+}
 
 export default function SpecialActivitiesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Sample data - replace with your actual data fetching
-  const specialActivities = [
-    { 
-      id: 1, 
-      name: 'Spring Assembly', 
-      date: 'June 15, 2025', 
-      startTime: '10:00 AM', 
-      endTime: '11:30 AM', 
-      affectedGrades: 'K-5', 
-      type: 'assembly',
-      description: 'End of year celebration assembly'
-    },
-    { 
-      id: 2, 
-      name: 'Zoo Field Trip', 
-      date: 'June 20, 2025', 
-      startTime: '9:00 AM', 
-      endTime: '3:00 PM', 
-      affectedGrades: '2-3', 
-      type: 'field-trip',
-      description: 'Educational visit to city zoo'
-    },
-    { 
-      id: 3, 
-      name: 'Fire Safety Presentation', 
-      date: 'June 25, 2025', 
-      startTime: '1:00 PM', 
-      endTime: '2:00 PM', 
-      affectedGrades: 'K-1', 
-      type: 'presentation',
-      description: 'Fire department safety education'
-    },
-    { 
-      id: 4, 
-      name: 'Book Fair', 
-      date: 'June 28, 2025', 
-      startTime: '8:00 AM', 
-      endTime: '4:00 PM', 
-      affectedGrades: 'K-5', 
-      type: 'other',
-      description: 'Annual school book fair event'
-    },
-  ];
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'assembly': return 'blue';
-      case 'field-trip': return 'green';
-      case 'presentation': return 'orange';
-      case 'other': return 'purple';
-      default: return 'gray';
+  // Fetch special activities from database
+  const fetchActivities = async () => {
+    try {
+      setLoading(true);
+      const data = await getSpecialActivities();
+      setSpecialActivities(data);
+    } catch (error) {
+      console.error('Error fetching special activities:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+  useEffect(() => {
+    fetchActivities();
+  }, []);
+
+  // Handle delete
+  const handleDelete = async (id: string, activityName: string) => {
+    if (!confirm(`Are you sure you want to delete "${activityName}"?`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(id);
+      await deleteSpecialActivity(id);
+      await fetchActivities(); // Refresh the list
+    } catch (error) {
+      alert('Failed to delete special activity');
+      console.error(error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Format time for display
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Convert day number to name
+  const dayNumberToName = (day: number) => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    return days[day - 1] || 'Unknown';
+  };
+
+  // Get activity type color
+  const getActivityColor = (activity: string) => {
+    const lowerActivity = activity.toLowerCase();
+    if (lowerActivity.includes('pe') || lowerActivity.includes('physical')) return 'blue';
+    if (lowerActivity.includes('music') || lowerActivity.includes('band')) return 'purple';
+    if (lowerActivity.includes('art')) return 'orange';
+    if (lowerActivity.includes('library')) return 'green';
+    if (lowerActivity.includes('computer') || lowerActivity.includes('tech')) return 'gray';
+    return 'gray';
   };
 
   return (
@@ -81,7 +95,7 @@ export default function SpecialActivitiesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
-            <p className="text-gray-600">Manage assemblies, field trips, and other special events</p>
+            <p className="text-gray-600">Manage teacher special activities and pull-out times</p>
           </div>
           <div className="flex gap-3">
             <Button 
@@ -90,7 +104,6 @@ export default function SpecialActivitiesPage() {
             >
               Import CSV
             </Button>
-            <Button variant="secondary">Export CSV</Button>
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
@@ -117,39 +130,16 @@ export default function SpecialActivitiesPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <div className="bg-purple-50 border-2 border-dashed border-purple-300 rounded-lg p-8 text-center">
-                  <div className="mb-4">
-                    <svg className="mx-auto h-12 w-12 text-purple-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                      <path d="M8 14v20c0 4.418 7.163 8 16 8 1.381 0 2.721-.087 4-.252M8 14c0 4.418 7.163 8 16 8s16-3.582 16-8M8 14c0-4.418 7.163-8 16-8s16 3.582 16 8m0 0v14m-16-4h.01M32 6.401V4.992c0-.552-.449-1-1.003-1H9.003C8.449 3.992 8 4.44 8 4.992v1.409" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <div className="mb-4">
-                    <p className="text-lg font-medium text-gray-900 mb-2">Upload Activities CSV</p>
-                    <p className="text-sm text-gray-600">
-                      CSV should include: Name, Date, Start Time, End Time, Affected Grades, Type
-                    </p>
-                  </div>
-                  <div className="flex justify-center gap-4">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      id="csv-upload"
-                    />
-                    <label htmlFor="csv-upload">
-                      <Button variant="primary" as="span" className="cursor-pointer">
-                        Choose File
-                      </Button>
-                    </label>
-                    <Button variant="secondary">Download Template</Button>
-                  </div>
-                </div>
+                <SpecialActivitiesCSVImport onSuccess={() => {
+                  setShowImportSection(false);
+                  fetchActivities();
+                }} />
               </CardBody>
             </Card>
           </div>
         )}
 
-        {/* Add Activity Form */}
+        {/* Add Activity Form - Inline */}
         {showAddForm && (
           <div className="mb-8">
             <Card>
@@ -166,92 +156,14 @@ export default function SpecialActivitiesPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <form className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Activity Name*
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., Spring Assembly"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Type*
-                    </label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option value="">Select type</option>
-                      <option value="assembly">Assembly</option>
-                      <option value="field-trip">Field Trip</option>
-                      <option value="presentation">Presentation</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Date*
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Time*
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      End Time*
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Affected Grades*
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., K-2 or 3,4,5"
-                    />
-                  </div>
-
-                  <div className="md:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., End of year celebration assembly"
-                    />
-                  </div>
-
-                  <div className="md:col-span-6 flex justify-end gap-3 pt-4">
-                    <Button variant="secondary" onClick={() => setShowAddForm(false)}>
-                      Cancel
-                    </Button>
-                    <Button variant="primary" type="submit">
-                      Add Activity
-                    </Button>
-                  </div>
-                </form>
+                <AddSpecialActivityForm
+                  teacherName=""
+                  onSuccess={() => {
+                    setShowAddForm(false);
+                    fetchActivities();
+                  }}
+                  onCancel={() => setShowAddForm(false)}
+                />
               </CardBody>
             </Card>
           </div>
@@ -260,58 +172,69 @@ export default function SpecialActivitiesPage() {
         {/* Special Activities List */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Upcoming Activities ({specialActivities.length})</CardTitle>
-              <div className="flex gap-2 text-sm text-gray-500">
-                <span>{specialActivities.filter(a => a.type === 'assembly').length} assemblies</span>
-                <span>•</span>
-                <span>{specialActivities.filter(a => a.type === 'field-trip').length} field trips</span>
-                <span>•</span>
-                <span>{specialActivities.filter(a => !['assembly', 'field-trip'].includes(a.type)).length} other events</span>
-              </div>
-            </div>
+            <CardTitle>Current Special Activities ({specialActivities.length})</CardTitle>
           </CardHeader>
           <CardBody>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Activity Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Affected Grades</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {specialActivities.map((activity) => (
-                  <TableRow key={activity.id}>
-                    <TableCell>
-                      <span className="font-medium">{activity.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Tag variant={getTypeColor(activity.type)}>
-                        {activity.type === 'field-trip' ? 'Field Trip' : 
-                         activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
-                      </Tag>
-                    </TableCell>
-                    <TableCell>{formatDate(activity.date)}</TableCell>
-                    <TableCell>{activity.startTime} - {activity.endTime}</TableCell>
-                    <TableCell>
-                      <Tag variant="gray">{activity.affectedGrades}</Tag>
-                    </TableCell>
-                    <TableCell className="text-gray-600 max-w-xs truncate">
-                      {activity.description}
-                    </TableCell>
-                    <TableActionCell>
-                      <Button variant="secondary" size="sm">Edit</Button>
-                      <Button variant="danger" size="sm">Delete</Button>
-                    </TableActionCell>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              </div>
+            ) : specialActivities.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                No special activities yet. Click "Add Activity" to get started.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Teacher</TableHead>
+                    <TableHead>Activity</TableHead>
+                    <TableHead>Day</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {specialActivities
+                    .sort((a, b) => {
+                      // Sort by teacher, then day, then time
+                      if (a.teacher_name !== b.teacher_name) {
+                        return a.teacher_name.localeCompare(b.teacher_name);
+                      }
+                      if (a.day_of_week !== b.day_of_week) {
+                        return a.day_of_week - b.day_of_week;
+                      }
+                      return a.start_time.localeCompare(b.start_time);
+                    })
+                    .map((activity) => (
+                      <TableRow key={activity.id}>
+                        <TableCell>
+                          <span className="font-medium">{activity.teacher_name}</span>
+                        </TableCell>
+                        <TableCell>
+                          <Tag variant={getActivityColor(activity.activity_name)}>
+                            {activity.activity_name}
+                          </Tag>
+                        </TableCell>
+                        <TableCell>{dayNumberToName(activity.day_of_week)}</TableCell>
+                        <TableCell>
+                          {formatTime(activity.start_time)} - {formatTime(activity.end_time)}
+                        </TableCell>
+                        <TableActionCell>
+                          <Button 
+                            variant="danger" 
+                            size="sm"
+                            onClick={() => handleDelete(activity.id, activity.activity_name)}
+                            disabled={deletingId === activity.id}
+                          >
+                            {deletingId === activity.id ? 'Deleting...' : 'Delete'}
+                          </Button>
+                        </TableActionCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            )}
           </CardBody>
         </Card>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Student, ScheduleSession, BellSchedule, SpecialActivity } from '../../../premium-scheduler/src/types/database';
+import { Student, ScheduleSession, BellSchedule, SpecialActivity } from '../../../src/types/database';
 
 interface ExportPDFProps {
   students: Student[];

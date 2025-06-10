@@ -1,31 +1,70 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
-import { Tag, ActivityTypeTag } from '../../../components/ui/tag';
+import { Tag } from '../../../components/ui/tag';
+import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
+import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
+import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const [selectedGrade, setSelectedGrade] = useState<string>('K');
+  const [bellSchedules, setBellSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Sample data - replace with your actual data fetching
-  const bellSchedules = [
-    { id: 1, name: 'Period 1', days: 'Mon-Fri', startTime: '8:00 AM', endTime: '8:50 AM', description: 'First Period Classes', type: 'period' },
-    { id: 2, name: 'Period 2', days: 'Mon-Fri', startTime: '9:00 AM', endTime: '9:50 AM', description: 'Second Period Classes', type: 'period' },
-    { id: 3, name: 'Recess', days: 'Mon-Fri', startTime: '10:00 AM', endTime: '10:15 AM', description: 'Morning Recess Break', type: 'break' },
-    { id: 4, name: 'Lunch', days: 'Mon-Fri', startTime: '12:00 PM', endTime: '1:00 PM', description: 'Lunch Break - No Scheduling', type: 'lunch' },
-    { id: 5, name: 'Period 6', days: 'Mon-Fri', startTime: '2:30 PM', endTime: '3:20 PM', description: 'Sixth Period Classes', type: 'period' },
-  ];
-
-  const getTypeVariant = (type: string) => {
-    switch (type) {
-      case 'period': return 'blue';
-      case 'break': return 'orange';
-      case 'lunch': return 'red';
-      default: return 'gray';
+  // Fetch bell schedules from database
+  const fetchSchedules = async () => {
+    try {
+      setLoading(true);
+      const data = await getBellSchedules();
+      setBellSchedules(data);
+    } catch (error) {
+      console.error('Error fetching bell schedules:', error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchSchedules();
+  }, []);
+
+  // Handle delete
+  const handleDelete = async (id: string, periodName: string) => {
+    if (!confirm(`Are you sure you want to delete "${periodName}"?`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(id);
+      await deleteBellSchedule(id);
+      await fetchSchedules(); // Refresh the list
+    } catch (error) {
+      alert('Failed to delete bell schedule');
+      console.error(error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Format time for display
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Convert day number to name
+  const dayNumberToName = (day: number) => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    return days[day - 1] || 'Unknown';
   };
 
   return (
@@ -45,7 +84,6 @@ export default function BellSchedulesPage() {
             >
               Import CSV
             </Button>
-            <Button variant="secondary">Export CSV</Button>
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
@@ -72,39 +110,16 @@ export default function BellSchedulesPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <div className="bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg p-8 text-center">
-                  <div className="mb-4">
-                    <svg className="mx-auto h-12 w-12 text-blue-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                      <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <div className="mb-4">
-                    <p className="text-lg font-medium text-gray-900 mb-2">Upload Bell Schedule CSV</p>
-                    <p className="text-sm text-gray-600">
-                      CSV should include: Name, Days, Start Time, End Time, Description
-                    </p>
-                  </div>
-                  <div className="flex justify-center gap-4">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      id="csv-upload"
-                    />
-                    <label htmlFor="csv-upload">
-                      <Button variant="primary" as="span" className="cursor-pointer">
-                        Choose File
-                      </Button>
-                    </label>
-                    <Button variant="secondary">Download Template</Button>
-                  </div>
-                </div>
+                <BellScheduleCSVImport onSuccess={() => {
+                  setShowImportSection(false);
+                  fetchSchedules();
+                }} />
               </CardBody>
             </Card>
           </div>
         )}
 
-        {/* Add Schedule Form */}
+        {/* Add Schedule Form - Inline */}
         {showAddForm && (
           <div className="mb-8">
             <Card>
@@ -121,84 +136,34 @@ export default function BellSchedulesPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <form className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Schedule Name*
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., Period 1"
-                    />
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Grade Level
+                  </label>
+                  <div className="flex gap-2">
+                    {['K', '1', '2', '3', '4', '5'].map((grade) => (
+                      <button
+                        key={grade}
+                        onClick={() => setSelectedGrade(grade)}
+                        className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                          selectedGrade === grade
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        Grade {grade}
+                      </button>
+                    ))}
                   </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Days*
-                    </label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option>Mon-Fri</option>
-                      <option>Monday</option>
-                      <option>Tuesday</option>
-                      <option>Wednesday</option>
-                      <option>Thursday</option>
-                      <option>Friday</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Time*
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      End Time*
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Type*
-                    </label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option value="period">Class Period</option>
-                      <option value="break">Break/Recess</option>
-                      <option value="lunch">Lunch</option>
-                      <option value="assembly">Assembly</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., First Period Classes"
-                    />
-                  </div>
-
-                  <div className="md:col-span-6 flex justify-end gap-3 pt-4">
-                    <Button variant="secondary" onClick={() => setShowAddForm(false)}>
-                      Cancel
-                    </Button>
-                    <Button variant="primary" type="submit">
-                      Add Schedule
-                    </Button>
-                  </div>
-                </form>
+                </div>
+                <AddBellScheduleForm
+                  gradeLevel={selectedGrade}
+                  onSuccess={() => {
+                    setShowAddForm(false);
+                    fetchSchedules();
+                  }}
+                  onCancel={() => setShowAddForm(false)}
+                />
               </CardBody>
             </Card>
           </div>
@@ -207,51 +172,54 @@ export default function BellSchedulesPage() {
         {/* Bell Schedules List */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Current Bell Schedules ({bellSchedules.length})</CardTitle>
-              <div className="flex gap-2 text-sm text-gray-500">
-                <span>{bellSchedules.filter(s => s.type === 'period').length} class periods</span>
-                <span>•</span>
-                <span>{bellSchedules.filter(s => s.type !== 'period').length} restricted blocks</span>
-              </div>
-            </div>
+            <CardTitle>Current Bell Schedules ({bellSchedules.length})</CardTitle>
           </CardHeader>
           <CardBody>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Start Time</TableHead>
-                  <TableHead>End Time</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bellSchedules.map((schedule) => (
-                  <TableRow key={schedule.id}>
-                    <TableCell>
-                      <span className="font-medium">{schedule.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Tag variant={getTypeVariant(schedule.type)}>
-                        {schedule.type.charAt(0).toUpperCase() + schedule.type.slice(1)}
-                      </Tag>
-                    </TableCell>
-                    <TableCell>{schedule.days}</TableCell>
-                    <TableCell>{schedule.startTime}</TableCell>
-                    <TableCell>{schedule.endTime}</TableCell>
-                    <TableCell className="text-gray-600">{schedule.description}</TableCell>
-                    <TableActionCell>
-                      <Button variant="secondary" size="sm">Edit</Button>
-                      <Button variant="danger" size="sm">Delete</Button>
-                    </TableActionCell>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              </div>
+            ) : bellSchedules.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                No bell schedules yet. Click "Add Schedule" to get started.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Grade</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Day</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {bellSchedules.map((schedule) => (
+                    <TableRow key={schedule.id}>
+                      <TableCell>
+                        <Tag variant="gray">Grade {schedule.grade_level}</Tag>
+                      </TableCell>
+                      <TableCell>{schedule.period_name}</TableCell>
+                      <TableCell>{dayNumberToName(schedule.day_of_week)}</TableCell>
+                      <TableCell>
+                        {formatTime(schedule.start_time)} - {formatTime(schedule.end_time)}
+                      </TableCell>
+                      <TableActionCell>
+                        <Button 
+                          variant="danger" 
+                          size="sm"
+                          onClick={() => handleDelete(schedule.id, schedule.period_name)}
+                          disabled={deletingId === schedule.id}
+                        >
+                          {deletingId === schedule.id ? 'Deleting...' : 'Delete'}
+                        </Button>
+                      </TableActionCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardBody>
         </Card>
 

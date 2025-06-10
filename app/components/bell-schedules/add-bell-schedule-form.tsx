@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../types/database';
+import { Database } from '../../../src/types/database';
+import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 
 type Props = {
   gradeLevel: string;
@@ -59,28 +60,34 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
 
       if (insertError) throw insertError;
 
+      // Check for conflicts after successful insert
+      const resolver = new ConflictResolver(user.id);
+      const insertedSchedule = {
+        grade_level: gradeLevel,
+        day_of_week: dayToNumber(dayOfWeek),
+        start_time: startTime,
+        end_time: endTime,
+        period_name: subject.trim()
+      };
+
+      const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
+
+      if (result.resolved > 0 || result.failed > 0) {
+        alert(`Bell schedule added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+      }
+
       // Reset form
       setStartTime('');
       setEndTime('');
       setSubject('');
       onSuccess();
     } catch (err) {
-      console.error('Add schedule error:', err, 'Message:', err?.message);
+      console.error('Add schedule error:', err);
       setError(err instanceof Error ? err.message : 'Failed to add schedule');
     } finally {
       setSubmitting(false);
     }
   };
-
-  // Generate time options in 15-minute increments
-  const timeOptions = [];
-  for (let hour = 7; hour <= 15; hour++) {
-    for (let minute = 0; minute < 60; minute += 15) {
-      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:00`;
-      const displayTime = `${hour > 12 ? hour - 12 : hour}:${minute.toString().padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
-      timeOptions.push({ value: time, label: displayTime });
-    }
-  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -150,13 +157,13 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Subject/Activity
+          Activity
         </label>
         <input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          placeholder="e.g., Math, Reading, PE"
+          placeholder="e.g., Recess, Lunch"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />

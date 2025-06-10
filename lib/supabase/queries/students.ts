@@ -98,3 +98,19 @@ export async function updateStudent(studentId: string, updates: {
   if (error) throw error;
   return data;
 }
+
+export async function createStudentWithAutoSchedule(studentData: {
+  initials: string;
+  grade_level: string;
+  teacher_name: string;
+  sessions_per_week: number;
+  minutes_per_session: number;
+}) {
+  const supabase = createClientComponentClient();
+
+  // First create the student as before
+  const student = await createStudent(studentData);
+
+  // Return the student - scheduling will be handled by the component
+  return student;
+}

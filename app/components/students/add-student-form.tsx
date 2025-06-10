@@ -1,52 +1,71 @@
-'use client';
+  'use client';
 
-import { useState } from 'react';
-import { createStudent } from '../../../lib/supabase/queries/students';
-import { Button } from '../ui/button';
-import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
+  import { useState } from 'react';
+  import { createStudent } from '../../../lib/supabase/queries/students';
+  import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
+  import { Button } from '../ui/button';
+  import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
 
-interface AddStudentFormProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
+  interface AddStudentFormProps {
+    onClose: () => void;
+    onSuccess: () => void;
+  }
 
-export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
-  const [formData, setFormData] = useState({
-    initials: '',
-    grade_level: '',
-    teacher_name: '',
-    sessions_per_week: 1,
-    minutes_per_session: 30,
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
+    const [formData, setFormData] = useState({
+      initials: '',
+      grade_level: '',
+      teacher_name: '',
+      sessions_per_week: 1,
+      minutes_per_session: 30,
+    });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const { scheduleStudent, isScheduling, schedulingErrors } = useAutoSchedule();
 
-  console.log('AddStudentForm rendering, all imports:', { 
-    Label, Input, Select, FormGroup, FormSection, HelperText 
-  });
+    // Only replace this function
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setLoading(true);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+      try {
+        console.log('Creating student with data:', formData);
 
-    try {
-      await createStudent({
-        initials: formData.initials.toUpperCase(),
-        grade_level: formData.grade_level,  // Map grade to grade_level
-        teacher_name: formData.teacher_name,
-        sessions_per_week: formData.sessions_per_week,
-        minutes_per_session: formData.minutes_per_session,
-      });
+        // Create the student
+        const student = await createStudent({
+          initials: formData.initials.toUpperCase(),
+          grade_level: formData.grade_level,
+          teacher_name: formData.teacher_name,
+          sessions_per_week: formData.sessions_per_week,
+          minutes_per_session: formData.minutes_per_session,
+        });
 
-      onSuccess();
-      onClose();
-    } catch (err) {
-      console.error('Error adding student:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add student');
-      setLoading(false);
-    }
-  };
+        console.log('Student created:', student);
+
+        // Auto-schedule their sessions
+        console.log('Starting auto-schedule for student:', student);
+        const schedulingResult = await scheduleStudent(student);
+        console.log('Scheduling result:', schedulingResult);
+
+        if (schedulingResult.errors.length > 0) {
+          // Show scheduling errors but don't fail the student creation
+          alert(`Student created, but scheduling issues:\n${schedulingResult.errors.join('\n')}`);
+        } else if (schedulingResult.success) {
+          alert(`Student created and ${schedulingResult.scheduledSessions.length} sessions scheduled!`);
+        } else {
+          alert('Student created but no sessions could be scheduled.');
+        }
+
+        onSuccess();
+        onClose();
+      } catch (err) {
+        console.error('Error adding student:', err);
+        setError(err instanceof Error ? err.message : 'Failed to add student');
+      } finally {
+        setLoading(false);
+      }
+    };
   
   return (
   <form onSubmit={handleSubmit} className="space-y-4">

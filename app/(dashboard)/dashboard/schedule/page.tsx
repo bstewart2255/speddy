@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';  // ← Add React here
+import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
-import { Button } from '../../../components/ui/button';
-import { StatsGrid } from '../../../components/ui/stats';
+import { Card, CardBody } from '../../../components/ui/card';
+import { AutoScheduleAll } from '../../../components/schedule/auto-schedule-all';
 
-// Keep all your existing interfaces and helper functions exactly the same
 interface Student {
   id: string;
   initials: string;
+  grade_level: string;
+  teacher_name: string;
   sessions_per_week: number;
   minutes_per_session: number;
 }
@@ -26,6 +25,7 @@ interface ScheduleSession {
 
 interface BellSchedule {
   id: string;
+  grade_level: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
@@ -34,6 +34,7 @@ interface BellSchedule {
 
 interface SpecialActivity {
   id: string;
+  teacher_name: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
@@ -41,36 +42,32 @@ interface SpecialActivity {
 }
 
 export default function SchedulePage() {
-  // Keep all your existing state variables exactly the same
   const [providerRole, setProviderRole] = useState<string>('');
   const [students, setStudents] = useState<Student[]>([]);
   const [bellSchedules, setBellSchedules] = useState<BellSchedule[]>([]);
   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedWeek, setSelectedWeek] = useState(new Date());
 
   const supabase = createClientComponentClient();
 
-  // Keep all your existing helper functions exactly the same
-  const timeToMinutes = (time: string): number => {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
+  // Helper function to format time for display
+  const formatTime = (time: string): string => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const isTimeInRange = (checkTime: string, startTime: string, endTime: string): boolean => {
-    const check = timeToMinutes(checkTime);
-    const start = timeToMinutes(startTime);
-    const end = timeToMinutes(endTime);
-    return check >= start && check < end;
-  };
-
-  // Keep all your existing data fetching exactly the same
+  // Fetch all data
   const fetchData = async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No user found');
+
+      console.log('Fetching data for user:', user.id);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -80,6 +77,7 @@ export default function SchedulePage() {
 
       if (profile) {
         setProviderRole(profile.role);
+        console.log('Provider role:', profile.role);
       }
 
       const [studentsData, bellData, activitiesData, sessionsData] = await Promise.all([
@@ -88,6 +86,14 @@ export default function SchedulePage() {
         supabase.from('special_activities').select('*').eq('provider_id', user.id),
         supabase.from('schedule_sessions').select('*').eq('provider_id', user.id)
       ]);
+
+      console.log('Fetched data:', {
+        students: studentsData.data?.length || 0,
+        bellSchedules: bellData.data?.length || 0,
+        specialActivities: activitiesData.data?.length || 0,
+        sessions: sessionsData.data?.length || 0,
+        sessionDetails: sessionsData.data
+      });
 
       if (studentsData.data) setStudents(studentsData.data);
       if (bellData.data) setBellSchedules(bellData.data);
@@ -104,59 +110,7 @@ export default function SchedulePage() {
     fetchData();
   }, []);
 
-  // Keep all your existing drag-drop handlers exactly the same
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-
-    // Don't allow dropping back on the students list
-    if (result.destination.droppableId === 'students-list') return;
-
-    const studentId = result.draggableId;
-    const student = students.find(s => s.id === studentId);
-    if (!student) {
-      alert('Student not found');
-      return;
-    }
-
-    // Calculate end time based on student's session duration
-    const [day, time] = result.destination.droppableId.split('-');
-    const dayIndex = days.indexOf(day) + 1; // Convert day name to number (1-5)
-    const startMinutes = parseInt(time.split(':')[0]) * 60 + parseInt(time.split(':')[1]);
-    const endMinutes = startMinutes + student.minutes_per_session;
-    const endHours = Math.floor(endMinutes / 60);
-    const endMins = endMinutes % 60;
-    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;                  
-
-    // First, get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert('You must be logged in to create sessions');
-      return;
-    }
-
-    console.log('Creating session with role:', providerRole);
-    // console.log('Provider profile role:', profile?.role);
-
-    // Create a new schedule session
-    const { error } = await supabase
-      .from('schedule_sessions')
-      .insert({
-        student_id: studentId,
-        provider_id: user.id,
-        day_of_week: dayIndex,
-        start_time: time,
-        end_time: endTime,
-        service_type: providerRole,
-      });
-
-    if (error) {
-      alert('Failed to create session: ' + error.message);
-    } else {
-      // Refresh the data to show the new session
-      fetchData();
-    }
-  };
-
+  // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm('Are you sure you want to remove this session?')) {
       return;
@@ -174,12 +128,7 @@ export default function SchedulePage() {
     }
   };
 
-  // Calculate stats for the new stats row
-  const totalRequiredSessions = students.reduce((sum, student) => sum + student.sessions_per_week, 0);
-  const scheduledSessions = sessions.length;
-  const unscheduledSessions = totalRequiredSessions - scheduledSessions;
-  const completionPercentage = totalRequiredSessions > 0 ? Math.round((scheduledSessions / totalRequiredSessions) * 100) : 0;
-
+  // Define days and time slots
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const timeSlots = Array.from({ length: 16 }, (_, i) => {
     const hour = 8 + Math.floor(i / 2);
@@ -206,192 +155,70 @@ export default function SchedulePage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Weekly Schedule</h1>
-            <p className="text-gray-600">Drag students to schedule therapy sessions</p>
+            <p className="text-gray-600">View and manage sessions</p>
           </div>
-          <div className="flex gap-3 items-center">
-            <select 
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={selectedWeek.toISOString().split('T')[0]}
-              onChange={(e) => setSelectedWeek(new Date(e.target.value))}
-            >
-              <option value="2025-06-02">Week of June 2, 2025</option>
-              <option value="2025-06-09">Week of June 9, 2025</option>
-              <option value="2025-06-16">Week of June 16, 2025</option>
-            </select>
-            <Button variant="secondary">Export PDF</Button>
-          </div>
+          <AutoScheduleAll />
         </div>
 
-        {/* Weekly Stats */}
-        <div className="mb-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardBody className="text-center py-4">
-                <div className="text-2xl font-bold text-blue-600">{scheduledSessions}</div>
-                <div className="text-sm text-gray-500 uppercase tracking-wide">Total Sessions</div>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="text-center py-4">
-                <div className="text-2xl font-bold text-orange-600">{unscheduledSessions}</div>
-                <div className="text-sm text-gray-500 uppercase tracking-wide">Unscheduled</div>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="text-center py-4">
-                <div className="text-2xl font-bold text-green-600">{scheduledSessions}</div>
-                <div className="text-sm text-gray-500 uppercase tracking-wide">Scheduled</div>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody className="text-center py-4">
-                <div className="text-2xl font-bold text-blue-600">{completionPercentage}%</div>
-                <div className="text-sm text-gray-500 uppercase tracking-wide">Complete</div>
-              </CardBody>
-            </Card>
-          </div>
-        </div>
+        {/* Schedule Grid */}
+        <Card>
+          <CardBody className="p-0">
+            {/* Grid Header */}
+            <div className="grid grid-cols-6 bg-gray-50 border-b">
+              <div className="p-3 font-semibold text-gray-700 text-center border-r">Time</div>
+              {days.map((day) => (
+                <div key={day} className="p-3 font-semibold text-gray-700 text-center border-r last:border-r-0">
+                  {day}
+                </div>
+              ))}
+            </div>
 
-        {/* Schedule Interface */}
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Grid Body */}
+            <div className="grid grid-cols-6 auto-rows-min">
+              {timeSlots.map((time) => (
+                <React.Fragment key={time}>
+                  {/* Time Label */}
+                  <div className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium">
+                    {formatTime(time)}
+                  </div>
 
-            {/* Students Panel */}
-            <div className="lg:col-span-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Unscheduled Students</CardTitle>
-                </CardHeader>
-                <CardBody>
-                  <Droppable droppableId="students-panel">
-                    {(provided) => (
-                      <div 
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className="space-y-3 min-h-[300px]"
+                  {/* Day Slots */}
+                  {days.map((day, dayIndex) => {
+                  const sessionInSlot = sessions.find(session => {
+                    // Compare just hours and minutes, ignoring seconds
+                    const sessionTime = session.start_time.substring(0, 5); // Gets "HH:MM" from "HH:MM:SS"
+                    return session.day_of_week === dayIndex + 1 && sessionTime === time;
+                  });
+
+                    return (
+                      <div
+                        key={`${day}-${time}`}
+                        className="p-2 min-h-[60px] border-r border-b last:border-r-0 relative bg-white"
                       >
-                        {students.map((student, index) => (
-                          <Draggable 
-                            key={student.id} 
-                            draggableId={student.id} 
-                            index={index}
-                          >
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className={`p-3 bg-blue-100 border border-blue-300 rounded-lg cursor-grab transition-all ${
-                                  snapshot.isDragging ? 'shadow-lg bg-blue-200' : 'hover:bg-blue-200'
-                                }`}
-                              >
-                                <div className="font-semibold text-blue-800">{student.initials}</div>
-                                <div className="text-sm text-blue-600">{student.minutes_per_session} min session</div>
-                                <div className="text-xs text-blue-500">
-                                  Needs: {student.sessions_per_week - sessions.filter(s => s.student_id === student.id).length} more sessions
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
-                </CardBody>
-              </Card>
-            </div>
-
-            {/* Schedule Grid */}
-            <div className="lg:col-span-3">
-              <Card>
-                <CardBody className="p-0">
-                  {/* Grid Header */}
-                  <div className="grid grid-cols-6 bg-gray-50 border-b">
-                    <div className="p-3 font-semibold text-gray-700 text-center border-r">Time</div>
-                    {days.map((day) => (
-                      <div key={day} className="p-3 font-semibold text-gray-700 text-center border-r last:border-r-0">
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Grid Body */}
-                  <div className="grid grid-cols-6 auto-rows-min">
-                    {timeSlots.map((time) => (
-                      <React.Fragment key={time}>
-                        {/* Time Label */}
-                        <div className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium">
-                          {time}
-                        </div>
-
-                        {/* Day Slots */}
-                        {days.map((day, dayIndex) => {
-                          const hasConflict = bellSchedules.some(bell => 
-                            bell.day_of_week === dayIndex && 
-                            isTimeInRange(time, bell.start_time, bell.end_time)
-                          ) || specialActivities.some(activity => 
-                            activity.day_of_week === dayIndex && 
-                            isTimeInRange(time, activity.start_time, activity.end_time)
-                          );
-
-                          const sessionInSlot = sessions.find(session => 
-                            session.day_of_week === dayIndex && 
-                            session.start_time === time
-                          );
-
-                          return (
-                            <Droppable 
-                              key={`${day}-${time}`} 
-                              droppableId={`${dayIndex}-${time}`}
+                        {sessionInSlot && (
+                          <div className="bg-blue-600 text-white text-xs p-2 rounded shadow-sm">
+                            <div className="font-medium">
+                              {students.find(s => s.id === sessionInSlot.student_id)?.initials}
+                            </div>
+                            <div className="text-xs opacity-80">
+                              {students.find(s => s.id === sessionInSlot.student_id)?.minutes_per_session}min
+                            </div>
+                            <button
+                              onClick={() => handleDeleteSession(sessionInSlot.id)}
+                              className="absolute top-1 right-1 text-white hover:text-red-200 text-xs"
                             >
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.droppableProps}
-                                  className={`p-2 min-h-[60px] border-r border-b last:border-r-0 relative ${
-                                    hasConflict ? 'bg-red-50' : 
-                                    snapshot.isDraggedOver ? 'bg-green-100' : 'bg-white'
-                                  }`}
-                                >
-                                  {hasConflict && (
-                                    <div className="text-xs text-red-600 font-medium">
-                                      {bellSchedules.find(bell => 
-                                        bell.day_of_week === dayIndex && 
-                                        isTimeInRange(time, bell.start_time, bell.end_time)
-                                      )?.period_name || 'Activity'}
-                                    </div>
-                                  )}
-
-                                  {sessionInSlot && (
-                                    <div className="bg-green-600 text-white text-xs p-2 rounded shadow-sm">
-                                      <div className="font-medium">
-                                        {students.find(s => s.id === sessionInSlot.student_id)?.initials} - {students.find(s => s.id === sessionInSlot.student_id)?.minutes_per_session}min
-                                      </div>
-                                      <div className="opacity-80">{sessionInSlot.service_type}</div>
-                                      <button
-                                        onClick={() => handleDeleteSession(sessionInSlot.id)}
-                                        className="absolute top-1 right-1 text-white hover:text-red-200 text-xs"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {provided.placeholder}
-                                </div>
-                              )}
-                            </Droppable>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </CardBody>
-              </Card>
+                              ×
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
             </div>
-          </div>
-        </DragDropContext>
+          </CardBody>
+        </Card>
 
       </div>
     </div>

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../types/database';
+import { Database } from '../../../src/types/database';
+import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 
 interface Props {
   teacherName: string;
@@ -10,7 +11,8 @@ interface Props {
   onCancel: () => void;
 }
 
-export default function AddSpecialActivityForm({ teacherName, onSuccess, onCancel }: Props) {
+export default function AddSpecialActivityForm({ teacherName: initialTeacherName, onSuccess, onCancel }: Props) {
+  const [teacherName, setTeacherName] = useState(initialTeacherName || '');
   const [activityName, setActivityName] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState('1');
   const [startTime, setStartTime] = useState('');
@@ -24,7 +26,7 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
     e.preventDefault();
     setError('');
 
-    if (!activityName || !startTime || !endTime) {
+    if (!teacherName || !activityName || !startTime || !endTime) {
       setError('All fields are required');
       return;
     }
@@ -52,6 +54,23 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
         });
 
       if (insertError) throw insertError;
+
+      // Check for conflicts after successful insert
+      const resolver = new ConflictResolver(user.user.id);
+      const insertedActivity = {
+        teacher_name: teacherName,
+        activity_name: activityName,
+        day_of_week: parseInt(dayOfWeek),
+        start_time: startTime,
+        end_time: endTime
+      };
+
+      const result = await resolver.resolveSpecialActivityConflicts(insertedActivity as any);
+
+      if (result.resolved > 0 || result.failed > 0) {
+        alert(`Special activity added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+      }
+
       onSuccess();
     } catch (err) {
       console.error('Error adding activity:', err);
@@ -83,7 +102,21 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Activity Name
+          Teacher Name*
+        </label>
+        <input
+          type="text"
+          value={teacherName}
+          onChange={(e) => setTeacherName(e.target.value)}
+          placeholder="e.g., Mrs. Smith"
+          className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          Activity Name*
         </label>
         <input
           type="text"
@@ -97,7 +130,7 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Day of Week
+          Day of Week*
         </label>
         <select
           value={dayOfWeek}
@@ -114,7 +147,7 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Start Time
+          Start Time*
         </label>
         <select
           value={startTime}
@@ -133,7 +166,7 @@ export default function AddSpecialActivityForm({ teacherName, onSuccess, onCance
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          End Time
+          End Time*
         </label>
         <select
           value={endTime}
