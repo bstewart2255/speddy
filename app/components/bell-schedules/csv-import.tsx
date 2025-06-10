@@ -83,7 +83,7 @@ K,Recess,10:00,10:15
                 // Create entries for each day of the week (Monday-Friday)
                 return [1, 2, 3, 4, 5].map(dayNum => ({
                   provider_id: user.user!.id,
-                  grade_level: row.grade.toString().toUpperCase(),
+                  grade_level: row.grade.toString().toUpperCase().trim(),
                   period_name: row.activity,
                   day_of_week: dayNum,
                   start_time: row['start time'] + ':00', // Add seconds if missing

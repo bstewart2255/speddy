@@ -35,7 +35,7 @@
         // Create the student
         const student = await createStudent({
           initials: formData.initials.toUpperCase(),
-          grade_level: formData.grade_level,
+          grade_level: formData.grade_level.trim(),
           teacher_name: formData.teacher_name,
           sessions_per_week: formData.sessions_per_week,
           minutes_per_session: formData.minutes_per_session,

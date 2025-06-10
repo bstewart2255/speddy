@@ -2,23 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Direct CSS test - this should ALWAYS work */
-.test-basic-red {
-  background-color: red !important;
-  color: white !important;
-  padding: 20px !important;
-  margin: 10px !important;
-  border: 3px solid black !important;
-}
-
-.test-basic-blue {
-  background-color: blue !important;
-  color: white !important;
-  padding: 20px !important;
-  margin: 10px !important;
-  border: 3px solid black !important;
-}
-
 @layer base {
   :root {
     /* Replace the Color Palette section with: */

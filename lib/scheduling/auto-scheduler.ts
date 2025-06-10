@@ -151,7 +151,7 @@ export class AutoScheduler {
     // Check bell schedule conflicts
     const bellConflicts = bellSchedules.filter(bell => {
       const grades = bell.grade_level.split(',').map(g => g.trim());
-      return grades.includes(student.grade_level) &&
+      return grades.includes(student.grade_level.trim()) &&
              bell.day_of_week === dayOfWeek &&
              this.hasTimeOverlap(startTime, endTime, bell.start_time, bell.end_time);
     });

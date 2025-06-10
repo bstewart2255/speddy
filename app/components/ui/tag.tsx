@@ -1,5 +1,8 @@
 import React from 'react';
 
+// Ensure Tailwind includes these classes
+// bg-purple-400 bg-sky-400 bg-cyan-400 bg-emerald-400 bg-amber-400 bg-rose-400
+
 interface TagProps {
   children: React.ReactNode;
   variant?: 'default' | 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray';
@@ -77,10 +80,37 @@ interface GradeTagProps {
 }
 
 export function GradeTag({ grade, className = '' }: GradeTagProps) {
+  const trimmedGrade = grade?.toString().trim();
+
+  let colorClasses = '';
+
+  switch (trimmedGrade) {
+    case 'K':
+      colorClasses = 'bg-purple-400 text-white';
+      break;
+    case '1':
+      colorClasses = 'bg-sky-400 text-white';
+      break;
+    case '2':
+      colorClasses = 'bg-cyan-400 text-white';
+      break;
+    case '3':
+      colorClasses = 'bg-emerald-400 text-white';
+      break;
+    case '4':
+      colorClasses = 'bg-amber-400 text-white';
+      break;
+    case '5':
+      colorClasses = 'bg-rose-400 text-white';
+      break;
+    default:
+      colorClasses = 'bg-gray-100 text-gray-800';
+  }
+
   return (
-    <Tag variant="gray" size="sm" className={className}>
-      {grade}
-    </Tag>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${colorClasses} ${className}`}>
+      Grade {grade}
+    </span>
   );
 }
 

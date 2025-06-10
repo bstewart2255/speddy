@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
-import { Tag } from '../../../components/ui/tag';
+import { GradeTag } from '../../../components/ui/tag';
 import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
@@ -188,7 +188,7 @@ export default function BellSchedulesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Grade</TableHead>
-                    <TableHead>Period</TableHead>
+                    <TableHead>Activity</TableHead>
                     <TableHead>Day</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead>Actions</TableHead>
@@ -198,7 +198,7 @@ export default function BellSchedulesPage() {
                   {bellSchedules.map((schedule) => (
                     <TableRow key={schedule.id}>
                       <TableCell>
-                        <Tag variant="gray">Grade {schedule.grade_level}</Tag>
+                        <GradeTag grade={schedule.grade_level} />
                       </TableCell>
                       <TableCell>{schedule.period_name}</TableCell>
                       <TableCell>{dayNumberToName(schedule.day_of_week)}</TableCell>

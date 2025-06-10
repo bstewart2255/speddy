@@ -1,5 +1,5 @@
 import React from "react";
-import { tokens, tw } from "../../../lib/styles/tokens";
+import { tw } from "../../../lib/styles/tokens";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "danger" | "ghost";
@@ -141,8 +141,12 @@ export function ButtonGroup({ children, className = "" }: ButtonGroupProps) {
           const isFirst = index === 0;
           const isLast = index === React.Children.count(children) - 1;
 
-          return React.cloneElement(child as React.ReactElement<any>, {
-            className: `${child.props.className || ""} ${
+          // Type assertion to access props
+          const childElement = child as React.ReactElement<any>;
+          const existingClassName = childElement.props?.className || "";
+
+          return React.cloneElement(childElement, {
+            className: `${existingClassName} ${
               !isFirst ? "-ml-px" : ""
             } ${isFirst ? "rounded-r-none" : ""} ${
               isLast ? "rounded-l-none" : ""

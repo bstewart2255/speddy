@@ -63,7 +63,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       // Check for conflicts after successful insert
       const resolver = new ConflictResolver(user.id);
       const insertedSchedule = {
-        grade_level: gradeLevel,
+        grade_level: gradeLevel.trim(),
         day_of_week: dayToNumber(dayOfWeek),
         start_time: startTime,
         end_time: endTime,
@@ -88,6 +88,18 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       setSubmitting(false);
     }
   };
+
+  // Add this timeOptions definition here
+  const timeOptions: Array<{ value: string; label: string }> = [];
+  for (let hour = 7; hour <= 15; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const amPm = hour >= 12 ? 'PM' : 'AM';
+      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      const label = `${displayHour}:${minute.toString().padStart(2, '0')} ${amPm}`;
+      timeOptions.push({ value: time, label });
+    }
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

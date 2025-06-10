@@ -1,5 +1,5 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../types/database';
+import { Database } from '../../src/types/database';
 import { AutoScheduler } from './auto-scheduler';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -31,7 +31,7 @@ export class ConflictResolver {
         const student = session.students;
         const grades = newBellSchedule.grade_level.split(',').map(g => g.trim());
 
-        return grades.includes(student.grade_level) &&
+        return grades.includes(student.grade_level.trim()) &&
                session.day_of_week === newBellSchedule.day_of_week &&
                this.hasTimeOverlap(
                  session.start_time,

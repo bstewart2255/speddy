@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useEffect } from 'react';
+import { useEffect } from 'react';
 
 interface ModalProps {
   isOpen: boolean;

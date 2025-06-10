@@ -21,7 +21,7 @@ export async function createStudent(studentData: {
     .from('students')
     .insert([{
       initials: studentData.initials,
-      grade_level: studentData.grade_level,
+      grade_level: studentData.grade_level.trim(),
       teacher_name: studentData.teacher_name,
       sessions_per_week: studentData.sessions_per_week,
       minutes_per_session: studentData.minutes_per_session,

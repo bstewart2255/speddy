@@ -59,7 +59,7 @@ export default function StudentsPage() {
     try {
       await createStudent({
         initials: formData.initials,
-        grade_level: formData.grade_level,
+        grade_level: formData.grade_level.trim(),
         teacher_name: formData.teacher_name,
         sessions_per_week: parseInt(formData.sessions_per_week),
         minutes_per_session: parseInt(formData.minutes_per_session)
@@ -146,7 +146,6 @@ export default function StudentsPage() {
           </div>
           <div className="flex gap-3">
             <Button variant="secondary">Import CSV</Button>
-            <Button variant="secondary">Export CSV</Button>
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
