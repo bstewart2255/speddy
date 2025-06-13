@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Card, CardBody } from '../../../components/ui/card';
-import { RescheduleAll } from '../../../components/schedule/reschedule-all';
+import React, { useState, useEffect } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { Card, CardBody } from "../../../components/ui/card";
+import { RescheduleAll } from "../../../components/schedule/reschedule-all";
 
 interface Student {
   id: string;
@@ -42,10 +42,12 @@ interface SpecialActivity {
 }
 
 export default function SchedulePage() {
-  const [providerRole, setProviderRole] = useState<string>('');
+  const [providerRole, setProviderRole] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
   const [bellSchedules, setBellSchedules] = useState<BellSchedule[]>([]);
-  const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
+  const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>(
+    [],
+  );
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,9 +55,9 @@ export default function SchedulePage() {
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {
-    const [hours, minutes] = time.split(':');
+    const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
   };
@@ -64,35 +66,47 @@ export default function SchedulePage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("No user found");
 
-      console.log('Fetching data for user:', user.id);
+      console.log("Fetching data for user:", user.id);
 
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
         .single();
 
       if (profile) {
         setProviderRole(profile.role);
-        console.log('Provider role:', profile.role);
+        console.log("Provider role:", profile.role);
       }
 
-      const [studentsData, bellData, activitiesData, sessionsData] = await Promise.all([
-        supabase.from('students').select('*').eq('provider_id', user.id),
-        supabase.from('bell_schedules').select('*').eq('provider_id', user.id),
-        supabase.from('special_activities').select('*').eq('provider_id', user.id),
-        supabase.from('schedule_sessions').select('*').eq('provider_id', user.id)
-      ]);
+      const [studentsData, bellData, activitiesData, sessionsData] =
+        await Promise.all([
+          supabase.from("students").select("*").eq("provider_id", user.id),
+          supabase
+            .from("bell_schedules")
+            .select("*")
+            .eq("provider_id", user.id),
+          supabase
+            .from("special_activities")
+            .select("*")
+            .eq("provider_id", user.id),
+          supabase
+            .from("schedule_sessions")
+            .select("*")
+            .eq("provider_id", user.id),
+        ]);
 
-      console.log('Fetched data:', {
+      console.log("Fetched data:", {
         students: studentsData.data?.length || 0,
         bellSchedules: bellData.data?.length || 0,
         specialActivities: activitiesData.data?.length || 0,
         sessions: sessionsData.data?.length || 0,
-        sessionDetails: sessionsData.data
+        sessionDetails: sessionsData.data,
       });
 
       if (studentsData.data) setStudents(studentsData.data);
@@ -102,23 +116,27 @@ export default function SchedulePage() {
 
       // Debug: Count sessions per student
       const sessionsByStudent = new Map<string, number>();
-      sessionsData.data?.forEach(session => {
+      sessionsData.data?.forEach((session) => {
         const count = sessionsByStudent.get(session.student_id) || 0;
         sessionsByStudent.set(session.student_id, count + 1);
       });
 
-      console.log('Sessions per student:');
+      console.log("Sessions per student:");
       sessionsByStudent.forEach((count, studentId) => {
-        const student = studentsData.data?.find(s => s.id === studentId);
+        const student = studentsData.data?.find((s) => s.id === studentId);
         console.log(`${student?.initials || studentId}: ${count} sessions`);
       });
-      console.log('All sessions with times:');
-      sessionsData.data?.forEach(session => {
-        const student = studentsData.data?.find(s => s.id === session.student_id);
-        console.log(`${student?.initials}: Day ${session.day_of_week}, ${session.start_time} - ${session.end_time}`);
+      console.log("All sessions with times:");
+      sessionsData.data?.forEach((session) => {
+        const student = studentsData.data?.find(
+          (s) => s.id === session.student_id,
+        );
+        console.log(
+          `${student?.initials}: Day ${session.day_of_week}, ${session.start_time} - ${session.end_time}`,
+        );
       });
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
@@ -134,11 +152,13 @@ export default function SchedulePage() {
   // Check for unscheduled sessions
   const checkUnscheduledSessions = async () => {
     try {
-      const { getUnscheduledSessionsCount } = await import('../../../../lib/supabase/queries/schedule-sessions');
+      const { getUnscheduledSessionsCount } = await import(
+        "../../../../lib/supabase/queries/schedule-sessions"
+      );
       const count = await getUnscheduledSessionsCount();
       setUnscheduledCount(count);
     } catch (error) {
-      console.error('Error checking unscheduled sessions:', error);
+      console.error("Error checking unscheduled sessions:", error);
     }
   };
 
@@ -147,31 +167,31 @@ export default function SchedulePage() {
       checkUnscheduledSessions();
     }
   }, [loading, sessions]);
-  
+
   // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm('Are you sure you want to remove this session?')) {
+    if (!confirm("Are you sure you want to remove this session?")) {
       return;
     }
 
     const { error } = await supabase
-      .from('schedule_sessions')
+      .from("schedule_sessions")
       .delete()
-      .eq('id', sessionId);
+      .eq("id", sessionId);
 
     if (error) {
-      alert('Failed to delete session: ' + error.message);
+      alert("Failed to delete session: " + error.message);
     } else {
       fetchData();
     }
   };
 
   // Define days and time slots
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const timeSlots = Array.from({ length: 16 }, (_, i) => {
     const hour = 8 + Math.floor(i / 2);
     const minute = (i % 2) * 30;
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
   });
 
   if (loading) {
@@ -188,30 +208,45 @@ export default function SchedulePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Weekly Schedule</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                Weekly Schedule
+              </h1>
               <p className="text-gray-600">View and manage sessions</p>
             </div>
-          <RescheduleAll onComplete={() => {
-            fetchData();
-            checkUnscheduledSessions();
-          }} />
+            <RescheduleAll
+              onComplete={() => {
+                fetchData();
+                checkUnscheduledSessions();
+              }}
+            />
           </div>
 
           {/* Unscheduled Sessions Notification */}
           {unscheduledCount > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <div className="flex items-center">
-                <svg className="h-5 w-5 text-amber-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  className="h-5 w-5 text-amber-400 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-amber-800">
-                    {unscheduledCount} session{unscheduledCount !== 1 ? 's' : ''} need{unscheduledCount === 1 ? 's' : ''} to be scheduled
+                    {unscheduledCount} session
+                    {unscheduledCount !== 1 ? "s" : ""} need
+                    {unscheduledCount === 1 ? "s" : ""} to be scheduled
                   </p>
                   <p className="text-sm text-amber-700">
                     Click "Re-schedule All Sessions" to update your schedule
@@ -224,7 +259,9 @@ export default function SchedulePage() {
 
         {/* Color Key Legend */}
         <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Grade Levels</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-3">
+            Grade Levels
+          </h3>
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-purple-400 rounded"></div>
@@ -258,9 +295,14 @@ export default function SchedulePage() {
           <CardBody className="p-0">
             {/* Grid Header */}
             <div className="grid grid-cols-6 bg-gray-50 border-b">
-              <div className="p-3 font-semibold text-gray-700 text-center border-r">Time</div>
+              <div className="p-3 font-semibold text-gray-700 text-center border-r">
+                Time
+              </div>
               {days.map((day) => (
-                <div key={day} className="p-3 font-semibold text-gray-700 text-center border-r last:border-r-0">
+                <div
+                  key={day}
+                  className="p-3 font-semibold text-gray-700 text-center border-r last:border-r-0"
+                >
                   {day}
                 </div>
               ))}
@@ -271,7 +313,10 @@ export default function SchedulePage() {
               {/* Time Column */}
               <div>
                 {timeSlots.map((time) => (
-                  <div key={time} className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium h-[60px] flex items-center justify-center">
+                  <div
+                    key={time}
+                    className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium h-[60px] flex items-center justify-center"
+                  >
                     {formatTime(time)}
                   </div>
                 ))}
@@ -281,6 +326,56 @@ export default function SchedulePage() {
               {days.map((day, dayIndex) => {
                 // Get all sessions for this day
                 const daySessions = sessions.filter(s => s.day_of_week === dayIndex + 1);
+
+                // Pre-calculate column positions for all sessions
+                const sessionColumns = new Map<string, number>();
+
+                // Sort sessions by start time
+                const sortedSessions = [...daySessions].sort((a, b) => {
+                  const aStart = a.start_time.substring(0, 5);
+                  const bStart = b.start_time.substring(0, 5);
+                  return aStart.localeCompare(bStart);
+                });
+
+                // For each session, find which column it should go in
+                sortedSessions.forEach(session => {
+                  const startTime = session.start_time.substring(0, 5);
+                  const endTime = session.end_time.substring(0, 5);
+
+                  // Check each column (0-3) to find the first available one
+                  for (let col = 0; col < 4; col++) {
+                    // Check if this column is free for this time slot
+                    const columnOccupied = sortedSessions.some(otherSession => {
+                      // Skip if it's the same session or hasn't been assigned yet
+                      if (otherSession.id === session.id || !sessionColumns.has(otherSession.id)) {
+                        return false;
+                      }
+
+                      // Skip if it's in a different column
+                      if (sessionColumns.get(otherSession.id) !== col) {
+                        return false;
+                      }
+
+                      // Check if times overlap
+                      const otherStart = otherSession.start_time.substring(0, 5);
+                      const otherEnd = otherSession.end_time.substring(0, 5);
+
+                      // Convert to minutes for easier comparison
+                      const sessionStartMin = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1]);
+                      const sessionEndMin = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1]);
+                      const otherStartMin = parseInt(otherStart.split(':')[0]) * 60 + parseInt(otherStart.split(':')[1]);
+                      const otherEndMin = parseInt(otherEnd.split(':')[0]) * 60 + parseInt(otherEnd.split(':')[1]);
+
+                      // Check if they overlap
+                      return !(sessionEndMin <= otherStartMin || sessionStartMin >= otherEndMin);
+                    });
+
+                    if (!columnOccupied) {
+                      sessionColumns.set(session.id, col);
+                      break;
+                    }
+                  }
+                });
 
                 return (
                   <div key={day} className="border-r last:border-r-0 relative">
@@ -295,11 +390,11 @@ export default function SchedulePage() {
                         const [startHour, startMin] = startTime.split(':').map(Number);
                         const [endHour, endMin] = endTime.split(':').map(Number);
 
-                        const startMinutes = (startHour - 8) * 60 + startMin; // 8 AM is our start
+                        const startMinutes = (startHour - 8) * 60 + startMin;
                         const endMinutes = (endHour - 8) * 60 + endMin;
                         const duration = endMinutes - startMinutes;
 
-                        const top = (startMinutes / 30) * 60; // 30 min = 60px
+                        const top = (startMinutes / 30) * 60;
                         const height = (duration / 30) * 60;
 
                         const gradeColorMap: { [key: string]: string } = {
@@ -313,23 +408,12 @@ export default function SchedulePage() {
 
                         const gradeColor = student ? gradeColorMap[student.grade_level] || 'bg-gray-400' : 'bg-gray-400';
 
-                        // Find overlapping sessions to determine column position
-                        const overlappingSessions = daySessions.filter(s => {
-                          if (s.id === session.id) return false;
-                          const sStart = s.start_time.substring(0, 5);
-                          const sEnd = s.end_time.substring(0, 5);
-                          const [sStartHour, sStartMin] = sStart.split(':').map(Number);
-                          const [sEndHour, sEndMin] = sEnd.split(':').map(Number);
-                          const sStartMinutes = (sStartHour - 8) * 60 + sStartMin;
-                          const sEndMinutes = (sEndHour - 8) * 60 + sEndMin;
+                        // Get pre-calculated column position
+                        const columnIndex = sessionColumns.get(session.id) ?? 0;
 
-                          return !(endMinutes <= sStartMinutes || startMinutes >= sEndMinutes);
-                        });
-
-                        // Determine column position (offset by fixed width)
-                        const columnIndex = overlappingSessions.filter(s => s.id < session.id).length;
-                        const fixedWidth = 60; // Fixed width in pixels
-                        const leftOffset = columnIndex * (fixedWidth + 4); // +4 for gap between columns
+                        const fixedWidth = 28;
+                        const gap = 1;
+                        const leftOffset = columnIndex * (fixedWidth + gap);
 
                         return (
                           <div
@@ -337,16 +421,16 @@ export default function SchedulePage() {
                             className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group`}
                             style={{
                               top: `${top}px`,
-                              height: `${height - 4}px`, // -4 for small gap
-                              left: `${leftOffset + 4}px`, // +4 for padding from edge
+                              height: `${height - 2}px`,
+                              left: `${leftOffset + 2}px`,
                               width: `${fixedWidth}px`,
-                              padding: '4px'
+                              padding: '2px'
                             }}
                           >
                             <div className="flex flex-col h-full">
-                              <div className="font-medium text-xs">{student?.initials}</div>
+                              <div className="font-medium text-[10px]">{student?.initials}</div>
                               {height > 40 && (
-                                <div className="text-xs opacity-90">{duration}m</div>
+                                <div className="text-[9px] opacity-90">{duration}m</div>
                               )}
                             </div>
                             <button
@@ -371,7 +455,6 @@ export default function SchedulePage() {
             </div>
           </CardBody>
         </Card>
-
       </div>
     </div>
   );
