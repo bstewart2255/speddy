@@ -65,6 +65,7 @@ export function useAutoSchedule() {
           .insert(result.scheduledSessions);
 
         if (insertError) throw insertError;
+        console.log(`Successfully saved sessions for ${student.initials}`);
       }
 
       // Set any errors
@@ -140,13 +141,18 @@ export function useAutoSchedule() {
 
         // Save scheduled sessions
         if (result.scheduledSessions.length > 0) {
+          console.log(`Attempting to save ${result.scheduledSessions.length} sessions for ${student.initials}`);
+          console.log('Sessions to save:', result.scheduledSessions);
+
           const { error: insertError } = await supabase
             .from('schedule_sessions')
             .insert(result.scheduledSessions);
 
           if (!insertError) {
+            console.log(`Successfully saved ${result.scheduledSessions.length} sessions for ${student.initials}`);
             results.totalScheduled++;
           } else {
+            console.log(`Error saving sessions for ${student.initials}:`, insertError);
             results.totalFailed++;
             results.errors.push(`Failed to save sessions for ${student.initials}: ${insertError.message}`);
           }

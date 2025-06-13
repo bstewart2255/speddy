@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/ca
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
 import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
 import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
+import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
 
 type Student = {
   id: string;
@@ -37,19 +38,33 @@ export default function StudentsPage() {
     minutes_per_session: ''
   });
 
-  // Fetch students on mount
+  const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
+
+  // Fetch students
   useEffect(() => {
     fetchStudents();
+    checkUnscheduledSessions();
   }, []);
 
   const fetchStudents = async () => {
     try {
       const data = await getStudents();
       setStudents(data);
+      checkUnscheduledSessions(); // Add this line
     } catch (error) {
       console.error('Error fetching students:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkUnscheduledSessions = async () => {
+    try {
+      const count = await getUnscheduledSessionsCount();
+      setUnscheduledCount(count);
+    } catch (error) {
+      console.error('Error checking unscheduled sessions:', error);
+      setUnscheduledCount(0);
     }
   };
 
@@ -77,10 +92,13 @@ export default function StudentsPage() {
 
       // Refresh student list
       fetchStudents();
+      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error adding student:', error);
       alert('Failed to add student. Please try again.');
     }
+
+    
   };
 
   const handleDelete = async (studentId: string, studentInitials: string) => {
@@ -88,6 +106,7 @@ export default function StudentsPage() {
       try {
         await deleteStudent(studentId);
         fetchStudents();
+        checkUnscheduledSessions();
       } catch (error) {
         console.error('Error deleting student:', error);
         alert('Failed to delete student. Please try again.');
@@ -112,6 +131,7 @@ export default function StudentsPage() {
 
       setEditingId(null);
       fetchStudents();
+      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error updating student:', error);
       alert('Failed to update student. Please try again.');
@@ -154,6 +174,25 @@ export default function StudentsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Unscheduled Sessions Notification */}
+        {unscheduledCount > 0 && (
+          <div className="mb-8 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <svg className="h-5 w-5 text-amber-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  {unscheduledCount} session{unscheduledCount !== 1 ? 's' : ''} need{unscheduledCount === 1 ? 's' : ''} to be scheduled
+                </p>
+                <p className="text-sm text-amber-700">
+                  Go to the <a href="/dashboard/schedule" className="underline font-medium">Schedule page</a> to schedule these sessions
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add Student Form (Inline) */}
         {showAddForm && (

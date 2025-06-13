@@ -2,7 +2,6 @@
 
   import { useState } from 'react';
   import { createStudent } from '../../../lib/supabase/queries/students';
-  import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
   import { Button } from '../ui/button';
   import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
 
@@ -21,9 +20,7 @@
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const { scheduleStudent, isScheduling, schedulingErrors } = useAutoSchedule();
 
-    // Only replace this function
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError('');
@@ -43,19 +40,8 @@
 
         console.log('Student created:', student);
 
-        // Auto-schedule their sessions
-        console.log('Starting auto-schedule for student:', student);
-        const schedulingResult = await scheduleStudent(student);
-        console.log('Scheduling result:', schedulingResult);
-
-        if (schedulingResult.errors.length > 0) {
-          // Show scheduling errors but don't fail the student creation
-          alert(`Student created, but scheduling issues:\n${schedulingResult.errors.join('\n')}`);
-        } else if (schedulingResult.success) {
-          alert(`Student created and ${schedulingResult.scheduledSessions.length} sessions scheduled!`);
-        } else {
-          alert('Student created but no sessions could be scheduled.');
-        }
+        // Show success message with scheduling reminder
+        alert(`Student "${student.initials}" has been added successfully!\n\nReminder: Go to the Schedule page and click "Re-schedule All Sessions" to schedule their sessions.`);
 
         onSuccess();
         onClose();

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardBody } from '../../../components/ui/card';
-import { AutoScheduleAll } from '../../../components/schedule/auto-schedule-all';
+import { RescheduleAll } from '../../../components/schedule/reschedule-all';
 
 interface Student {
   id: string;
@@ -99,6 +99,24 @@ export default function SchedulePage() {
       if (bellData.data) setBellSchedules(bellData.data);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
       if (sessionsData.data) setSessions(sessionsData.data);
+
+      // Debug: Count sessions per student
+      const sessionsByStudent = new Map<string, number>();
+      sessionsData.data?.forEach(session => {
+        const count = sessionsByStudent.get(session.student_id) || 0;
+        sessionsByStudent.set(session.student_id, count + 1);
+      });
+
+      console.log('Sessions per student:');
+      sessionsByStudent.forEach((count, studentId) => {
+        const student = studentsData.data?.find(s => s.id === studentId);
+        console.log(`${student?.initials || studentId}: ${count} sessions`);
+      });
+      console.log('All sessions with times:');
+      sessionsData.data?.forEach(session => {
+        const student = studentsData.data?.find(s => s.id === session.student_id);
+        console.log(`${student?.initials}: Day ${session.day_of_week}, ${session.start_time} - ${session.end_time}`);
+      });
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -110,6 +128,26 @@ export default function SchedulePage() {
     fetchData();
   }, []);
 
+  // Add this after the existing useEffect
+  const [unscheduledCount, setUnscheduledCount] = useState(0);
+
+  // Check for unscheduled sessions
+  const checkUnscheduledSessions = async () => {
+    try {
+      const { getUnscheduledSessionsCount } = await import('../../../../lib/supabase/queries/schedule-sessions');
+      const count = await getUnscheduledSessionsCount();
+      setUnscheduledCount(count);
+    } catch (error) {
+      console.error('Error checking unscheduled sessions:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!loading) {
+      checkUnscheduledSessions();
+    }
+  }, [loading, sessions]);
+  
   // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm('Are you sure you want to remove this session?')) {
@@ -152,12 +190,36 @@ export default function SchedulePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Page Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Weekly Schedule</h1>
-            <p className="text-gray-600">View and manage sessions</p>
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Weekly Schedule</h1>
+              <p className="text-gray-600">View and manage sessions</p>
+            </div>
+          <RescheduleAll onComplete={() => {
+            fetchData();
+            checkUnscheduledSessions();
+          }} />
           </div>
-          <AutoScheduleAll />
+
+          {/* Unscheduled Sessions Notification */}
+          {unscheduledCount > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <svg className="h-5 w-5 text-amber-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800">
+                    {unscheduledCount} session{unscheduledCount !== 1 ? 's' : ''} need{unscheduledCount === 1 ? 's' : ''} to be scheduled
+                  </p>
+                  <p className="text-sm text-amber-700">
+                    Click "Re-schedule All Sessions" to update your schedule
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Color Key Legend */}
@@ -205,62 +267,107 @@ export default function SchedulePage() {
             </div>
 
             {/* Grid Body */}
-            <div className="grid grid-cols-6 auto-rows-min">
-              {timeSlots.map((time) => (
-                <React.Fragment key={time}>
-                  {/* Time Label */}
-                  <div className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium">
+            <div className="grid grid-cols-6">
+              {/* Time Column */}
+              <div>
+                {timeSlots.map((time) => (
+                  <div key={time} className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium h-[60px] flex items-center justify-center">
                     {formatTime(time)}
                   </div>
+                ))}
+              </div>
 
-                  {/* Day Slots */}
-                  {days.map((day, dayIndex) => {
-                  const sessionInSlot = sessions.find(session => {
-                    // Compare just hours and minutes, ignoring seconds
-                    const sessionTime = session.start_time.substring(0, 5); // Gets "HH:MM" from "HH:MM:SS"
-                    return session.day_of_week === dayIndex + 1 && sessionTime === time;
-                  });
+              {/* Day Columns */}
+              {days.map((day, dayIndex) => {
+                // Get all sessions for this day
+                const daySessions = sessions.filter(s => s.day_of_week === dayIndex + 1);
 
-                    return (
-                      <div
-                        key={`${day}-${time}`}
-                        className="p-2 min-h-[60px] border-r border-b last:border-r-0 relative bg-white"
-                      >
-                        {sessionInSlot && (() => {
-                          const student = students.find(s => s.id === sessionInSlot.student_id);
-                          const gradeColorMap: { [key: string]: string } = {
-                            'K': 'bg-purple-400 hover:bg-purple-500',
-                            '1': 'bg-sky-400 hover:bg-sky-500',
-                            '2': 'bg-cyan-400 hover:bg-cyan-500',
-                            '3': 'bg-emerald-400 hover:bg-emerald-500',
-                            '4': 'bg-amber-400 hover:bg-amber-500',
-                            '5': 'bg-rose-400 hover:bg-rose-500'
-                          };
-                          const gradeColor = student ? gradeColorMap[student.grade_level] || 'bg-gray-400' : 'bg-gray-400';
+                return (
+                  <div key={day} className="border-r last:border-r-0 relative">
+                    {/* Create a relative container for absolute positioning */}
+                    <div className="relative" style={{ height: `${timeSlots.length * 60}px` }}>
+                      {daySessions.map((session) => {
+                        const student = students.find(s => s.id === session.student_id);
+                        const startTime = session.start_time.substring(0, 5);
+                        const endTime = session.end_time.substring(0, 5);
 
-                          return (
-                            <div className={`${gradeColor} text-white text-xs p-2 rounded shadow-sm relative transition-colors`}>
-                              <div className="font-medium">
-                                {student?.initials}
-                              </div>
-                              <div className="text-xs opacity-90">
-                                {student?.minutes_per_session}min
-                              </div>
-                              <button
-                                onClick={() => handleDeleteSession(sessionInSlot.id)}
-                                className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center text-white hover:text-red-200 hover:bg-black/20 rounded-tr"
-                                title="Remove session"
-                              >
-                                ×
-                              </button>
+                        // Calculate position and height
+                        const [startHour, startMin] = startTime.split(':').map(Number);
+                        const [endHour, endMin] = endTime.split(':').map(Number);
+
+                        const startMinutes = (startHour - 8) * 60 + startMin; // 8 AM is our start
+                        const endMinutes = (endHour - 8) * 60 + endMin;
+                        const duration = endMinutes - startMinutes;
+
+                        const top = (startMinutes / 30) * 60; // 30 min = 60px
+                        const height = (duration / 30) * 60;
+
+                        const gradeColorMap: { [key: string]: string } = {
+                          'K': 'bg-purple-400 hover:bg-purple-500',
+                          '1': 'bg-sky-400 hover:bg-sky-500',
+                          '2': 'bg-cyan-400 hover:bg-cyan-500',
+                          '3': 'bg-emerald-400 hover:bg-emerald-500',
+                          '4': 'bg-amber-400 hover:bg-amber-500',
+                          '5': 'bg-rose-400 hover:bg-rose-500'
+                        };
+
+                        const gradeColor = student ? gradeColorMap[student.grade_level] || 'bg-gray-400' : 'bg-gray-400';
+
+                        // Find overlapping sessions to determine column position
+                        const overlappingSessions = daySessions.filter(s => {
+                          if (s.id === session.id) return false;
+                          const sStart = s.start_time.substring(0, 5);
+                          const sEnd = s.end_time.substring(0, 5);
+                          const [sStartHour, sStartMin] = sStart.split(':').map(Number);
+                          const [sEndHour, sEndMin] = sEnd.split(':').map(Number);
+                          const sStartMinutes = (sStartHour - 8) * 60 + sStartMin;
+                          const sEndMinutes = (sEndHour - 8) * 60 + sEndMin;
+
+                          return !(endMinutes <= sStartMinutes || startMinutes >= sEndMinutes);
+                        });
+
+                        // Determine column position (offset by fixed width)
+                        const columnIndex = overlappingSessions.filter(s => s.id < session.id).length;
+                        const fixedWidth = 60; // Fixed width in pixels
+                        const leftOffset = columnIndex * (fixedWidth + 4); // +4 for gap between columns
+
+                        return (
+                          <div
+                            key={session.id}
+                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group`}
+                            style={{
+                              top: `${top}px`,
+                              height: `${height - 4}px`, // -4 for small gap
+                              left: `${leftOffset + 4}px`, // +4 for padding from edge
+                              width: `${fixedWidth}px`,
+                              padding: '4px'
+                            }}
+                          >
+                            <div className="flex flex-col h-full">
+                              <div className="font-medium text-xs">{student?.initials}</div>
+                              {height > 40 && (
+                                <div className="text-xs opacity-90">{duration}m</div>
+                              )}
                             </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
+                            <button
+                              onClick={() => handleDeleteSession(session.id)}
+                              className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
+                              title="Remove session"
+                            >
+                              <span className="text-xs leading-none">×</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Time slot borders */}
+                    {timeSlots.map((_, idx) => (
+                      <div key={idx} className="h-[60px] border-b last:border-b-0" />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           </CardBody>
         </Card>
