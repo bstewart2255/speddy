@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
+import { saveScheduleSnapshot } from './undo-schedule';
 
 interface RescheduleAllProps {
   onComplete?: () => void;
@@ -34,6 +35,9 @@ Continue?`;
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      // Save snapshot before making changes
+      await saveScheduleSnapshot(user.id);
 
       // Clear all existing sessions
       const { error: deleteError } = await supabase

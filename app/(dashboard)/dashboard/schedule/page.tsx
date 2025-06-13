@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Card, CardBody } from "../../../components/ui/card";
 import { RescheduleAll } from "../../../components/schedule/reschedule-all";
+import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
+import { UndoSchedule } from "../../../components/schedule/undo-schedule";
 
 interface Student {
   id: string;
@@ -50,6 +52,7 @@ export default function SchedulePage() {
   );
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
 
   const supabase = createClientComponentClient();
 
@@ -217,12 +220,26 @@ export default function SchedulePage() {
               </h1>
               <p className="text-gray-600">View and manage sessions</p>
             </div>
-            <RescheduleAll
-              onComplete={() => {
-                fetchData();
-                checkUnscheduledSessions();
-              }}
-            />
+            <div className="flex gap-3">
+              <ScheduleNewSessions
+                onComplete={() => {
+                  fetchData();
+                  checkUnscheduledSessions();
+                }}
+              />
+              <RescheduleAll
+                onComplete={() => {
+                  fetchData();
+                  checkUnscheduledSessions();
+                }}
+              />
+              <UndoSchedule
+                onComplete={() => {
+                  fetchData();
+                  checkUnscheduledSessions();
+                }}
+              />
+            </div>
           </div>
 
           {/* Unscheduled Sessions Notification */}
@@ -289,6 +306,41 @@ export default function SchedulePage() {
             </div>
           </div>
         </div>
+
+        {/* Highlighted Student Indicator */}
+        {highlightedStudentId && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg
+                  className="h-5 w-5 text-blue-400 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-sm font-medium text-blue-800">
+                  Highlighting all sessions for{" "}
+                  <span className="font-bold">
+                    {students.find(s => s.id === highlightedStudentId)?.initials}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setHighlightedStudentId(null)}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                Clear highlight
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Schedule Grid */}
         <Card>
@@ -415,16 +467,27 @@ export default function SchedulePage() {
                         const gap = 1;
                         const leftOffset = columnIndex * (fixedWidth + gap);
 
+                        const isHighlighted = highlightedStudentId === session.student_id;
+                        const highlightClass = isHighlighted ? 'ring-2 ring-yellow-400 ring-offset-2' : '';
+
                         return (
                           <div
                             key={session.id}
-                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group`}
+                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group cursor-pointer ${highlightClass}`}
                             style={{
                               top: `${top}px`,
                               height: `${height - 2}px`,
                               left: `${leftOffset + 2}px`,
                               width: `${fixedWidth}px`,
                               padding: '2px'
+                            }}
+                            onClick={() => {
+                              // Toggle highlight - click same student to turn off
+                              setHighlightedStudentId(
+                                highlightedStudentId === session.student_id 
+                                  ? null 
+                                  : session.student_id
+                              );
                             }}
                           >
                             <div className="flex flex-col h-full">
