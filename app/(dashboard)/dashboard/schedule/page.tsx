@@ -52,7 +52,17 @@ export default function SchedulePage() {
   );
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
+  const [highlightedStudentId, setHighlightedStudentId] = useState<
+    string | null
+  >(null);
+  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(
+    null,
+  );
+  const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
+  const [dragOverSlot, setDragOverSlot] = useState<{
+    day: number;
+    timeSlot: string;
+  } | null>(null);
 
   const supabase = createClientComponentClient();
 
@@ -63,6 +73,198 @@ export default function SchedulePage() {
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Check if a session can be moved to a specific time slot
+  const checkSlotConflicts = async (
+    session: ScheduleSession & { student: Student },
+    targetDay: number,
+    targetTime: string,
+  ): Promise<boolean> => {
+    // Convert time format
+    const [hours, minutes] = targetTime.split(":");
+    const startTime = `${hours}:${minutes}:00`;
+    const endTime = new Date();
+    endTime.setHours(
+      parseInt(hours),
+      parseInt(minutes) + session.student.minutes_per_session,
+      0,
+    );
+    const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
+
+    // Check if extends beyond school hours (3:00 PM)
+    if (endTime.getHours() >= 15) {
+      return true; // Has conflict
+    }
+
+    // Check bell schedule conflicts
+    const bellConflict = bellSchedules.some((bell) => {
+      const grades = bell.grade_level.split(",").map((g) => g.trim());
+      return (
+        grades.includes(session.student.grade_level.trim()) &&
+        bell.day_of_week === targetDay &&
+        hasTimeOverlap(startTime, endTimeStr, bell.start_time, bell.end_time)
+      );
+    });
+
+    if (bellConflict) return true;
+
+    // Check special activity conflicts
+    const activityConflict = specialActivities.some(
+      (activity) =>
+        activity.teacher_name === session.student.teacher_name &&
+        activity.day_of_week === targetDay &&
+        hasTimeOverlap(
+          startTime,
+          endTimeStr,
+          activity.start_time,
+          activity.end_time,
+        ),
+    );
+
+    if (activityConflict) return true;
+
+    // REMOVED: One session per day rule check
+    // Manual drag-and-drop allows multiple sessions per day
+
+    // Check slot capacity (max 4)
+    const slotOccupancy = sessions.filter(
+      (s) =>
+        s.day_of_week === targetDay &&
+        s.id !== session.id &&
+        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time),
+    ).length;
+
+    if (slotOccupancy >= 4) return true;
+
+    return false; // No conflicts
+  };
+
+  // Helper function to check time overlap
+  const hasTimeOverlap = (
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string,
+  ): boolean => {
+    const toMinutes = (time: string) => {
+      const [h, m] = time.split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    const start1Min = toMinutes(start1);
+    const end1Min = toMinutes(end1);
+    const start2Min = toMinutes(start2);
+    const end2Min = toMinutes(end2);
+
+    return !(end1Min <= start2Min || start1Min >= end2Min);
+  };
+
+// Handle drag start
+const handleDragStart = async (e: React.DragEvent, session: ScheduleSession) => {
+  const student = students.find(s => s.id === session.student_id);
+  if (!student) return;
+
+  const sessionWithStudent = {
+    ...session,
+    student
+  };
+
+  setDraggedSession(session); // Store the original session
+
+  // Calculate all conflicting slots for this session
+  const conflicts = new Set<string>();
+
+  for (let day = 1; day <= 5; day++) {
+    for (const timeSlot of timeSlots) {
+      const hasConflict = await checkSlotConflicts(sessionWithStudent, day, timeSlot);
+      if (hasConflict) {
+        conflicts.add(`${day}-${timeSlot}`);
+      }
+    }
+  }
+
+  console.log('Conflicts found:', conflicts.size); // Debug log
+  setConflictSlots(conflicts);
+
+  // Set drag effect
+  e.dataTransfer.effectAllowed = 'move';
+};
+
+// Handle drag end
+const handleDragEnd = () => {
+  setDraggedSession(null);
+  setConflictSlots(new Set());
+  setDragOverSlot(null);
+};
+
+  // Handle drag over (for drop zones)
+  const handleDragOver = (e: React.DragEvent, day: number, timeSlot: string) => {
+    e.preventDefault();
+
+    const slotKey = `${day}-${timeSlot}`;
+
+    // Don't allow drop on conflicting slots
+    if (conflictSlots.has(slotKey)) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverSlot({ day, timeSlot });
+  };
+
+  // Handle drag leave
+  const handleDragLeave = () => {
+    setDragOverSlot(null);
+  };
+
+// Handle drop
+const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => {
+  e.preventDefault();
+
+  if (!draggedSession) return;
+
+  const slotKey = `${day}-${timeSlot}`;
+  if (conflictSlots.has(slotKey)) {
+    console.log('Cannot drop on conflict slot:', slotKey);
+    return;
+  }
+
+  const student = students.find(s => s.id === draggedSession.student_id);
+  if (!student) return;
+
+  // Update the session
+  await updateSessionTime(draggedSession.id, day, timeSlot, student.minutes_per_session);
+
+  // Clean up drag state
+  handleDragEnd();
+};
+
+  // Update session time in database
+  const updateSessionTime = async (sessionId: string, day: number, startTime: string, duration: number) => {
+    const [hours, minutes] = startTime.split(':');
+    const startTimeFormatted = `${hours}:${minutes}:00`;
+
+    const endTime = new Date();
+    endTime.setHours(parseInt(hours), parseInt(minutes) + duration, 0);
+    const endTimeFormatted = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`;
+
+    const { error } = await supabase
+      .from('schedule_sessions')
+      .update({
+        day_of_week: day,
+        start_time: startTimeFormatted,
+        end_time: endTimeFormatted
+      })
+      .eq('id', sessionId);
+
+    if (error) {
+      alert('Failed to move session: ' + error.message);
+    } else {
+      // Refresh the schedule
+      fetchData();
+    }
   };
 
   // Fetch all data
@@ -282,27 +484,27 @@ export default function SchedulePage() {
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-purple-400 rounded"></div>
-              <span className="text-sm text-gray-600">Kindergarten</span>
+              <span className="text-sm text-gray-600">K</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-sky-400 rounded"></div>
-              <span className="text-sm text-gray-600">1st Grade</span>
+              <span className="text-sm text-gray-600">1st</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-cyan-400 rounded"></div>
-              <span className="text-sm text-gray-600">2nd Grade</span>
+              <span className="text-sm text-gray-600">2nd</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-emerald-400 rounded"></div>
-              <span className="text-sm text-gray-600">3rd Grade</span>
+              <span className="text-sm text-gray-600">3rd</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-amber-400 rounded"></div>
-              <span className="text-sm text-gray-600">4th Grade</span>
+              <span className="text-sm text-gray-600">4th</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-rose-400 rounded"></div>
-              <span className="text-sm text-gray-600">5th Grade</span>
+              <span className="text-sm text-gray-600">5th</span>
             </div>
           </div>
         </div>
@@ -328,7 +530,10 @@ export default function SchedulePage() {
                 <p className="text-sm font-medium text-blue-800">
                   Highlighting all sessions for{" "}
                   <span className="font-bold">
-                    {students.find(s => s.id === highlightedStudentId)?.initials}
+                    {
+                      students.find((s) => s.id === highlightedStudentId)
+                        ?.initials
+                    }
                   </span>
                 </p>
               </div>
@@ -377,10 +582,26 @@ export default function SchedulePage() {
               {/* Day Columns */}
               {days.map((day, dayIndex) => {
                 // Get all sessions for this day
-                const daySessions = sessions.filter(s => s.day_of_week === dayIndex + 1);
+                const daySessions = sessions.filter(
+                  (s) => s.day_of_week === dayIndex + 1,
+                );
 
                 // Pre-calculate column positions for all sessions
                 const sessionColumns = new Map<string, number>();
+
+                // Create drop zones for each time slot
+                const dropZones = timeSlots.map((timeSlot, timeIndex) => {
+                  const slotKey = `${dayIndex + 1}-${timeSlot}`;
+                  const hasConflict = conflictSlots.has(slotKey);
+                  const isHovered = dragOverSlot?.day === dayIndex + 1 && dragOverSlot?.timeSlot === timeSlot;
+
+                  return {
+                    timeSlot,
+                    timeIndex,
+                    hasConflict,
+                    isHovered
+                  };
+                });
 
                 // Sort sessions by start time
                 const sortedSessions = [...daySessions].sort((a, b) => {
@@ -390,37 +611,56 @@ export default function SchedulePage() {
                 });
 
                 // For each session, find which column it should go in
-                sortedSessions.forEach(session => {
+                sortedSessions.forEach((session) => {
                   const startTime = session.start_time.substring(0, 5);
                   const endTime = session.end_time.substring(0, 5);
 
                   // Check each column (0-3) to find the first available one
                   for (let col = 0; col < 4; col++) {
                     // Check if this column is free for this time slot
-                    const columnOccupied = sortedSessions.some(otherSession => {
-                      // Skip if it's the same session or hasn't been assigned yet
-                      if (otherSession.id === session.id || !sessionColumns.has(otherSession.id)) {
-                        return false;
-                      }
+                    const columnOccupied = sortedSessions.some(
+                      (otherSession) => {
+                        // Skip if it's the same session or hasn't been assigned yet
+                        if (
+                          otherSession.id === session.id ||
+                          !sessionColumns.has(otherSession.id)
+                        ) {
+                          return false;
+                        }
 
-                      // Skip if it's in a different column
-                      if (sessionColumns.get(otherSession.id) !== col) {
-                        return false;
-                      }
+                        // Skip if it's in a different column
+                        if (sessionColumns.get(otherSession.id) !== col) {
+                          return false;
+                        }
 
-                      // Check if times overlap
-                      const otherStart = otherSession.start_time.substring(0, 5);
-                      const otherEnd = otherSession.end_time.substring(0, 5);
+                        // Check if times overlap
+                        const otherStart = otherSession.start_time.substring(
+                          0,
+                          5,
+                        );
+                        const otherEnd = otherSession.end_time.substring(0, 5);
 
-                      // Convert to minutes for easier comparison
-                      const sessionStartMin = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1]);
-                      const sessionEndMin = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1]);
-                      const otherStartMin = parseInt(otherStart.split(':')[0]) * 60 + parseInt(otherStart.split(':')[1]);
-                      const otherEndMin = parseInt(otherEnd.split(':')[0]) * 60 + parseInt(otherEnd.split(':')[1]);
+                        // Convert to minutes for easier comparison
+                        const sessionStartMin =
+                          parseInt(startTime.split(":")[0]) * 60 +
+                          parseInt(startTime.split(":")[1]);
+                        const sessionEndMin =
+                          parseInt(endTime.split(":")[0]) * 60 +
+                          parseInt(endTime.split(":")[1]);
+                        const otherStartMin =
+                          parseInt(otherStart.split(":")[0]) * 60 +
+                          parseInt(otherStart.split(":")[1]);
+                        const otherEndMin =
+                          parseInt(otherEnd.split(":")[0]) * 60 +
+                          parseInt(otherEnd.split(":")[1]);
 
-                      // Check if they overlap
-                      return !(sessionEndMin <= otherStartMin || sessionStartMin >= otherEndMin);
-                    });
+                        // Check if they overlap
+                        return !(
+                          sessionEndMin <= otherStartMin ||
+                          sessionStartMin >= otherEndMin
+                        );
+                      },
+                    );
 
                     if (!columnOccupied) {
                       sessionColumns.set(session.id, col);
@@ -432,15 +672,24 @@ export default function SchedulePage() {
                 return (
                   <div key={day} className="border-r last:border-r-0 relative">
                     {/* Create a relative container for absolute positioning */}
-                    <div className="relative" style={{ height: `${timeSlots.length * 60}px` }}>
+                    <div
+                      className="relative"
+                      style={{ height: `${timeSlots.length * 60}px` }}
+                    >
                       {daySessions.map((session) => {
-                        const student = students.find(s => s.id === session.student_id);
+                        const student = students.find(
+                          (s) => s.id === session.student_id,
+                        );
                         const startTime = session.start_time.substring(0, 5);
                         const endTime = session.end_time.substring(0, 5);
 
                         // Calculate position and height
-                        const [startHour, startMin] = startTime.split(':').map(Number);
-                        const [endHour, endMin] = endTime.split(':').map(Number);
+                        const [startHour, startMin] = startTime
+                          .split(":")
+                          .map(Number);
+                        const [endHour, endMin] = endTime
+                          .split(":")
+                          .map(Number);
 
                         const startMinutes = (startHour - 8) * 60 + startMin;
                         const endMinutes = (endHour - 8) * 60 + endMin;
@@ -450,15 +699,17 @@ export default function SchedulePage() {
                         const height = (duration / 30) * 60;
 
                         const gradeColorMap: { [key: string]: string } = {
-                          'K': 'bg-purple-400 hover:bg-purple-500',
-                          '1': 'bg-sky-400 hover:bg-sky-500',
-                          '2': 'bg-cyan-400 hover:bg-cyan-500',
-                          '3': 'bg-emerald-400 hover:bg-emerald-500',
-                          '4': 'bg-amber-400 hover:bg-amber-500',
-                          '5': 'bg-rose-400 hover:bg-rose-500'
+                          K: "bg-purple-400 hover:bg-purple-500",
+                          "1": "bg-sky-400 hover:bg-sky-500",
+                          "2": "bg-cyan-400 hover:bg-cyan-500",
+                          "3": "bg-emerald-400 hover:bg-emerald-500",
+                          "4": "bg-amber-400 hover:bg-amber-500",
+                          "5": "bg-rose-400 hover:bg-rose-500",
                         };
 
-                        const gradeColor = student ? gradeColorMap[student.grade_level] || 'bg-gray-400' : 'bg-gray-400';
+                        const gradeColor = student
+                          ? gradeColorMap[student.grade_level] || "bg-gray-400"
+                          : "bg-gray-400";
 
                         // Get pre-calculated column position
                         const columnIndex = sessionColumns.get(session.id) ?? 0;
@@ -467,50 +718,95 @@ export default function SchedulePage() {
                         const gap = 1;
                         const leftOffset = columnIndex * (fixedWidth + gap);
 
-                        const isHighlighted = highlightedStudentId === session.student_id;
-                        const highlightClass = isHighlighted ? 'ring-2 ring-yellow-400 ring-offset-2' : '';
+                        const isHighlighted =
+                          highlightedStudentId === session.student_id;
+                        const highlightClass = isHighlighted
+                          ? "ring-2 ring-yellow-400 ring-offset-2"
+                          : "";
 
-                        return (
-                          <div
-                            key={session.id}
-                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group cursor-pointer ${highlightClass}`}
-                            style={{
-                              top: `${top}px`,
-                              height: `${height - 2}px`,
-                              left: `${leftOffset + 2}px`,
-                              width: `${fixedWidth}px`,
-                              padding: '2px'
-                            }}
-                            onClick={() => {
-                              // Toggle highlight - click same student to turn off
-                              setHighlightedStudentId(
-                                highlightedStudentId === session.student_id 
-                                  ? null 
-                                  : session.student_id
-                              );
-                            }}
-                          >
+                            return (
+                              <div
+                                key={session.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, session)}
+                                onDragEnd={handleDragEnd}
+                                className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group cursor-pointer ${highlightClass} ${draggedSession?.id === session.id ? 'opacity-50' : ''}`}
+                                style={{
+                                  top: `${top}px`,
+                                  height: `${height - 2}px`,
+                                  left: `${leftOffset + 2}px`,
+                                  width: `${fixedWidth}px`,
+                                  padding: '2px',
+                                  cursor: 'move',
+                                  zIndex: draggedSession?.id === session.id ? 20 : 10
+                                }}
+                                onClick={() => {
+                                  // Toggle highlight - click same student to turn off
+                                  setHighlightedStudentId(
+                                    highlightedStudentId === session.student_id 
+                                      ? null 
+                                      : session.student_id
+                                  );
+                                }}
+                              >
                             <div className="flex flex-col h-full">
-                              <div className="font-medium text-[10px]">{student?.initials}</div>
+                              <div className="font-medium text-[10px]">
+                                {student?.initials}
+                              </div>
                               {height > 40 && (
-                                <div className="text-[9px] opacity-90">{duration}m</div>
+                                <div className="text-[9px] opacity-90">
+                                  {duration}m
+                                </div>
                               )}
                             </div>
-                            <button
-                              onClick={() => handleDeleteSession(session.id)}
-                              className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
-                              title="Remove session"
-                            >
-                              <span className="text-xs leading-none">×</span>
-                            </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteSession(session.id);
+                                  }}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
+                                  title="Remove session"
+                                  draggable={false}
+                                >
+                                  <span className="text-xs leading-none">×</span>
+                                </button>
                           </div>
                         );
                       })}
                     </div>
 
-                    {/* Time slot borders */}
-                    {timeSlots.map((_, idx) => (
-                      <div key={idx} className="h-[60px] border-b last:border-b-0" />
+                    {/* Time slot borders and drop zones */}
+                    {dropZones.map(({ timeSlot, timeIndex, hasConflict, isHovered }) => (
+                      <div
+                        key={timeIndex}
+                        className={`h-[60px] border-b last:border-b-0 relative ${
+                          draggedSession ? 'transition-colors' : ''
+                        } ${
+                          draggedSession && hasConflict ? 'bg-red-50 border-red-300' : ''
+                        } ${
+                          draggedSession && !hasConflict && isHovered ? 'bg-blue-50 border-blue-300' : ''
+                        }`}
+                        onDragOver={(e) => draggedSession && handleDragOver(e, dayIndex + 1, timeSlot)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, dayIndex + 1, timeSlot)}
+                        style={{
+                          cursor: draggedSession && !hasConflict ? 'copy' : 'default',
+                          position: 'absolute',
+                          top: `${timeIndex * 60}px`,
+                          left: 0,
+                          right: 0,
+                          zIndex: draggedSession ? 1 : 0
+                        }}
+                      >
+                        {draggedSession && hasConflict && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                            <div className="text-red-500 text-xs font-medium bg-white px-2 py-1 rounded shadow-sm">
+                              ✕
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 );
