@@ -290,4 +290,55 @@ export class AutoScheduler {
 
     return true;
   }
+
+  private validateSlot(
+    student: Student,
+    day: number,
+    startTime: string,
+    endTime: string,
+    duration: number,
+    existingSessions: ScheduleSession[],
+    bellSchedules: BellSchedule[],
+    specialActivities: SpecialActivity[]
+  ): { valid: boolean; reason?: string } {
+    // Check if the slot falls within the school hours based on bellSchedules
+    const isWithinSchoolHours = bellSchedules.some(schedule =>
+      schedule.day_of_week === day &&
+      this.timeToMinutes(schedule.start_time) <= this.timeToMinutes(startTime) &&
+      this.timeToMinutes(schedule.end_time) >= this.timeToMinutes(endTime)
+    );
+
+    if (!isWithinSchoolHours) {
+      return { valid: false, reason: 'Slot is outside school hours' };
+    }
+
+    // Check if the slot overlaps with any special activities for this student's grade
+    const hasActivityOverlap = specialActivities.some(activity =>
+      activity.day_of_week === day &&
+      activity.grade_level === student.grade_level &&
+      this.hasTimeOverlap(activity.start_time, activity.end_time, startTime, endTime)
+    );
+
+    if (hasActivityOverlap) {
+      return { valid: false, reason: 'Slot overlaps with a special activity' };
+    }
+
+    // Check for conflicts with existing sessions for this student
+    const hasSessionConflict = existingSessions.some(session =>
+      session.student_id === student.id &&
+      session.day_of_week === day &&
+      this.hasTimeOverlap(session.start_time, session.end_time, startTime, endTime)
+    );
+
+    if (hasSessionConflict) {
+      return { valid: false, reason: 'Slot conflicts with existing session' };
+    }
+
+    // Check if this would violate the 60-minute consecutive limit
+    if (!this.checkConsecutiveLimit(student.id, day, startTime, duration, existingSessions)) {
+      return { valid: false, reason: 'Would exceed 60-minute consecutive session limit' };
+    }
+
+    return { valid: true };
+  }
 }
