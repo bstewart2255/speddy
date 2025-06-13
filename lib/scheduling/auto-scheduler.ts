@@ -170,53 +170,56 @@ export class AutoScheduler {
       }
     }
 
-  // If we couldn't find enough non-consecutive slots, allow some consecutive ones
-  // but still respect the 60-minute limit
-  if (availableSlots.length < slotsNeeded) {
-    console.log(`Only found ${availableSlots.length} non-consecutive slots, looking for more...`);
+    // If we couldn't find enough non-consecutive slots, allow some consecutive ones
+    // but still respect the 60-minute limit
+    if (availableSlots.length < slotsNeeded) {
+      console.log(`Only found ${availableSlots.length} non-consecutive slots, looking for more...`);
 
-    // Second pass: Allow consecutive sessions but enforce limits
-    for (const day of sortedDays) {
-      for (const startTime of timeSlots) {
-        if (availableSlots.length >= slotsNeeded) break;
+      // Second pass: Allow consecutive sessions but enforce limits
+      for (const day of sortedDays) {
+        for (const startTime of timeSlots) {
+          if (availableSlots.length >= slotsNeeded) break;
 
-        const endTime = this.addMinutesToTime(startTime, duration);
+          const endTime = this.addMinutesToTime(startTime, duration);
 
-        // Skip if already scheduled
-        const alreadyScheduled = availableSlots.some(slot =>
-          slot.dayOfWeek === day &&
-          slot.startTime === startTime
-        );
+          // Skip if already scheduled
+          const alreadyScheduled = availableSlots.some(slot =>
+            slot.dayOfWeek === day &&
+            slot.startTime === startTime
+          );
 
-        if (alreadyScheduled) continue;
+          if (alreadyScheduled) continue;
 
-        // Check if valid (this includes consecutive limit check)
-        const validation = this.validateSlot(
-          student,
-          day,
-          startTime,
-          endTime,
-          duration,
-          existingSessions,
-          bellSchedules,
-          specialActivities
-        );
-
-        if (validation.valid) {
-          const newSlot = {
-            dayOfWeek: day,
+          // Check if valid (this includes consecutive limit check)
+          const validation = this.validateSlot(
+            student,
+            day,
             startTime,
-            endTime
-          };
-          availableSlots.push(newSlot);
-          scheduledForThisStudent.push(newSlot);
-          console.log(`Found valid slot (second pass): Day ${day}, ${startTime}-${endTime}`);
+            endTime,
+            duration,
+            existingSessions,
+            bellSchedules,
+            specialActivities
+          );
+
+          if (validation.valid) {
+            const newSlot = {
+              dayOfWeek: day,
+              startTime,
+              endTime
+            };
+            availableSlots.push(newSlot);
+            scheduledForThisStudent.push(newSlot);
+            console.log(`Found valid slot (second pass): Day ${day}, ${startTime}-${endTime}`);
+          }
         }
       }
     }
+
+    return availableSlots;
   }
 
-  // New helper method to check if a slot would create consecutive sessions
+  // Helper method to check if a slot would create consecutive sessions
   private wouldCreateConsecutiveSession(
     studentId: string,
     day: number,
@@ -338,12 +341,12 @@ export class AutoScheduler {
     specialActivities: SpecialActivity[]
   ): { valid: boolean; reason?: string } {
     console.log(`Validating slot for ${student.initials}: Day ${dayOfWeek}, ${startTime}-${endTime} (${duration} min)`);
-  
+
     // Check if session fits within school hours (before 3:00 PM)
     if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) {
       return { valid: false, reason: 'Extends beyond school hours' };
     }
-  
+
     // Check bell schedule conflicts
     const bellConflicts = bellSchedules.filter(bell => {
       const grades = bell.grade_level.split(',').map(g => g.trim());
@@ -351,44 +354,44 @@ export class AutoScheduler {
              bell.day_of_week === dayOfWeek &&
              this.hasTimeOverlap(startTime, endTime, bell.start_time, bell.end_time);
     });
-  
+
     if (bellConflicts.length > 0) {
       return { valid: false, reason: `Conflicts with ${bellConflicts[0].period_name}` };
     }
-  
+
     // Check special activity conflicts
     const activityConflicts = specialActivities.filter(activity =>
       activity.teacher_name === student.teacher_name &&
       activity.day_of_week === dayOfWeek &&
       this.hasTimeOverlap(startTime, endTime, activity.start_time, activity.end_time)
     );
-  
+
     if (activityConflicts.length > 0) {
       return { valid: false, reason: `Teacher has ${activityConflicts[0].activity_name}` };
     }
-  
+
     // Check for same student conflicts (including sessions being scheduled in this batch)
     const studentConflicts = existingSessions.filter(session =>
       session.student_id === student.id &&
       session.day_of_week === dayOfWeek &&
       this.hasTimeOverlap(startTime, endTime, session.start_time, session.end_time)
     );
-  
+
     if (studentConflicts.length > 0) {
       return { valid: false, reason: 'Student already has a session at this time' };
     }
-  
+
     // Check slot capacity (max 4 for auto-scheduling)
     const slotOccupancy = existingSessions.filter(session =>
       session.day_of_week === dayOfWeek &&
       session.student_id !== student.id &&
       this.hasTimeOverlap(startTime, endTime, session.start_time, session.end_time)
     ).length;
-  
+
     if (slotOccupancy >= 4) {
       return { valid: false, reason: 'Time slot full' };
     }
-  
+
     // Check daily limits (120 minutes max)
     const dailyMinutes = existingSessions
       .filter(s => s.day_of_week === dayOfWeek && s.student_id === student.id)
@@ -396,12 +399,12 @@ export class AutoScheduler {
         const sessionDuration = this.timeToMinutes(s.end_time) - this.timeToMinutes(s.start_time);
         return total + sessionDuration;
       }, 0);
-  
+
     if (dailyMinutes + duration > 120) {
       console.log(`Would have ${dailyMinutes + duration} minutes on day ${dayOfWeek} - exceeds 120 min daily limit`);
       return { valid: false, reason: 'Exceeds daily limit (120 min)' };
     }
-  
+
     // Check consecutive minutes limit (60 max)
     const consecutiveCheck = this.checkConsecutiveLimit(
       student.id,
@@ -410,10 +413,10 @@ export class AutoScheduler {
       duration,
       existingSessions
     );
-  
+
     if (!consecutiveCheck) {
       return { valid: false, reason: 'Exceeds consecutive minutes limit' };
     }
-  
+
     return { valid: true };
-}}
+}
