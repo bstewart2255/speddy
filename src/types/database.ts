@@ -15,6 +15,7 @@ export interface Database {
           email: string
           full_name: string
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          school_district: string
           school_site: string
           district_domain: string
           created_at: string
@@ -25,6 +26,7 @@ export interface Database {
           email: string
           full_name: string
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          school_district: string
           school_site: string
           district_domain: string
           created_at?: string
@@ -35,6 +37,7 @@ export interface Database {
           email?: string
           full_name?: string
           role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          school_district?: string
           school_site?: string
           district_domain?: string
           created_at?: string

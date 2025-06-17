@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
+import UserProfileDropdown from './user-profile-dropdown';
 
 export default function Navbar() {
   const router = useRouter();
@@ -60,18 +61,8 @@ export default function Navbar() {
           </div>
 
           {/* User Section */}
-          <div className="flex items-center space-x-4">
-            {user && (
-              <span className="text-sm text-gray-600 hidden sm:inline-block">
-                {user.email}
-              </span>
-            )}
-            <button
-              onClick={handleSignOut}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 hover:text-gray-900 transition-colors"
-            >
-              Sign out
-            </button>
+          <div className="flex items-center">
+            {user && <UserProfileDropdown user={user} />}
           </div>
         </div>
       </div>

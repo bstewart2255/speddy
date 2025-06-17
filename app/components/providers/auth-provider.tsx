@@ -16,6 +16,7 @@ interface AuthContextType {
 interface SignUpMetadata {
   full_name: string;
   role: string;
+  school_district: string;
   school_site: string;
 }
 
