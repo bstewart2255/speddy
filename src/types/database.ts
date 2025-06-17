@@ -44,6 +44,52 @@ export interface Database {
           updated_at?: string
         }
       },
+      teams: {
+        Row: {
+          id: string
+          name: string
+          school_name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          school_name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          school_name?: string
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      team_members: {
+        Row: {
+          id: string
+          team_id: string
+          user_id: string
+          role: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          user_id: string
+          role: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          user_id?: string
+          role?: string
+          created_at?: string
+        }
+      },
       students: {
         Row: {
           id: string
