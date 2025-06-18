@@ -63,17 +63,35 @@ export async function getStudents() {
 export async function deleteStudent(studentId: string) {
   const supabase = createClientComponentClient();
 
-  // First delete any schedule_sessions for this student
+  // CRITICAL: Get current user to verify ownership
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No user found');
+
+  // CRITICAL: First verify the user owns this student
+  const { data: student, error: checkError } = await supabase
+    .from('students')
+    .select('id')
+    .eq('id', studentId)
+    .eq('provider_id', user.id)
+    .single();
+
+  if (checkError || !student) {
+    throw new Error('Student not found or access denied');
+  }
+
+  // Delete schedule_sessions for this student (with provider_id check)
   await supabase
     .from('schedule_sessions')
     .delete()
-    .eq('student_id', studentId);
+    .eq('student_id', studentId)
+    .eq('provider_id', user.id); // CRITICAL: Only delete sessions owned by this provider
 
-  // Then delete the student
+  // Then delete the student (with provider_id check)
   const { error } = await supabase
     .from('students')
     .delete()
-    .eq('id', studentId);
+    .eq('id', studentId)
+    .eq('provider_id', user.id); // CRITICAL: Only delete if user owns this student
 
   if (error) throw error;
 }
@@ -84,6 +102,10 @@ export async function updateStudent(studentId: string, updates: {
 }) {
   const supabase = createClientComponentClient();
 
+  // CRITICAL: Get current user to verify ownership
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No user found');
+
   // Only allow updating sessions_per_week and minutes_per_session
   const { data, error } = await supabase
     .from('students')
@@ -92,10 +114,17 @@ export async function updateStudent(studentId: string, updates: {
       minutes_per_session: updates.minutes_per_session
     })
     .eq('id', studentId)
+    .eq('provider_id', user.id) // CRITICAL: Only update if user owns this student
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Student not found or access denied');
+    }
+    throw error;
+  }
+
   return data;
 }
 

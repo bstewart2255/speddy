@@ -3,12 +3,19 @@ import { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
 
-export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at'>) {
+export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at' | 'provider_id'>) {
   const supabase = createClientComponentClient<Database>();
+
+  // CRITICAL: Get current user to set provider_id
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
 
   const { data, error } = await supabase
     .from('bell_schedules')
-    .insert([schedule])
+    .insert([{
+      ...schedule,
+      provider_id: user.id // CRITICAL: Set provider_id explicitly
+    }])
     .select()
     .single();
 
@@ -19,10 +26,15 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
 export async function deleteBellSchedule(id: string) {
   const supabase = createClientComponentClient<Database>();
 
+  // CRITICAL: Get current user to verify ownership
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
   const { error } = await supabase
     .from('bell_schedules')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('provider_id', user.id); // CRITICAL: Only delete if user owns this schedule
 
   if (error) throw error;
 }

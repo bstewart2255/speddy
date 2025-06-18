@@ -3,100 +3,70 @@
 import { useEffect, useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
-// import { Users } from 'lucide-react' --> Need to update to React 19 first
 import type { Database } from '../../src/types/database'
 
-type TeamMemberWithProfile = Database['public']['Tables']['team_members']['Row'] & {
-  profiles: {
-    full_name: string | null
-  }
+type Profile = {
+  id: string
+  full_name: string | null
+  role: string | null
+  school_site: string | null
+  school_district: string | null
 }
 
-type Team = Database['public']['Tables']['teams']['Row']
-
 export function TeamWidget() {
-  const [team, setTeam] = useState<Team | null>(null)
-  const [teamMembers, setTeamMembers] = useState<TeamMemberWithProfile[]>([])
+  const [currentUser, setCurrentUser] = useState<Profile | null>(null)
+  const [teammates, setTeammates] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClientComponentClient<Database>()
-  const [renderKey, setRenderKey] = useState(0)
-  
+
   useEffect(() => {
     let isCancelled = false;
 
     async function fetchTeamData() {
       try {
         console.log('Fetching team data...');
+
+        // Get current user
         const { data: { user } } = await supabase.auth.getUser()
         console.log('Current user:', user);
+
         if (!user || isCancelled) {
           console.log('No user found or cancelled');
           return
         }
 
-        // Get user's team
-        const { data: memberData, error: memberError } = await supabase
-          .from('team_members')
-          .select('team_id')
-          .eq('user_id', user.id)
+        // Get current user's profile to know their school/district
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, role, school_site, school_district')
+          .eq('id', user.id)
           .single()
 
-        console.log('Member data:', memberData);
-        console.log('Member error:', memberError);
+        console.log('User profile:', userProfile);
+        console.log('Profile error:', profileError);
 
-        if (memberData && !isCancelled) {
-          // Get team details
-          const { data: teamData, error: teamError } = await supabase
-            .from('teams')
-            .select('*')
-            .eq('id', memberData.team_id)
-            .single()
+        if (!userProfile || !userProfile.school_site || isCancelled) {
+          console.log('No profile or school site found');
+          return
+        }
 
-          console.log('Team data:', teamData);
-          console.log('Team error:', teamError);
+        setCurrentUser(userProfile)
 
-          // Get all team members
-          const { data: membersData, error: membersError } = await supabase
-            .from('team_members')
-            .select('*')
-            .eq('team_id', memberData.team_id)
+        // Get all teammates (same school_site and school_district)
+        const { data: teammatesData, error: teammatesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, role, school_site, school_district')
+          .eq('school_site', userProfile.school_site)
+          .eq('school_district', userProfile.school_district)
+          .neq('id', user.id) // Exclude current user
+          .order('role')
+          .order('full_name')
 
-          console.log('Members data:', membersData);
-          console.log('Members error:', membersError);
+        console.log('Teammates data:', teammatesData);
+        console.log('Teammates error:', teammatesError);
 
-          // Get profiles for all team members
-          if (membersData && membersData.length > 0 && !isCancelled) {
-            const userIds = membersData.map(m => m.user_id)
-            console.log('User IDs to fetch:', userIds);
-
-            const { data: profilesData, error: profilesError } = await supabase
-              .from('profiles')
-              .select('id, full_name')
-              .in('id', userIds)
-
-            console.log('Profiles data:', profilesData);
-            console.log('Profiles error:', profilesError);
-
-            // Merge the data
-            const membersWithProfiles = membersData.map(member => {
-              const profile = profilesData?.find(p => p.id === member.user_id);
-              console.log(`Matching profile for ${member.user_id}:`, profile);
-              return {
-                ...member,
-                profiles: profile || { full_name: null }
-              };
-            });
-
-            console.log('Final members with profiles:', membersWithProfiles);
-
-            if (!isCancelled) {
-              setTeamMembers([...membersWithProfiles] as any)
-            }
-          } else if (!isCancelled) {
-            setTeamMembers([])
-          }
-
-          if (teamData && !isCancelled) setTeam(teamData)
+        if (!isCancelled && teammatesData) {
+          setTeammates(teammatesData)
         }
       } catch (error) {
         console.error('Error fetching team data:', error)
@@ -128,11 +98,9 @@ export function TeamWidget() {
     )
   }
 
-  if (!team || teamMembers.length === 0) {
+  if (!currentUser || !currentUser.school_site) {
     return null
   }
-
-  console.log('Rendering team members:', teamMembers);
 
   return (
     <Card>
@@ -145,19 +113,35 @@ export function TeamWidget() {
         </CardTitle>
       </CardHeader>
       <CardBody>
-        <h3 className="font-semibold text-lg mb-3">{team.school_name}</h3>
+        <h3 className="font-semibold text-lg mb-3">{currentUser.school_site}</h3>
+        {currentUser.school_district && (
+          <p className="text-sm text-gray-500 mb-3">{currentUser.school_district}</p>
+        )}
+
         <ul className="space-y-2">
-          {teamMembers.map((member) => {
-            console.log('Rendering member:', member, 'full_name:', member.profiles?.full_name);
-            return (
-              <li key={member.id} className="text-sm">
+          {/* Show current user first */}
+          <li className="text-sm">
+            <span className="font-medium">
+              {currentUser.full_name || 'You'}
+            </span>
+            <span className="text-muted-foreground"> - {currentUser.role || 'Provider'} (Me)</span>
+          </li>
+
+          {/* Show teammates */}
+          {teammates.length > 0 ? (
+            teammates.map((teammate) => (
+              <li key={teammate.id} className="text-sm">
                 <span className="font-medium">
-                  {member.profiles?.full_name || 'Unknown'}
+                  {teammate.full_name || 'Unknown'}
                 </span>
-                <span className="text-muted-foreground"> - {member.role}</span>
+                <span className="text-muted-foreground"> - {teammate.role || 'Provider'}</span>
               </li>
-            );
-          })}
+            ))
+          ) : (
+            <li className="text-sm text-gray-500 italic">
+              No other team members at this school yet
+            </li>
+          )}
         </ul>
       </CardBody>
     </Card>

@@ -1,69 +1,124 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '../../../lib/supabase/client';
+import { SpecialActivity } from '../../../src/types/database';
 
-type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
-type InsertSpecialActivity = Database['public']['Tables']['special_activities']['Insert'];
+export async function getSpecialActivities(): Promise<SpecialActivity[]> {
+  const supabase = createClient();
 
-export async function getSpecialActivities() {
-  const supabase = createClientComponentClient<Database>();
-
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error('Not authenticated');
+  // Get current user first - CRITICAL for security
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
 
   const { data, error } = await supabase
     .from('special_activities')
     .select('*')
-    .order('teacher_name', { ascending: true })
-    .order('day_of_week', { ascending: true })
-    .order('start_time', { ascending: true });
+    .eq('provider_id', user.id) // CRITICAL: Filter by provider_id
+    .order('day_of_week')
+    .order('start_time');
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error fetching special activities:', error);
+    throw error;
+  }
+
   return data || [];
 }
 
-export async function addSpecialActivity(activity: Omit<InsertSpecialActivity, 'id' | 'provider_id' | 'created_at'>) {
-  const supabase = createClientComponentClient<Database>();
+export async function addSpecialActivity(
+  activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'>
+): Promise<SpecialActivity> {
+  const supabase = createClient();
 
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error('Not authenticated');
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
 
   const { data, error } = await supabase
     .from('special_activities')
     .insert({
       ...activity,
-      provider_id: user.user.id
+      provider_id: user.id // CRITICAL: Explicitly set provider_id
     })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error adding special activity:', error);
+    throw error;
+  }
+
   return data;
 }
 
-export async function deleteSpecialActivity(id: string) {
-  const supabase = createClientComponentClient<Database>();
+export async function deleteSpecialActivity(id: string): Promise<void> {
+  const supabase = createClient();
 
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error('Not authenticated');
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
 
+  // CRITICAL: Double-check ownership before delete
   const { error } = await supabase
     .from('special_activities')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('provider_id', user.id); // CRITICAL: Ensure user owns this record
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error deleting special activity:', error);
+    throw error;
+  }
 }
 
-export async function deleteTeacherActivities(teacherName: string) {
-  const supabase = createClientComponentClient<Database>();
+export async function deleteTeacherActivities(teacherName: string): Promise<void> {
+  const supabase = createClient();
 
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error('Not authenticated');
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
 
   const { error } = await supabase
     .from('special_activities')
     .delete()
-    .eq('teacher_name', teacherName);
+    .eq('teacher_name', teacherName)
+    .eq('provider_id', user.id); // CRITICAL: Filter by provider_id
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error deleting teacher activities:', error);
+    throw error;
+  }
+}
+
+export async function getSpecialActivitiesByTeacher(
+  teacherName: string
+): Promise<SpecialActivity[]> {
+  const supabase = createClient();
+
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { data, error } = await supabase
+    .from('special_activities')
+    .select('*')
+    .eq('teacher_name', teacherName)
+    .eq('provider_id', user.id) // CRITICAL: Filter by provider_id
+    .order('day_of_week')
+    .order('start_time');
+
+  if (error) {
+    console.error('Error fetching teacher activities:', error);
+    throw error;
+  }
+
+  return data || [];
 }

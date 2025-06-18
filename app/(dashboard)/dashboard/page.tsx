@@ -12,7 +12,7 @@ export default function DashboardPage() {
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-          <p className="text-gray-600">Welcome to your IEP scheduling platform</p>
+          <p className="text-gray-600">Welcome to the SpEd service provider platform</p>
         </div>
 
         {/* Main Content Area */}
