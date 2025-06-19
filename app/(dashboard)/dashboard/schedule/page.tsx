@@ -68,6 +68,8 @@ export default function SchedulePage() {
   const GRID_END_HOUR = DEFAULT_SCHEDULING_CONFIG.gridEndHour;
   const PIXELS_PER_HOUR = DEFAULT_SCHEDULING_CONFIG.pixelsPerHour;
   const SNAP_INTERVAL = DEFAULT_SCHEDULING_CONFIG.snapInterval;
+  const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {
@@ -468,13 +470,6 @@ export default function SchedulePage() {
       fetchData();
     }
   };
-
-  // Define days and time grid configuration
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const GRID_START_HOUR = 8; // 8 AM
-  const GRID_END_HOUR = 15; // 3 PM
-  const PIXELS_PER_HOUR = 120; // This gives us 2 pixels per minute
-  const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
 
   // Generate hourly time markers for the left column
   const timeMarkers = Array.from(
