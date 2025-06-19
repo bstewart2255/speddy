@@ -6,6 +6,8 @@ import { Card, CardBody } from "../../../components/ui/card";
 import { RescheduleAll } from "../../../components/schedule/reschedule-all";
 import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
+import { DEFAULT_SCHEDULING_CONFIG } from '../../../../lib/scheduling/scheduling-config';
+
 
 interface Student {
   id: string;
@@ -59,12 +61,13 @@ export default function SchedulePage() {
     null,
   );
   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
-  const [dragOverSlot, setDragOverSlot] = useState<{
-    day: number;
-    timeSlot: string;
-  } | null>(null);
 
   const supabase = createClientComponentClient();
+  
+  const GRID_START_HOUR = DEFAULT_SCHEDULING_CONFIG.gridStartHour;
+  const GRID_END_HOUR = DEFAULT_SCHEDULING_CONFIG.gridEndHour;
+  const PIXELS_PER_HOUR = DEFAULT_SCHEDULING_CONFIG.pixelsPerHour;
+  const SNAP_INTERVAL = DEFAULT_SCHEDULING_CONFIG.snapInterval;
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {
@@ -160,107 +163,182 @@ export default function SchedulePage() {
     return !(end1Min <= start2Min || start1Min >= end2Min);
   };
 
-// Handle drag start
-const handleDragStart = async (e: React.DragEvent, session: ScheduleSession) => {
-  const student = students.find(s => s.id === session.student_id);
-  if (!student) return;
+  // Handle drag start
+  const handleDragStart = async (
+    e: React.DragEvent,
+    session: ScheduleSession,
+  ) => {
+    const student = students.find((s) => s.id === session.student_id);
+    if (!student) return;
 
-  const sessionWithStudent = {
-    ...session,
-    student
-  };
+    const sessionWithStudent = {
+      ...session,
+      student,
+    };
 
-  setDraggedSession(session); // Store the original session
+    setDraggedSession(session);
 
-  // Calculate all conflicting slots for this session
-  const conflicts = new Set<string>();
+    // Calculate conflicts for continuous time
+    // We'll check every 5-minute interval where this session could be placed
+    const conflicts = new Set<string>();
 
-  for (let day = 1; day <= 5; day++) {
-    for (const timeSlot of timeSlots) {
-      const hasConflict = await checkSlotConflicts(sessionWithStudent, day, timeSlot);
-      if (hasConflict) {
-        conflicts.add(`${day}-${timeSlot}`);
+    for (let day = 1; day <= 5; day++) {
+      // Check every 5 minutes from 8 AM to 3 PM minus session duration
+      for (
+        let minutes = 0;
+        minutes <
+        (GRID_END_HOUR - GRID_START_HOUR) * 60 - student.minutes_per_session;
+        minutes += 5
+      ) {
+        const hours = Math.floor(minutes / 60) + GRID_START_HOUR;
+        const mins = minutes % 60;
+        const timeStr = `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
+
+        const hasConflict = await checkSlotConflicts(
+          sessionWithStudent,
+          day,
+          timeStr,
+        );
+        if (hasConflict) {
+          conflicts.add(`${day}-${timeStr}`);
+        }
       }
     }
-  }
 
-  console.log('Conflicts found:', conflicts.size); // Debug log
-  setConflictSlots(conflicts);
+    console.log("Conflicts found:", conflicts.size);
+    setConflictSlots(conflicts);
 
-  // Set drag effect
-  e.dataTransfer.effectAllowed = 'move';
-};
+    e.dataTransfer.effectAllowed = "move";
+  };
 
-// Handle drag end
-const handleDragEnd = () => {
-  setDraggedSession(null);
-  setConflictSlots(new Set());
-  setDragOverSlot(null);
-};
+  // Handle drag end
+  const handleDragEnd = () => {
+    setDraggedSession(null);
+    setConflictSlots(new Set());
+    setDragPosition(null);
+  };
 
-  // Handle drag over (for drop zones)
-  const handleDragOver = (e: React.DragEvent, day: number, timeSlot: string) => {
+  // Track the current drag position
+  const [dragPosition, setDragPosition] = useState<{
+    day: number;
+    time: string;
+    pixelY: number;
+  } | null>(null);
+
+  // Handle drag over (now tracks pixel position)
+  const handleDragOver = (e: React.DragEvent, day: number) => {
     e.preventDefault();
 
-    const slotKey = `${day}-${timeSlot}`;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
 
-    // Don't allow drop on conflicting slots
-    if (conflictSlots.has(slotKey)) {
-      e.dataTransfer.dropEffect = 'none';
+    // Snap to 5-minute intervals
+    const snapInterval = SNAP_INTERVAL;
+    const minutesFromStart =
+      Math.round(((relativeY / PIXELS_PER_HOUR) * 60) / snapInterval) *
+      snapInterval;
+    const time = pixelsToTime((minutesFromStart * PIXELS_PER_HOUR) / 60);
+
+    // Check if this position has conflicts
+    const conflictKey = `${day}-${time}`;
+    if (conflictSlots.has(conflictKey)) {
+      e.dataTransfer.dropEffect = "none";
+      // Still set position to show the red preview
+      setDragPosition({
+        day,
+        time,
+        pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
+      });
       return;
     }
 
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverSlot({ day, timeSlot });
+    setDragPosition({
+      day,
+      time,
+      pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
+    });
+
+    e.dataTransfer.dropEffect = "move";
   };
 
-  // Handle drag leave
-  const handleDragLeave = () => {
-    setDragOverSlot(null);
+  // Handle drop
+  const handleDrop = async (e: React.DragEvent, day: number) => {
+    e.preventDefault();
+
+    if (!draggedSession || !dragPosition || dragPosition.day !== day) return;
+
+    const student = students.find((s) => s.id === draggedSession.student_id);
+    if (!student) return;
+
+    // Calculate the new time based on drop position
+    const newStartTime = dragPosition.time;
+    const [hours, minutes] = newStartTime.split(":").map(Number);
+
+    // Calculate end time
+    const endDate = new Date();
+    endDate.setHours(hours, minutes + student.minutes_per_session, 0);
+    const newEndTime = `${endDate.getHours().toString().padStart(2, "0")}:${endDate.getMinutes().toString().padStart(2, "0")}:00`;
+
+    const newStartTimeWithSeconds = `${newStartTime}:00`;
+
+    // Check for conflicts at the new position
+    const sessionWithStudent = { ...draggedSession, student };
+    const hasConflict = await checkSlotConflicts(
+      sessionWithStudent,
+      day,
+      newStartTime,
+    );
+
+    if (hasConflict) {
+      alert("Cannot move session here due to conflicts.");
+      return;
+    }
+
+    // Update the session in the database
+    try {
+      const { error } = await supabase
+        .from("schedule_sessions")
+        .update({
+          day_of_week: day,
+          start_time: newStartTimeWithSeconds,
+          end_time: newEndTime,
+        })
+        .eq("id", draggedSession.id);
+
+      if (error) throw error;
+
+      await fetchData();
+    } catch (error) {
+      console.error("Error updating session:", error);
+      alert("Failed to update session position");
+    }
   };
-
-// Handle drop
-const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => {
-  e.preventDefault();
-
-  if (!draggedSession) return;
-
-  const slotKey = `${day}-${timeSlot}`;
-  if (conflictSlots.has(slotKey)) {
-    console.log('Cannot drop on conflict slot:', slotKey);
-    return;
-  }
-
-  const student = students.find(s => s.id === draggedSession.student_id);
-  if (!student) return;
-
-  // Update the session
-  await updateSessionTime(draggedSession.id, day, timeSlot, student.minutes_per_session);
-
-  // Clean up drag state
-  handleDragEnd();
-};
 
   // Update session time in database
-  const updateSessionTime = async (sessionId: string, day: number, startTime: string, duration: number) => {
-    const [hours, minutes] = startTime.split(':');
+  const updateSessionTime = async (
+    sessionId: string,
+    day: number,
+    startTime: string,
+    duration: number,
+  ) => {
+    const [hours, minutes] = startTime.split(":");
     const startTimeFormatted = `${hours}:${minutes}:00`;
 
     const endTime = new Date();
     endTime.setHours(parseInt(hours), parseInt(minutes) + duration, 0);
-    const endTimeFormatted = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`;
+    const endTimeFormatted = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
     const { error } = await supabase
-      .from('schedule_sessions')
+      .from("schedule_sessions")
       .update({
         day_of_week: day,
         start_time: startTimeFormatted,
-        end_time: endTimeFormatted
+        end_time: endTimeFormatted,
       })
-      .eq('id', sessionId);
+      .eq("id", sessionId);
 
     if (error) {
-      alert('Failed to move session: ' + error.message);
+      alert("Failed to move session: " + error.message);
     } else {
       // Refresh the schedule
       fetchData();
@@ -391,13 +469,36 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
     }
   };
 
-  // Define days and time slots
+  // Define days and time grid configuration
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const timeSlots = Array.from({ length: 16 }, (_, i) => {
-    const hour = 8 + Math.floor(i / 2);
-    const minute = (i % 2) * 30;
-    return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-  });
+  const GRID_START_HOUR = 8; // 8 AM
+  const GRID_END_HOUR = 15; // 3 PM
+  const PIXELS_PER_HOUR = 120; // This gives us 2 pixels per minute
+  const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
+
+  // Generate hourly time markers for the left column
+  const timeMarkers = Array.from(
+    { length: GRID_END_HOUR - GRID_START_HOUR },
+    (_, i) => {
+      const hour = GRID_START_HOUR + i;
+      return `${hour.toString().padStart(2, "0")}:00`;
+    },
+  );
+
+  // Helper function to convert time to pixels
+  const timeToPixels = (timeStr: string): number => {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const totalMinutes = (hours - GRID_START_HOUR) * 60 + minutes;
+    return (totalMinutes * PIXELS_PER_HOUR) / 60;
+  };
+
+  // Helper function to convert pixels to time
+  const pixelsToTime = (pixels: number): string => {
+    const totalMinutes = Math.round((pixels * 60) / PIXELS_PER_HOUR);
+    const hours = Math.floor(totalMinutes / 60) + GRID_START_HOUR;
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+  };
 
   if (loading) {
     return (
@@ -569,12 +670,19 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
             <div className="grid grid-cols-6">
               {/* Time Column */}
               <div>
-                {timeSlots.map((time) => (
+                {timeMarkers.map((time, index) => (
                   <div
                     key={time}
-                    className="p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium h-[60px] flex items-center justify-center"
+                    className="relative"
+                    style={{ height: `${PIXELS_PER_HOUR}px` }}
                   >
-                    {formatTime(time)}
+                    <div className="absolute top-0 left-0 right-0 p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium">
+                      {formatTime(time)}
+                    </div>
+                    {/* Add half-hour marker */}
+                    {index < timeMarkers.length - 1 && (
+                      <div className="absolute top-1/2 left-0 right-0 border-b border-gray-200" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -588,20 +696,6 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
 
                 // Pre-calculate column positions for all sessions
                 const sessionColumns = new Map<string, number>();
-
-                // Create drop zones for each time slot
-                const dropZones = timeSlots.map((timeSlot, timeIndex) => {
-                  const slotKey = `${dayIndex + 1}-${timeSlot}`;
-                  const hasConflict = conflictSlots.has(slotKey);
-                  const isHovered = dragOverSlot?.day === dayIndex + 1 && dragOverSlot?.timeSlot === timeSlot;
-
-                  return {
-                    timeSlot,
-                    timeIndex,
-                    hasConflict,
-                    isHovered
-                  };
-                });
 
                 // Sort sessions by start time
                 const sortedSessions = [...daySessions].sort((a, b) => {
@@ -674,8 +768,52 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
                     {/* Create a relative container for absolute positioning */}
                     <div
                       className="relative"
-                      style={{ height: `${timeSlots.length * 60}px` }}
+                      style={{ height: `${TOTAL_HEIGHT}px` }}
+                      onDragOver={(e) => handleDragOver(e, dayIndex + 1)}
+                      onDrop={(e) => handleDrop(e, dayIndex + 1)}
                     >
+                      {/* Hour grid lines */}
+                      {timeMarkers.map((_, index) => (
+                        <div
+                          key={index}
+                          className="absolute w-full border-b border-gray-100"
+                          style={{ top: `${index * PIXELS_PER_HOUR}px` }}
+                        />
+                      ))}
+
+                      {/* Half-hour grid lines */}
+                      {timeMarkers.slice(0, -1).map((_, index) => (
+                        <div
+                          key={`half-${index}`}
+                          className="absolute w-full border-b border-gray-50"
+                          style={{
+                            top: `${index * PIXELS_PER_HOUR + PIXELS_PER_HOUR / 2}px`,
+                          }}
+                        />
+                      ))}
+
+                      {/* Drop preview indicator */}
+                      {draggedSession && dragPosition?.day === dayIndex + 1 && (
+                        <div
+                          className={`absolute w-full rounded opacity-75 pointer-events-none z-10 ${
+                            conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
+                              ? "bg-red-100 border-2 border-red-400"
+                              : "bg-blue-100 border-2 border-blue-400"
+                          }`}
+                          style={{
+                            top: `${dragPosition.pixelY}px`,
+                            height: `${((students.find((s) => s.id === draggedSession.student_id)?.minutes_per_session || 30) * PIXELS_PER_HOUR) / 60}px`,
+                            left: "2px",
+                            right: "2px",
+                          }}
+                        >
+                          {/* Time indicator */}
+                          <div className="absolute -top-1 right-1 bg-gray-800 text-white text-xs px-2 py-0.5 rounded-md font-medium shadow-md">
+                            {formatTime(dragPosition.time)}
+                          </div>
+                        </div>
+                      )}
+
                       {daySessions.map((session) => {
                         const student = students.find(
                           (s) => s.id === session.student_id,
@@ -683,20 +821,9 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
                         const startTime = session.start_time.substring(0, 5);
                         const endTime = session.end_time.substring(0, 5);
 
-                        // Calculate position and height
-                        const [startHour, startMin] = startTime
-                          .split(":")
-                          .map(Number);
-                        const [endHour, endMin] = endTime
-                          .split(":")
-                          .map(Number);
-
-                        const startMinutes = (startHour - 8) * 60 + startMin;
-                        const endMinutes = (endHour - 8) * 60 + endMin;
-                        const duration = endMinutes - startMinutes;
-
-                        const top = (startMinutes / 30) * 60;
-                        const height = (duration / 30) * 60;
+                        // Calculate position and height using the new pixel system
+                        const top = timeToPixels(startTime);
+                        const height = timeToPixels(endTime) - top;
 
                         const gradeColorMap: { [key: string]: string } = {
                           K: "bg-purple-400 hover:bg-purple-500",
@@ -724,90 +851,62 @@ const handleDrop = async (e: React.DragEvent, day: number, timeSlot: string) => 
                           ? "ring-2 ring-yellow-400 ring-offset-2"
                           : "";
 
-                            return (
-                              <div
-                                key={session.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, session)}
-                                onDragEnd={handleDragEnd}
-                                className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group cursor-pointer ${highlightClass} ${draggedSession?.id === session.id ? 'opacity-50' : ''}`}
-                                style={{
-                                  top: `${top}px`,
-                                  height: `${height - 2}px`,
-                                  left: `${leftOffset + 2}px`,
-                                  width: `${fixedWidth}px`,
-                                  padding: '2px',
-                                  cursor: 'move',
-                                  zIndex: draggedSession?.id === session.id ? 20 : 10
-                                }}
-                                onClick={() => {
-                                  // Toggle highlight - click same student to turn off
-                                  setHighlightedStudentId(
-                                    highlightedStudentId === session.student_id 
-                                      ? null 
-                                      : session.student_id
-                                  );
-                                }}
-                              >
+                        return (
+                          <div
+                            key={session.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, session)}
+                            onDragEnd={handleDragEnd}
+                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${
+                              draggedSession?.id === session.id
+                                ? "opacity-50 cursor-grabbing"
+                                : "cursor-grab"
+                            }`}
+                            style={{
+                              top: `${top}px`,
+                              height: `${height - 2}px`,
+                              left: `${leftOffset + 2}px`,
+                              width: `${fixedWidth}px`,
+                              padding: "2px",
+                              cursor: "move",
+                              zIndex:
+                                draggedSession?.id === session.id ? 20 : 10,
+                            }}
+                            onClick={() => {
+                              // Toggle highlight - click same student to turn off
+                              setHighlightedStudentId(
+                                highlightedStudentId === session.student_id
+                                  ? null
+                                  : session.student_id,
+                              );
+                            }}
+                          >
                             <div className="flex flex-col h-full">
                               <div className="font-medium text-[10px]">
                                 {student?.initials}
                               </div>
                               {height > 40 && (
                                 <div className="text-[9px] opacity-90">
-                                  {duration}m
+                                  {student?.minutes_per_session}m
                                 </div>
                               )}
                             </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteSession(session.id);
-                                  }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
-                                  title="Remove session"
-                                  draggable={false}
-                                >
-                                  <span className="text-xs leading-none">×</span>
-                                </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSession(session.id);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
+                              title="Remove session"
+                              draggable={false}
+                            >
+                              <span className="text-xs leading-none">×</span>
+                            </button>
                           </div>
                         );
                       })}
                     </div>
-
-                    {/* Time slot borders and drop zones */}
-                    {dropZones.map(({ timeSlot, timeIndex, hasConflict, isHovered }) => (
-                      <div
-                        key={timeIndex}
-                        className={`h-[60px] border-b last:border-b-0 relative ${
-                          draggedSession ? 'transition-colors' : ''
-                        } ${
-                          draggedSession && hasConflict ? 'bg-red-50 border-red-300' : ''
-                        } ${
-                          draggedSession && !hasConflict && isHovered ? 'bg-blue-50 border-blue-300' : ''
-                        }`}
-                        onDragOver={(e) => draggedSession && handleDragOver(e, dayIndex + 1, timeSlot)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, dayIndex + 1, timeSlot)}
-                        style={{
-                          cursor: draggedSession && !hasConflict ? 'copy' : 'default',
-                          position: 'absolute',
-                          top: `${timeIndex * 60}px`,
-                          left: 0,
-                          right: 0,
-                          zIndex: draggedSession ? 1 : 0
-                        }}
-                      >
-                        {draggedSession && hasConflict && (
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                            <div className="text-red-500 text-xs font-medium bg-white px-2 py-1 rounded shadow-sm">
-                              ✕
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
                   </div>
                 );
               })}

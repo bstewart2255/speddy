@@ -165,10 +165,11 @@ export class AutoScheduler {
   // Utility functions
   private generateTimeSlots(): string[] {
     const slots: string[] = [];
-    // Generate slots every 15 minutes to allow for flexibility
+    // Generate slots every 5 minutes for maximum flexibility
     for (let hour = 8; hour <= 14; hour++) {
-      for (let minute = 0; minute < 60; minute += 15) {
-        if (hour === 14 && minute > 30) break; // Stop at 2:30 PM
+      for (let minute = 0; minute < 60; minute += 5) {
+        // Don't go past 2:30 PM to leave buffer before 3 PM
+        if (hour === 14 && minute > 30) break;
         slots.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
       }
     }

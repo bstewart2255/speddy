@@ -39,6 +39,7 @@ export default function StudentsPage() {
   });
 
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
+  const [sortByGrade, setSortByGrade] = useState(false);
 
   // Fetch students
   useEffect(() => {
@@ -308,10 +309,20 @@ export default function StudentsPage() {
 
         {/* Students List */}
         <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Current Students ({students.length})</CardTitle>
-            </div>
+          <CardHeader
+            action={
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sortByGrade}
+                  onChange={(e) => setSortByGrade(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <span className="text-sm font-medium text-gray-700">Sort by Grade</span>
+              </label>
+            }
+          >
+            <CardTitle>Current Students ({students.length})</CardTitle>
           </CardHeader>
           <CardBody>
             <Table>
@@ -325,7 +336,22 @@ export default function StudentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {students.map((student) => (
+                {[...students]
+                  .sort((a, b) => {
+                    if (!sortByGrade) return 0;
+
+                    // Define grade order (K comes first, then 1-5)
+                    const gradeOrder = ['K', '1', '2', '3', '4', '5'];
+                    const aIndex = gradeOrder.indexOf(a.grade_level);
+                    const bIndex = gradeOrder.indexOf(b.grade_level);
+
+                    // If grade not found in order, put it at the end
+                    if (aIndex === -1) return 1;
+                    if (bIndex === -1) return -1;
+
+                    return aIndex - bIndex;
+                  })
+                  .map((student) => (
                   <TableRow key={student.id}>
                     <TableCell>
                       <StudentTag initials={student.initials} />

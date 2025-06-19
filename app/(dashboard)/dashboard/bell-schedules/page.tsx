@@ -16,6 +16,7 @@ export default function BellSchedulesPage() {
   const [bellSchedules, setBellSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sortByGrade, setSortByGrade] = useState(false);
 
   // Fetch bell schedules from database
   const fetchSchedules = async () => {
@@ -171,7 +172,19 @@ export default function BellSchedulesPage() {
 
         {/* Bell Schedules List */}
         <Card>
-          <CardHeader>
+          <CardHeader
+            action={
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sortByGrade}
+                  onChange={(e) => setSortByGrade(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <span className="text-sm font-medium text-gray-700">Sort by Grade</span>
+              </label>
+            }
+          >
             <CardTitle>Current Bell Schedules ({bellSchedules.length})</CardTitle>
           </CardHeader>
           <CardBody>
@@ -195,7 +208,24 @@ export default function BellSchedulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bellSchedules.map((schedule) => (
+                  {[...bellSchedules]
+                    .sort((a, b) => {
+                      if (!sortByGrade) return 0;
+
+                      // Helper function to extract grade number
+                      const getGradeValue = (grade: string) => {
+                        if (grade === 'K') return 0;
+                        // Handle formats like "1", "1st", "2nd", etc.
+                        const num = parseInt(grade);
+                        return isNaN(num) ? 999 : num;
+                      };
+
+                      const aValue = getGradeValue(a.grade_level);
+                      const bValue = getGradeValue(b.grade_level);
+
+                      return aValue - bValue;
+                    })
+                    .map((schedule) => (
                     <TableRow key={schedule.id}>
                       <TableCell>
                         <GradeTag grade={schedule.grade_level} />
