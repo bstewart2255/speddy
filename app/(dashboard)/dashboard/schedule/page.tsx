@@ -61,6 +61,9 @@ export default function SchedulePage() {
     null,
   );
   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
+  const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set(['K', '1', '2', '3', '4', '5']));  
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const supabase = createClientComponentClient();
   
@@ -471,12 +474,14 @@ export default function SchedulePage() {
     }
   };
 
-  // Generate hourly time markers for the left column
+  // Generate 15-minute interval time markers for the left column
   const timeMarkers = Array.from(
-    { length: GRID_END_HOUR - GRID_START_HOUR },
+    { length: (GRID_END_HOUR - GRID_START_HOUR) * 4 },
     (_, i) => {
-      const hour = GRID_START_HOUR + i;
-      return `${hour.toString().padStart(2, "0")}:00`;
+      const totalMinutes = i * 15;
+      const hour = GRID_START_HOUR + Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hour.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
     },
   );
 
@@ -495,6 +500,20 @@ export default function SchedulePage() {
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
   };
 
+  // Helper function to check if a session overlaps with a 15-minute time slot
+  const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
+    const [slotHour, slotMinute] = timeSlot.split(':').map(Number);
+    const slotStartMinutes = slotHour * 60 + slotMinute;
+    const slotEndMinutes = slotStartMinutes + 15;
+
+    const [sessionStartHour, sessionStartMinute] = session.start_time.split(':').map(Number);
+    const [sessionEndHour, sessionEndMinute] = session.end_time.split(':').map(Number);
+    const sessionStartMinutes = sessionStartHour * 60 + sessionStartMinute;
+    const sessionEndMinutes = sessionEndHour * 60 + sessionEndMinute;
+
+    return sessionStartMinutes < slotEndMinutes && sessionEndMinutes > slotStartMinutes;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -507,7 +526,7 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Page Header */}
         <div className="mb-8">
@@ -572,38 +591,77 @@ export default function SchedulePage() {
           )}
         </div>
 
-        {/* Color Key Legend */}
+        {/* Color Key Legend - Interactive Filter */}
         <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">
             Grade Levels
           </h3>
           <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-purple-400 rounded"></div>
-              <span className="text-sm text-gray-600">K</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-sky-400 rounded"></div>
-              <span className="text-sm text-gray-600">1st</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-cyan-400 rounded"></div>
-              <span className="text-sm text-gray-600">2nd</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-emerald-400 rounded"></div>
-              <span className="text-sm text-gray-600">3rd</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-amber-400 rounded"></div>
-              <span className="text-sm text-gray-600">4th</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-rose-400 rounded"></div>
-              <span className="text-sm text-gray-600">5th</span>
-            </div>
+            {[
+              { grade: 'K', colorClass: 'bg-purple-400', displayName: 'K' },
+              { grade: '1', colorClass: 'bg-sky-400', displayName: '1st' },
+              { grade: '2', colorClass: 'bg-cyan-400', displayName: '2nd' },
+              { grade: '3', colorClass: 'bg-emerald-400', displayName: '3rd' },
+              { grade: '4', colorClass: 'bg-amber-400', displayName: '4th' },
+              { grade: '5', colorClass: 'bg-rose-400', displayName: '5th' }
+            ].map(({ grade, colorClass, displayName }) => {
+              const isActive = selectedGrades.has(grade);
+              return (
+                <button
+                  key={grade}
+                  onClick={() => {
+                    const newSelectedGrades = new Set(selectedGrades);
+                    if (newSelectedGrades.has(grade)) {
+                      newSelectedGrades.delete(grade);
+                    } else {
+                      newSelectedGrades.add(grade);
+                    }
+                    setSelectedGrades(newSelectedGrades);
+                  }}
+                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <div className={`w-4 h-4 rounded ${
+                    isActive ? colorClass : 'bg-gray-300'
+                  }`}></div>
+                  <span className={`text-sm ${
+                    isActive ? 'text-gray-600' : 'text-gray-400'
+                  }`}>{displayName}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
+
+        {/* Active Filter Indicators for Time and Day only */}
+        {(selectedTimeSlot || selectedDay) && (
+          <div className="mb-4 flex gap-2 items-center flex-wrap">
+            <span className="text-sm text-gray-600">Active filters:</span>
+
+            {selectedTimeSlot && (
+              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                <span>Time: {formatTime(selectedTimeSlot)}</span>
+                <button
+                  onClick={() => setSelectedTimeSlot(null)}
+                  className="hover:text-blue-900"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+
+            {selectedDay && (
+              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                <span>Day: {days[selectedDay - 1]}</span>
+                <button
+                  onClick={() => setSelectedDay(null)}
+                  className="hover:text-blue-900"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Highlighted Student Indicator */}
         {highlightedStudentId && (
@@ -651,10 +709,22 @@ export default function SchedulePage() {
               <div className="p-3 font-semibold text-gray-700 text-center border-r">
                 Time
               </div>
-              {days.map((day) => (
+              {days.map((day, index) => (
                 <div
                   key={day}
-                  className="p-3 font-semibold text-gray-700 text-center border-r last:border-r-0"
+                  className={`p-3 font-semibold text-center border-r last:border-r-0 cursor-pointer transition-colors ${
+                    selectedDay === index + 1
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-700 bg-gray-50 hover:bg-gray-100'
+                  }`}
+                  onClick={() => {
+                    if (selectedDay === index + 1) {
+                      setSelectedDay(null);
+                    } else {
+                      setSelectedDay(index + 1);
+                      setSelectedTimeSlot(null); // Clear time selection when selecting day
+                    }
+                  }}
                 >
                   {day}
                 </div>
@@ -668,16 +738,24 @@ export default function SchedulePage() {
                 {timeMarkers.map((time, index) => (
                   <div
                     key={time}
-                    className="relative"
-                    style={{ height: `${PIXELS_PER_HOUR}px` }}
+                    className="relative cursor-pointer hover:bg-gray-100 transition-colors"
+                    style={{ height: `${PIXELS_PER_HOUR / 4}px` }}
+                    onClick={() => {
+                      if (selectedTimeSlot === time) {
+                        setSelectedTimeSlot(null);
+                      } else {
+                        setSelectedTimeSlot(time);
+                        setSelectedDay(null); // Clear day selection when selecting time
+                      }
+                    }}
                   >
-                    <div className="absolute top-0 left-0 right-0 p-2 text-xs text-gray-500 text-center bg-gray-50 border-r border-b font-medium">
+                    <div className={`absolute top-0 left-0 right-0 p-2 text-xs text-center border-r border-b font-medium ${
+                      selectedTimeSlot === time 
+                        ? 'bg-blue-100 text-blue-700 border-blue-300' 
+                        : 'text-gray-500 bg-gray-50'
+                    }`}>
                       {formatTime(time)}
                     </div>
-                    {/* Add half-hour marker */}
-                    {index < timeMarkers.length - 1 && (
-                      <div className="absolute top-1/2 left-0 right-0 border-b border-gray-200" />
-                    )}
                   </div>
                 ))}
               </div>
@@ -829,7 +907,16 @@ export default function SchedulePage() {
                           "5": "bg-rose-400 hover:bg-rose-500",
                         };
 
-                        const gradeColor = student
+                        // Determine if session should be greyed out
+                        // For grades: grey out if the grade is NOT in selectedGrades (since all are selected by default)
+                        const isGradeFiltered = student && !selectedGrades.has(student.grade_level);
+                        const isTimeFiltered = selectedTimeSlot && !sessionOverlapsTimeSlot(session, selectedTimeSlot);
+                        const isDayFiltered = selectedDay && session.day_of_week !== selectedDay;
+                        const shouldGrayOut = isGradeFiltered || isTimeFiltered || isDayFiltered;
+  
+                        const gradeColor = shouldGrayOut
+                          ? "bg-gray-300 hover:bg-gray-400 opacity-50"
+                          : student
                           ? gradeColorMap[student.grade_level] || "bg-gray-400"
                           : "bg-gray-400";
 
