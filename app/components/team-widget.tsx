@@ -5,6 +5,19 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
 import type { Database } from '../../src/types/database'
 
+// Add this after the imports
+const getRoleDisplayName = (role: string | null): string => {
+  const roleMap: { [key: string]: string } = {
+    'resource': 'Resource Specialist',
+    'speech': 'Speech Therapist',
+    'ot': 'Occupational Therapist',
+    'counseling': 'Counselor',
+    'specialist': 'Program Specialist',
+    'sea': 'Special Education Assistant',
+  };
+  return roleMap[role || ''] || 'Provider';
+};
+
 type Profile = {
   id: string
   full_name: string | null
@@ -124,9 +137,9 @@ export function TeamWidget() {
             <span className="font-medium">
               {currentUser.full_name || 'You'}
             </span>
-            <span className="text-muted-foreground"> - {currentUser.role || 'Provider'} (Me)</span>
+            <span className="text-muted-foreground"> - {getRoleDisplayName(currentUser.role)} (Me)</span>
           </li>
-
+    
           {/* Show teammates */}
           {teammates.length > 0 ? (
             teammates.map((teammate) => (
@@ -134,7 +147,7 @@ export function TeamWidget() {
                 <span className="font-medium">
                   {teammate.full_name || 'Unknown'}
                 </span>
-                <span className="text-muted-foreground"> - {teammate.role || 'Provider'}</span>
+                <span className="text-muted-foreground"> - {getRoleDisplayName(teammate.role)}</span>
               </li>
             ))
           ) : (

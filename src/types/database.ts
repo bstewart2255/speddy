@@ -14,10 +14,11 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
           school_district: string
           school_site: string
           district_domain: string
+          supervising_provider_id: string | null
           created_at: string
           updated_at: string
         }
@@ -25,10 +26,11 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
           school_district: string
           school_site: string
           district_domain: string
+          supervising_provider_id: string | null
           created_at?: string
           updated_at?: string
         }
@@ -36,10 +38,11 @@ export interface Database {
           id?: string
           email?: string
           full_name?: string
-          role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+          role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'| 'sea'
           school_district?: string
           school_site?: string
           district_domain?: string
+          supervising_provider_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -198,7 +201,12 @@ export interface Database {
           start_time: string
           end_time: string
           service_type: string
+          assigned_to_sea_id: string | null
+          delivered_by: 'provider' | 'sea'
           created_at: string
+          completed_at: string | null
+          completed_by: string | null
+          session_notes: string | null
         }
         Insert: {
           id?: string
@@ -208,7 +216,12 @@ export interface Database {
           start_time: string
           end_time: string
           service_type: string
+          assigned_to_sea_id?: string | null
+          delivered_by?: 'provider' | 'sea'
           created_at?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          session_notes?: string | null
         }
         Update: {
           id?: string
@@ -218,7 +231,12 @@ export interface Database {
           start_time?: string
           end_time?: string
           service_type?: string
+          assigned_to_sea_id?: string | null
+          delivered_by?: 'provider' | 'sea'
           created_at?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          session_notes?: string | null
         }
       }
     }

@@ -7,7 +7,7 @@ import { RescheduleAll } from "../../../components/schedule/reschedule-all";
 import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
 import { DEFAULT_SCHEDULING_CONFIG } from '../../../../lib/scheduling/scheduling-config';
-
+import { SessionAssignmentPopup } from "./session-assignment-popup";
 
 interface Student {
   id: string;
@@ -64,6 +64,12 @@ export default function SchedulePage() {
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set(['K', '1', '2', '3', '4', '5']));  
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
+  // Add this state variable with your other useState declarations
+  const [seaProfiles, setSeaProfiles] = useState<Array<{id: string; full_name: string}>>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const supabase = createClientComponentClient();
   
@@ -81,6 +87,19 @@ export default function SchedulePage() {
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Filter sessions based on current filter
+  const getFilteredSessions = (allSessions: ScheduleSession[]) => {
+    switch (sessionFilter) {
+      case 'mine':
+        return allSessions.filter(session => session.delivered_by !== 'sea');
+      case 'sea':
+        return allSessions.filter(session => session.delivered_by === 'sea');
+      case 'all':
+      default:
+        return allSessions;
+    }
   };
 
   // Check if a session can be moved to a specific time slot
@@ -358,6 +377,7 @@ export default function SchedulePage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
+      setCurrentUserId(user.id);
 
       console.log("Fetching data for user:", user.id);
 
@@ -370,6 +390,30 @@ export default function SchedulePage() {
       if (profile) {
         setProviderRole(profile.role);
         console.log("Provider role:", profile.role);
+      }
+
+      // Fetch SEA profiles if user is Resource Specialist
+      if (profile?.role === 'resource') {
+        // First get the RS's school info
+        const { data: rsProfile } = await supabase
+          .from('profiles')
+          .select('school_district, school_site')
+          .eq('id', user.id)
+          .single();
+
+        if (rsProfile) {
+          // Find all SEAs in the same school and district
+          const { data: seasData } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .eq('role', 'sea')
+            .eq('school_district', rsProfile.school_district)
+            .eq('school_site', rsProfile.school_site);
+
+          if (seasData) {
+            setSeaProfiles(seasData);
+          }
+        }
       }
 
       const [studentsData, bellData, activitiesData, sessionsData] =
@@ -449,6 +493,31 @@ export default function SchedulePage() {
       console.error("Error checking unscheduled sessions:", error);
     }
   };
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (selectedSession && popupPosition) {
+        // Check if the click is inside the popup
+        const popupElement = document.getElementById('session-assignment-popup');
+        if (popupElement && popupElement.contains(event.target as Node)) {
+          return; // Don't close if clicking inside popup
+        }
+
+        setSelectedSession(null);
+        setPopupPosition(null);
+      }
+    };
+
+    if (selectedSession) {
+      // Use a slight delay to avoid immediate closure
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [selectedSession, popupPosition]);
 
   useEffect(() => {
     if (!loading) {
@@ -589,6 +658,45 @@ export default function SchedulePage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Session Filter Controls */}
+        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">
+            View Sessions
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSessionFilter('all')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                sessionFilter === 'all'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Sessions
+            </button>
+            <button
+              onClick={() => setSessionFilter('mine')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                sessionFilter === 'mine'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              My Sessions
+            </button>
+            <button
+              onClick={() => setSessionFilter('sea')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                sessionFilter === 'sea'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              SEA Sessions
+            </button>
+          </div>
         </div>
 
         {/* Color Key Legend - Interactive Filter */}
@@ -762,20 +870,28 @@ export default function SchedulePage() {
 
               {/* Day Columns */}
               {days.map((day, dayIndex) => {
-                // Get all sessions for this day
-                const daySessions = sessions.filter(
-                  (s) => s.day_of_week === dayIndex + 1,
-                );
-
+                // Get sessions for this day based on user role and filters
+                const daySessions = (() => {
+                  const allDaySessions = sessions.filter(s => s.day_of_week === dayIndex + 1);
+          
+                  // If user is SEA, only show sessions assigned to them
+                  if (providerRole === 'sea' && currentUserId) {
+                    return allDaySessions.filter(s => s.assigned_to_sea_id === currentUserId);
+                  }
+          
+                  // For Resource Specialists and other roles, apply the existing filter
+                  return getFilteredSessions(allDaySessions);
+                })();
+          
                 // Pre-calculate column positions for all sessions
                 const sessionColumns = new Map<string, number>();
-
-                // Sort sessions by start time
-                const sortedSessions = [...daySessions].sort((a, b) => {
-                  const aStart = a.start_time.substring(0, 5);
-                  const bStart = b.start_time.substring(0, 5);
-                  return aStart.localeCompare(bStart);
-                });
+          
+                  // Sort sessions by start time
+                  const sortedSessions = [...daySessions].sort((a, b) => {
+                    const aStart = a.start_time.substring(0, 5);
+                    const bStart = b.start_time.substring(0, 5);
+                    return aStart.localeCompare(bStart);
+                  });
 
                 // For each session, find which column it should go in
                 sortedSessions.forEach((session) => {
@@ -920,6 +1036,11 @@ export default function SchedulePage() {
                           ? gradeColorMap[student.grade_level] || "bg-gray-400"
                           : "bg-gray-400";
 
+                        // Add SEA assignment styling
+                        const seaAssignmentClass = session.delivered_by === 'sea' 
+                          ? "ring-2 ring-orange-400 ring-inset" 
+                          : "";
+
                         // Get pre-calculated column position
                         const columnIndex = sessionColumns.get(session.id) ?? 0;
 
@@ -939,7 +1060,7 @@ export default function SchedulePage() {
                             draggable
                             onDragStart={(e) => handleDragStart(e, session)}
                             onDragEnd={handleDragEnd}
-                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${
+                            className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${seaAssignmentClass} ${
                               draggedSession?.id === session.id
                                 ? "opacity-50 cursor-grabbing"
                                 : "cursor-grab"
@@ -954,22 +1075,35 @@ export default function SchedulePage() {
                               zIndex:
                                 draggedSession?.id === session.id ? 20 : 10,
                             }}
-                            onClick={() => {
+                            onClick={(e) => {
                               // Toggle highlight - click same student to turn off
                               setHighlightedStudentId(
                                 highlightedStudentId === session.student_id
                                   ? null
                                   : session.student_id,
                               );
+
+                              // Show popup for session assignment
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setPopupPosition({
+                                x: rect.right + 10,
+                                y: rect.top
+                              });
+                              setSelectedSession(session);
                             }}
                           >
-                            <div className="flex flex-col h-full">
+                            <div className="flex flex-col h-full relative">
                               <div className="font-medium text-[10px]">
                                 {student?.initials}
                               </div>
                               {height > 40 && (
                                 <div className="text-[9px] opacity-90">
                                   {student?.minutes_per_session}m
+                                </div>
+                              )}
+                              {session.delivered_by === 'sea' && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
+                                  <span className="text-[8px] font-bold text-white">S</span>
                                 </div>
                               )}
                             </div>
@@ -995,6 +1129,26 @@ export default function SchedulePage() {
             </div>
           </CardBody>
         </Card>
+        
+       {/* Add the SessionAssignmentPopup component here - after line 1113 */}
+        {selectedSession && popupPosition && (
+          <SessionAssignmentPopup
+            session={selectedSession}
+            student={students.find(s => s.id === selectedSession.student_id)}
+            position={popupPosition}
+            seaProfiles={seaProfiles}
+            onClose={() => {
+              setSelectedSession(null);
+              setPopupPosition(null);
+            }}
+            onUpdate={() => {
+              fetchData();
+              setSelectedSession(null);
+              setPopupPosition(null);
+            }}
+          />
+        )}
+
       </div>
     </div>
   );

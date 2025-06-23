@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableAct
 import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
 import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
 import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
+import StudentsCSVImport from '../../../components/students/csv-import';
 
 type Student = {
   id: string;
@@ -40,11 +41,12 @@ export default function StudentsPage() {
 
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
+  const [showImportSection, setShowImportSection] = useState(false);
 
   // Fetch students
   useEffect(() => {
     fetchStudents();
-    checkUnscheduledSessions();
+    checkUnscheduledSessions();  
   }, []);
 
   const fetchStudents = async () => {
@@ -166,7 +168,12 @@ export default function StudentsPage() {
             <p className="text-gray-600">Manage your student caseload</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="secondary">Import CSV</Button>
+            <Button 
+              variant="secondary"
+              onClick={() => setShowImportSection(!showImportSection)}
+            >
+              Import CSV
+            </Button>
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
@@ -175,6 +182,32 @@ export default function StudentsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Import Section */}
+        {showImportSection && (
+          <div className="mb-8">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Import Students</CardTitle>
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowImportSection(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <StudentsCSVImport onSuccess={() => {
+                  setShowImportSection(false);
+                  fetchStudents();
+                }} />
+              </CardBody>
+            </Card>
+          </div>
+        )}
 
         {/* Unscheduled Sessions Notification */}
         {unscheduledCount > 0 && (

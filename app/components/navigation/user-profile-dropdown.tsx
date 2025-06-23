@@ -74,7 +74,8 @@ export default function UserProfileDropdown({ user }: { user: User }) {
       'speech': 'Speech Therapist',
       'ot': 'Occupational Therapist',
       'counseling': 'Counselor',
-      'specialist': 'Program Specialist'
+      'specialist': 'Program Specialist',
+      'sea': 'Special Education Assistant'
     };
     return roleMap[role] || role;
   };

@@ -11,6 +11,7 @@ const PROVIDER_ROLES = [
   { value: "occupational_therapist", label: "Occupational Therapist" },
   { value: "counselor", label: "Counselor" },
   { value: "program_specialist", label: "Program Specialist" },
+  { value: "sea", label: "Special Education Assistant" },
   { value: "other", label: "Other Special Education Provider" },
 ];
 
@@ -23,12 +24,14 @@ export function SignupForm() {
     role: "",
     schoolDistrict: "",
     schoolSite: "",
+    supervisingProviderEmail: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const { signUp } = useAuth();
   const router = useRouter();
+  const [isSEARole, setIsSEARole] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +57,7 @@ export function SignupForm() {
       role: formData.role,
       school_district: formData.schoolDistrict,
       school_site: formData.schoolSite,
+      supervising_provider_email: formData.supervisingProviderEmail,
     });
 
     if (error) {
@@ -71,10 +75,17 @@ export function SignupForm() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
+    const { name, value } = e.target;
+
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
+
+    // Track if SEA role is selected
+    if (name === 'role') {
+      setIsSEARole(value === 'sea');
+    }
   };
 
   if (success) {

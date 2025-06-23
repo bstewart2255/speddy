@@ -12,11 +12,25 @@ export default function Navbar() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClientComponentClient();
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+
+      // Get user's role if logged in
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        if (profile) {
+          setUserRole(profile.role);
+        }
+      }
     };
     getUser();
   }, [supabase.auth]);
@@ -26,13 +40,40 @@ export default function Navbar() {
     router.push('/login');
   };
 
-  const navigation = [
-    { name: 'Dashboard', href: '/dashboard' },
-    { name: 'Students', href: '/dashboard/students' },
-    { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-    { name: 'Special Activities', href: '/dashboard/special-activities' },
-    { name: 'Schedule', href: '/dashboard/schedule' },
-  ];
+  const getNavigationForRole = (role: string) => {
+    const baseNavigation = [
+      { name: 'Dashboard', href: '/dashboard' }
+    ];
+
+    if (role === 'sea') {
+      // SEAs only see their dashboard
+      return [
+        { name: 'Dashboard', href: '/dashboard/sea' },
+      ];
+      
+    } else if (role === 'resource') {
+      // Resource Specialists see everything including team management
+      return [
+        { name: 'Dashboard', href: '/dashboard' },
+        { name: 'Students', href: '/dashboard/students' },
+        { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+        { name: 'Special Activities', href: '/dashboard/special-activities' },
+        { name: 'Schedule', href: '/dashboard/schedule' },
+        { name: 'Team', href: '/dashboard/team' },
+      ];
+    } else {
+      // Other roles (speech, ot, counseling, specialist) see standard navigation
+      return [
+        { name: 'Dashboard', href: '/dashboard' },
+        { name: 'Students', href: '/dashboard/students' },
+        { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+        { name: 'Special Activities', href: '/dashboard/special-activities' },
+        { name: 'Schedule', href: '/dashboard/schedule' },
+      ];
+    }
+  };
+
+  const navigation = getNavigationForRole(userRole);
 
   return (
     <nav className="bg-white border-b border-gray-200">
