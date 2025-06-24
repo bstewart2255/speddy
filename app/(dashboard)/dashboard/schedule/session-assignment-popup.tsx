@@ -26,6 +26,15 @@ export function SessionAssignmentPopup({
   );
   const supabase = createClientComponentClient();
 
+  // Format time for display (12-hour format)
+  const formatTime = (time: string): string => {
+    const [hours, minutes] = time.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
   const handleAssignmentChange = async () => {
     setLoading(true);
     try {
@@ -71,8 +80,8 @@ export function SessionAssignmentPopup({
       <div className="mb-3">
         <h3 className="font-medium text-gray-900">Session Assignment</h3>
         <p className="text-sm text-gray-600">
-          {student?.initials} - {session.start_time.substring(0, 5)} to{" "}
-          {session.end_time.substring(0, 5)}
+          {student?.initials} - {formatTime(session.start_time.substring(0, 5))} to{" "}
+          {formatTime(session.end_time.substring(0, 5))}
         </p>
       </div>
 

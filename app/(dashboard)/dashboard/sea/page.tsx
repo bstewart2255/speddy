@@ -34,30 +34,26 @@ export default function SEADashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get assigned sessions with student info
       const { data: sessions, error } = await supabase
-        .from('schedule_sessions')
-        .select(`
-          id,
-          student_id,
-          day_of_week,
-          start_time,
-          end_time,
-          service_type,
-          completed_at,
-          session_notes,
-          students!inner(
-            initials,
-            grade_level
-          )
-        `)
-        .eq('assigned_to_sea_id', user.id)
-        .order('day_of_week')
-        .order('start_time');
-
-      if (error) throw error;
-
-      // Transform the data
+      .from('schedule_sessions')
+      .select(`
+        id,
+        student_id,
+        day_of_week,
+        start_time,
+        end_time,
+        service_type,
+        completed_at,
+        session_notes,
+        students:student_id(
+          initials,
+          grade_level
+        )
+      `)
+      .eq('assigned_to_sea_id', user.id)
+      .order('day_of_week')
+      .order('start_time');
+      
       const transformedSessions = sessions?.map(session => ({
         id: session.id,
         student_id: session.student_id,
@@ -65,8 +61,8 @@ export default function SEADashboard() {
         start_time: session.start_time,
         end_time: session.end_time,
         service_type: session.service_type,
-        student_initials: session.students.initials,
-        student_grade: session.students.grade_level,
+        student_initials: session.students?.initials || 'Unknown',
+        student_grade: session.students?.grade_level || '',
         completed_at: session.completed_at,
         session_notes: session.session_notes
       })) || [];

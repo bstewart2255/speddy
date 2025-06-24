@@ -8,6 +8,7 @@ import { Tag } from '../../../components/ui/tag';
 import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
 import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface SpecialActivity {
   id: string;
@@ -29,18 +30,30 @@ export default function SpecialActivitiesPage() {
   // Fetch special activities from database
   const fetchActivities = async () => {
     try {
-      setLoading(true);
       const data = await getSpecialActivities();
       setSpecialActivities(data);
     } catch (error) {
       console.error('Error fetching special activities:', error);
+      // Don't set loading to false here, let the finally block handle it
     } finally {
       setLoading(false);
     }
   };
-
+  
   useEffect(() => {
-    fetchActivities();
+    const checkAuthAndFetch = async () => {
+      const supabase = createClientComponentClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        fetchActivities();
+      } else {
+        setLoading(false);
+        // Optionally redirect to login
+      }
+    };
+
+    checkAuthAndFetch();
   }, []);
 
   // Handle delete

@@ -76,7 +76,7 @@ export default function BellSchedulesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-            <p className="text-gray-600">Manage class periods and restricted time blocks</p>
+            <p className="text-gray-600">Manage grade-level time restrictions</p>
           </div>
           <div className="flex gap-3">
             <Button 

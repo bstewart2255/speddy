@@ -1,102 +1,93 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
-import type { Database } from '../../src/types/database'
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { Card, CardBody, CardHeader, CardTitle } from "../components/ui/card";
+import type { Database } from "../../src/types/database";
 
 // Add this after the imports
 const getRoleDisplayName = (role: string | null): string => {
   const roleMap: { [key: string]: string } = {
-    'resource': 'Resource Specialist',
-    'speech': 'Speech Therapist',
-    'ot': 'Occupational Therapist',
-    'counseling': 'Counselor',
-    'specialist': 'Program Specialist',
-    'sea': 'Special Education Assistant',
+    resource: "Resource Specialist",
+    speech: "Speech Therapist",
+    ot: "Occupational Therapist",
+    counseling: "Counselor",
+    specialist: "Program Specialist",
+    sea: "Special Education Assistant",
   };
-  return roleMap[role || ''] || 'Provider';
+  return roleMap[role || ""] || "Provider";
 };
 
 type Profile = {
-  id: string
-  full_name: string | null
-  role: string | null
-  school_site: string | null
-  school_district: string | null
-}
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  school_site: string | null;
+  school_district: string | null;
+};
 
 export function TeamWidget() {
-  const [currentUser, setCurrentUser] = useState<Profile | null>(null)
-  const [teammates, setTeammates] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(true)
-  const supabase = createClientComponentClient<Database>()
+  const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  const [teammates, setTeammates] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
     let isCancelled = false;
 
     async function fetchTeamData() {
       try {
-        console.log('Fetching team data...');
-
         // Get current user
-        const { data: { user } } = await supabase.auth.getUser()
-        console.log('Current user:', user);
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
         if (!user || isCancelled) {
-          console.log('No user found or cancelled');
-          return
+          return;
         }
 
         // Get current user's profile to know their school/district
         const { data: userProfile, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, full_name, role, school_site, school_district')
-          .eq('id', user.id)
-          .single()
-
-        console.log('User profile:', userProfile);
-        console.log('Profile error:', profileError);
+          .from("profiles")
+          .select("id, full_name, role, school_site, school_district")
+          .eq("id", user.id)
+          .single();
 
         if (!userProfile || !userProfile.school_site || isCancelled) {
-          console.log('No profile or school site found');
-          return
+          return;
         }
 
-        setCurrentUser(userProfile)
+        setCurrentUser(userProfile);
 
         // Get all teammates (same school_site and school_district)
         const { data: teammatesData, error: teammatesError } = await supabase
-          .from('profiles')
-          .select('id, full_name, role, school_site, school_district')
-          .eq('school_site', userProfile.school_site)
-          .eq('school_district', userProfile.school_district)
-          .neq('id', user.id) // Exclude current user
-          .order('role')
-          .order('full_name')
-
-        console.log('Teammates data:', teammatesData);
-        console.log('Teammates error:', teammatesError);
+          .from("profiles")
+          .select("id, full_name, role, school_site, school_district")
+          .eq("school_site", userProfile.school_site)
+          .eq("school_district", userProfile.school_district)
+          .neq("id", user.id) // Exclude current user
+          .order("role")
+          .order("full_name");
 
         if (!isCancelled && teammatesData) {
-          setTeammates(teammatesData)
+          setTeammates(teammatesData);
         }
       } catch (error) {
-        console.error('Error fetching team data:', error)
+        console.error("Error fetching team data:", error);
       } finally {
         if (!isCancelled) {
-          setLoading(false)
+          setLoading(false);
         }
       }
     }
 
-    fetchTeamData()
+    fetchTeamData();
 
     // Cleanup function
     return () => {
-      isCancelled = true
-    }
-  }, [])
+      isCancelled = true;
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -108,46 +99,66 @@ export function TeamWidget() {
           </div>
         </CardBody>
       </Card>
-    )
+    );
   }
 
   if (!currentUser || !currentUser.school_site) {
-    return null
+    return null;
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+            />
           </svg>
           My Team
         </CardTitle>
       </CardHeader>
       <CardBody>
-        <h3 className="font-semibold text-lg mb-3">{currentUser.school_site}</h3>
+        <h3 className="font-semibold text-lg mb-3">
+          {currentUser.school_site}
+        </h3>
         {currentUser.school_district && (
-          <p className="text-sm text-gray-500 mb-3">{currentUser.school_district}</p>
+          <p className="text-sm text-gray-500 mb-3">
+            {currentUser.school_district}
+          </p>
         )}
 
         <ul className="space-y-2">
           {/* Show current user first */}
           <li className="text-sm">
             <span className="font-medium">
-              {currentUser.full_name || 'You'}
+              {currentUser.full_name || "You"}
             </span>
-            <span className="text-muted-foreground"> - {getRoleDisplayName(currentUser.role)} (Me)</span>
+            <span className="text-muted-foreground">
+              {" "}
+              - {getRoleDisplayName(currentUser.role)} (Me)
+            </span>
           </li>
-    
+
           {/* Show teammates */}
           {teammates.length > 0 ? (
             teammates.map((teammate) => (
               <li key={teammate.id} className="text-sm">
                 <span className="font-medium">
-                  {teammate.full_name || 'Unknown'}
+                  {teammate.full_name || "Unknown"}
                 </span>
-                <span className="text-muted-foreground"> - {getRoleDisplayName(teammate.role)}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  - {getRoleDisplayName(teammate.role)}
+                </span>
               </li>
             ))
           ) : (
@@ -158,5 +169,5 @@ export function TeamWidget() {
         </ul>
       </CardBody>
     </Card>
-  )
+  );
 }
