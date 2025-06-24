@@ -1,0 +1,1179 @@
+diff --git a/app/(dashboard)/dashboard/bell-schedules/page.tsx b/app/(dashboard)/dashboard/bell-schedules/page.tsx
+index 456eae3746b8d8897a64c06a3cfea150780a60f8..ecbcb1d2740fb1a234b3eb9c9286a9cbd210e2f7 100644
+--- a/app/(dashboard)/dashboard/bell-schedules/page.tsx
++++ b/app/(dashboard)/dashboard/bell-schedules/page.tsx
+@@ -1,94 +1,82 @@
+ 'use client';
+
+ import { useState, useEffect } from 'react';
+ import { Button } from '../../../components/ui/button';
+ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+ import { GradeTag } from '../../../components/ui/tag';
+ import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
+ import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
+ import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
++import { formatTime, dayNumberToName } from '../../../../src/utils/shared';
+
+ export default function BellSchedulesPage() {
+   const [showAddForm, setShowAddForm] = useState(false);
+   const [showImportSection, setShowImportSection] = useState(false);
+   const [selectedGrade, setSelectedGrade] = useState<string>('K');
+   const [bellSchedules, setBellSchedules] = useState<any[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [deletingId, setDeletingId] = useState<string | null>(null);
+   const [sortByGrade, setSortByGrade] = useState(false);
+
+   // Fetch bell schedules from database
+   const fetchSchedules = async () => {
+     try {
+       setLoading(true);
+       const data = await getBellSchedules();
+       setBellSchedules(data);
+     } catch (error) {
+       console.error('Error fetching bell schedules:', error);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     fetchSchedules();
+   }, []);
+
+   // Handle delete
+   const handleDelete = async (id: string, periodName: string) => {
+     if (!confirm(`Are you sure you want to delete "${periodName}"?`)) {
+       return;
+     }
+
+     try {
+       setDeletingId(id);
+       await deleteBellSchedule(id);
+       await fetchSchedules(); // Refresh the list
+     } catch (error) {
+       alert('Failed to delete bell schedule');
+       console.error(error);
+     } finally {
+       setDeletingId(null);
+     }
+   };
+
+-  // Format time for display
+-  const formatTime = (time: string) => {
+-    const [hours, minutes] = time.split(':');
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? 'PM' : 'AM';
+-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
+-
+-  // Convert day number to name
+-  const dayNumberToName = (day: number) => {
+-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+-    return days[day - 1] || 'Unknown';
+-  };
++  // Time formatting and day conversion helpers moved to shared utils
+
+   return (
+     <div className="min-h-screen bg-gray-50">
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+         {/* Page Header */}
+         <div className="flex justify-between items-center mb-8">
+           <div>
+             <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
+             <p className="text-gray-600">Manage grade-level time restrictions</p>
+           </div>
+           <div className="flex gap-3">
+             <Button 
+               variant="secondary"
+               onClick={() => setShowImportSection(!showImportSection)}
+             >
+               Import CSV
+             </Button>
+             <Button 
+               variant="primary" 
+               onClick={() => setShowAddForm(!showAddForm)}
+             >
+               + Add Schedule
+             </Button>
+           </div>
+diff --git a/app/(dashboard)/dashboard/schedule/page.tsx b/app/(dashboard)/dashboard/schedule/page.tsx
+index 33bc28aca958dc560edb399829ef89cdee085275..d0882c63442689a4d2db87ba7e3f16d0b5e307e7 100644
+--- a/app/(dashboard)/dashboard/schedule/page.tsx
++++ b/app/(dashboard)/dashboard/schedule/page.tsx
+@@ -1,35 +1,36 @@
+ "use client";
+
+ import React, { useState, useEffect } from "react";
+ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+ import { Card, CardBody } from "../../../components/ui/card";
+ import { RescheduleAll } from "../../../components/schedule/reschedule-all";
+ import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
+ import { UndoSchedule } from "../../../components/schedule/undo-schedule";
+ import { DEFAULT_SCHEDULING_CONFIG } from '../../../../lib/scheduling/scheduling-config';
+ import { SessionAssignmentPopup } from "./session-assignment-popup";
++import { formatTime, gradeColorMap } from "../../../../src/utils/shared";
+
+ interface Student {
+   id: string;
+   initials: string;
+   grade_level: string;
+   teacher_name: string;
+   sessions_per_week: number;
+   minutes_per_session: number;
+ }
+
+ interface ScheduleSession {
+   id: string;
+   student_id: string;
+   day_of_week: number;
+   start_time: string;
+   end_time: string;
+   service_type: string;
+ }
+
+ interface BellSchedule {
+   id: string;
+   grade_level: string;
+   day_of_week: number;
+   start_time: string;
+   end_time: string;
+@@ -58,58 +59,51 @@ export default function SchedulePage() {
+     string | null
+   >(null);
+   const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(
+     null,
+   );
+   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
+   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set(['K', '1', '2', '3', '4', '5']));  
+   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
+   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+   const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
+   // Add this state variable with your other useState declarations
+   const [seaProfiles, setSeaProfiles] = useState<Array<{id: string; full_name: string}>>([]);
+   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+   const supabase = createClientComponentClient();
+
+   const GRID_START_HOUR = DEFAULT_SCHEDULING_CONFIG.gridStartHour;
+   const GRID_END_HOUR = DEFAULT_SCHEDULING_CONFIG.gridEndHour;
+   const PIXELS_PER_HOUR = DEFAULT_SCHEDULING_CONFIG.pixelsPerHour;
+   const SNAP_INTERVAL = DEFAULT_SCHEDULING_CONFIG.snapInterval;
+   const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
+   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+-  // Helper function to format time for display
+-  const formatTime = (time: string): string => {
+-    const [hours, minutes] = time.split(":");
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? "PM" : "AM";
+-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
++  // Time formatting helper moved to shared utils
+
+   // Filter sessions based on current filter
+   const getFilteredSessions = (allSessions: ScheduleSession[]) => {
+     switch (sessionFilter) {
+       case 'mine':
+         return allSessions.filter(session => session.delivered_by !== 'sea');
+       case 'sea':
+         return allSessions.filter(session => session.delivered_by === 'sea');
+       case 'all':
+       default:
+         return allSessions;
+     }
+   };
+
+   // Check if a session can be moved to a specific time slot
+   const checkSlotConflicts = async (
+     session: ScheduleSession & { student: Student },
+     targetDay: number,
+     targetTime: string,
+   ): Promise<boolean> => {
+     // Convert time format
+     const [hours, minutes] = targetTime.split(":");
+     const startTime = `${hours}:${minutes}:00`;
+     const endTime = new Date();
+     endTime.setHours(
+@@ -683,58 +677,59 @@ export default function SchedulePage() {
+                   ? 'bg-blue-500 text-white'
+                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+               }`}
+             >
+               My Sessions
+             </button>
+             <button
+               onClick={() => setSessionFilter('sea')}
+               className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                 sessionFilter === 'sea'
+                   ? 'bg-blue-500 text-white'
+                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+               }`}
+             >
+               SEA Sessions
+             </button>
+           </div>
+         </div>
+
+         {/* Color Key Legend - Interactive Filter */}
+         <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
+           <h3 className="text-sm font-medium text-gray-700 mb-3">
+             Grade Levels
+           </h3>
+           <div className="flex flex-wrap gap-3">
+-            {[
+-              { grade: 'K', colorClass: 'bg-purple-400', displayName: 'K' },
+-              { grade: '1', colorClass: 'bg-sky-400', displayName: '1st' },
+-              { grade: '2', colorClass: 'bg-cyan-400', displayName: '2nd' },
+-              { grade: '3', colorClass: 'bg-emerald-400', displayName: '3rd' },
+-              { grade: '4', colorClass: 'bg-amber-400', displayName: '4th' },
+-              { grade: '5', colorClass: 'bg-rose-400', displayName: '5th' }
+-            ].map(({ grade, colorClass, displayName }) => {
++              {[
++                { grade: 'K', displayName: 'K' },
++                { grade: '1', displayName: '1st' },
++                { grade: '2', displayName: '2nd' },
++                { grade: '3', displayName: '3rd' },
++                { grade: '4', displayName: '4th' },
++                { grade: '5', displayName: '5th' }
++              ].map(({ grade, displayName }) => {
++                const colorClass = gradeColorMap[grade]?.base;
+               const isActive = selectedGrades.has(grade);
+               return (
+                 <button
+                   key={grade}
+                   onClick={() => {
+                     const newSelectedGrades = new Set(selectedGrades);
+                     if (newSelectedGrades.has(grade)) {
+                       newSelectedGrades.delete(grade);
+                     } else {
+                       newSelectedGrades.add(grade);
+                     }
+                     setSelectedGrades(newSelectedGrades);
+                   }}
+                   className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                 >
+                   <div className={`w-4 h-4 rounded ${
+                     isActive ? colorClass : 'bg-gray-300'
+                   }`}></div>
+                   <span className={`text-sm ${
+                     isActive ? 'text-gray-600' : 'text-gray-400'
+                   }`}>{displayName}</span>
+                 </button>
+               );
+             })}
+           </div>
+@@ -992,70 +987,64 @@ export default function SchedulePage() {
+                           style={{
+                             top: `${dragPosition.pixelY}px`,
+                             height: `${((students.find((s) => s.id === draggedSession.student_id)?.minutes_per_session || 30) * PIXELS_PER_HOUR) / 60}px`,
+                             left: "2px",
+                             right: "2px",
+                           }}
+                         >
+                           {/* Time indicator */}
+                           <div className="absolute -top-1 right-1 bg-gray-800 text-white text-xs px-2 py-0.5 rounded-md font-medium shadow-md">
+                             {formatTime(dragPosition.time)}
+                           </div>
+                         </div>
+                       )}
+
+                       {daySessions.map((session) => {
+                         const student = students.find(
+                           (s) => s.id === session.student_id,
+                         );
+                         const startTime = session.start_time.substring(0, 5);
+                         const endTime = session.end_time.substring(0, 5);
+
+                         // Calculate position and height using the new pixel system
+                         const top = timeToPixels(startTime);
+                         const height = timeToPixels(endTime) - top;
+
+-                        const gradeColorMap: { [key: string]: string } = {
+-                          K: "bg-purple-400 hover:bg-purple-500",
+-                          "1": "bg-sky-400 hover:bg-sky-500",
+-                          "2": "bg-cyan-400 hover:bg-cyan-500",
+-                          "3": "bg-emerald-400 hover:bg-emerald-500",
+-                          "4": "bg-amber-400 hover:bg-amber-500",
+-                          "5": "bg-rose-400 hover:bg-rose-500",
+-                        };
++                        // Grade color mapping moved to shared utils
+
+                         // Determine if session should be greyed out
+                         // For grades: grey out if the grade is NOT in selectedGrades (since all are selected by default)
+                         const isGradeFiltered = student && !selectedGrades.has(student.grade_level);
+                         const isTimeFiltered = selectedTimeSlot && !sessionOverlapsTimeSlot(session, selectedTimeSlot);
+                         const isDayFiltered = selectedDay && session.day_of_week !== selectedDay;
+                         const shouldGrayOut = isGradeFiltered || isTimeFiltered || isDayFiltered;
+
+                         const gradeColor = shouldGrayOut
+                           ? "bg-gray-300 hover:bg-gray-400 opacity-50"
+                           : student
+-                          ? gradeColorMap[student.grade_level] || "bg-gray-400"
++                          ? `${gradeColorMap[student.grade_level]?.base} ${gradeColorMap[student.grade_level]?.hover}` ||
++                            "bg-gray-400"
+                           : "bg-gray-400";
+
+                         // Add SEA assignment styling
+                         const seaAssignmentClass = session.delivered_by === 'sea' 
+                           ? "ring-2 ring-orange-400 ring-inset" 
+                           : "";
+
+                         // Get pre-calculated column position
+                         const columnIndex = sessionColumns.get(session.id) ?? 0;
+
+                         const fixedWidth = 28;
+                         const gap = 1;
+                         const leftOffset = columnIndex * (fixedWidth + gap);
+
+                         const isHighlighted =
+                           highlightedStudentId === session.student_id;
+                         const highlightClass = isHighlighted
+                           ? "ring-2 ring-yellow-400 ring-offset-2"
+                           : "";
+
+                         return (
+                           <div
+                             key={session.id}
+                             draggable
+                             onDragStart={(e) => handleDragStart(e, session)}
+diff --git a/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx b/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
+index 07785567e289e7811cdd37b15ab29899f97ec63e..86857f3feebdf0578f6b59c418869fb4890ed960 100644
+--- a/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
++++ b/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
+@@ -1,61 +1,55 @@
+ "use client";
+
+ import { useState } from "react";
+ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
++import { formatTime } from "../../../../src/utils/shared";
+
+ interface SessionAssignmentPopupProps {
+   session: any;
+   student: any;
+   position: { x: number; y: number };
+   seaProfiles: Array<{ id: string; full_name: string }>;
+   onClose: () => void;
+   onUpdate: () => void;
+ }
+
+ export function SessionAssignmentPopup({
+   session,
+   student,
+   position,
+   seaProfiles,
+   onClose,
+   onUpdate,
+ }: SessionAssignmentPopupProps) {
+   const [loading, setLoading] = useState(false);
+   const [selectedSeaId, setSelectedSeaId] = useState<string>(
+     session.assigned_to_sea_id || "",
+   );
+   const supabase = createClientComponentClient();
+
+-  // Format time for display (12-hour format)
+-  const formatTime = (time: string): string => {
+-    const [hours, minutes] = time.split(":");
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? "PM" : "AM";
+-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
++  // Time formatting helper moved to shared utils
+
+   const handleAssignmentChange = async () => {
+     setLoading(true);
+     try {
+       const updateData: any = {
+         delivered_by: selectedSeaId ? "sea" : "provider",
+       };
+
+       // Set or clear the assigned_to_sea_id
+       if (selectedSeaId) {
+         updateData.assigned_to_sea_id = selectedSeaId;
+       } else {
+         updateData.assigned_to_sea_id = null;
+       }
+
+       const { error } = await supabase
+         .from("schedule_sessions")
+         .update(updateData)
+         .eq("id", session.id);
+
+       if (error) throw error;
+
+       onUpdate();
+       onClose();
+     } catch (error) {
+diff --git a/app/(dashboard)/dashboard/sea/page.tsx b/app/(dashboard)/dashboard/sea/page.tsx
+index e4d7d9c27c8e32d477a7317781b025c8223d17db..e6c80d5f25882e50497232846281911fca78b8cf 100644
+--- a/app/(dashboard)/dashboard/sea/page.tsx
++++ b/app/(dashboard)/dashboard/sea/page.tsx
+@@ -1,32 +1,33 @@
+ "use client";
+
+ import React, { useState, useEffect } from "react";
+ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+ import { Card, CardBody } from "../../../components/ui/card";
+ import { StatCard } from "../../../components/ui/stats";
+ import { SessionCompletion } from "../../../components/sea/session-completion";
++import { formatTime, dayNumberToName } from "../../../../src/utils/shared";
+
+ interface AssignedSession {
+   id: string;
+   student_id: string;
+   day_of_week: number;
+   start_time: string;
+   end_time: string;
+   service_type: string;
+   student_initials: string;
+   student_grade: string;
+   completed_at: string | null;
+   session_notes: string | null;
+ }
+
+ export default function SEADashboard() {
+   const [assignedSessions, setAssignedSessions] = useState<AssignedSession[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [todaysSessions, setTodaysSessions] = useState<AssignedSession[]>([]);
+   const supabase = createClientComponentClient();
+
+   useEffect(() => {
+     fetchSEAData();
+   }, []);
+
+   const fetchSEAData = async () => {
+@@ -56,62 +57,51 @@ export default function SEADashboard() {
+         service_type: session.service_type,
+         student_initials: session.student_initials || 'Unknown',
+         student_grade: session.student_grade || '',
+         completed_at: session.completed_at,
+         session_notes: session.session_notes
+       }));
+
+       // Filter today's sessions
+       const today = new Date().getDay();
+       const todayIndex = today === 0 ? 7 : today; // Convert Sunday (0) to 7
+
+       const todaysSessionsFiltered = transformedSessions.filter(
+         session => session.day_of_week === todayIndex
+       );
+
+       setAssignedSessions(transformedSessions);
+       setTodaysSessions(todaysSessionsFiltered);
+
+     } catch (error) {
+       console.error('Error fetching SEA data:', error);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+-  const formatTime = (time: string): string => {
+-    const [hours, minutes] = time.split(':');
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? 'PM' : 'AM';
+-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
+-
+-  const getDayName = (dayNumber: number): string => {
+-    const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+-    return days[dayNumber] || 'Unknown';
+-  };
++  // Time formatting and day conversion helpers moved to shared utils
+
+   if (loading) {
+     return <div className="p-6">Loading...</div>;
+   }
+
+   return (
+     <div className="p-6 space-y-6">
+       {/* Header */}
+       <div>
+         <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>
+         <p className="text-gray-600">Manage your assigned sessions</p>
+       </div>
+
+       {/* Stats Cards */}
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+         <StatCard
+           title="Total Weekly Sessions"
+           value={assignedSessions.length}
+           description="Assigned to you"
+           variant="primary"
+           icon={
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+             </svg>
+           }
+@@ -150,51 +140,51 @@ export default function SEADashboard() {
+                       end_time: session.end_time,
+                       completed_at: session.completed_at || null,
+                       session_notes: session.session_notes || null
+                     }}
+                     onUpdate={fetchSEAData}
+                   />
+                 ))}
+             </div>
+           )}
+         </CardBody>
+       </Card>
+
+       {/* Weekly Schedule Overview */}
+       <Card>
+         <CardBody>
+           <h2 className="text-lg font-medium text-gray-900 mb-4">Weekly Schedule</h2>
+           {assignedSessions.length === 0 ? (
+             <p className="text-gray-500 text-center py-8">No sessions assigned yet</p>
+           ) : (
+             <div className="space-y-4">
+               {[1, 2, 3, 4, 5].map(dayNumber => {
+                 const daySessions = assignedSessions.filter(s => s.day_of_week === dayNumber);
+                 return (
+                   <div key={dayNumber} className="border-b border-gray-200 pb-3 last:border-b-0">
+                     <h3 className="font-medium text-gray-900 mb-2">
+-                      {getDayName(dayNumber)} ({daySessions.length} sessions)
++                      {dayNumberToName(dayNumber)} ({daySessions.length} sessions)
+                     </h3>
+                     {daySessions.length === 0 ? (
+                       <p className="text-sm text-gray-500">No sessions</p>
+                     ) : (
+                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                         {daySessions
+                           .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                           .map((session) => (
+                             <div
+                               key={session.id}
+                               className="p-3 bg-gray-50 rounded border text-sm"
+                             >
+                               <div className="font-medium">{session.student_initials}</div>
+                               <div className="text-gray-600">
+                                 {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                               </div>
+                             </div>
+                           ))}
+                       </div>
+                     )}
+                   </div>
+                 );
+               })}
+             </div>
+           )}
+diff --git a/app/(dashboard)/dashboard/special-activities/page.tsx b/app/(dashboard)/dashboard/special-activities/page.tsx
+index 3cb8f2648690e0e2a21878fcb6cb8a9706546188..01e16bb3e6d00219ca9b6a95427698395b1527bc 100644
+--- a/app/(dashboard)/dashboard/special-activities/page.tsx
++++ b/app/(dashboard)/dashboard/special-activities/page.tsx
+@@ -1,36 +1,37 @@
+ 'use client';
+
+ import { useState, useEffect } from 'react';
+ import { Button } from '../../../components/ui/button';
+ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+ import { Tag } from '../../../components/ui/tag';
+ import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
+ import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
+ import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
++import { formatTime, dayNumberToName } from '../../../../src/utils/shared';
+
+ interface SpecialActivity {
+   id: string;
+   teacher_name: string;
+   grade?: string; // If this is stored separately
+   activity_name: string;
+   start_time: string;
+   end_time: string;
+   day_of_week: number;
+ }
+
+ export default function SpecialActivitiesPage() {
+   const [showAddForm, setShowAddForm] = useState(false);
+   const [showImportSection, setShowImportSection] = useState(false);
+   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+   // Fetch special activities from database
+   const fetchActivities = async () => {
+     try {
+       const data = await getSpecialActivities();
+       setSpecialActivities(data);
+     } catch (error) {
+       console.error('Error fetching special activities:', error);
+@@ -52,64 +53,51 @@ export default function SpecialActivitiesPage() {
+         // Optionally redirect to login
+       }
+     };
+
+     checkAuthAndFetch();
+   }, []);
+
+   // Handle delete
+   const handleDelete = async (id: string, activityName: string) => {
+     if (!confirm(`Are you sure you want to delete "${activityName}"?`)) {
+       return;
+     }
+
+     try {
+       setDeletingId(id);
+       await deleteSpecialActivity(id);
+       await fetchActivities(); // Refresh the list
+     } catch (error) {
+       alert('Failed to delete special activity');
+       console.error(error);
+     } finally {
+       setDeletingId(null);
+     }
+   };
+
+-  // Format time for display
+-  const formatTime = (time: string) => {
+-    const [hours, minutes] = time.split(':');
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? 'PM' : 'AM';
+-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
+-
+-  // Convert day number to name
+-  const dayNumberToName = (day: number) => {
+-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+-    return days[day - 1] || 'Unknown';
+-  };
++  // Time formatting and day conversion helpers moved to shared utils
+
+   // Get activity type color
+   const getActivityColor = (activity: string) => {
+     const lowerActivity = activity.toLowerCase();
+     if (lowerActivity.includes('pe') || lowerActivity.includes('physical')) return 'blue';
+     if (lowerActivity.includes('music') || lowerActivity.includes('band')) return 'purple';
+     if (lowerActivity.includes('art')) return 'orange';
+     if (lowerActivity.includes('library')) return 'green';
+     if (lowerActivity.includes('computer') || lowerActivity.includes('tech')) return 'gray';
+     return 'gray';
+   };
+
+   return (
+     <div className="min-h-screen bg-gray-50">
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+         {/* Page Header */}
+         <div className="flex justify-between items-center mb-8">
+           <div>
+             <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
+             <p className="text-gray-600">Manage teacher special activities and pull-out times</p>
+           </div>
+           <div className="flex gap-3">
+             <Button 
+               variant="secondary"
+diff --git a/app/components/bell-schedules/add-bell-schedule-form.tsx b/app/components/bell-schedules/add-bell-schedule-form.tsx
+index f6036072fcaa875b66b503d48c7b15d2a8f3a235..87a8682385c54963d881c38d9d089d784c615367 100644
+--- a/app/components/bell-schedules/add-bell-schedule-form.tsx
++++ b/app/components/bell-schedules/add-bell-schedule-form.tsx
+@@ -1,92 +1,84 @@
+ 'use client';
+
+ import { useState } from 'react';
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+ import { Database } from '../../../src/types/database';
+ import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
++import { dayNameToNumber } from '../../../../src/utils/shared';
+
+ type Props = {
+   gradeLevel: string;
+   onSuccess: () => void;
+   onCancel: () => void;
+ };
+
+ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }: Props) {
+   const [dayOfWeek, setDayOfWeek] = useState('monday');
+   const [startTime, setStartTime] = useState('');
+   const [endTime, setEndTime] = useState('');
+   const [subject, setSubject] = useState('');
+   const [error, setError] = useState('');
+   const [submitting, setSubmitting] = useState(false);
+   const supabase = createClientComponentClient<Database>();
+
+-  const dayToNumber = (day: string): number => {
+-    const days: { [key: string]: number } = {
+-      'monday': 1,
+-      'tuesday': 2,
+-      'wednesday': 3,
+-      'thursday': 4,
+-      'friday': 5
+-    };
+-    return days[day] || 1;
+-  };
++  // Day name conversion helper moved to shared utils
+
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     setError('');
+     setSubmitting(true);
+
+     try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error('Not authenticated');
+
+       // Validate times
+       if (startTime >= endTime) {
+         setError('End time must be after start time');
+         setSubmitting(false);
+         return;
+       }
+
+       const { error: insertError } = await supabase
+         .from('bell_schedules')
+         .insert([{
+           provider_id: user.id,
+           grade_level: gradeLevel,
+-          day_of_week: dayToNumber(dayOfWeek),
++          day_of_week: dayNameToNumber(dayOfWeek),
+           start_time: startTime,
+           end_time: endTime,
+           period_name: subject.trim()
+         }]);
+
+       if (insertError) throw insertError;
+
+       // Check for conflicts after successful insert
+       const resolver = new ConflictResolver(user.id);
+       const insertedSchedule = {
+         grade_level: gradeLevel.trim(),
+-        day_of_week: dayToNumber(dayOfWeek),
++        day_of_week: dayNameToNumber(dayOfWeek),
+         start_time: startTime,
+         end_time: endTime,
+         period_name: subject.trim()
+       };
+
+       const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
+
+       if (result.resolved > 0 || result.failed > 0) {
+         alert(`Bell schedule added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+       }
+
+       // Reset form
+       setStartTime('');
+       setEndTime('');
+       setSubject('');
+       onSuccess();
+     } catch (err) {
+       console.error('Add schedule error:', err);
+       setError(err instanceof Error ? err.message : 'Failed to add schedule');
+     } finally {
+       setSubmitting(false);
+     }
+   };
+
+   // Add this timeOptions definition here
+diff --git a/app/components/schedule/export-pdf.tsx b/app/components/schedule/export-pdf.tsx
+index 77fa0276f2b2ce8c527c00bf138fe9f9745bf1f7..b32aae573b0430d1293c325ebeebc28b8082f8f3 100644
+--- a/app/components/schedule/export-pdf.tsx
++++ b/app/components/schedule/export-pdf.tsx
+@@ -1,66 +1,61 @@
+ "use client";
+
+ import { useState } from "react";
++import { formatTime } from "../../src/utils/shared";
+ import {
+   Student,
+   ScheduleSession,
+   BellSchedule,
+   SpecialActivity,
+ } from "../../../src/types/database";
+
+ interface ExportPDFProps {
+   students: Student[];
+   sessions: ScheduleSession[];
+   bellSchedules: BellSchedule[];
+   specialActivities: SpecialActivity[];
+   providerName: string;
+   weekOf: Date;
+   userRole: string;
+   seaProfiles?: Array<{ id: string; full_name: string }>; // SEA info for display
+ }
+
+ export function ExportPDF({
+   students,
+   sessions,
+   bellSchedules,
+   specialActivities,
+   providerName,
+   weekOf,
+   userRole,
+   seaProfiles = [],
+ }: ExportPDFProps) {
+   const [isGenerating, setIsGenerating] = useState(false);
+   const [exportType, setExportType] = useState<"all" | "mine" | "sea">("all");
+
+-  function formatTime(time: string): string {
+-    const [hours, minutes] = time.split(":");
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? "PM" : "AM";
+-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  }
++  // Time formatting helper moved to shared utils
+
+   const getFilteredSessions = () => {
+     switch (exportType) {
+       case "mine":
+         return sessions.filter((s) => s.delivered_by !== "sea");
+       case "sea":
+         return sessions.filter((s) => s.delivered_by === "sea");
+       case "all":
+       default:
+         return sessions;
+     }
+   };
+
+   const getSeaName = (seaId: string | null): string => {
+     if (!seaId) return "";
+     const sea = seaProfiles.find((s) => s.id === seaId);
+     return sea ? sea.full_name : "SEA";
+   };
+
+   const handleExport = async () => {
+     setIsGenerating(true);
+
+     try {
+       const filteredSessions = getFilteredSessions();
+
+diff --git a/app/components/sea/session-completion.tsx b/app/components/sea/session-completion.tsx
+index 8c3709507de689f00afcedc550649f9484d96d0b..fc0e38fc336644a9aca4fcad447ee48a882262f4 100644
+--- a/app/components/sea/session-completion.tsx
++++ b/app/components/sea/session-completion.tsx
+@@ -1,29 +1,30 @@
+ 'use client';
+
+ import { useState } from 'react';
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
++import { formatTime } from '../../src/utils/shared';
+
+ interface SessionCompletionProps {
+   session: {
+     id: string;
+     student_initials: string;
+     start_time: string;
+     end_time: string;
+     completed_at: string | null;
+     session_notes: string | null;
+   };
+   onUpdate: () => void;
+ }
+
+ export function SessionCompletion({ session, onUpdate }: SessionCompletionProps) {
+   const [loading, setLoading] = useState(false);
+   const [showNotes, setShowNotes] = useState(false);
+   const [notes, setNotes] = useState(session.session_notes || '');
+   const supabase = createClientComponentClient();
+
+   const handleMarkComplete = async () => {
+     setLoading(true);
+     try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error('Not authenticated');
+
+@@ -50,57 +51,51 @@ export function SessionCompletion({ session, onUpdate }: SessionCompletionProps)
+
+   const handleMarkIncomplete = async () => {
+     setLoading(true);
+     try {
+       const { error } = await supabase
+         .from('schedule_sessions')
+         .update({
+           completed_at: null,
+           completed_by: null,
+           session_notes: null
+         })
+         .eq('id', session.id);
+
+       if (error) throw error;
+
+       onUpdate();
+       setNotes('');
+     } catch (error) {
+       console.error('Error marking session incomplete:', error);
+       alert('Failed to update session');
+     } finally {
+       setLoading(false);
+     }
+   };
+
+-  const formatTime = (time: string): string => {
+-    const [hours, minutes] = time.split(':');
+-    const hour = parseInt(hours);
+-    const ampm = hour >= 12 ? 'PM' : 'AM';
+-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+-    return `${displayHour}:${minutes} ${ampm}`;
+-  };
++  // Time formatting helper moved to shared utils
+
+   const isCompleted = !!session.completed_at;
+
+   return (
+     <div className={`p-4 rounded-lg border ${
+       isCompleted 
+         ? 'bg-green-50 border-green-200' 
+         : 'bg-white border-gray-200'
+     }`}>
+       <div className="flex items-center justify-between">
+         <div>
+           <h3 className="font-medium text-gray-900">
+             {session.student_initials}
+           </h3>
+           <p className="text-sm text-gray-600">
+             {formatTime(session.start_time)} - {formatTime(session.end_time)}
+           </p>
+           {isCompleted && (
+             <p className="text-xs text-green-600 mt-1">
+               ✓ Completed {new Date(session.completed_at!).toLocaleTimeString()}
+             </p>
+           )}
+         </div>
+
+         <div className="flex items-center gap-2">
+diff --git a/app/components/special-activities/csv-import.tsx b/app/components/special-activities/csv-import.tsx
+index 4bc2172cb72b72041cbdf5889308467b5061da73..3c447ac858004b975598c7df0fbca2e7e6e8ef93 100644
+--- a/app/components/special-activities/csv-import.tsx
++++ b/app/components/special-activities/csv-import.tsx
+@@ -1,68 +1,60 @@
+ 'use client';
+
+ import { useState } from 'react';
+ import Papa from 'papaparse';
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+ import { Database } from '../../../src/types/database';
++import { dayNameToNumber } from '../../../src/utils/shared';
+
+ interface Props {
+   onSuccess: () => void;
+ }
+
+ export default function SpecialActivitiesCSVImport({ onSuccess }: Props) {
+   const [importing, setImporting] = useState(false);
+   const [error, setError] = useState('');
+   const supabase = createClientComponentClient<Database>();
+
+   const downloadTemplate = () => {
+     const csvContent = `Teacher,Activity,Day,Start Time,End Time
+ Smith,PE,Monday,10:00,11:00
+ Johnson,Library,Tuesday,09:00,09:45
+ Davis,Music,Wednesday,13:00,14:00
+ Wilson,Art,Thursday,11:00,11:45
+ Garcia,Computer Lab,Friday,14:00,14:45`;
+
+     const blob = new Blob([csvContent], { type: 'text/csv' });
+     const url = window.URL.createObjectURL(blob);
+     const a = document.createElement('a');
+     a.href = url;
+     a.download = 'Special_Activities_Template.csv';
+     a.click();
+     window.URL.revokeObjectURL(url);
+   };
+
+-  const dayNameToNumber = (dayName: string): number => {
+-    const days: { [key: string]: number } = {
+-      'monday': 1,
+-      'tuesday': 2,
+-      'wednesday': 3,
+-      'thursday': 4,
+-      'friday': 5
+-    };
+-    return days[dayName.toLowerCase().trim()] || 1;
+-  };
++  // Day name conversion helper moved to shared utils
+
+   const validateColumns = (data: any[]) => {
+     if (!data || data.length === 0) return false;
+     const firstRow = data[0];
+     const headers = Object.keys(firstRow).map(h => h.toLowerCase().trim());
+
+     console.log('Headers found:', headers);
+
+     const requiredColumns = ['teacher', 'activity', 'day', 'start time', 'end time'];
+     const missing = requiredColumns.filter(col => {
+       const colLower = col.toLowerCase();
+       return !headers.some(header => 
+         header === colLower || 
+         header.replace(/\s+/g, '') === colLower.replace(/\s+/g, '')
+       );
+     });
+
+     if (missing.length > 0) {
+       console.log('Missing columns:', missing);
+     }
+
+     return missing.length === 0;
+   };
+
+   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+diff --git a/app/components/ui/tag.tsx b/app/components/ui/tag.tsx
+index 2121726490e3708ff349eb5efe3686af398cd15c..4904021bbf8f20c95852e9486f282082d096da0e 100644
+--- a/app/components/ui/tag.tsx
++++ b/app/components/ui/tag.tsx
+@@ -1,26 +1,27 @@
+ import React from 'react';
++import { gradeColorMap } from '../../../../src/utils/shared';
+
+ // Ensure Tailwind includes these classes
+ // bg-purple-400 bg-sky-400 bg-cyan-400 bg-emerald-400 bg-amber-400 bg-rose-400
+
+ interface TagProps {
+   children: React.ReactNode;
+   variant?: 'default' | 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray';
+   size?: 'sm' | 'md' | 'lg';
+   className?: string;
+ }
+
+ export function Tag({ 
+   children, 
+   variant = 'default', 
+   size = 'md', 
+   className = '' 
+ }: TagProps) {
+   const baseClasses = 'inline-flex items-center font-medium rounded';
+
+   const sizeClasses = {
+     sm: 'px-2 py-1 text-xs',
+     md: 'px-3 py-1 text-sm',
+     lg: 'px-4 py-2 text-base',
+   };
+
+@@ -59,75 +60,55 @@ export function StudentTag({ initials, className = '' }: StudentTagProps) {
+ interface StatusTagProps {
+   completed: number;
+   total: number;
+   className?: string;
+ }
+
+ export function StatusTag({ completed, total, className = '' }: StatusTagProps) {
+   const isComplete = completed === total;
+   const variant = isComplete ? 'green' : completed > 0 ? 'orange' : 'gray';
+
+   return (
+     <Tag variant={variant} size="sm" className={className}>
+       {completed}/{total} {isComplete ? '✓' : ''}
+     </Tag>
+   );
+ }
+
+ // Grade level tag
+ interface GradeTagProps {
+   grade: string;
+   className?: string;
+ }
+
+ export function GradeTag({ grade, className = '' }: GradeTagProps) {
+   const trimmedGrade = grade?.toString().trim();
++  const baseClass = gradeColorMap[trimmedGrade]?.base;
+
+-  let colorClasses = '';
+-
+-  switch (trimmedGrade) {
+-    case 'K':
+-      colorClasses = 'bg-purple-400 text-white';
+-      break;
+-    case '1':
+-      colorClasses = 'bg-sky-400 text-white';
+-      break;
+-    case '2':
+-      colorClasses = 'bg-cyan-400 text-white';
+-      break;
+-    case '3':
+-      colorClasses = 'bg-emerald-400 text-white';
+-      break;
+-    case '4':
+-      colorClasses = 'bg-amber-400 text-white';
+-      break;
+-    case '5':
+-      colorClasses = 'bg-rose-400 text-white';
+-      break;
+-    default:
+-      colorClasses = 'bg-gray-100 text-gray-800';
+-  }
++  const colorClasses = baseClass
++    ? `${baseClass} text-white`
++    : 'bg-gray-100 text-gray-800';
+
+   return (
+     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${colorClasses} ${className}`}>
+       Grade {grade}
+     </span>
+   );
+ }
+
+ // Activity type tag
+ interface ActivityTypeTagProps {
+   type: 'assembly' | 'field-trip' | 'presentation' | 'other';
+   children: React.ReactNode;
+   className?: string;
+ }
+
+ export function ActivityTypeTag({ type, children, className = '' }: ActivityTypeTagProps) {
+   const variantMap = {
+     'assembly': 'blue' as const,
+     'field-trip': 'green' as const,
+     'presentation': 'orange' as const,
+     'other': 'purple' as const,
+   };
+
+   return (
+     <Tag variant={variantMap[type]} size="sm" className={className}>
+diff --git a/src/utils/shared.ts b/src/utils/shared.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..55270e4c22db7f35675c901b8ada5946bb22fccd
+--- /dev/null
++++ b/src/utils/shared.ts
+@@ -0,0 +1,43 @@
++export function formatTime(time: string): string {
++  const [hours, minutes] = time.split(":");
++  const hour = parseInt(hours, 10);
++  const ampm = hour >= 12 ? "PM" : "AM";
++  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
++  return `${displayHour}:${minutes} ${ampm}`;
++}
++
++export function dayNameToNumber(day: string): number {
++  const days: Record<string, number> = {
++    monday: 1,
++    tuesday: 2,
++    wednesday: 3,
++    thursday: 4,
++    friday: 5,
++    saturday: 6,
++    sunday: 7,
++  };
++  return days[day.toLowerCase()] ?? 0;
++}
++
++export function dayNumberToName(day: number): string {
++  const days = [
++    "",
++    "Monday",
++    "Tuesday",
++    "Wednesday",
++    "Thursday",
++    "Friday",
++    "Saturday",
++    "Sunday",
++  ];
++  return days[day] || "Unknown";
++}
++
++export const gradeColorMap: Record<string, { base: string; hover: string }> = {
++  K: { base: "bg-purple-400", hover: "hover:bg-purple-500" },
++  "1": { base: "bg-sky-400", hover: "hover:bg-sky-500" },
++  "2": { base: "bg-cyan-400", hover: "hover:bg-cyan-500" },
++  "3": { base: "bg-emerald-400", hover: "hover:bg-emerald-500" },
++  "4": { base: "bg-amber-400", hover: "hover:bg-amber-500" },
++  "5": { base: "bg-rose-400", hover: "hover:bg-rose-500" },
++};
