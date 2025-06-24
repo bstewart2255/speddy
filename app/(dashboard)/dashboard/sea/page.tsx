@@ -34,48 +34,42 @@ export default function SEADashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Call the database function to get SEA sessions with student info
       const { data: sessions, error } = await supabase
-      .from('schedule_sessions')
-      .select(`
-        id,
-        student_id,
-        day_of_week,
-        start_time,
-        end_time,
-        service_type,
-        completed_at,
-        session_notes,
-        students:student_id(
-          initials,
-          grade_level
-        )
-      `)
-      .eq('assigned_to_sea_id', user.id)
-      .order('day_of_week')
-      .order('start_time');
-      
-      const transformedSessions = sessions?.map(session => ({
-        id: session.id,
+        .rpc('get_sea_assigned_sessions', {
+          sea_user_id: user.id
+        });
+
+      if (error) {
+        console.error('Error fetching sessions:', error);
+        setLoading(false);
+        return;
+      }
+
+      // Transform the data from the RPC function
+      const transformedSessions = (sessions || []).map(session => ({
+        id: session.session_id,
         student_id: session.student_id,
         day_of_week: session.day_of_week,
         start_time: session.start_time,
         end_time: session.end_time,
         service_type: session.service_type,
-        student_initials: session.students?.initials || 'Unknown',
-        student_grade: session.students?.grade_level || '',
+        student_initials: session.student_initials || 'Unknown',
+        student_grade: session.student_grade || '',
         completed_at: session.completed_at,
         session_notes: session.session_notes
-      })) || [];
-
-      setAssignedSessions(transformedSessions);
+      }));
 
       // Filter today's sessions
-      const today = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
-      const todayIndex = today === 0 ? 7 : today; // Convert Sunday to 7 for our system
-      const todaySessions = transformedSessions.filter(
+      const today = new Date().getDay();
+      const todayIndex = today === 0 ? 7 : today; // Convert Sunday (0) to 7
+
+      const todaysSessionsFiltered = transformedSessions.filter(
         session => session.day_of_week === todayIndex
       );
-      setTodaysSessions(todaySessions);
+
+      setAssignedSessions(transformedSessions);
+      setTodaysSessions(todaysSessionsFiltered);
 
     } catch (error) {
       console.error('Error fetching SEA data:', error);
@@ -109,7 +103,7 @@ export default function SEADashboard() {
         <p className="text-gray-600">Manage your assigned sessions</p>
       </div>
 
-      {/* Stats Cards - Only 2 now */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatCard
           title="Total Weekly Sessions"

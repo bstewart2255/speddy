@@ -59,7 +59,6 @@ export default function Navbar() {
         { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
         { name: 'Special Activities', href: '/dashboard/special-activities' },
         { name: 'Schedule', href: '/dashboard/schedule' },
-        { name: 'Team', href: '/dashboard/team' },
       ];
     } else {
       // Other roles (speech, ot, counseling, specialist) see standard navigation
