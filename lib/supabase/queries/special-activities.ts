@@ -1,9 +1,9 @@
-import { createClient } from '../../../lib/supabase/client';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { SpecialActivity } from '../../../src/types/database';
 
 export async function getSpecialActivities(): Promise<SpecialActivity[]> {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  
   // Get current user first - CRITICAL for security
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -28,8 +28,8 @@ export async function getSpecialActivities(): Promise<SpecialActivity[]> {
 export async function addSpecialActivity(
   activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'>
 ): Promise<SpecialActivity> {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -54,8 +54,8 @@ export async function addSpecialActivity(
 }
 
 export async function deleteSpecialActivity(id: string): Promise<void> {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -76,8 +76,8 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
 }
 
 export async function deleteTeacherActivities(teacherName: string): Promise<void> {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -99,8 +99,8 @@ export async function deleteTeacherActivities(teacherName: string): Promise<void
 export async function getSpecialActivitiesByTeacher(
   teacherName: string
 ): Promise<SpecialActivity[]> {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
