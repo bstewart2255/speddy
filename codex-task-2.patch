@@ -1,0 +1,122 @@
+diff --git a/lib/scheduling/auto-scheduler.ts b/lib/scheduling/auto-scheduler.ts
+index 96245105470f3888bc32b60730d1d121b2f91d58..499884d854a118ce39f0b0fcbe986d085708777b 100644
+--- a/lib/scheduling/auto-scheduler.ts
++++ b/lib/scheduling/auto-scheduler.ts
+@@ -1,102 +1,105 @@
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+ import { Database } from '../../src/types/database';
+
+ type Student = Database['public']['Tables']['students']['Row'];
+ type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
+ type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
+ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
++type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
+
+ interface ScheduleSlot {
+   dayOfWeek: number;
+   startTime: string;
+   endTime: string;
+ }
+
+ interface SchedulingResult {
+   success: boolean;
+-  scheduledSessions: Omit<ScheduleSession, 'id' | 'created_at'>[];
++  scheduledSessions: ScheduleSessionInsert[];
+   unscheduledStudents: Student[];
+   errors: string[];
+ }
+
+ export class AutoScheduler {
+   private supabase;
+   private providerId: string;
+   private providerRole: string;
+
+   constructor(providerId: string, providerRole: string) {
+     this.supabase = createClientComponentClient<Database>();
+     this.providerId = providerId;
+     this.providerRole = providerRole;
+   }
+
+   // Main scheduling function for a single student
+   async scheduleStudent(
+     student: Student,
+     existingSessions: ScheduleSession[],
+     bellSchedules: BellSchedule[],
+     specialActivities: SpecialActivity[]
+   ): Promise<SchedulingResult> {
+     const result: SchedulingResult = {
+       success: false,
+       scheduledSessions: [],
+       unscheduledStudents: [],
+       errors: []
+     };
+
+     try {
+       const sessionsNeeded = student.sessions_per_week;
+       const sessionDuration = student.minutes_per_session;
+
+       // Find the best slots for this student
+       const availableSlots = await this.findAvailableSlots(
+         student,
+         sessionDuration,
+         sessionsNeeded,
+         existingSessions,
+         bellSchedules,
+         specialActivities
+       );
+
+       if (availableSlots.length < sessionsNeeded) {
+         result.unscheduledStudents.push(student);
+         result.errors.push(`Could only find ${availableSlots.length} of ${sessionsNeeded} required slots for ${student.initials}`);
+       }
+
+       // Create session objects for the available slots
+-      for (let i = 0; i < Math.min(availableSlots.length, sessionsNeeded); i++) {
+-        const slot = availableSlots[i];
+-        result.scheduledSessions.push({
+-          student_id: student.id,
+-          provider_id: this.providerId,
+-          day_of_week: slot.dayOfWeek,
+-          start_time: slot.startTime,
+-          end_time: slot.endTime,
+-          service_type: this.providerRole
+-        });
+-      }
++        for (let i = 0; i < Math.min(availableSlots.length, sessionsNeeded); i++) {
++          const slot = availableSlots[i];
++          result.scheduledSessions.push({
++            student_id: student.id,
++            provider_id: this.providerId,
++            day_of_week: slot.dayOfWeek,
++            start_time: slot.startTime,
++            end_time: slot.endTime,
++            service_type: this.providerRole,
++            assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
++            delivered_by: this.providerRole === 'sea' ? 'sea' : 'provider'
++          });
++        }
+
+       console.log(`Created ${result.scheduledSessions.length} sessions for ${student.initials}`);
+
+       result.success = result.scheduledSessions.length === sessionsNeeded;
+     } catch (error) {
+       result.errors.push(`Error scheduling ${student.initials}: ${error.message}`);
+     }
+
+     return result;
+   }
+
+   // Find available time slots for a student
+   private async findAvailableSlots(
+     student: Student,
+     duration: number,
+     slotsNeeded: number,
+     existingSessions: ScheduleSession[],
+     bellSchedules: BellSchedule[],
+     specialActivities: SpecialActivity[]
+   ): Promise<ScheduleSlot[]> {
+     console.log(`Finding ${slotsNeeded} slots of ${duration} minutes for student ${student.initials}`);
+
+     const availableSlots: ScheduleSlot[] = [];
+     const days = [1, 2, 3, 4, 5]; // Monday through Friday
+     const timeSlots = this.generateTimeSlots();

@@ -5,6 +5,7 @@ type Student = Database['public']['Tables']['students']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
 interface ScheduleSlot {
   dayOfWeek: number;
@@ -14,7 +15,7 @@ interface ScheduleSlot {
 
 interface SchedulingResult {
   success: boolean;
-  scheduledSessions: Omit<ScheduleSession, 'id' | 'created_at'>[];
+  scheduledSessions: ScheduleSessionInsert[];
   unscheduledStudents: Student[];
   errors: string[];
 }
@@ -64,17 +65,19 @@ export class AutoScheduler {
       }
 
       // Create session objects for the available slots
-      for (let i = 0; i < Math.min(availableSlots.length, sessionsNeeded); i++) {
-        const slot = availableSlots[i];
-        result.scheduledSessions.push({
-          student_id: student.id,
-          provider_id: this.providerId,
-          day_of_week: slot.dayOfWeek,
-          start_time: slot.startTime,
-          end_time: slot.endTime,
-          service_type: this.providerRole
-        });
-      }
+        for (let i = 0; i < Math.min(availableSlots.length, sessionsNeeded); i++) {
+          const slot = availableSlots[i];
+          result.scheduledSessions.push({
+            student_id: student.id,
+            provider_id: this.providerId,
+            day_of_week: slot.dayOfWeek,
+            start_time: slot.startTime,
+            end_time: slot.endTime,
+            service_type: this.providerRole,
+            assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
+            delivered_by: this.providerRole === 'sea' ? 'sea' : 'provider'
+          });
+        }
 
       console.log(`Created ${result.scheduledSessions.length} sessions for ${student.initials}`);
 
