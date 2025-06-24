@@ -35,6 +35,8 @@ export default function SEADashboard() {
       if (!user) throw new Error('Not authenticated');
 
       // Call the database function to get SEA sessions with student info
+      // `get_sea_assigned_sessions` is a Postgres RPC that returns the sessions
+      // assigned to the SEA user along with student details.
       const { data: sessions, error } = await supabase
         .rpc('get_sea_assigned_sessions', {
           sea_user_id: user.id

@@ -1,6 +1,12 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../../src/types/database';
 
+/**
+ * Calculate how many sessions still need to be scheduled this week.
+ *
+ * Combines the required sessions_per_week for each student with the number of
+ * sessions already scheduled to return the remaining count.
+ */
 export async function getUnscheduledSessionsCount() {
   const supabase = createClientComponentClient<Database>();
 

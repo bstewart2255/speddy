@@ -1,6 +1,9 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { SpecialActivity } from '../../../src/types/database';
 
+/**
+ * Retrieve all special activities belonging to the logged in provider.
+ */
 export async function getSpecialActivities(): Promise<SpecialActivity[]> {
   const supabase = createClientComponentClient();
   
@@ -25,6 +28,9 @@ export async function getSpecialActivities(): Promise<SpecialActivity[]> {
   return data || [];
 }
 
+/**
+ * Add a new special activity for the current provider.
+ */
 export async function addSpecialActivity(
   activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'>
 ): Promise<SpecialActivity> {
@@ -53,6 +59,9 @@ export async function addSpecialActivity(
   return data;
 }
 
+/**
+ * Delete a special activity by id after verifying ownership.
+ */
 export async function deleteSpecialActivity(id: string): Promise<void> {
   const supabase = createClientComponentClient();
   
@@ -75,6 +84,9 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
   }
 }
 
+/**
+ * Remove all activities for a specific teacher owned by the user.
+ */
 export async function deleteTeacherActivities(teacherName: string): Promise<void> {
   const supabase = createClientComponentClient();
   
@@ -96,6 +108,9 @@ export async function deleteTeacherActivities(teacherName: string): Promise<void
   }
 }
 
+/**
+ * Get activities for a specific teacher belonging to the user.
+ */
 export async function getSpecialActivitiesByTeacher(
   teacherName: string
 ): Promise<SpecialActivity[]> {
