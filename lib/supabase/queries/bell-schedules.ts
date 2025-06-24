@@ -3,6 +3,11 @@ import { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
 
+/**
+ * Insert a new bell schedule for the authenticated provider.
+ * @param schedule - Schedule details excluding metadata fields.
+ * @returns The created bell schedule row.
+ */
 export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at' | 'provider_id'>) {
   const supabase = createClientComponentClient<Database>();
 
@@ -23,6 +28,9 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
   return data;
 }
 
+/**
+ * Remove a bell schedule by id if it belongs to the current user.
+ */
 export async function deleteBellSchedule(id: string) {
   const supabase = createClientComponentClient<Database>();
 
@@ -39,6 +47,9 @@ export async function deleteBellSchedule(id: string) {
   if (error) throw error;
 }
 
+/**
+ * Delete all bell schedules for a given grade for the current user.
+ */
 export async function deleteGradeSchedules(gradeLevel: string) {
   const supabase = createClientComponentClient<Database>();
 
@@ -54,6 +65,9 @@ export async function deleteGradeSchedules(gradeLevel: string) {
   if (error) throw error;
 }
 
+/**
+ * Fetch all bell schedules owned by the current user ordered for display.
+ */
 export async function getBellSchedules() {
   const supabase = createClientComponentClient<Database>();
 

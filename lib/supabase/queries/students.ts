@@ -1,5 +1,8 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
+/**
+ * Create a student record for the logged in provider.
+ */
 export async function createStudent(studentData: {
   initials: string;
   grade_level: string;
@@ -43,6 +46,9 @@ export async function createStudent(studentData: {
   return data;
 }
 
+/**
+ * Fetch all students owned by the current provider.
+ */
 export async function getStudents() {
   const supabase = createClientComponentClient();
 
@@ -60,6 +66,9 @@ export async function getStudents() {
   return data || [];
 }
 
+/**
+ * Delete a student and their sessions if the user owns them.
+ */
 export async function deleteStudent(studentId: string) {
   const supabase = createClientComponentClient();
 
@@ -96,6 +105,9 @@ export async function deleteStudent(studentId: string) {
   if (error) throw error;
 }
 
+/**
+ * Update a student's session requirements if owned by the user.
+ */
 export async function updateStudent(studentId: string, updates: {
   sessions_per_week: number;
   minutes_per_session: number;
@@ -128,6 +140,9 @@ export async function updateStudent(studentId: string, updates: {
   return data;
 }
 
+/**
+ * Convenience wrapper that creates a student and returns the new record.
+ */
 export async function createStudentWithAutoSchedule(studentData: {
   initials: string;
   grade_level: string;

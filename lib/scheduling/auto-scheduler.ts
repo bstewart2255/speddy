@@ -1,6 +1,16 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../src/types/database';
 
+/**
+ * Utility class used to automatically generate schedule sessions for students.
+ *
+ * The scheduler creates 5 minute time slots between 8:00 AM and 2:30 PM and
+ * iterates through them trying to place each required session. Every slot is
+ * validated against bell schedules, special activities and existing sessions to
+ * ensure there are no conflicts and that only one session occurs per student
+ * each day.
+ */
+
 type Student = Database['public']['Tables']['students']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
@@ -31,7 +41,13 @@ export class AutoScheduler {
     this.providerRole = providerRole;
   }
 
-  // Main scheduling function for a single student
+  /**
+   * Attempts to schedule all required sessions for a single student.
+   *
+   * The method first calls {@link findAvailableSlots} to collect candidate time
+   * slots and then creates `schedule_sessions` rows for each valid slot until
+   * the student's weekly requirement is met.
+   */
   async scheduleStudent(
     student: Student,
     existingSessions: ScheduleSession[],
@@ -89,7 +105,13 @@ export class AutoScheduler {
     return result;
   }
 
-  // Find available time slots for a student
+  /**
+   * Generates a set of potential schedule slots for a student.
+   *
+   * This method iterates over each weekday and possible start time produced by
+   * {@link generateTimeSlots}. Slots are validated using
+   * {@link validateSlot} and returned in the order they are found.
+   */
   private async findAvailableSlots(
     student: Student,
     duration: number,
@@ -166,6 +188,11 @@ export class AutoScheduler {
   }
 
   // Utility functions
+
+  /**
+   * Returns a list of start times from 8:00 AM to 2:30 PM in 5 minute
+   * increments. These serve as the potential beginning of a session.
+   */
   private generateTimeSlots(): string[] {
     const slots: string[] = [];
     // Generate slots every 5 minutes for maximum flexibility
@@ -179,11 +206,13 @@ export class AutoScheduler {
     return slots;
   }
 
+  /** Converts a HH:MM string into minutes since midnight. */
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
   }
 
+  /** Adds minutes to a time string and returns a HH:MM:SS value. */
   private addMinutesToTime(time: string, minutesToAdd: number): string {
     const totalMinutes = this.timeToMinutes(time) + minutesToAdd;
     const hours = Math.floor(totalMinutes / 60);
@@ -191,6 +220,9 @@ export class AutoScheduler {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
   }
 
+  /**
+   * Checks if two time ranges overlap.
+   */
   private hasTimeOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
     const start1Min = this.timeToMinutes(start1);
     const end1Min = this.timeToMinutes(end1);
@@ -200,6 +232,7 @@ export class AutoScheduler {
     return !(end1Min <= start2Min || start1Min >= end2Min);
   }
 
+  /** Returns a map of day_of_week to count of sessions. */
   private countSessionsByDay(sessions: ScheduleSession[]): Record<number, number> {
     const counts: Record<number, number> = {};
     sessions.forEach(session => {
@@ -208,6 +241,13 @@ export class AutoScheduler {
     return counts;
   }
 
+  /**
+   * Checks if a potential slot violates any scheduling rules.
+   *
+   * Validates against bell schedules, teacher activities, existing sessions,
+   * the one-session-per-day rule and slot capacity. Returns a flag and optional
+   * reason when the slot is invalid.
+   */
   private validateSlot(
     student: Student,
     dayOfWeek: number,
