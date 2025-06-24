@@ -1,0 +1,168 @@
+diff --git a/app/components/navigation/navbar.tsx b/app/components/navigation/navbar.tsx
+index 72ec859dfb852429c51cd533f5f07ebcad855462..3ce6dd52206af748a2245ac3e0246673e78b5a31 100644
+--- a/app/components/navigation/navbar.tsx
++++ b/app/components/navigation/navbar.tsx
+@@ -53,85 +53,87 @@ export default function Navbar() {
+
+     } else if (role === 'resource') {
+       // Resource Specialists see everything including team management
+       return [
+         { name: 'Dashboard', href: '/dashboard' },
+         { name: 'Students', href: '/dashboard/students' },
+         { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+         { name: 'Special Activities', href: '/dashboard/special-activities' },
+         { name: 'Schedule', href: '/dashboard/schedule' },
+       ];
+     } else {
+       // Other roles (speech, ot, counseling, specialist) see standard navigation
+       return [
+         { name: 'Dashboard', href: '/dashboard' },
+         { name: 'Students', href: '/dashboard/students' },
+         { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+         { name: 'Special Activities', href: '/dashboard/special-activities' },
+         { name: 'Schedule', href: '/dashboard/schedule' },
+       ];
+     }
+   };
+
+   const navigation = getNavigationForRole(userRole);
+
+   return (
+-    <nav className="bg-white border-b border-gray-200">
++    <nav className="bg-white border-b border-gray-200" aria-label="Main">
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+         <div className="flex justify-between items-center h-16">
+           {/* Brand/Logo */}
+           <div className="flex-shrink-0">
+             <span className="text-xl font-bold text-gray-900">Spedly</span>
+           </div>
+
+           {/* Navigation Links */}
+           <div className="hidden sm:flex sm:space-x-8 h-full">
+             {navigation.map((item) => (
+               <Link
+                 key={item.name}
+                 href={item.href}
+-                className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full ${
++                aria-current={pathname === item.href ? 'page' : undefined}
++                className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                   pathname === item.href
+                     ? 'border-blue-500 text-blue-600'
+                     : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                 }`}
+               >
+                 {item.name}
+               </Link>
+             ))}
+           </div>
+
+           {/* User Section */}
+           <div className="flex items-center">
+             {user && <UserProfileDropdown user={user} />}
+           </div>
+         </div>
+       </div>
+
+       {/* Mobile menu (you can expand this later if needed) */}
+       <div className="sm:hidden">
+         <div className="pt-2 pb-3 space-y-1 border-t border-gray-200 bg-gray-50">
+           {navigation.map((item) => (
+             <Link
+               key={`mobile-${item.name}`}
+               href={item.href}
+-              className={`block pl-3 pr-4 py-2 text-base font-medium transition-colors ${
++              aria-current={pathname === item.href ? 'page' : undefined}
++              className={`block pl-3 pr-4 py-2 text-base font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                 pathname === item.href
+                   ? 'text-blue-600 bg-blue-50 border-r-2 border-blue-500'
+                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+               }`}
+             >
+               {item.name}
+             </Link>
+           ))}
+           {user && (
+             <div className="pt-4 pb-3 border-t border-gray-200">
+               <div className="px-4">
+                 <div className="text-sm text-gray-500">{user.email}</div>
+               </div>
+             </div>
+           )}
+         </div>
+       </div>
+     </nav>
+   );
+ }
+\ No newline at end of file
+diff --git a/app/components/ui/table.tsx b/app/components/ui/table.tsx
+index 628242acafd807bbe2d407116356ffac05795145..9b4c432fc289c4816e3dedc535ae159d6b99b27a 100644
+--- a/app/components/ui/table.tsx
++++ b/app/components/ui/table.tsx
+@@ -28,54 +28,65 @@ export function TableHeader({ children, className = '' }: TableHeaderProps) {
+   );
+ }
+
+ interface TableBodyProps {
+   children: React.ReactNode;
+   className?: string;
+ }
+
+ export function TableBody({ children, className = '' }: TableBodyProps) {
+   return (
+     <tbody className={className}>
+       {children}
+     </tbody>
+   );
+ }
+
+ interface TableRowProps {
+   children: React.ReactNode;
+   className?: string;
+   onClick?: () => void;
+ }
+
+ export function TableRow({ children, className = '', onClick }: TableRowProps) {
+   const clickableClass = onClick ? 'cursor-pointer' : '';
+
++  const handleKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
++    if (!onClick) return;
++    if (e.key === 'Enter' || e.key === ' ') {
++      e.preventDefault();
++      onClick();
++    }
++  };
++
+   return (
+-    <tr 
+-      className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${clickableClass} ${className}`}
++    <tr
++      className={`border-b border-gray-200 hover:bg-gray-50 focus:bg-gray-100 focus:outline-none transition-colors ${clickableClass} ${className}`}
+       onClick={onClick}
++      onKeyDown={handleKeyDown}
++      tabIndex={onClick ? 0 : undefined}
++      role={onClick ? 'button' : undefined}
+     >
+       {children}
+     </tr>
+   );
+ }
+
+ interface TableHeadProps {
+   children: React.ReactNode;
+   className?: string;
+   sortable?: boolean;
+   onSort?: () => void;
+ }
+
+ export function TableHead({ children, className = '', sortable, onSort }: TableHeadProps) {
+   const sortableClass = sortable ? 'cursor-pointer hover:bg-gray-100' : '';
+
+   return (
+     <th 
+       className={`text-left font-semibold text-gray-600 px-4 py-3 text-sm uppercase tracking-wide ${sortableClass} ${className}`}
+       onClick={onSort}
+     >
+       <div className="flex items-center gap-2">
+         {children}
+         {sortable && (
+           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
