@@ -1,0 +1,1000 @@
+diff --git a/app/(dashboard)/dashboard/bell-schedules/page.tsx b/app/(dashboard)/dashboard/bell-schedules/page.tsx
+index 456eae3746b8d8897a64c06a3cfea150780a60f8..233e552f370bc3f71f7352cecd25afbe6b732510 100644
+--- a/app/(dashboard)/dashboard/bell-schedules/page.tsx
++++ b/app/(dashboard)/dashboard/bell-schedules/page.tsx
+@@ -1,74 +1,75 @@
+ 'use client';
+
+ import { useState, useEffect } from 'react';
+ import { Button } from '../../../components/ui/button';
+ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+ import { GradeTag } from '../../../components/ui/tag';
+ import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
+ import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
+ import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
++import { withRetry } from '../../../../src/utils/retry';
+
+ export default function BellSchedulesPage() {
+   const [showAddForm, setShowAddForm] = useState(false);
+   const [showImportSection, setShowImportSection] = useState(false);
+   const [selectedGrade, setSelectedGrade] = useState<string>('K');
+   const [bellSchedules, setBellSchedules] = useState<any[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [deletingId, setDeletingId] = useState<string | null>(null);
+   const [sortByGrade, setSortByGrade] = useState(false);
+
+   // Fetch bell schedules from database
+   const fetchSchedules = async () => {
+     try {
+       setLoading(true);
+-      const data = await getBellSchedules();
++      const data = await withRetry(() => getBellSchedules());
+       setBellSchedules(data);
+     } catch (error) {
+       console.error('Error fetching bell schedules:', error);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     fetchSchedules();
+   }, []);
+
+   // Handle delete
+   const handleDelete = async (id: string, periodName: string) => {
+     if (!confirm(`Are you sure you want to delete "${periodName}"?`)) {
+       return;
+     }
+
+     try {
+       setDeletingId(id);
+       await deleteBellSchedule(id);
+       await fetchSchedules(); // Refresh the list
+     } catch (error) {
+-      alert('Failed to delete bell schedule');
++      alert('Failed to delete bell schedule: ' + (error as Error).message);
+       console.error(error);
+     } finally {
+       setDeletingId(null);
+     }
+   };
+
+   // Format time for display
+   const formatTime = (time: string) => {
+     const [hours, minutes] = time.split(':');
+     const hour = parseInt(hours);
+     const ampm = hour >= 12 ? 'PM' : 'AM';
+     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+     return `${displayHour}:${minutes} ${ampm}`;
+   };
+
+   // Convert day number to name
+   const dayNumberToName = (day: number) => {
+     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+     return days[day - 1] || 'Unknown';
+   };
+
+   return (
+     <div className="min-h-screen bg-gray-50">
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+diff --git a/app/(dashboard)/dashboard/schedule/page.tsx b/app/(dashboard)/dashboard/schedule/page.tsx
+index 33bc28aca958dc560edb399829ef89cdee085275..8d6edeaf724467101ed376bb564933ebf6a67a59 100644
+--- a/app/(dashboard)/dashboard/schedule/page.tsx
++++ b/app/(dashboard)/dashboard/schedule/page.tsx
+@@ -312,51 +312,51 @@ export default function SchedulePage() {
+       day,
+       newStartTime,
+     );
+
+     if (hasConflict) {
+       alert("Cannot move session here due to conflicts.");
+       return;
+     }
+
+     // Update the session in the database
+     try {
+       const { error } = await supabase
+         .from("schedule_sessions")
+         .update({
+           day_of_week: day,
+           start_time: newStartTimeWithSeconds,
+           end_time: newEndTime,
+         })
+         .eq("id", draggedSession.id);
+
+       if (error) throw error;
+
+       await fetchData();
+     } catch (error) {
+       console.error("Error updating session:", error);
+-      alert("Failed to update session position");
++      alert("Failed to update session position: " + (error as Error).message);
+     }
+   };
+
+   // Update session time in database
+   const updateSessionTime = async (
+     sessionId: string,
+     day: number,
+     startTime: string,
+     duration: number,
+   ) => {
+     const [hours, minutes] = startTime.split(":");
+     const startTimeFormatted = `${hours}:${minutes}:00`;
+
+     const endTime = new Date();
+     endTime.setHours(parseInt(hours), parseInt(minutes) + duration, 0);
+     const endTimeFormatted = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
+
+     const { error } = await supabase
+       .from("schedule_sessions")
+       .update({
+         day_of_week: day,
+         start_time: startTimeFormatted,
+         end_time: endTimeFormatted,
+       })
+       .eq("id", sessionId);
+diff --git a/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx b/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
+index 07785567e289e7811cdd37b15ab29899f97ec63e..3d4073b4a0bf9b7beeee48066033e9b975a697da 100644
+--- a/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
++++ b/app/(dashboard)/dashboard/schedule/session-assignment-popup.tsx
+@@ -38,51 +38,51 @@ export function SessionAssignmentPopup({
+   const handleAssignmentChange = async () => {
+     setLoading(true);
+     try {
+       const updateData: any = {
+         delivered_by: selectedSeaId ? "sea" : "provider",
+       };
+
+       // Set or clear the assigned_to_sea_id
+       if (selectedSeaId) {
+         updateData.assigned_to_sea_id = selectedSeaId;
+       } else {
+         updateData.assigned_to_sea_id = null;
+       }
+
+       const { error } = await supabase
+         .from("schedule_sessions")
+         .update(updateData)
+         .eq("id", session.id);
+
+       if (error) throw error;
+
+       onUpdate();
+       onClose();
+     } catch (error) {
+       console.error("Error updating session:", error);
+-      alert("Failed to update session assignment");
++      alert("Failed to update session assignment: " + (error as Error).message);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   return (
+     <div 
+       id="session-assignment-popup"
+       className="fixed bg-white rounded-lg shadow-lg border p-4 z-50 min-w-64"
+       style={{ 
+         left: position.x, 
+         top: position.y,
+         maxWidth: '300px'
+       }}
+       onClick={(e) => e.stopPropagation()}
+     >
+       <div className="mb-3">
+         <h3 className="font-medium text-gray-900">Session Assignment</h3>
+         <p className="text-sm text-gray-600">
+           {student?.initials} - {formatTime(session.start_time.substring(0, 5))} to{" "}
+           {formatTime(session.end_time.substring(0, 5))}
+         </p>
+       </div>
+
+       <div className="mb-3">
+diff --git a/app/(dashboard)/dashboard/special-activities/page.tsx b/app/(dashboard)/dashboard/special-activities/page.tsx
+index 3cb8f2648690e0e2a21878fcb6cb8a9706546188..8a636a63228cc964b0a2e0c2e7b470973e13cffe 100644
+--- a/app/(dashboard)/dashboard/special-activities/page.tsx
++++ b/app/(dashboard)/dashboard/special-activities/page.tsx
+@@ -1,95 +1,96 @@
+ 'use client';
+
+ import { useState, useEffect } from 'react';
+ import { Button } from '../../../components/ui/button';
+ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+ import { Tag } from '../../../components/ui/tag';
+ import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
+ import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
+ import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
++import { withRetry } from '../../../../src/utils/retry';
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+ interface SpecialActivity {
+   id: string;
+   teacher_name: string;
+   grade?: string; // If this is stored separately
+   activity_name: string;
+   start_time: string;
+   end_time: string;
+   day_of_week: number;
+ }
+
+ export default function SpecialActivitiesPage() {
+   const [showAddForm, setShowAddForm] = useState(false);
+   const [showImportSection, setShowImportSection] = useState(false);
+   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+   // Fetch special activities from database
+   const fetchActivities = async () => {
+     try {
+-      const data = await getSpecialActivities();
++      const data = await withRetry(() => getSpecialActivities());
+       setSpecialActivities(data);
+     } catch (error) {
+       console.error('Error fetching special activities:', error);
+       // Don't set loading to false here, let the finally block handle it
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     const checkAuthAndFetch = async () => {
+       const supabase = createClientComponentClient();
+       const { data: { user } } = await supabase.auth.getUser();
+
+       if (user) {
+         fetchActivities();
+       } else {
+         setLoading(false);
+         // Optionally redirect to login
+       }
+     };
+
+     checkAuthAndFetch();
+   }, []);
+
+   // Handle delete
+   const handleDelete = async (id: string, activityName: string) => {
+     if (!confirm(`Are you sure you want to delete "${activityName}"?`)) {
+       return;
+     }
+
+     try {
+       setDeletingId(id);
+       await deleteSpecialActivity(id);
+       await fetchActivities(); // Refresh the list
+     } catch (error) {
+-      alert('Failed to delete special activity');
++      alert('Failed to delete special activity: ' + (error as Error).message);
+       console.error(error);
+     } finally {
+       setDeletingId(null);
+     }
+   };
+
+   // Format time for display
+   const formatTime = (time: string) => {
+     const [hours, minutes] = time.split(':');
+     const hour = parseInt(hours);
+     const ampm = hour >= 12 ? 'PM' : 'AM';
+     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+     return `${displayHour}:${minutes} ${ampm}`;
+   };
+
+   // Convert day number to name
+   const dayNumberToName = (day: number) => {
+     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+     return days[day - 1] || 'Unknown';
+   };
+
+   // Get activity type color
+   const getActivityColor = (activity: string) => {
+     const lowerActivity = activity.toLowerCase();
+     if (lowerActivity.includes('pe') || lowerActivity.includes('physical')) return 'blue';
+diff --git a/app/(dashboard)/dashboard/students/page.tsx b/app/(dashboard)/dashboard/students/page.tsx
+index 7f7e218d9439679b63be6e5e3911a4fbe770b219..4cb8ba6fa975266e7dc76ac4ecd5a2e98ab9463b 100644
+--- a/app/(dashboard)/dashboard/students/page.tsx
++++ b/app/(dashboard)/dashboard/students/page.tsx
+@@ -1,165 +1,169 @@
+ 'use client';
+
+ import { useState, useEffect } from 'react';
+ import { Button } from '../../../components/ui/button';
+ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
+ import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
+ import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
++import { withRetry } from '../../../../src/utils/retry';
+ import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
+ import StudentsCSVImport from '../../../components/students/csv-import';
+
+ type Student = {
+   id: string;
+   initials: string;
+   grade_level: string;
+   teacher_name: string;
+   sessions_per_week: number;
+   minutes_per_session: number;
+   provider_id: string;
+   created_at: string;
+   updated_at: string;
+ };
+
+ export default function StudentsPage() {
+   const [showAddForm, setShowAddForm] = useState(false);
+   const [students, setStudents] = useState<Student[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [formData, setFormData] = useState({
+     initials: '',
+     grade_level: '',
+     teacher_name: '',
+     sessions_per_week: '',
+     minutes_per_session: '30'
+   });
+
+   const [editingId, setEditingId] = useState<string | null>(null);
+   const [editFormData, setEditFormData] = useState({
+     sessions_per_week: '',
+     minutes_per_session: ''
+   });
+
+   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
+   const [sortByGrade, setSortByGrade] = useState(false);
+   const [showImportSection, setShowImportSection] = useState(false);
++  const [submitting, setSubmitting] = useState(false);
+
+   // Fetch students
+   useEffect(() => {
+     fetchStudents();
+     checkUnscheduledSessions();  
+   }, []);
+
+   const fetchStudents = async () => {
+     try {
+-      const data = await getStudents();
++      const data = await withRetry(() => getStudents());
+       setStudents(data);
+       checkUnscheduledSessions(); // Add this line
+     } catch (error) {
+       console.error('Error fetching students:', error);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   const checkUnscheduledSessions = async () => {
+     try {
+       const count = await getUnscheduledSessionsCount();
+       setUnscheduledCount(count);
+     } catch (error) {
+       console.error('Error checking unscheduled sessions:', error);
+       setUnscheduledCount(0);
+     }
+   };
+
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
++    setSubmitting(true);
+
+     try {
+       await createStudent({
+         initials: formData.initials,
+         grade_level: formData.grade_level.trim(),
+         teacher_name: formData.teacher_name,
+         sessions_per_week: parseInt(formData.sessions_per_week),
+         minutes_per_session: parseInt(formData.minutes_per_session)
+       });
+
+       // Reset form and close
+       setFormData({
+         initials: '',
+         grade_level: '',
+         teacher_name: '',
+         sessions_per_week: '',
+         minutes_per_session: '30'
+       });
+       setShowAddForm(false);
+
+       // Refresh student list
+       fetchStudents();
+       checkUnscheduledSessions();
+     } catch (error) {
+       console.error('Error adding student:', error);
+-      alert('Failed to add student. Please try again.');
++      alert('Failed to add student: ' + (error as Error).message);
++    } finally {
++      setSubmitting(false);
+     }
+
+-    
+   };
+
+   const handleDelete = async (studentId: string, studentInitials: string) => {
+     if (confirm(`Are you sure you want to delete ${studentInitials}? This will also delete all their scheduled sessions.`)) {
+       try {
+         await deleteStudent(studentId);
+         fetchStudents();
+         checkUnscheduledSessions();
+       } catch (error) {
+         console.error('Error deleting student:', error);
+-        alert('Failed to delete student. Please try again.');
++        alert('Failed to delete student: ' + (error as Error).message);
+       }
+     }
+   };
+
+   const handleEdit = (student: Student) => {
+     setEditingId(student.id);
+     setEditFormData({
+       sessions_per_week: student.sessions_per_week.toString(),
+       minutes_per_session: student.minutes_per_session.toString()
+     });
+   };
+
+   const handleUpdate = async (studentId: string) => {
+     try {
+       await updateStudent(studentId, {
+         sessions_per_week: parseInt(editFormData.sessions_per_week),
+         minutes_per_session: parseInt(editFormData.minutes_per_session)
+       });
+
+       setEditingId(null);
+       fetchStudents();
+       checkUnscheduledSessions();
+     } catch (error) {
+       console.error('Error updating student:', error);
+-      alert('Failed to update student. Please try again.');
++      alert('Failed to update student: ' + (error as Error).message);
+     }
+   };
+
+   const handleCancelEdit = () => {
+     setEditingId(null);
+     setEditFormData({
+       sessions_per_week: '',
+       minutes_per_session: ''
+     });
+   };
+
+   if (loading) {
+     return (
+       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+         <p>Loading students...</p>
+       </div>
+     );
+   }
+
+   return (
+     <div className="min-h-screen bg-gray-50">
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+         {/* Page Header */}
+         <div className="flex justify-between items-center mb-8">
+@@ -308,52 +312,52 @@ export default function StudentsPage() {
+                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="2"
+                     />
+                   </div>
+
+                   <div className="md:col-span-1">
+                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                       Min/Session*
+                     </label>
+                     <select 
+                       required
+                       value={formData.minutes_per_session}
+                       onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
+                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                     >
+                       <option value="30">30</option>
+                       <option value="45">45</option>
+                       <option value="60">60</option>
+                     </select>
+                   </div>
+
+                   <div className="md:col-span-6 flex justify-end gap-3 pt-4">
+                     <Button variant="secondary" type="button" onClick={() => setShowAddForm(false)}>
+                       Cancel
+                     </Button>
+-                    <Button variant="primary" type="submit">
+-                      Add Student
++                    <Button variant="primary" type="submit" disabled={submitting}>
++                      {submitting ? 'Adding...' : 'Add Student'}
+                     </Button>
+                   </div>
+                 </form>
+               </CardBody>
+             </Card>
+           </div>
+         )}
+
+         {/* Students List */}
+         <Card>
+           <CardHeader
+             action={
+               <label className="flex items-center gap-2 cursor-pointer">
+                 <input
+                   type="checkbox"
+                   checked={sortByGrade}
+                   onChange={(e) => setSortByGrade(e.target.checked)}
+                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                 />
+                 <span className="text-sm font-medium text-gray-700">Sort by Grade</span>
+               </label>
+             }
+           >
+             <CardTitle>Current Students ({students.length})</CardTitle>
+           </CardHeader>
+diff --git a/app/(dashboard)/dashboard/team/page.tsx b/app/(dashboard)/dashboard/team/page.tsx
+index 042628581289b01cc3f7c3b42632dc30b34aa98a..accf5324c2333e47f3018bc15e3e37c505e696f3 100644
+--- a/app/(dashboard)/dashboard/team/page.tsx
++++ b/app/(dashboard)/dashboard/team/page.tsx
+@@ -66,51 +66,51 @@ export default function TeamPage() {
+     try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error('Not authenticated');
+
+       // Remove SEA assignments from all sessions
+       await supabase
+         .from('schedule_sessions')
+         .update({ 
+           assigned_to_sea_id: null,
+           delivered_by: 'provider'
+         })
+         .eq('provider_id', user.id)
+         .eq('assigned_to_sea_id', seaId);
+
+       // Remove supervising relationship
+       await supabase
+         .from('profiles')
+         .update({ supervising_provider_id: null })
+         .eq('id', seaId);
+
+       // Refresh the data
+       fetchTeamData();
+       alert('SEA removed from your team successfully.');
+     } catch (error) {
+       console.error('Error removing SEA:', error);
+-      alert('Failed to remove SEA from team.');
++      alert('Failed to remove SEA from team: ' + (error as Error).message);
+     }
+   };
+
+   if (loading) {
+     return <div className="p-6">Loading...</div>;
+   }
+
+   if (userRole !== 'resource') {
+     return (
+       <div className="p-6">
+         <div className="text-center text-gray-500">
+           This page is only available to Resource Specialists.
+         </div>
+       </div>
+     );
+   }
+
+   return (
+     <div className="p-6 space-y-6">
+       <div>
+         <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
+         <p className="text-gray-600">Manage your Special Education Assistants</p>
+       </div>
+
+       <Card>
+diff --git a/app/components/schedule/export-pdf.tsx b/app/components/schedule/export-pdf.tsx
+index 77fa0276f2b2ce8c527c00bf138fe9f9745bf1f7..4db2f457894cd554ba8dc8500d3e83a4046ba814 100644
+--- a/app/components/schedule/export-pdf.tsx
++++ b/app/components/schedule/export-pdf.tsx
+@@ -122,51 +122,51 @@ export function ExportPDF({
+       ).length;
+       const completedSessions = filteredSessions.filter(
+         (s) => s.completed_at,
+       ).length;
+
+       content += `My Sessions: ${mySessions}\n`;
+       content += `SEA Sessions: ${seaSessions}\n`;
+       content += `Completed Sessions: ${completedSessions}\n`;
+       content += `Completion Rate: ${filteredSessions.length > 0 ? Math.round((completedSessions / filteredSessions.length) * 100) : 0}%\n`;
+
+       // Create and download file
+       const blob = new Blob([content], { type: "text/plain" });
+       const url = window.URL.createObjectURL(blob);
+       const a = document.createElement("a");
+       a.href = url;
+
+       const filterSuffix = exportType === "all" ? "" : `-${exportType}`;
+       a.download = `schedule-${weekOf.toISOString().split("T")[0]}${filterSuffix}.txt`;
+
+       document.body.appendChild(a);
+       a.click();
+       document.body.removeChild(a);
+       window.URL.revokeObjectURL(url);
+     } catch (error) {
+       console.error("Error generating export:", error);
+-      alert("Failed to generate export. Please try again.");
++      alert("Failed to generate export: " + (error as Error).message);
+     } finally {
+       setIsGenerating(false);
+     }
+   };
+
+   return (
+     <div className="flex items-center gap-3">
+       {/* Export Type Selector (only show for Resource Specialists) */}
+       {userRole === "resource" && (
+         <select
+           value={exportType}
+           onChange={(e) =>
+             setExportType(e.target.value as "all" | "mine" | "sea")
+           }
+           className="px-3 py-2 border border-gray-300 rounded text-sm"
+           disabled={isGenerating}
+         >
+           <option value="all">All Sessions</option>
+           <option value="mine">My Sessions</option>
+           <option value="sea">SEA Sessions</option>
+         </select>
+       )}
+
+       <button
+         onClick={handleExport}
+diff --git a/app/components/sea/session-completion.tsx b/app/components/sea/session-completion.tsx
+index 8c3709507de689f00afcedc550649f9484d96d0b..86f235dc0b9fe1dbdb59f687ac27dd3eee83500e 100644
+--- a/app/components/sea/session-completion.tsx
++++ b/app/components/sea/session-completion.tsx
+@@ -20,75 +20,75 @@ export function SessionCompletion({ session, onUpdate }: SessionCompletionProps)
+   const [showNotes, setShowNotes] = useState(false);
+   const [notes, setNotes] = useState(session.session_notes || '');
+   const supabase = createClientComponentClient();
+
+   const handleMarkComplete = async () => {
+     setLoading(true);
+     try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error('Not authenticated');
+
+       const { error } = await supabase
+         .from('schedule_sessions')
+         .update({
+           completed_at: new Date().toISOString(),
+           completed_by: user.id,
+           session_notes: notes.trim() || null
+         })
+         .eq('id', session.id);
+
+       if (error) throw error;
+
+       onUpdate();
+       setShowNotes(false);
+     } catch (error) {
+       console.error('Error marking session complete:', error);
+-      alert('Failed to mark session as complete');
++      alert('Failed to mark session as complete: ' + (error as Error).message);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   const handleMarkIncomplete = async () => {
+     setLoading(true);
+     try {
+       const { error } = await supabase
+         .from('schedule_sessions')
+         .update({
+           completed_at: null,
+           completed_by: null,
+           session_notes: null
+         })
+         .eq('id', session.id);
+
+       if (error) throw error;
+
+       onUpdate();
+       setNotes('');
+     } catch (error) {
+       console.error('Error marking session incomplete:', error);
+-      alert('Failed to update session');
++      alert('Failed to update session: ' + (error as Error).message);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   const formatTime = (time: string): string => {
+     const [hours, minutes] = time.split(':');
+     const hour = parseInt(hours);
+     const ampm = hour >= 12 ? 'PM' : 'AM';
+     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+     return `${displayHour}:${minutes} ${ampm}`;
+   };
+
+   const isCompleted = !!session.completed_at;
+
+   return (
+     <div className={`p-4 rounded-lg border ${
+       isCompleted 
+         ? 'bg-green-50 border-green-200' 
+         : 'bg-white border-gray-200'
+     }`}>
+       <div className="flex items-center justify-between">
+         <div>
+           <h3 className="font-medium text-gray-900">
+             {session.student_initials}
+diff --git a/app/components/students/students-list.tsx b/app/components/students/students-list.tsx
+index 0ca702d5dc4c6c13019e72ae67d4cdeddaa87dd3..1d2fa971786bf6ab2453027b4f6ce8550f98844e 100644
+--- a/app/components/students/students-list.tsx
++++ b/app/components/students/students-list.tsx
+@@ -26,51 +26,51 @@ export function StudentsList() {
+       setLoading(true);
+       const data = await getStudents();
+       setStudents(data);
+     } catch (err) {
+       setError(err instanceof Error ? err.message : 'Failed to load students');
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     fetchStudents();
+   }, []);
+
+   const handleDelete = async (studentId: string, studentInitials: string) => {
+     if (!confirm(`Are you sure you want to remove ${studentInitials} from your caseload?`)) {
+       return;
+     }
+
+     try {
+       setDeletingId(studentId);
+       await deleteStudent(studentId);
+       // Remove from local state
+       setStudents(students.filter(s => s.id !== studentId));
+     } catch (err) {
+-      alert('Failed to delete student. Please try again.');
++      alert('Failed to delete student: ' + (err instanceof Error ? err.message : 'Unknown error'));
+       console.error('Delete error:', err);
+     } finally {
+       setDeletingId(null);
+     }
+   };
+
+   if (loading) {
+     return (
+       <div className="mt-8">
+         <TableSkeleton rows={5} columns={5} showHeader={true} />
+       </div>
+     );
+   }
+
+   if (error) {
+     return <div className="text-red-600 text-center py-4">{error}</div>;
+   }
+
+   if (students.length === 0) {
+     return (
+       <div className="text-center py-12">
+         <p className="text-gray-500">No students yet. Click "Add student" to get started.</p>
+       </div>
+     );
+   }
+diff --git a/app/components/todo-widget.tsx b/app/components/todo-widget.tsx
+index 156f22a53c2aced3caa98c60fe1f14510a254bf3..01f88b12a196d804fd0893e7c94e8c3ad4567fa8 100644
+--- a/app/components/todo-widget.tsx
++++ b/app/components/todo-widget.tsx
+@@ -1,105 +1,108 @@
+ "use client"
+
+ import { useEffect, useState } from 'react'
+ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+ import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
+ import { Button } from '../components/ui/button'
+ import { Input } from '../components/ui/form'
+ import type { Database } from '../../src/types/database'
+
+ type Todo = {
+   id: string
+   user_id: string
+   task: string
+   completed: boolean
+   created_at: string
+   due_date?: string | null
+ }
+
+ export function TodoWidget() {
+   const [todos, setTodos] = useState<Todo[]>([])
+   const [newTask, setNewTask] = useState('')
+   const [loading, setLoading] = useState(true)
+   const [isAddingTask, setIsAddingTask] = useState(false)
++  const [adding, setAdding] = useState(false)
+   const supabase = createClientComponentClient<Database>()
+
+   useEffect(() => {
+     fetchTodos()
+   }, [])
+
+   const fetchTodos = async () => {
+     try {
+       const { data: { user } } = await supabase.auth.getUser()
+       if (!user) return
+
+       const { data, error } = await supabase
+         .from('todos')
+         .select('*')
+         .eq('user_id', user.id)
+         .order('created_at', { ascending: false })
+
+       if (error) {
+         console.error('Error fetching todos:', error)
+       } else {
+         setTodos(data || [])
+       }
+     } catch (error) {
+       console.error('Error:', error)
+     } finally {
+       setLoading(false)
+     }
+   }
+
+   const addTodo = async (e: React.FormEvent) => {
+     e.preventDefault()
+     if (!newTask.trim()) return
+-
++    setAdding(true)
+     try {
+       const { data: { user } } = await supabase.auth.getUser()
+       if (!user) return
+
+       const { data, error } = await supabase
+         .from('todos')
+         .insert([{
+           user_id: user.id,
+           task: newTask.trim(),
+           completed: false
+         }])
+         .select()
+         .single()
+
+       if (error) {
+         console.error('Error adding todo:', error)
+-        alert('Failed to add task')
++        alert('Failed to add task: ' + error.message)
+       } else if (data) {
+         setTodos([data, ...todos])
+         setNewTask('')
+         setIsAddingTask(false)
+       }
+     } catch (error) {
+       console.error('Error:', error)
++    } finally {
++      setAdding(false)
+     }
+   }
+
+   const toggleTodo = async (id: string, completed: boolean) => {
+     try {
+       const { error } = await supabase
+         .from('todos')
+         .update({ completed: !completed })
+         .eq('id', id)
+
+       if (error) {
+         console.error('Error updating todo:', error)
+       } else {
+         setTodos(todos.map(todo => 
+           todo.id === id ? { ...todo, completed: !completed } : todo
+         ))
+       }
+     } catch (error) {
+       console.error('Error:', error)
+     }
+   }
+
+   const deleteTodo = async (id: string) => {
+     try {
+       const { error } = await supabase
+@@ -143,52 +146,52 @@ export function TodoWidget() {
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+             </svg>
+             To-Do List
+           </span>
+           <Button
+             size="sm"
+             variant="secondary"
+             onClick={() => setIsAddingTask(!isAddingTask)}
+           >
+             <span className="text-lg mr-1">+</span> Add
+           </Button>
+         </CardTitle>
+       </CardHeader>
+       <CardBody className="pt-0">
+         {isAddingTask && (
+           <form onSubmit={addTodo} className="mb-4">
+             <div className="flex gap-2">
+               <Input
+                 type="text"
+                 value={newTask}
+                 onChange={(e) => setNewTask(e.target.value)}
+                 placeholder="Enter a new task..."
+                 className="flex-1"
+                 autoFocus
+               />
+-              <Button type="submit" size="sm" variant="primary">
+-                Add
++              <Button type="submit" size="sm" variant="primary" disabled={adding}>
++                {adding ? 'Adding...' : 'Add'}
+               </Button>
+               <Button 
+                 type="button" 
+                 size="sm" 
+                 variant="secondary"
+                 onClick={() => {
+                   setIsAddingTask(false)
+                   setNewTask('')
+                 }}
+               >
+                 Cancel
+               </Button>
+             </div>
+           </form>
+         )}
+
+         {incompleteTodos.length === 0 && completedTodos.length === 0 ? (
+           <p className="text-sm text-gray-500 italic text-center py-4">
+             No tasks yet. Click "+ Add" to create one!
+           </p>
+         ) : (
+           <>
+             {/* Incomplete tasks */}
+             {incompleteTodos.length > 0 && (
+               <div className="space-y-2 mb-4">
+diff --git a/app/error.tsx b/app/error.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..75c8a75b16bbc0d09fef3f1855c2821e9a73421a
+--- /dev/null
++++ b/app/error.tsx
+@@ -0,0 +1,23 @@
++'use client';
++import { useEffect } from 'react';
++
++export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void; }) {
++  useEffect(() => {
++    console.error(error);
++  }, [error]);
++
++  return (
++    <div className="min-h-screen flex items-center justify-center">
++      <div className="text-center space-y-4">
++        <h2 className="text-xl font-semibold text-gray-900">Something went wrong</h2>
++        <p className="text-gray-600">{error.message}</p>
++        <button
++          onClick={() => reset()}
++          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
++        >
++          Try again
++        </button>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/utils/retry.ts b/src/utils/retry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a90798696d7a612b90afec106354e4773ebf057
+--- /dev/null
++++ b/src/utils/retry.ts
+@@ -0,0 +1,9 @@
++export async function withRetry<T>(fn: () => Promise<T>, retries = 2, delay = 500): Promise<T> {
++  try {
++    return await fn();
++  } catch (err) {
++    if (retries <= 0) throw err;
++    await new Promise(res => setTimeout(res, delay));
++    return withRetry(fn, retries - 1, delay);
++  }
++}
