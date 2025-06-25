@@ -8,6 +8,8 @@ import { GradeTag } from '../../../components/ui/tag';
 import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
+import { useSchool } from '../../../components/providers/school-context';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -17,13 +19,26 @@ export default function BellSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
+  const supabase = createClientComponentClient();
+  const { currentSchool } = useSchool();
 
   // Fetch bell schedules from database
-  const fetchSchedules = async () => {
+  const fetchBellSchedules = async () => {
     try {
-      setLoading(true);
-      const data = await getBellSchedules();
-      setBellSchedules(data);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !currentSchool) return;
+
+      const { data, error } = await supabase
+        .from('bell_schedules')
+        .select('*')
+        .eq('provider_id', user.id)
+        .eq('school_site', currentSchool.school_site)
+        .order('grade_level', { ascending: true })
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      setBellSchedules(data || []);
     } catch (error) {
       console.error('Error fetching bell schedules:', error);
     } finally {
@@ -32,8 +47,10 @@ export default function BellSchedulesPage() {
   };
 
   useEffect(() => {
-    fetchSchedules();
-  }, []);
+    if (currentSchool) {
+      fetchBellSchedules();
+    }
+  }, [currentSchool]);
 
   // Handle delete
   const handleDelete = async (id: string, periodName: string) => {

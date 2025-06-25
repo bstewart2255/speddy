@@ -47,6 +47,32 @@ export interface Database {
           updated_at?: string
         }
       },
+      provider_schools: {
+        Row: {
+          id: string
+          provider_id: string
+          school_district: string
+          school_site: string
+          is_primary: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          school_district: string
+          school_site: string
+          is_primary?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          school_district?: string
+          school_site?: string
+          is_primary?: boolean
+          created_at?: string
+        }
+      },
       teams: {
         Row: {
           id: string
@@ -102,6 +128,8 @@ export interface Database {
           teacher_name: string
           sessions_per_week: number
           minutes_per_session: number
+          school_site: string | null
+          school_district: string | null
           created_at: string
           updated_at: string
         }
@@ -113,6 +141,8 @@ export interface Database {
           teacher_name: string
           sessions_per_week: number
           minutes_per_session: number
+          school_site?: string | null
+          school_district?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -124,6 +154,8 @@ export interface Database {
           teacher_name?: string
           sessions_per_week?: number
           minutes_per_session?: number
+          school_site?: string | null  
+          school_district?: string | null  
           created_at?: string
           updated_at?: string
         }

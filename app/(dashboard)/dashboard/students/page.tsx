@@ -8,6 +8,8 @@ import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
 import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
 import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
 import StudentsCSVImport from '../../../components/students/csv-import';
+import { useSchool } from '../../../components/providers/school-context';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 type Student = {
   id: string;
@@ -42,18 +44,22 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const supabase = createClientComponentClient();
+  const { currentSchool } = useSchool();
 
   // Fetch students
   useEffect(() => {
-    fetchStudents();
-    checkUnscheduledSessions();  
-  }, []);
+    if (currentSchool) {
+      fetchStudents();
+      checkUnscheduledSessions();
+    }
+  }, [currentSchool]);
 
   const fetchStudents = async () => {
     try {
-      const data = await getStudents();
+      const data = await getStudents(currentSchool?.school_site);
       setStudents(data);
-      checkUnscheduledSessions(); // Add this line
+      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error fetching students:', error);
     } finally {
@@ -74,16 +80,23 @@ export default function StudentsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!currentSchool) {
+      alert('No school selected');
+      return;
+    }
+
     try {
-      await createStudent({
+      const newStudent = await createStudent({
         initials: formData.initials,
-        grade_level: formData.grade_level.trim(),
+        grade_level: formData.grade_level,
         teacher_name: formData.teacher_name,
         sessions_per_week: parseInt(formData.sessions_per_week),
-        minutes_per_session: parseInt(formData.minutes_per_session)
+        minutes_per_session: parseInt(formData.minutes_per_session),
+        school_site: currentSchool.school_site,
+        school_district: currentSchool.school_district
       });
 
-      // Reset form and close
+      // Reset form
       setFormData({
         initials: '',
         grade_level: '',
@@ -91,17 +104,13 @@ export default function StudentsPage() {
         sessions_per_week: '',
         minutes_per_session: '30'
       });
+
       setShowAddForm(false);
-
-      // Refresh student list
       fetchStudents();
-      checkUnscheduledSessions();
     } catch (error) {
-      console.error('Error adding student:', error);
-      alert('Failed to add student. Please try again.');
+      console.error('Error creating student:', error);
+      alert(error.message || 'Failed to add student');
     }
-
-    
   };
 
   const handleDelete = async (studentId: string, studentInitials: string) => {

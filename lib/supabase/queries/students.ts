@@ -9,17 +9,17 @@ export async function createStudent(studentData: {
   teacher_name: string;
   sessions_per_week: number;
   minutes_per_session: number;
+  school_site?: string;
+  school_district?: string;
 }) {
   const supabase = createClientComponentClient();
 
-  // Get the current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
     throw new Error('You must be logged in to add students');
   }
 
-  // Try to insert the student
   const { data, error } = await supabase
     .from('students')
     .insert([{
@@ -28,7 +28,9 @@ export async function createStudent(studentData: {
       teacher_name: studentData.teacher_name,
       sessions_per_week: studentData.sessions_per_week,
       minutes_per_session: studentData.minutes_per_session,
-      provider_id: user.id
+      provider_id: user.id,
+      school_site: studentData.school_site,
+      school_district: studentData.school_district
     }])
     .select()
     .single();
@@ -49,18 +51,23 @@ export async function createStudent(studentData: {
 /**
  * Fetch all students owned by the current provider.
  */
-export async function getStudents() {
+export async function getStudents(schoolSite?: string) {
   const supabase = createClientComponentClient();
 
-  // Get current user to filter by provider_id
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('students')
     .select('*')
-    .eq('provider_id', user.id)  // Only get current provider's students
-    .order('created_at', { ascending: false });
+    .eq('provider_id', user.id);
+
+  // Add school filter if provided
+  if (schoolSite) {
+    query = query.eq('school_site', schoolSite);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) throw error;
   return data || [];

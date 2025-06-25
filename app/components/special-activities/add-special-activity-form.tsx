@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
+import { useSchool } from '../../components/providers/school-context';
 
 interface Props {
   teacherName: string;
@@ -21,6 +22,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
   const [error, setError] = useState('');
 
   const supabase = createClientComponentClient<Database>();
+  const { currentSchool } = useSchool();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,15 +45,16 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
       if (!user.user) throw new Error('Not authenticated');
 
       const { error: insertError } = await supabase
-        .from('special_activities')
-        .insert({
-          provider_id: user.user.id,
-          teacher_name: teacherName,
-          activity_name: activityName,
-          day_of_week: parseInt(dayOfWeek),
-          start_time: startTime,
-          end_time: endTime
-        });
+      .from('special_activities')
+      .insert({
+        provider_id: user.user.id,
+        teacher_name: teacherName,
+        activity_name: activityName,
+        day_of_week: parseInt(dayOfWeek),
+        start_time: startTime,
+        end_time: endTime,
+        school_site: currentSchool?.school_site
+      });
 
       if (insertError) throw insertError;
 

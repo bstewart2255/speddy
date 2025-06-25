@@ -9,6 +9,9 @@ import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-s
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
 import { DEFAULT_SCHEDULING_CONFIG } from "../../../../lib/scheduling/scheduling-config";
 import { SessionAssignmentPopup } from "./session-assignment-popup";
+import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
+import { useSchool } from '../../../components/providers/school-context';
+import { SchoolIndicator } from '../../../components/school-indicator';
 
 interface Student {
   id: string;
@@ -17,6 +20,8 @@ interface Student {
   teacher_name: string;
   sessions_per_week: number;
   minutes_per_session: number;
+  school_site: string | null;  // ADD THIS
+  school_district: string | null;  // ADD THIS
 }
 
 interface ScheduleSession {
@@ -87,6 +92,7 @@ export default function SchedulePage() {
   >([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  const { currentSchool } = useSchool();
   const supabase = createClientComponentClient();
   const studentMap = useMemo(
     () => new Map(students.map((s) => [s.id, s])),
@@ -248,7 +254,30 @@ export default function SchedulePage() {
 
     if (slotOccupancy >= 4) return true;
 
-    return false; // No conflicts
+    // Check cross-provider conflicts
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return true; // Treat as conflict if no user
+
+    const resolver = new ConflictResolver(user.id);
+
+    // Only check if student has a school_site
+    if (session.student.school_site) {
+      const crossProviderCheck = await resolver.checkCrossProviderConflicts(
+        session.student.id,
+        session.student.school_site,
+        targetDay,
+        startTime,
+        endTimeStr,
+        session.id
+      );
+
+      if (crossProviderCheck.hasConflict) {
+        return true; // Has conflict
+      }
+    }
+
+    // No conflicts
+    return false;
   };
 
   // Helper function to check time overlap
@@ -463,6 +492,12 @@ export default function SchedulePage() {
       if (!user) throw new Error("No user found");
       setCurrentUserId(user.id);
 
+      // Check if current school is set
+      if (!currentSchool) {
+        setLoading(false);
+        return;
+      }
+
       console.log("Fetching data for user:", user.id);
 
       const { data: profile } = await supabase
@@ -478,21 +513,20 @@ export default function SchedulePage() {
 
       // Fetch SEA profiles if user is Resource Specialist
       if (profile?.role === "resource") {
-        // First get the RS's school info
         const { data: rsProfile } = await supabase
           .from("profiles")
           .select("school_district, school_site")
           .eq("id", user.id)
           .single();
 
-        if (rsProfile) {
-          // Find all SEAs in the same school and district
+      // For now, use the RS's primary school until we add school switching
+      if (rsProfile && currentSchool) {
           const { data: seasData } = await supabase
             .from("profiles")
             .select("id, full_name")
             .eq("role", "sea")
-            .eq("school_district", rsProfile.school_district)
-            .eq("school_site", rsProfile.school_site);
+            .eq("school_district", currentSchool.school_district)
+            .eq("school_site", currentSchool.school_site);
 
           if (seasData) {
             setSeaProfiles(seasData);
@@ -502,15 +536,21 @@ export default function SchedulePage() {
 
       const [studentsData, bellData, activitiesData, sessionsData] =
         await Promise.all([
-          supabase.from("students").select("*").eq("provider_id", user.id),
+          supabase
+            .from("students")
+            .select("*")
+            .eq("provider_id", user.id)
+            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
           supabase
             .from("bell_schedules")
             .select("*")
-            .eq("provider_id", user.id),
+            .eq("provider_id", user.id)
+            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
           supabase
             .from("special_activities")
             .select("*")
-            .eq("provider_id", user.id),
+            .eq("provider_id", user.id)
+            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
           supabase
             .from("schedule_sessions")
             .select("*")
@@ -694,6 +734,7 @@ export default function SchedulePage() {
   return (
     <div className="bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <SchoolIndicator />
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">

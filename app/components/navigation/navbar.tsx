@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import UserProfileDropdown from './user-profile-dropdown';
+import { SchoolSwitcher } from '../school-switcher';
 
 export default function Navbar() {
   const router = useRouter();
@@ -101,7 +102,8 @@ export default function Navbar() {
           </div>
 
           {/* User Section */}
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
+            <SchoolSwitcher />
             {user && <UserProfileDropdown user={user} />}
           </div>
         </div>

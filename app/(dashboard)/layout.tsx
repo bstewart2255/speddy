@@ -5,6 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Navbar from '../components/navigation/navbar';
 import { ErrorBoundary } from '../components/ui/error-boundary';
+import { SchoolProvider } from '../components/providers/school-context';
 
 export default function DashboardLayout({
   children,
@@ -37,12 +38,14 @@ export default function DashboardLayout({
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          {children}
-        </main>
-      </div>
+      <SchoolProvider>
+        <div className="min-h-screen bg-gray-50">
+          <Navbar />
+          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            {children}
+          </main>
+        </div>
+      </SchoolProvider>
     </ErrorBoundary>
   );
 }

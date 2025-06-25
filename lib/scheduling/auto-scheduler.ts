@@ -106,6 +106,24 @@ export class AutoScheduler {
   }
 
   /**
+   * Check if provider is available at a specific school on a given day
+   */
+  private async isProviderAvailableAt(
+    dayOfWeek: number, 
+    schoolSite: string
+  ): Promise<boolean> {
+    const { data: availability } = await this.supabase
+      .from('provider_availability')
+      .select('*')
+      .eq('provider_id', this.providerId)
+      .eq('day_of_week', dayOfWeek)
+      .eq('school_site', schoolSite)
+      .single();
+
+    return !!availability;
+  }
+
+  /**
    * Generates a set of potential schedule slots for a student.
    *
    * This method iterates over each weekday and possible start time produced by
@@ -152,7 +170,7 @@ export class AutoScheduler {
         const endTime = this.addMinutesToTime(startTime, duration);
 
         // Check if this slot is valid
-        const validation = this.validateSlot(
+        const validation = await this.validateSlot(
           student,
           day,
           startTime,
@@ -248,7 +266,7 @@ export class AutoScheduler {
    * the one-session-per-day rule and slot capacity. Returns a flag and optional
    * reason when the slot is invalid.
    */
-  private validateSlot(
+  private async validateSlot(
     student: Student,
     dayOfWeek: number,
     startTime: string,
@@ -258,8 +276,28 @@ export class AutoScheduler {
     bellSchedules: BellSchedule[],
     specialActivities: SpecialActivity[],
     scheduledForThisStudent: ScheduleSlot[] = []
-  ): { valid: boolean; reason?: string } {
+  ): Promise<{ valid: boolean; reason?: string }> {
     console.log(`Validating slot for ${student.initials}: Day ${dayOfWeek}, ${startTime}-${endTime} (${duration} min)`);
+
+    // Check provider availability at student's school
+    if (!student.school_site) {
+      return { 
+        valid: false, 
+        reason: 'Student has no school site assigned' 
+      };
+    }
+
+    const isAvailable = await this.isProviderAvailableAt(
+      dayOfWeek, 
+      student.school_site
+    );
+
+    if (!isAvailable) {
+      return { 
+        valid: false, 
+        reason: `Not scheduled at ${student.school_site} on this day` 
+      };
+    }
 
     // Check if session fits within school hours (before 3:00 PM)
     if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) {

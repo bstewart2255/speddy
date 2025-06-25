@@ -162,4 +162,72 @@ export class ConflictResolver {
 
     return !(end1Min <= start2Min || start1Min >= end2Min);
   }
+
+  /**
+   * Check if a student has sessions with other providers at the same time
+   */
+  async checkCrossProviderConflicts(
+    studentId: string,
+    schoolSite: string,
+    dayOfWeek: number,
+    startTime: string,
+    endTime: string,
+    excludeSessionId?: string
+  ): Promise<{ hasConflict: boolean; conflictDetails?: string }> {
+    try {
+      // Get all sessions for this student from ALL providers at this school
+      const { data: otherSessions } = await this.supabase
+        .from('schedule_sessions')
+        .select(`
+          *,
+          profiles!provider_id (
+            full_name,
+            role
+          )
+        `)
+        .eq('student_id', studentId)
+        .eq('day_of_week', dayOfWeek)
+        .neq('provider_id', this.providerId);
+
+      if (!otherSessions || otherSessions.length === 0) {
+        return { hasConflict: false };
+      }
+
+      // Check for time overlaps
+      for (const session of otherSessions) {
+        if (excludeSessionId && session.id === excludeSessionId) continue;
+
+        if (this.hasTimeOverlap(
+          startTime,
+          endTime,
+          session.start_time,
+          session.end_time
+        )) {
+          const providerInfo = session.profiles;
+          const roleDisplay = this.getRoleDisplayName(providerInfo.role);
+
+          return {
+            hasConflict: true,
+            conflictDetails: `Student has ${session.service_type} with ${providerInfo.full_name} (${roleDisplay}) at this time`
+          };
+        }
+      }
+
+      return { hasConflict: false };
+    } catch (error) {
+      console.error('Error checking cross-provider conflicts:', error);
+      return { hasConflict: false };
+    }
+  }
+
+  private getRoleDisplayName(role: string): string {
+    const roleMap: { [key: string]: string } = {
+      resource: "Resource Specialist",
+      speech: "Speech Therapist",
+      ot: "Occupational Therapist",
+      counseling: "Counselor",
+      specialist: "Program Specialist",
+    };
+    return roleMap[role] || "Provider";
+  }
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
+import { useSchool } from '../../components/providers/school-context';
 
 type Props = {
   gradeLevel: string;
@@ -19,6 +20,8 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClientComponentClient<Database>();
+
+  const { currentSchool } = useSchool();
 
   const dayToNumber = (day: string): number => {
     const days: { [key: string]: number } = {
@@ -48,15 +51,16 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       }
 
       const { error: insertError } = await supabase
-        .from('bell_schedules')
-        .insert([{
-          provider_id: user.id,
-          grade_level: gradeLevel,
-          day_of_week: dayToNumber(dayOfWeek),
-          start_time: startTime,
-          end_time: endTime,
-          period_name: subject.trim()
-        }]);
+      .from('bell_schedules')
+      .insert([{
+        provider_id: user.id,
+        grade_level: gradeLevel,
+        day_of_week: dayToNumber(dayOfWeek),
+        start_time: startTime,
+        end_time: endTime,
+        period_name: subject.trim(),
+        school_site: currentSchool?.school_site
+      }]);
 
       if (insertError) throw insertError;
 

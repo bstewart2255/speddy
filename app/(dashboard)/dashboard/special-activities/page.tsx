@@ -9,6 +9,7 @@ import AddSpecialActivityForm from '../../../components/special-activities/add-s
 import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useSchool } from '../../../components/providers/school-context';
 
 interface SpecialActivity {
   id: string;
@@ -26,35 +27,38 @@ export default function SpecialActivitiesPage() {
   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { currentSchool } = useSchool();
+  const supabase = createClientComponentClient();
 
   // Fetch special activities from database
-  const fetchActivities = async () => {
+  const fetchSpecialActivities = async () => {
     try {
-      const data = await getSpecialActivities();
-      setSpecialActivities(data);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !currentSchool) return;
+
+      const { data, error } = await supabase
+        .from('special_activities')
+        .select('*')
+        .eq('provider_id', user.id)
+        .eq('school_site', currentSchool.school_site)
+        .order('teacher_name', { ascending: true })
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      setSpecialActivities(data || []);
     } catch (error) {
       console.error('Error fetching special activities:', error);
-      // Don't set loading to false here, let the finally block handle it
     } finally {
       setLoading(false);
     }
   };
   
   useEffect(() => {
-    const checkAuthAndFetch = async () => {
-      const supabase = createClientComponentClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (user) {
-        fetchActivities();
-      } else {
-        setLoading(false);
-        // Optionally redirect to login
-      }
-    };
-
-    checkAuthAndFetch();
-  }, []);
+    if (currentSchool) {
+      fetchSpecialActivities();
+    }
+  }, [currentSchool]);
 
   // Handle delete
   const handleDelete = async (id: string, activityName: string) => {
