@@ -38,7 +38,8 @@ export default function LoginForm() {
       if (data?.session) {
         console.log('Login successful, session:', data.session);
         // Force a hard refresh to ensure auth state is updated
-        window.location.href = '/dashboard';
+        router.push('/dashboard');
+        router.refresh();
       } else {
         console.log('No session returned');
         setError('Login failed - no session created');

@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Card, CardBody } from "../../../components/ui/card";
 import { RescheduleAll } from "../../../components/schedule/reschedule-all";
 import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
-import { DEFAULT_SCHEDULING_CONFIG } from '../../../../lib/scheduling/scheduling-config';
+import { DEFAULT_SCHEDULING_CONFIG } from "../../../../lib/scheduling/scheduling-config";
 import { SessionAssignmentPopup } from "./session-assignment-popup";
 
 interface Student {
@@ -25,6 +26,11 @@ interface ScheduleSession {
   start_time: string;
   end_time: string;
   service_type: string;
+  assigned_to_sea_id: string | null;
+  delivered_by: 'provider' | 'sea';
+  completed_at: string | null;
+  completed_by: string | null;
+  session_notes: string | null;
 }
 
 interface BellSchedule {
@@ -61,24 +67,102 @@ export default function SchedulePage() {
     null,
   );
   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
-  const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set(['K', '1', '2', '3', '4', '5']));  
+  const [selectedGrades, setSelectedGrades] = useState<Set<string>>(
+    new Set(["K", "1", "2", "3", "4", "5"]),
+  );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
-  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
-  const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
+  const [selectedSession, setSelectedSession] =
+    useState<ScheduleSession | null>(null);
+  const [popupPosition, setPopupPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [sessionFilter, setSessionFilter] = useState<"all" | "mine" | "sea">(
+    "all",
+  );
   // Add this state variable with your other useState declarations
-  const [seaProfiles, setSeaProfiles] = useState<Array<{id: string; full_name: string}>>([]);
+  const [seaProfiles, setSeaProfiles] = useState<
+    Array<{ id: string; full_name: string }>
+  >([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const supabase = createClientComponentClient();
-  
+  const studentMap = useMemo(
+    () => new Map(students.map((s) => [s.id, s])),
+    [students],
+  );
+
   const GRID_START_HOUR = DEFAULT_SCHEDULING_CONFIG.gridStartHour;
   const GRID_END_HOUR = DEFAULT_SCHEDULING_CONFIG.gridEndHour;
   const PIXELS_PER_HOUR = DEFAULT_SCHEDULING_CONFIG.pixelsPerHour;
   const SNAP_INTERVAL = DEFAULT_SCHEDULING_CONFIG.snapInterval;
   const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+  const weekDays = [
+    { name: "Monday", number: 1 },
+    { name: "Tuesday", number: 2 },
+    { name: "Wednesday", number: 3 },
+    { name: "Thursday", number: 4 },
+    { name: "Friday", number: 5 },
+  ];
+
+  //... Inside your useMemo hook
+  const daySessionColumns = useMemo(() => {
+    const columns: Record<number, Array<Array<ScheduleSession>>> = {};
+    weekDays.forEach((day) => {
+      const daySessions = sessions.filter((s) => s.day_of_week === day.number);
+      if (daySessions.length === 0) {
+        columns[day.number] = [];
+        return;
+      }
+
+      // Sort sessions by start time
+      daySessions.sort((a, b) => {
+        const timeA = parseInt(a.start_time.replace(":", ""));
+        const timeB = parseInt(b.start_time.replace(":", ""));
+        return timeA - timeB;
+      });
+
+      // Group overlapping sessions into columns
+      const sessionColumns: Array<Array<ScheduleSession>> = [];
+
+      daySessions.forEach((session) => {
+        const sessionStart = parseInt(session.start_time.replace(":", ""));
+        const sessionEnd = parseInt(session.end_time.replace(":", ""));
+
+        // Find a column where this session doesn't overlap
+        let placed = false;
+        for (let col = 0; col < sessionColumns.length; col++) {
+          const canPlace = sessionColumns[col].every((existingSession) => {
+            const existingStart = parseInt(
+              existingSession.start_time.replace(":", ""),
+            );
+            const existingEnd = parseInt(
+              existingSession.end_time.replace(":", ""),
+            );
+            return sessionEnd <= existingStart || sessionStart >= existingEnd;
+          });
+
+          if (canPlace) {
+            sessionColumns[col].push(session);
+            placed = true;
+            break;
+          }
+        }
+
+        // If no column found, create a new one
+        if (!placed) {
+          sessionColumns.push([session]);
+        }
+      });
+
+      columns[day.number] = sessionColumns;
+    });
+
+    return columns;
+  }, [sessions, weekDays]);
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {
@@ -92,11 +176,11 @@ export default function SchedulePage() {
   // Filter sessions based on current filter
   const getFilteredSessions = (allSessions: ScheduleSession[]) => {
     switch (sessionFilter) {
-      case 'mine':
-        return allSessions.filter(session => session.delivered_by !== 'sea');
-      case 'sea':
-        return allSessions.filter(session => session.delivered_by === 'sea');
-      case 'all':
+      case "mine":
+        return allSessions.filter((session) => session.delivered_by !== "sea");
+      case "sea":
+        return allSessions.filter((session) => session.delivered_by === "sea");
+      case "all":
       default:
         return allSessions;
     }
@@ -192,7 +276,7 @@ export default function SchedulePage() {
     e: React.DragEvent,
     session: ScheduleSession,
   ) => {
-    const student = students.find((s) => s.id === session.student_id);
+    const student = studentMap.get(session.student_id);
     if (!student) return;
 
     const sessionWithStudent = {
@@ -291,7 +375,7 @@ export default function SchedulePage() {
 
     if (!draggedSession || !dragPosition || dragPosition.day !== day) return;
 
-    const student = students.find((s) => s.id === draggedSession.student_id);
+    const student = studentMap.get(draggedSession.student_id);
     if (!student) return;
 
     // Calculate the new time based on drop position
@@ -393,22 +477,22 @@ export default function SchedulePage() {
       }
 
       // Fetch SEA profiles if user is Resource Specialist
-      if (profile?.role === 'resource') {
+      if (profile?.role === "resource") {
         // First get the RS's school info
         const { data: rsProfile } = await supabase
-          .from('profiles')
-          .select('school_district, school_site')
-          .eq('id', user.id)
+          .from("profiles")
+          .select("school_district, school_site")
+          .eq("id", user.id)
           .single();
 
         if (rsProfile) {
           // Find all SEAs in the same school and district
           const { data: seasData } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('role', 'sea')
-            .eq('school_district', rsProfile.school_district)
-            .eq('school_site', rsProfile.school_site);
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "sea")
+            .eq("school_district", rsProfile.school_district)
+            .eq("school_site", rsProfile.school_site);
 
           if (seasData) {
             setSeaProfiles(seasData);
@@ -499,7 +583,9 @@ export default function SchedulePage() {
     const handleClickOutside = (event: MouseEvent) => {
       if (selectedSession && popupPosition) {
         // Check if the click is inside the popup
-        const popupElement = document.getElementById('session-assignment-popup');
+        const popupElement = document.getElementById(
+          "session-assignment-popup",
+        );
         if (popupElement && popupElement.contains(event.target as Node)) {
           return; // Don't close if clicking inside popup
         }
@@ -512,10 +598,11 @@ export default function SchedulePage() {
     if (selectedSession) {
       // Use a slight delay to avoid immediate closure
       setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener("mousedown", handleClickOutside);
       }, 100);
 
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [selectedSession, popupPosition]);
 
@@ -570,17 +657,27 @@ export default function SchedulePage() {
   };
 
   // Helper function to check if a session overlaps with a 15-minute time slot
-  const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
-    const [slotHour, slotMinute] = timeSlot.split(':').map(Number);
+  const sessionOverlapsTimeSlot = (
+    session: ScheduleSession,
+    timeSlot: string,
+  ): boolean => {
+    const [slotHour, slotMinute] = timeSlot.split(":").map(Number);
     const slotStartMinutes = slotHour * 60 + slotMinute;
     const slotEndMinutes = slotStartMinutes + 15;
 
-    const [sessionStartHour, sessionStartMinute] = session.start_time.split(':').map(Number);
-    const [sessionEndHour, sessionEndMinute] = session.end_time.split(':').map(Number);
+    const [sessionStartHour, sessionStartMinute] = session.start_time
+      .split(":")
+      .map(Number);
+    const [sessionEndHour, sessionEndMinute] = session.end_time
+      .split(":")
+      .map(Number);
     const sessionStartMinutes = sessionStartHour * 60 + sessionStartMinute;
     const sessionEndMinutes = sessionEndHour * 60 + sessionEndMinute;
 
-    return sessionStartMinutes < slotEndMinutes && sessionEndMinutes > slotStartMinutes;
+    return (
+      sessionStartMinutes < slotEndMinutes &&
+      sessionEndMinutes > slotStartMinutes
+    );
   };
 
   if (loading) {
@@ -667,31 +764,31 @@ export default function SchedulePage() {
           </h3>
           <div className="flex gap-2">
             <button
-              onClick={() => setSessionFilter('all')}
+              onClick={() => setSessionFilter("all")}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                sessionFilter === 'all'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                sessionFilter === "all"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               All Sessions
             </button>
             <button
-              onClick={() => setSessionFilter('mine')}
+              onClick={() => setSessionFilter("mine")}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                sessionFilter === 'mine'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                sessionFilter === "mine"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               My Sessions
             </button>
             <button
-              onClick={() => setSessionFilter('sea')}
+              onClick={() => setSessionFilter("sea")}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                sessionFilter === 'sea'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                sessionFilter === "sea"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               SEA Sessions
@@ -706,12 +803,12 @@ export default function SchedulePage() {
           </h3>
           <div className="flex flex-wrap gap-3">
             {[
-              { grade: 'K', colorClass: 'bg-purple-400', displayName: 'K' },
-              { grade: '1', colorClass: 'bg-sky-400', displayName: '1st' },
-              { grade: '2', colorClass: 'bg-cyan-400', displayName: '2nd' },
-              { grade: '3', colorClass: 'bg-emerald-400', displayName: '3rd' },
-              { grade: '4', colorClass: 'bg-amber-400', displayName: '4th' },
-              { grade: '5', colorClass: 'bg-rose-400', displayName: '5th' }
+              { grade: "K", colorClass: "bg-purple-400", displayName: "K" },
+              { grade: "1", colorClass: "bg-sky-400", displayName: "1st" },
+              { grade: "2", colorClass: "bg-cyan-400", displayName: "2nd" },
+              { grade: "3", colorClass: "bg-emerald-400", displayName: "3rd" },
+              { grade: "4", colorClass: "bg-amber-400", displayName: "4th" },
+              { grade: "5", colorClass: "bg-rose-400", displayName: "5th" },
             ].map(({ grade, colorClass, displayName }) => {
               const isActive = selectedGrades.has(grade);
               return (
@@ -728,12 +825,18 @@ export default function SchedulePage() {
                   }}
                   className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                 >
-                  <div className={`w-4 h-4 rounded ${
-                    isActive ? colorClass : 'bg-gray-300'
-                  }`}></div>
-                  <span className={`text-sm ${
-                    isActive ? 'text-gray-600' : 'text-gray-400'
-                  }`}>{displayName}</span>
+                  <div
+                    className={`w-4 h-4 rounded ${
+                      isActive ? colorClass : "bg-gray-300"
+                    }`}
+                  ></div>
+                  <span
+                    className={`text-sm ${
+                      isActive ? "text-gray-600" : "text-gray-400"
+                    }`}
+                  >
+                    {displayName}
+                  </span>
                 </button>
               );
             })}
@@ -822,8 +925,8 @@ export default function SchedulePage() {
                   key={day}
                   className={`p-3 font-semibold text-center border-r last:border-r-0 cursor-pointer transition-colors ${
                     selectedDay === index + 1
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-700 bg-gray-50 hover:bg-gray-100'
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-gray-700 bg-gray-50 hover:bg-gray-100"
                   }`}
                   onClick={() => {
                     if (selectedDay === index + 1) {
@@ -857,11 +960,13 @@ export default function SchedulePage() {
                       }
                     }}
                   >
-                    <div className={`absolute top-0 left-0 right-0 p-2 text-xs text-center border-r border-b font-medium ${
-                      selectedTimeSlot === time 
-                        ? 'bg-blue-100 text-blue-700 border-blue-300' 
-                        : 'text-gray-500 bg-gray-50'
-                    }`}>
+                    <div
+                      className={`absolute top-0 left-0 right-0 p-2 text-xs text-center border-r border-b font-medium ${
+                        selectedTimeSlot === time
+                          ? "bg-blue-100 text-blue-700 border-blue-300"
+                          : "text-gray-500 bg-gray-50"
+                      }`}
+                    >
                       {formatTime(time)}
                     </div>
                   </div>
@@ -872,84 +977,30 @@ export default function SchedulePage() {
               {days.map((day, dayIndex) => {
                 // Get sessions for this day based on user role and filters
                 const daySessions = (() => {
-                  const allDaySessions = sessions.filter(s => s.day_of_week === dayIndex + 1);
-          
+                  const allDaySessions = sessions.filter(
+                    (s) => s.day_of_week === dayIndex + 1,
+                  );
+
                   // If user is SEA, only show sessions assigned to them
-                  if (providerRole === 'sea' && currentUserId) {
-                    return allDaySessions.filter(s => s.assigned_to_sea_id === currentUserId);
+                  if (providerRole === "sea" && currentUserId) {
+                    return allDaySessions.filter(
+                      (s) => s.assigned_to_sea_id === currentUserId,
+                    );
                   }
-          
+
                   // For Resource Specialists and other roles, apply the existing filter
                   return getFilteredSessions(allDaySessions);
                 })();
-          
+
                 // Pre-calculate column positions for all sessions
+                const columnData = daySessionColumns[dayIndex + 1] || [];
                 const sessionColumns = new Map<string, number>();
-          
-                  // Sort sessions by start time
-                  const sortedSessions = [...daySessions].sort((a, b) => {
-                    const aStart = a.start_time.substring(0, 5);
-                    const bStart = b.start_time.substring(0, 5);
-                    return aStart.localeCompare(bStart);
+
+                // Flatten the column data to create the map
+                columnData.forEach((column, colIndex) => {
+                  column.forEach((session) => {
+                    sessionColumns.set(session.id, colIndex);
                   });
-
-                // For each session, find which column it should go in
-                sortedSessions.forEach((session) => {
-                  const startTime = session.start_time.substring(0, 5);
-                  const endTime = session.end_time.substring(0, 5);
-
-                  // Check each column (0-3) to find the first available one
-                  for (let col = 0; col < 4; col++) {
-                    // Check if this column is free for this time slot
-                    const columnOccupied = sortedSessions.some(
-                      (otherSession) => {
-                        // Skip if it's the same session or hasn't been assigned yet
-                        if (
-                          otherSession.id === session.id ||
-                          !sessionColumns.has(otherSession.id)
-                        ) {
-                          return false;
-                        }
-
-                        // Skip if it's in a different column
-                        if (sessionColumns.get(otherSession.id) !== col) {
-                          return false;
-                        }
-
-                        // Check if times overlap
-                        const otherStart = otherSession.start_time.substring(
-                          0,
-                          5,
-                        );
-                        const otherEnd = otherSession.end_time.substring(0, 5);
-
-                        // Convert to minutes for easier comparison
-                        const sessionStartMin =
-                          parseInt(startTime.split(":")[0]) * 60 +
-                          parseInt(startTime.split(":")[1]);
-                        const sessionEndMin =
-                          parseInt(endTime.split(":")[0]) * 60 +
-                          parseInt(endTime.split(":")[1]);
-                        const otherStartMin =
-                          parseInt(otherStart.split(":")[0]) * 60 +
-                          parseInt(otherStart.split(":")[1]);
-                        const otherEndMin =
-                          parseInt(otherEnd.split(":")[0]) * 60 +
-                          parseInt(otherEnd.split(":")[1]);
-
-                        // Check if they overlap
-                        return !(
-                          sessionEndMin <= otherStartMin ||
-                          sessionStartMin >= otherEndMin
-                        );
-                      },
-                    );
-
-                    if (!columnOccupied) {
-                      sessionColumns.set(session.id, col);
-                      break;
-                    }
-                  }
                 });
 
                 return (
@@ -985,7 +1036,9 @@ export default function SchedulePage() {
                       {draggedSession && dragPosition?.day === dayIndex + 1 && (
                         <div
                           className={`absolute w-full rounded opacity-75 pointer-events-none z-10 ${
-                            conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
+                            conflictSlots.has(
+                              `${dragPosition.day}-${dragPosition.time}`,
+                            )
                               ? "bg-red-100 border-2 border-red-400"
                               : "bg-blue-100 border-2 border-blue-400"
                           }`}
@@ -1025,21 +1078,28 @@ export default function SchedulePage() {
 
                         // Determine if session should be greyed out
                         // For grades: grey out if the grade is NOT in selectedGrades (since all are selected by default)
-                        const isGradeFiltered = student && !selectedGrades.has(student.grade_level);
-                        const isTimeFiltered = selectedTimeSlot && !sessionOverlapsTimeSlot(session, selectedTimeSlot);
-                        const isDayFiltered = selectedDay && session.day_of_week !== selectedDay;
-                        const shouldGrayOut = isGradeFiltered || isTimeFiltered || isDayFiltered;
-  
+                        const isGradeFiltered =
+                          student && !selectedGrades.has(student.grade_level);
+                        const isTimeFiltered =
+                          selectedTimeSlot &&
+                          !sessionOverlapsTimeSlot(session, selectedTimeSlot);
+                        const isDayFiltered =
+                          selectedDay && session.day_of_week !== selectedDay;
+                        const shouldGrayOut =
+                          isGradeFiltered || isTimeFiltered || isDayFiltered;
+
                         const gradeColor = shouldGrayOut
                           ? "bg-gray-300 hover:bg-gray-400 opacity-50"
                           : student
-                          ? gradeColorMap[student.grade_level] || "bg-gray-400"
-                          : "bg-gray-400";
+                            ? gradeColorMap[student.grade_level] ||
+                              "bg-gray-400"
+                            : "bg-gray-400";
 
                         // Add SEA assignment styling
-                        const seaAssignmentClass = session.delivered_by === 'sea' 
-                          ? "ring-2 ring-orange-400 ring-inset" 
-                          : "";
+                        const seaAssignmentClass =
+                          session.delivered_by === "sea"
+                            ? "ring-2 ring-orange-400 ring-inset"
+                            : "";
 
                         // Get pre-calculated column position
                         const columnIndex = sessionColumns.get(session.id) ?? 0;
@@ -1084,10 +1144,11 @@ export default function SchedulePage() {
                               );
 
                               // Show popup for session assignment
-                              const rect = e.currentTarget.getBoundingClientRect();
+                              const rect =
+                                e.currentTarget.getBoundingClientRect();
                               setPopupPosition({
                                 x: rect.right + 10,
-                                y: rect.top
+                                y: rect.top,
                               });
                               setSelectedSession(session);
                             }}
@@ -1101,9 +1162,11 @@ export default function SchedulePage() {
                                   {student?.minutes_per_session}m
                                 </div>
                               )}
-                              {session.delivered_by === 'sea' && (
+                              {session.delivered_by === "sea" && (
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
-                                  <span className="text-[8px] font-bold text-white">S</span>
+                                  <span className="text-[8px] font-bold text-white">
+                                    S
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -1129,12 +1192,12 @@ export default function SchedulePage() {
             </div>
           </CardBody>
         </Card>
-        
-       {/* Add the SessionAssignmentPopup component here - after line 1113 */}
+
+        {/* Add the SessionAssignmentPopup component here - after line 1113 */}
         {selectedSession && popupPosition && (
           <SessionAssignmentPopup
             session={selectedSession}
-            student={students.find(s => s.id === selectedSession.student_id)}
+            student={students.find((s) => s.id === selectedSession.student_id)}
             position={popupPosition}
             seaProfiles={seaProfiles}
             onClose={() => {
@@ -1148,7 +1211,6 @@ export default function SchedulePage() {
             }}
           />
         )}
-
       </div>
     </div>
   );
