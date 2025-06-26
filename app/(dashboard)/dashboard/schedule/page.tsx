@@ -427,7 +427,13 @@ export default function SchedulePage() {
     );
 
     if (hasConflict) {
-      alert("Cannot move session here due to conflicts.");
+      // For now, just show a more detailed message
+      console.log('Conflict detected at:', day, newStartTime);
+      console.log('Student school:', student.school_site);
+      console.log('Bell schedules count:', bellSchedules.filter(b => b.school_site === student.school_site).length);
+      console.log('Special activities count:', specialActivities.filter(a => a.school_site === student.school_site).length);
+
+      alert("Cannot move session here due to conflicts. Check console for details.");
       return;
     }
 
@@ -486,6 +492,14 @@ export default function SchedulePage() {
   const fetchData = async () => {
     try {
       setLoading(true);
+
+      // Wait for currentSchool to be available
+      if (!currentSchool) {
+        console.log("No current school selected yet");
+        setLoading(false);
+        return;
+      }
+      
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -552,9 +566,10 @@ export default function SchedulePage() {
             .eq("provider_id", user.id)
             .eq("school_site", currentSchool?.school_site || ""), // Add school filter
           supabase
-            .from("schedule_sessions")
-            .select("*")
-            .eq("provider_id", user.id),
+          .from("special_activities")
+          .select("*")
+          .eq("provider_id", user.id)
+          .eq("school_site", currentSchool?.school_site || "")
         ]);
 
       console.log("Fetched data:", {
@@ -565,10 +580,17 @@ export default function SchedulePage() {
         sessionDetails: sessionsData.data,
       });
 
+      console.log("Current School:", currentSchool);
+      console.log("Students fetched:", studentsData.data);
+      console.log("Sessions fetched:", sessionsData.data);
+
       if (studentsData.data) setStudents(studentsData.data);
       if (bellData.data) setBellSchedules(bellData.data);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
-      if (sessionsData.data) setSessions(sessionsData.data);
+
+      if (sessionsData.data) {
+        setSessions(sessionsData.data);
+      }
 
       // Debug: Count sessions per student
       const sessionsByStudent = new Map<string, number>();
@@ -599,8 +621,10 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentSchool) {
+      fetchData();
+    }
+  }, [currentSchool]); // Add currentSchool as a dependency
 
   // Add this after the existing useEffect
   const [unscheduledCount, setUnscheduledCount] = useState(0);
@@ -611,7 +635,7 @@ export default function SchedulePage() {
       const { getUnscheduledSessionsCount } = await import(
         "../../../../lib/supabase/queries/schedule-sessions"
       );
-      const count = await getUnscheduledSessionsCount();
+      const count = await getUnscheduledSessionsCount(currentSchool?.school_site);
       setUnscheduledCount(count);
     } catch (error) {
       console.error("Error checking unscheduled sessions:", error);
@@ -750,12 +774,14 @@ export default function SchedulePage() {
                   fetchData();
                   checkUnscheduledSessions();
                 }}
+                currentSchool={currentSchool}
               />
               <RescheduleAll
                 onComplete={() => {
                   fetchData();
                   checkUnscheduledSessions();
                 }}
+                currentSchool={currentSchool}
               />
               <UndoSchedule
                 onComplete={() => {

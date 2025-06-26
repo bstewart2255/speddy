@@ -7,9 +7,13 @@ import { Database } from '../../../src/types/database';
 
 interface Props {
   onSuccess: () => void;
+  currentSchool?: {
+    school_site: string;
+    school_district: string;
+  } | null;
 }
 
-export default function StudentsCSVImport({ onSuccess }: Props) {
+export default function StudentsCSVImport({ onSuccess, currentSchool }: Props) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const supabase = createClientComponentClient<Database>();
@@ -83,7 +87,9 @@ GH,4,Garcia,3,30`;
                 grade_level: row.grade.toString().toUpperCase().trim(),
                 teacher_name: row.teacher.trim(),
                 sessions_per_week: parseInt(row['sessions per week']) || 2,
-                minutes_per_session: parseInt(row['minutes per session']) || 30
+                minutes_per_session: parseInt(row['minutes per session']) || 30,
+                school_site: currentSchool?.school_site || '',
+                school_district: currentSchool?.school_district || ''
               }));
 
             console.log('Students to insert:', students);

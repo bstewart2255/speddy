@@ -90,7 +90,7 @@ export default function StudentsPage() {
 
   const checkUnscheduledSessions = async () => {
     try {
-      const count = await getUnscheduledSessionsCount();
+      const count = await getUnscheduledSessionsCount(currentSchool?.school_site);
       setUnscheduledCount(count);
     } catch (error) {
       console.error('Error checking unscheduled sessions:', error);
@@ -113,8 +113,8 @@ export default function StudentsPage() {
         teacher_name: formData.teacher_name,
         sessions_per_week: parseInt(formData.sessions_per_week),
         minutes_per_session: parseInt(formData.minutes_per_session),
-        school_site: currentSchool.school_site,
-        school_district: currentSchool.school_district
+        school_site: currentSchool?.school_site || '',
+        school_district: currentSchool?.school_district || '',
       });
 
       // Reset form
@@ -230,10 +230,13 @@ export default function StudentsPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <StudentsCSVImport onSuccess={() => {
-                  setShowImportSection(false);
-                  fetchStudents();
-                }} />
+                <StudentsCSVImport 
+                  onSuccess={() => {
+                    setShowImportSection(false);
+                    fetchStudents();
+                  }} 
+                  currentSchool={currentSchool}
+                />
               </CardBody>
             </Card>
           </div>

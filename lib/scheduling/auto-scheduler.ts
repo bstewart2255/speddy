@@ -109,18 +109,11 @@ export class AutoScheduler {
    * Check if provider is available at a specific school on a given day
    */
   private async isProviderAvailableAt(
-    dayOfWeek: number, 
+    dayOfWeek: number,
     schoolSite: string
   ): Promise<boolean> {
-    const { data: availability } = await this.supabase
-      .from('provider_availability')
-      .select('*')
-      .eq('provider_id', this.providerId)
-      .eq('day_of_week', dayOfWeek)
-      .eq('school_site', schoolSite)
-      .single();
-
-    return !!availability;
+    // Temporarily return true for all days/schools until we set up availability
+    return true;
   }
 
   /**

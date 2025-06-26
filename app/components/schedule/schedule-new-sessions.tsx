@@ -8,9 +8,13 @@ import { saveScheduleSnapshot } from './undo-schedule';
 
 interface ScheduleNewSessionsProps {
   onComplete?: () => void;
+  currentSchool?: {
+    school_site: string;
+    school_district: string;
+  } | null;
 }
 
-export function ScheduleNewSessions({ onComplete }: ScheduleNewSessionsProps) {
+  export function ScheduleNewSessions({ onComplete, currentSchool }: ScheduleNewSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { scheduleBatchStudents } = useAutoSchedule();
   const supabase = createClientComponentClient();
@@ -36,11 +40,17 @@ Continue?`;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get all students
-      const { data: allStudents } = await supabase
+      // Get students for current school only
+      let studentsQuery = supabase
         .from('students')
         .select('*')
         .eq('provider_id', user.id);
+
+      if (currentSchool) {
+        studentsQuery = studentsQuery.eq('school_site', currentSchool.school_site);
+      }
+
+      const { data: allStudents } = await studentsQuery;
 
       if (!allStudents || allStudents.length === 0) {
         alert('No students found');

@@ -7,19 +7,26 @@ import { Database } from '../../../src/types/database';
  * Combines the required sessions_per_week for each student with the number of
  * sessions already scheduled to return the remaining count.
  */
-export async function getUnscheduledSessionsCount() {
+export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   const supabase = createClientComponentClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  // Get all students and their requirements
-  const { data: students } = await supabase
+  // Get all students and their requirements for the current school
+  let studentsQuery = supabase
     .from('students')
     .select('id, sessions_per_week')
     .eq('provider_id', user.id);
 
-  if (!students) return 0;
+  // Filter by school if provided
+  if (schoolSite) {
+    studentsQuery = studentsQuery.eq('school_site', schoolSite);
+  }
+
+  const { data: students } = await studentsQuery;
+
+  if (!students || students.length === 0) return 0;
 
   // Get current scheduled sessions count per student
   const { data: sessions } = await supabase

@@ -149,7 +149,7 @@ export default function SpecialActivitiesPage() {
               <CardBody>
                 <SpecialActivitiesCSVImport onSuccess={() => {
                   setShowImportSection(false);
-                  fetchActivities();
+                  fetchSpecialActivities();
                 }} />
               </CardBody>
             </Card>

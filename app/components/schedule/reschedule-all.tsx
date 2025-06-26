@@ -8,9 +8,13 @@ import { saveScheduleSnapshot } from './undo-schedule';
 
 interface RescheduleAllProps {
   onComplete?: () => void;
+  currentSchool?: {
+    school_site: string;
+    school_district: string;
+  } | null;
 }
 
-export function RescheduleAll({ onComplete }: RescheduleAllProps) {
+export function RescheduleAll({ onComplete, currentSchool }: RescheduleAllProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { scheduleBatchStudents } = useAutoSchedule();
   const supabase = createClientComponentClient();
@@ -47,11 +51,17 @@ Continue?`;
 
       if (deleteError) throw deleteError;
 
-      // Get all students
-      const { data: allStudents } = await supabase
+      // Get students for current school only
+      let studentsQuery = supabase
         .from('students')
         .select('*')
         .eq('provider_id', user.id);
+
+      if (currentSchool) {
+        studentsQuery = studentsQuery.eq('school_site', currentSchool.school_site);
+      }
+
+      const { data: allStudents } = await studentsQuery;
 
       if (!allStudents || allStudents.length === 0) {
         alert('No students found to schedule');
