@@ -23,34 +23,20 @@ export default function BellSchedulesPage() {
   const { currentSchool } = useSchool();
 
   // Fetch bell schedules from database
-  const fetchBellSchedules = async () => {
+  const fetchSchedules = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !currentSchool) return;
-
-      const { data, error } = await supabase
-        .from('bell_schedules')
-        .select('*')
-        .eq('provider_id', user.id)
-        .eq('school_site', currentSchool.school_site)
-        .order('grade_level', { ascending: true })
-        .order('day_of_week', { ascending: true })
-        .order('start_time', { ascending: true });
-
-      if (error) throw error;
-      setBellSchedules(data || []);
+      const data = await getBellSchedules(currentSchool?.school_site);
+      setBellSchedules(data);
     } catch (error) {
-      console.error('Error fetching bell schedules:', error);
+      console.error('Error fetching schedules:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (currentSchool) {
-      fetchBellSchedules();
-    }
-  }, [currentSchool]);
+    fetchSchedules();
+  }, [currentSchool]); // Add currentSchool as a dependency
 
   // Handle delete
   const handleDelete = async (id: string, periodName: string) => {

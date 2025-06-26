@@ -81,7 +81,7 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-16">
           {/* Brand/Logo */}
           <div className="flex-shrink-0">
-            <span className="text-xl font-bold text-gray-900">Spedly</span>
+            <span className="text-xl font-bold text-gray-900">Speddy</span>
           </div>
 
           {/* Navigation Links */}

@@ -25,6 +25,7 @@ export function SignupForm() {
     schoolDistrict: "",
     schoolSite: "",
     supervisingProviderEmail: "",
+    multipleSchools: 'no' // default to single school
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,6 @@ export function SignupForm() {
       role: formData.role,
       school_district: formData.schoolDistrict,
       school_site: formData.schoolSite,
-      supervising_provider_email: formData.supervisingProviderEmail,
     });
 
     if (error) {
@@ -216,6 +216,36 @@ export function SignupForm() {
         <p className="mt-1 text-xs text-gray-500">
           Enter full school name (no abbreviations)
         </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Do you provide services at multiple schools?
+        </label>
+        <div className="space-y-2">
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="multipleSchools"
+              value="no"
+              checked={formData.multipleSchools === 'no'}
+              onChange={handleChange}
+              className="mr-2"
+            />
+            <span>No, I work at one school only</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="multipleSchools"
+              value="yes"
+              checked={formData.multipleSchools === 'yes'}
+              onChange={handleChange}
+              className="mr-2"
+            />
+            <span>Yes, I work at multiple schools</span>
+          </label>
+        </div>
       </div>
 
       <div>

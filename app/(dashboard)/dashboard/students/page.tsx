@@ -44,8 +44,29 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = createClientComponentClient();
   const { currentSchool } = useSchool();
+
+  // Check if user works at multiple schools
+  useEffect(() => {
+    const checkMultipleSchools = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('works_at_multiple_schools')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        setWorksAtMultipleSchools(profile.works_at_multiple_schools);
+      }
+    };
+
+    checkMultipleSchools();
+  }, []);
 
   // Fetch students
   useEffect(() => {

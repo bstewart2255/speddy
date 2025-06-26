@@ -22,6 +22,7 @@ interface SignUpMetadata {
   role: string;
   school_district: string;
   school_site: string;
+  works_at_multiple_schools?: boolean; // Add this line
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (
     email: string,
     password: string,
-    metadata: SignUpMetadata,
+    metadata: SignUpMetadata & { works_at_multiple_schools?: boolean },
   ) => {
     try {
       // Role mapping from form values to database values
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Validate school site name (no abbreviations)
       if (metadata.school_site.length < 5 || !/\s/.test(metadata.school_site)) {
         throw new Error(
-          "Please enter your full school site name (no abbreviations)",
+          "Please enter your full school site name (no abbreviations - and spell correctly!)",
         );
       }
 
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             school_district: metadata.school_district,
             school_site: metadata.school_site,
             role: dbRole,  // Put role explicitly without spreading metadata
+            works_at_multiple_schools: metadata.works_at_multiple_schools || false
           },
         },
       });

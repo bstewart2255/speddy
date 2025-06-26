@@ -32,21 +32,37 @@ export async function getSpecialActivities(): Promise<SpecialActivity[]> {
  * Add a new special activity for the current provider.
  */
 export async function addSpecialActivity(
-  activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'>
+  activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string }
 ): Promise<SpecialActivity> {
   const supabase = createClientComponentClient();
-  
+
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     throw new Error('User not authenticated');
   }
 
+  // Get user's school if not provided
+  let finalSchoolSite = activity.school_site;
+
+  if (!finalSchoolSite) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_site')
+      .eq('id', user.id)
+      .single();
+
+    if (profile) {
+      finalSchoolSite = profile.school_site;
+    }
+  }
+
   const { data, error } = await supabase
     .from('special_activities')
     .insert({
       ...activity,
-      provider_id: user.id // CRITICAL: Explicitly set provider_id
+      provider_id: user.id,
+      school_site: finalSchoolSite
     })
     .select()
     .single();
@@ -111,27 +127,31 @@ export async function deleteTeacherActivities(teacherName: string): Promise<void
 /**
  * Get activities for a specific teacher belonging to the user.
  */
-export async function getSpecialActivitiesByTeacher(
-  teacherName: string
-): Promise<SpecialActivity[]> {
+export async function getSpecialActivities(schoolSite?: string): Promise<SpecialActivity[]> {
   const supabase = createClientComponentClient();
-  
-  // Get current user
+
+  // Get current user first - CRITICAL for security
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     throw new Error('User not authenticated');
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('special_activities')
     .select('*')
-    .eq('teacher_name', teacherName)
-    .eq('provider_id', user.id) // CRITICAL: Filter by provider_id
+    .eq('provider_id', user.id);
+
+  // Add school filter if provided
+  if (schoolSite) {
+    query = query.eq('school_site', schoolSite);
+  }
+
+  const { data, error } = await query
     .order('day_of_week')
     .order('start_time');
 
   if (error) {
-    console.error('Error fetching teacher activities:', error);
+    console.error('Error fetching special activities:', error);
     throw error;
   }
 

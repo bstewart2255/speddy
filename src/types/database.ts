@@ -17,6 +17,7 @@ export interface Database {
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
           school_district: string
           school_site: string
+          works_at_multiple_schools: boolean
           district_domain: string
           supervising_provider_id: string | null
           created_at: string
@@ -29,6 +30,7 @@ export interface Database {
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
           school_district: string
           school_site: string
+          works_at_multiple_schools?: boolean
           district_domain: string
           supervising_provider_id: string | null
           created_at?: string
@@ -41,6 +43,7 @@ export interface Database {
           role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'| 'sea'
           school_district?: string
           school_site?: string
+          works_at_multiple_schools?: boolean
           district_domain?: string
           supervising_provider_id?: string | null
           created_at?: string

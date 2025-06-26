@@ -69,7 +69,7 @@ export default function SpecialActivitiesPage() {
     try {
       setDeletingId(id);
       await deleteSpecialActivity(id);
-      await fetchActivities(); // Refresh the list
+      await fetchSpecialActivities(); // Refresh the list
     } catch (error) {
       alert('Failed to delete special activity');
       console.error(error);

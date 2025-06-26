@@ -33,19 +33,37 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get all schools for this provider
-      const { data: schools } = await supabase
-        .from('provider_schools')
-        .select('*')
-        .eq('provider_id', user.id)
-        .order('is_primary', { ascending: false });
+      // First, check if user works at multiple schools
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('works_at_multiple_schools, school_site, school_district')
+        .eq('id', user.id)
+        .single();
 
-      if (schools && schools.length > 0) {
-        setAvailableSchools(schools);
+      if (!profile) return;
 
-        // Set the primary school as current, or the first one
-        const primarySchool = schools.find(s => s.is_primary) || schools[0];
-        setCurrentSchool(primarySchool);
+      // If user only works at one school, use their profile school
+      if (!profile.works_at_multiple_schools) {
+        const singleSchool = {
+          school_site: profile.school_site,
+          school_district: profile.school_district,
+          is_primary: true
+        };
+        setAvailableSchools([singleSchool]);
+        setCurrentSchool(singleSchool);
+      } else {
+        // User works at multiple schools, fetch from provider_schools
+        const { data: schools } = await supabase
+          .from('provider_schools')
+          .select('*')
+          .eq('provider_id', user.id)
+          .order('is_primary', { ascending: false });
+
+        if (schools && schools.length > 0) {
+          setAvailableSchools(schools);
+          const primarySchool = schools.find(s => s.is_primary) || schools[0];
+          setCurrentSchool(primarySchool);
+        }
       }
     } catch (error) {
       console.error('Error fetching provider schools:', error);

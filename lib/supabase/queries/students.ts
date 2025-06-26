@@ -20,6 +20,23 @@ export async function createStudent(studentData: {
     throw new Error('You must be logged in to add students');
   }
 
+  // If school_site and school_district are not provided, get them from user profile
+  let finalSchoolSite = studentData.school_site;
+  let finalSchoolDistrict = studentData.school_district;
+
+  if (!finalSchoolSite || !finalSchoolDistrict) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_site, school_district')
+      .eq('id', user.id)
+      .single();
+
+    if (profile) {
+      finalSchoolSite = finalSchoolSite || profile.school_site;
+      finalSchoolDistrict = finalSchoolDistrict || profile.school_district;
+    }
+  }
+
   const { data, error } = await supabase
     .from('students')
     .insert([{
@@ -29,8 +46,8 @@ export async function createStudent(studentData: {
       sessions_per_week: studentData.sessions_per_week,
       minutes_per_session: studentData.minutes_per_session,
       provider_id: user.id,
-      school_site: studentData.school_site,
-      school_district: studentData.school_district
+      school_site: finalSchoolSite,
+      school_district: finalSchoolDistrict
     }])
     .select()
     .single();
