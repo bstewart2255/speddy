@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useMemo } from "react";
+import { flushSync } from 'react-dom';
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Card, CardBody } from "../../../components/ui/card";
 import { RescheduleAll } from "../../../components/schedule/reschedule-all";
@@ -45,6 +46,7 @@ interface BellSchedule {
   start_time: string;
   end_time: string;
   period_name: string;
+  school_site: string; // Add this line
 }
 
 interface SpecialActivity {
@@ -54,6 +56,7 @@ interface SpecialActivity {
   start_time: string;
   end_time: string;
   activity_name: string;
+  school_site: string; // Add this line
 }
 
 export default function SchedulePage() {
@@ -91,13 +94,17 @@ export default function SchedulePage() {
     Array<{ id: string; full_name: string }>
   >([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  const latestDragPositionRef = useRef<string | null>(null);
+  const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { currentSchool } = useSchool();
   const supabase = createClientComponentClient();
   const studentMap = useMemo(
     () => new Map(students.map((s) => [s.id, s])),
     [students],
   );
+  
 
   const GRID_START_HOUR = DEFAULT_SCHEDULING_CONFIG.gridStartHour;
   const GRID_END_HOUR = DEFAULT_SCHEDULING_CONFIG.gridEndHour;
@@ -116,6 +123,9 @@ export default function SchedulePage() {
 
   //... Inside your useMemo hook
   const daySessionColumns = useMemo(() => {
+    const memoStartTime = performance.now();
+    console.log('[daySessionColumns] Recalculating at:', new Date().toISOString());
+
     const columns: Record<number, Array<Array<ScheduleSession>>> = {};
     weekDays.forEach((day) => {
       const daySessions = sessions.filter((s) => s.day_of_week === day.number);
@@ -167,6 +177,10 @@ export default function SchedulePage() {
       columns[day.number] = sessionColumns;
     });
 
+    const memoEndTime = performance.now();
+    console.log('[daySessionColumns] Calculation completed at:', new Date().toISOString());
+    console.log('[daySessionColumns] Calculation time:', memoEndTime - memoStartTime, 'ms');
+
     return columns;
   }, [sessions, weekDays]);
 
@@ -192,13 +206,11 @@ export default function SchedulePage() {
     }
   };
 
-  // Check if a session can be moved to a specific time slot
   const checkSlotConflicts = async (
     session: ScheduleSession & { student: Student },
     targetDay: number,
     targetTime: string,
   ): Promise<boolean> => {
-    // Convert time format
     const [hours, minutes] = targetTime.split(":");
     const startTime = `${hours}:${minutes}:00`;
     const endTime = new Date();
@@ -209,10 +221,8 @@ export default function SchedulePage() {
     );
     const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
-    // Check if extends beyond school hours (3:00 PM)
-    if (endTime.getHours() >= 15) {
-      return true; // Has conflict
-    }
+    // Quick checks first - no async operations
+    if (endTime.getHours() >= 15) return true;
 
     // Check bell schedule conflicts
     const bellConflict = bellSchedules.some((bell) => {
@@ -220,6 +230,7 @@ export default function SchedulePage() {
       return (
         grades.includes(session.student.grade_level.trim()) &&
         bell.day_of_week === targetDay &&
+        bell.school_site === session.student.school_site &&
         hasTimeOverlap(startTime, endTimeStr, bell.start_time, bell.end_time)
       );
     });
@@ -231,53 +242,21 @@ export default function SchedulePage() {
       (activity) =>
         activity.teacher_name === session.student.teacher_name &&
         activity.day_of_week === targetDay &&
-        hasTimeOverlap(
-          startTime,
-          endTimeStr,
-          activity.start_time,
-          activity.end_time,
-        ),
+        activity.school_site === session.student.school_site &&
+        hasTimeOverlap(startTime, endTimeStr, activity.start_time, activity.end_time)
     );
 
     if (activityConflict) return true;
 
-    // REMOVED: One session per day rule check
-    // Manual drag-and-drop allows multiple sessions per day
-
-    // Check slot capacity (max 4)
+    // Check slot capacity
     const slotOccupancy = sessions.filter(
       (s) =>
         s.day_of_week === targetDay &&
         s.id !== session.id &&
-        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time),
+        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
     ).length;
 
-    if (slotOccupancy >= 4) return true;
-
-    // Check cross-provider conflicts
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return true; // Treat as conflict if no user
-
-    const resolver = new ConflictResolver(user.id);
-
-    // Only check if student has a school_site
-    if (session.student.school_site) {
-      const crossProviderCheck = await resolver.checkCrossProviderConflicts(
-        session.student.id,
-        session.student.school_site,
-        targetDay,
-        startTime,
-        endTimeStr,
-        session.id
-      );
-
-      if (crossProviderCheck.hasConflict) {
-        return true; // Has conflict
-      }
-    }
-
-    // No conflicts
-    return false;
+    return slotOccupancy >= 4;
   };
 
   // Helper function to check time overlap
@@ -301,58 +280,23 @@ export default function SchedulePage() {
   };
 
   // Handle drag start
-  const handleDragStart = async (
-    e: React.DragEvent,
-    session: ScheduleSession,
-  ) => {
-    const student = studentMap.get(session.student_id);
-    if (!student) return;
-
-    const sessionWithStudent = {
-      ...session,
-      student,
-    };
-
+  const handleDragStart = (e: React.DragEvent, session: ScheduleSession) => {
     setDraggedSession(session);
-
-    // Calculate conflicts for continuous time
-    // We'll check every 5-minute interval where this session could be placed
-    const conflicts = new Set<string>();
-
-    for (let day = 1; day <= 5; day++) {
-      // Check every 5 minutes from 8 AM to 3 PM minus session duration
-      for (
-        let minutes = 0;
-        minutes <
-        (GRID_END_HOUR - GRID_START_HOUR) * 60 - student.minutes_per_session;
-        minutes += 5
-      ) {
-        const hours = Math.floor(minutes / 60) + GRID_START_HOUR;
-        const mins = minutes % 60;
-        const timeStr = `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
-
-        const hasConflict = await checkSlotConflicts(
-          sessionWithStudent,
-          day,
-          timeStr,
-        );
-        if (hasConflict) {
-          conflicts.add(`${day}-${timeStr}`);
-        }
-      }
-    }
-
-    console.log("Conflicts found:", conflicts.size);
-    setConflictSlots(conflicts);
-
     e.dataTransfer.effectAllowed = "move";
   };
 
   // Handle drag end
   const handleDragEnd = () => {
+    // Clear any pending conflict checks
+    if (conflictCheckTimeoutRef.current) {
+      clearTimeout(conflictCheckTimeoutRef.current);
+      conflictCheckTimeoutRef.current = null;
+    }
+
     setDraggedSession(null);
     setConflictSlots(new Set());
     setDragPosition(null);
+    latestDragPositionRef.current = null;
   };
 
   // Track the current drag position
@@ -362,32 +306,18 @@ export default function SchedulePage() {
     pixelY: number;
   } | null>(null);
 
-  // Handle drag over (now tracks pixel position)
   const handleDragOver = (e: React.DragEvent, day: number) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
 
+    if (!draggedSession) return;
+
+    // Update position immediately for visual feedback
     const rect = e.currentTarget.getBoundingClientRect();
     const relativeY = e.clientY - rect.top;
-
-    // Snap to 5-minute intervals
     const snapInterval = SNAP_INTERVAL;
-    const minutesFromStart =
-      Math.round(((relativeY / PIXELS_PER_HOUR) * 60) / snapInterval) *
-      snapInterval;
+    const minutesFromStart = Math.round(((relativeY / PIXELS_PER_HOUR) * 60) / snapInterval) * snapInterval;
     const time = pixelsToTime((minutesFromStart * PIXELS_PER_HOUR) / 60);
-
-    // Check if this position has conflicts
-    const conflictKey = `${day}-${time}`;
-    if (conflictSlots.has(conflictKey)) {
-      e.dataTransfer.dropEffect = "none";
-      // Still set position to show the red preview
-      setDragPosition({
-        day,
-        time,
-        pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
-      });
-      return;
-    }
 
     setDragPosition({
       day,
@@ -395,7 +325,75 @@ export default function SchedulePage() {
       pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
     });
 
-    e.dataTransfer.dropEffect = "move";
+    // Get student info
+    const student = students.find(s => s.id === draggedSession.student_id);
+    if (!student) return;
+
+    const [hours, minutes] = time.split(":");
+    const startTimeStr = `${hours}:${minutes}:00`;
+    const endTime = new Date();
+    endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
+    const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
+
+    let quickConflict = false;
+
+    // 1. Check if extends beyond school hours
+    if (endTime.getHours() >= 15) {
+      quickConflict = true;
+    }
+
+    // 2. Check bell schedules (immediate, no async)
+    if (!quickConflict) {
+      const bellConflict = bellSchedules.some((bell) => {
+        const grades = bell.grade_level.split(",").map((g) => g.trim());
+        return (
+          grades.includes(student.grade_level.trim()) &&
+          bell.day_of_week === day &&
+          bell.school_site === student.school_site &&
+          hasTimeOverlap(startTimeStr, endTimeStr, bell.start_time, bell.end_time)
+        );
+      });
+      if (bellConflict) quickConflict = true;
+    }
+
+    // 3. Check special activities (immediate, no async)
+    if (!quickConflict) {
+      const activityConflict = specialActivities.some(
+        (activity) =>
+          activity.teacher_name === student.teacher_name &&
+          activity.day_of_week === day &&
+          activity.school_site === student.school_site &&
+          hasTimeOverlap(startTimeStr, endTimeStr, activity.start_time, activity.end_time)
+      );
+      if (activityConflict) quickConflict = true;
+    }
+
+    // 4. Check slot capacity
+    if (!quickConflict) {
+      const overlappingCount = sessions.filter(
+        (s) =>
+          s.day_of_week === day &&
+          s.id !== draggedSession.id &&
+          hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
+      ).length;
+
+      if (overlappingCount >= 4) {
+        quickConflict = true;
+      }
+    }
+
+    // Set conflict state immediately
+    const conflictKey = `${day}-${time}`;
+    if (quickConflict) {
+      setConflictSlots(new Set([conflictKey]));
+    } else {
+      setConflictSlots(new Set());
+    }
+
+    // Cancel any pending async checks since we're doing it all inline now
+    if (conflictCheckTimeoutRef.current) {
+      clearTimeout(conflictCheckTimeoutRef.current);
+    }
   };
 
   // Handle drop
@@ -407,37 +405,42 @@ export default function SchedulePage() {
     const student = studentMap.get(draggedSession.student_id);
     if (!student) return;
 
-    // Calculate the new time based on drop position
+    // Clear drag state immediately
+    const sessionToMove = draggedSession;
+    setDraggedSession(null);
+    setConflictSlots(new Set());
+    setDragPosition(null);
+
+    // Cancel any pending conflict checks
+    if (conflictCheckTimeoutRef.current) {
+      clearTimeout(conflictCheckTimeoutRef.current);
+    }
+
+    // Calculate new times
     const newStartTime = dragPosition.time;
     const [hours, minutes] = newStartTime.split(":").map(Number);
-
-    // Calculate end time
     const endDate = new Date();
     endDate.setHours(hours, minutes + student.minutes_per_session, 0);
     const newEndTime = `${endDate.getHours().toString().padStart(2, "0")}:${endDate.getMinutes().toString().padStart(2, "0")}:00`;
-
     const newStartTimeWithSeconds = `${newStartTime}:00`;
 
-    // Check for conflicts at the new position
-    const sessionWithStudent = { ...draggedSession, student };
-    const hasConflict = await checkSlotConflicts(
-      sessionWithStudent,
-      day,
-      newStartTime,
-    );
+    // Quick conflict check
+    const sessionWithStudent = { ...sessionToMove, student };
+    const hasConflict = await checkSlotConflicts(sessionWithStudent, day, newStartTime);
 
     if (hasConflict) {
-      // For now, just show a more detailed message
-      console.log('Conflict detected at:', day, newStartTime);
-      console.log('Student school:', student.school_site);
-      console.log('Bell schedules count:', bellSchedules.filter(b => b.school_site === student.school_site).length);
-      console.log('Special activities count:', specialActivities.filter(a => a.school_site === student.school_site).length);
-
-      alert("Cannot move session here due to conflicts. Check console for details.");
+      alert("Cannot move session here due to conflicts.");
       return;
     }
 
-    // Update the session in the database
+    // Update UI immediately - optimistic update
+    setSessions(prev => prev.map(s => 
+      s.id === sessionToMove.id 
+        ? { ...s, day_of_week: day, start_time: newStartTimeWithSeconds, end_time: newEndTime }
+        : s
+    ));
+
+    // Do the database update in the background
     try {
       const { error } = await supabase
         .from("schedule_sessions")
@@ -446,14 +449,25 @@ export default function SchedulePage() {
           start_time: newStartTimeWithSeconds,
           end_time: newEndTime,
         })
-        .eq("id", draggedSession.id);
+        .eq("id", sessionToMove.id);
 
-      if (error) throw error;
-
-      await fetchData();
+      if (error) {
+        // Revert on error
+        setSessions(prev => prev.map(s => 
+          s.id === sessionToMove.id 
+            ? sessionToMove
+            : s
+        ));
+        alert("Failed to update session position");
+      }
     } catch (error) {
+      // Revert on error
+      setSessions(prev => prev.map(s => 
+        s.id === sessionToMove.id 
+          ? sessionToMove
+          : s
+      ));
       console.error("Error updating session:", error);
-      alert("Failed to update session position");
     }
   };
 
@@ -548,29 +562,31 @@ export default function SchedulePage() {
         }
       }
 
-      const [studentsData, bellData, activitiesData, sessionsData] =
-        await Promise.all([
-          supabase
-            .from("students")
-            .select("*")
-            .eq("provider_id", user.id)
-            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
-          supabase
-            .from("bell_schedules")
-            .select("*")
-            .eq("provider_id", user.id)
-            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
-          supabase
-            .from("special_activities")
-            .select("*")
-            .eq("provider_id", user.id)
-            .eq("school_site", currentSchool?.school_site || ""), // Add school filter
-          supabase
+      const [studentsData, bellData, activitiesData] = await Promise.all([
+        supabase
+          .from("students")
+          .select("*")
+          .eq("provider_id", user.id)
+          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
+        supabase
+          .from("bell_schedules")
+          .select("*")
+          .eq("provider_id", user.id)
+          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
+        supabase
           .from("special_activities")
           .select("*")
           .eq("provider_id", user.id)
-          .eq("school_site", currentSchool?.school_site || "")
-        ]);
+          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
+      ]);
+
+      // Now fetch sessions separately after we have students data
+      const studentIds = studentsData.data?.map(s => s.id) || [];
+      const sessionsData = await supabase
+        .from("schedule_sessions")
+        .select("*")
+        .eq("provider_id", user.id)
+        .in("student_id", studentIds);
 
       console.log("Fetched data:", {
         students: studentsData.data?.length || 0,
@@ -580,9 +596,6 @@ export default function SchedulePage() {
         sessionDetails: sessionsData.data,
       });
 
-      console.log("Current School:", currentSchool);
-      console.log("Students fetched:", studentsData.data);
-      console.log("Sessions fetched:", sessionsData.data);
 
       if (studentsData.data) setStudents(studentsData.data);
       if (bellData.data) setBellSchedules(bellData.data);
@@ -590,6 +603,7 @@ export default function SchedulePage() {
 
       if (sessionsData.data) {
         setSessions(sessionsData.data);
+        console.log("First session object:", sessionsData.data[0]);
       }
 
       // Debug: Count sessions per student
@@ -599,12 +613,9 @@ export default function SchedulePage() {
         sessionsByStudent.set(session.student_id, count + 1);
       });
 
-      console.log("Sessions per student:");
       sessionsByStudent.forEach((count, studentId) => {
         const student = studentsData.data?.find((s) => s.id === studentId);
-        console.log(`${student?.initials || studentId}: ${count} sessions`);
       });
-      console.log("All sessions with times:");
       sessionsData.data?.forEach((session) => {
         const student = studentsData.data?.find(
           (s) => s.id === session.student_id,
@@ -614,7 +625,6 @@ export default function SchedulePage() {
         );
       });
     } catch (error) {
-      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
@@ -672,9 +682,19 @@ export default function SchedulePage() {
 
   useEffect(() => {
     if (!loading) {
+      // Only check unscheduled sessions on initial load, not on every session change
+      // This was causing performance issues during drag and drop
+      // checkUnscheduledSessions();
+    }
+  }, [loading]); // Remove 'sessions' from the dependency array
+
+  // Add this new useEffect after the modified one
+  useEffect(() => {
+    // Check unscheduled sessions only once after initial data load
+    if (!loading && sessions.length > 0) {
       checkUnscheduledSessions();
     }
-  }, [loading, sessions]);
+  }, [loading]); // Only depend on loading state
 
   // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
