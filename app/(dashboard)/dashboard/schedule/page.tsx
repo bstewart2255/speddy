@@ -4,13 +4,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Card, CardBody } from "../../../components/ui/card";
-import { RescheduleAll } from "../../../components/schedule/reschedule-all";
-import { ScheduleNewSessions } from "../../../components/schedule/schedule-new-sessions";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
 import { DEFAULT_SCHEDULING_CONFIG } from "../../../../lib/scheduling/scheduling-config";
 import { SessionAssignmentPopup } from "./session-assignment-popup";
 import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../../components/providers/school-context';
+import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
 
 interface Student {
   id: string;
@@ -724,10 +723,10 @@ export default function SchedulePage() {
   // Add this new useEffect after the modified one
   useEffect(() => {
     // Check unscheduled sessions only once after initial data load
-    if (!loading && sessions.length > 0) {
+    if (!loading && currentSchool) {
       checkUnscheduledSessions();
     }
-  }, [loading]); // Only depend on loading state
+  }, [loading, currentSchool]); // Add currentSchool as dependency
 
   // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
@@ -821,19 +820,13 @@ export default function SchedulePage() {
               <p className="text-gray-600">View and manage sessions</p>
             </div>
             <div className="flex gap-3">
-              <ScheduleNewSessions
+              <ScheduleSessions
                 onComplete={() => {
                   fetchData();
                   checkUnscheduledSessions();
                 }}
                 currentSchool={currentSchool}
-              />
-              <RescheduleAll
-                onComplete={() => {
-                  fetchData();
-                  checkUnscheduledSessions();
-                }}
-                currentSchool={currentSchool}
+                unscheduledCount={unscheduledCount}
               />
               <UndoSchedule
                 onComplete={() => {
@@ -868,7 +861,7 @@ export default function SchedulePage() {
                     {unscheduledCount === 1 ? "s" : ""} to be scheduled
                   </p>
                   <p className="text-sm text-amber-700">
-                    Click "Re-schedule All Sessions" to update your schedule
+                    Click "Schedule Sessions" above to add these sessions to your calendar
                   </p>
                 </div>
               </div>
@@ -1311,6 +1304,17 @@ export default function SchedulePage() {
             </div>
           </CardBody>
         </Card>
+
+        {/* Total Sessions Counter */}
+        <div className="mt-4 flex justify-between items-center">
+          <div className="text-sm text-gray-600 font-medium">
+            Total Sessions: {
+              providerRole === "sea" && currentUserId
+                ? sessions.filter(s => s.assigned_to_sea_id === currentUserId).length
+                : getFilteredSessions(sessions).length
+            }
+          </div>
+        </div>
 
         {/* Add the SessionAssignmentPopup component here - after line 1113 */}
         {selectedSession && popupPosition && (

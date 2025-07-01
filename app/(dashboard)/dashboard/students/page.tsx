@@ -254,7 +254,7 @@ export default function StudentsPage() {
                   {unscheduledCount} session{unscheduledCount !== 1 ? 's' : ''} need{unscheduledCount === 1 ? 's' : ''} to be scheduled
                 </p>
                 <p className="text-sm text-amber-700">
-                  Go to the <a href="/dashboard/schedule" className="underline font-medium">Schedule page</a> to schedule these sessions
+                  Go to the <a href="/dashboard/schedule" className="underline font-medium">Schedule page</a> and click "Schedule Sessions" to add these to your calendar
                 </p>
               </div>
             </div>
