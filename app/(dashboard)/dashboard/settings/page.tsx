@@ -4,6 +4,7 @@ import { WorkScheduleSettings } from '../../../components/settings/work-schedule
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { TeamWidget } from '../../../components/team-widget';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -76,10 +77,13 @@ export default function SettingsPage() {
             </CardBody>
           </Card>
 
-          {/* Work Schedule Settings - Only show if user works at multiple schools */}
+        {/* Work Schedule Settings - Only show if user works at multiple schools */}
           {userProfile?.works_at_multiple_schools && (
             <WorkScheduleSettings />
           )}
+
+          {/* Team Information */}
+          <TeamWidget />
         </div>
       </div>
     </div>

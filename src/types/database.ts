@@ -299,6 +299,35 @@ export interface Database {
           completed_by?: string | null
           session_notes?: string | null
         }
+      },
+      todos: {
+        Row: {
+          id: string
+          user_id: string
+          task: string
+          completed: boolean
+          created_at: string
+          due_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          task: string
+          completed?: boolean
+          created_at?: string
+          due_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          task?: string
+          completed?: boolean
+          created_at?: string
+          due_date?: string | null
+          updated_at?: string
+        }
       }
     }
   }

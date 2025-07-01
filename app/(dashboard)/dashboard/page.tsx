@@ -7,7 +7,7 @@ import { StatCard } from '../../components/ui/stats';
 import { StatsGrid, StudentStats, SessionStats, CompletionStats } from '../../components/ui/stats';
 import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { TeamWidget } from '../../components/team-widget';
+import { TodoWidget } from '../../components/todo-widget';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,7 @@ export default function DashboardPage() {
         </div>
         {/* Main Content Area */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <TeamWidget />
+          <TodoWidget />
         </div>
       </div>
     </div>
