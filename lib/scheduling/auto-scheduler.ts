@@ -112,8 +112,33 @@ export class AutoScheduler {
     dayOfWeek: number,
     schoolSite: string
   ): Promise<boolean> {
-    // Temporarily return true for all days/schools until we set up availability
-    return true;
+    // Get provider's site schedules
+    const { data: siteSchedules, error } = await this.supabase
+      .from('user_site_schedules')
+      .select(`
+        day_of_week,
+        provider_schools!inner(
+          school_site,
+          school_district
+        )
+      `)
+      .eq('user_id', this.providerId)
+      .eq('day_of_week', dayOfWeek);
+
+    if (error) {
+      console.error('Error checking provider availability:', error);
+      return false;
+    }
+
+    // If no schedules defined, assume available everywhere (backwards compatibility)
+    if (!siteSchedules || siteSchedules.length === 0) {
+      return true;
+    }
+
+    // Check if provider is scheduled at this specific school on this day
+    return siteSchedules.some(schedule => 
+      schedule.provider_schools.school_site === schoolSite
+    );
   }
 
   /**

@@ -76,6 +76,32 @@ export interface Database {
           created_at?: string
         }
       },
+      user_site_schedules: {
+        Row: {
+          id: string
+          user_id: string
+          site_id: string
+          day_of_week: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          site_id: string
+          day_of_week: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          site_id?: string
+          day_of_week?: number
+          created_at?: string
+          updated_at?: string
+        }
+      },
       teams: {
         Row: {
           id: string

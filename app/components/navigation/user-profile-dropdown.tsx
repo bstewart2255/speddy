@@ -134,7 +134,14 @@ export default function UserProfileDropdown({ user }: { user: User }) {
           )}
 
           {/* Actions */}
-          <div className="px-2 py-2">
+          <div className="px-2 py-2 space-y-1">
+            <button
+              onClick={() => router.push('/dashboard/settings')}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              Settings
+            </button>
+            <div className="border-t border-gray-200 my-1"></div>
             <button
               onClick={handleSignOut}
               className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
