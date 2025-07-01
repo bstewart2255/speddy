@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useMemo } from "react";
-import { flushSync } from 'react-dom';
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Card, CardBody } from "../../../components/ui/card";
 import { RescheduleAll } from "../../../components/schedule/reschedule-all";
@@ -12,7 +11,6 @@ import { DEFAULT_SCHEDULING_CONFIG } from "../../../../lib/scheduling/scheduling
 import { SessionAssignmentPopup } from "./session-assignment-popup";
 import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../../components/providers/school-context';
-import { SchoolIndicator } from '../../../components/school-indicator';
 
 interface Student {
   id: string;
@@ -210,7 +208,7 @@ export default function SchedulePage() {
     session: ScheduleSession & { student: Student },
     targetDay: number,
     targetTime: string,
-  ): Promise<boolean> => {
+  ): Promise<{ hasConflict: boolean; reason?: string }> => {
     const [hours, minutes] = targetTime.split(":");
     const startTime = `${hours}:${minutes}:00`;
     const endTime = new Date();
@@ -222,10 +220,12 @@ export default function SchedulePage() {
     const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
     // Quick checks first - no async operations
-    if (endTime.getHours() >= 15) return true;
+    if (endTime.getHours() >= 15) {
+      return { hasConflict: true, reason: "Session extends beyond school hours (3:00 PM)" };
+    }
 
     // Check bell schedule conflicts
-    const bellConflict = bellSchedules.some((bell) => {
+    const bellConflict = bellSchedules.find((bell) => {
       const grades = bell.grade_level.split(",").map((g) => g.trim());
       return (
         grades.includes(session.student.grade_level.trim()) &&
@@ -235,10 +235,12 @@ export default function SchedulePage() {
       );
     });
 
-    if (bellConflict) return true;
+    if (bellConflict) {
+      return { hasConflict: true, reason: `Conflicts with ${bellConflict.period_name}` };
+    }
 
     // Check special activity conflicts
-    const activityConflict = specialActivities.some(
+    const activityConflict = specialActivities.find(
       (activity) =>
         activity.teacher_name === session.student.teacher_name &&
         activity.day_of_week === targetDay &&
@@ -246,7 +248,22 @@ export default function SchedulePage() {
         hasTimeOverlap(startTime, endTimeStr, activity.start_time, activity.end_time)
     );
 
-    if (activityConflict) return true;
+    if (activityConflict) {
+      return { hasConflict: true, reason: `Teacher has ${activityConflict.activity_name}` };
+    }
+
+    // Check if the same student already has a session at this time
+    const studentConflict = sessions.find(
+      (s) =>
+        s.student_id === session.student.id &&
+        s.day_of_week === targetDay &&
+        s.id !== session.id &&
+        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
+    );
+
+    if (studentConflict) {
+      return { hasConflict: true, reason: "Student already has a session at this time" };
+    }
 
     // Check slot capacity
     const slotOccupancy = sessions.filter(
@@ -256,7 +273,11 @@ export default function SchedulePage() {
         hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
     ).length;
 
-    return slotOccupancy >= 4;
+    if (slotOccupancy >= 4) {
+      return { hasConflict: true, reason: "Time slot is full (max 4 sessions)" };
+    }
+
+    return { hasConflict: false };
   };
 
   // Helper function to check time overlap
@@ -368,6 +389,18 @@ export default function SchedulePage() {
       if (activityConflict) quickConflict = true;
     }
 
+    // Check for same student conflicts
+    if (!quickConflict) {
+      const studentConflict = sessions.some(
+        (s) =>
+          s.student_id === draggedSession.student_id &&
+          s.day_of_week === day &&
+          s.id !== draggedSession.id &&
+          hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
+      );
+      if (studentConflict) quickConflict = true;
+    }
+
     // 4. Check slot capacity
     if (!quickConflict) {
       const overlappingCount = sessions.filter(
@@ -426,10 +459,10 @@ export default function SchedulePage() {
 
     // Quick conflict check
     const sessionWithStudent = { ...sessionToMove, student };
-    const hasConflict = await checkSlotConflicts(sessionWithStudent, day, newStartTime);
+    const conflictResult = await checkSlotConflicts(sessionWithStudent, day, newStartTime);
 
-    if (hasConflict) {
-      alert("Cannot move session here due to conflicts.");
+    if (conflictResult.hasConflict) {
+      alert(`Cannot move session here: ${conflictResult.reason}`);
       return;
     }
 
@@ -778,7 +811,6 @@ export default function SchedulePage() {
   return (
     <div className="bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <SchoolIndicator />
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">

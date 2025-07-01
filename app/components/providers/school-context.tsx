@@ -28,6 +28,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     fetchProviderSchools();
   }, []);
 
+  // Add this new effect to persist school selection
+  useEffect(() => {
+    if (currentSchool && !loading) {
+      localStorage.setItem('selectedSchool', JSON.stringify(currentSchool));
+    }
+  }, [currentSchool, loading]);
+
   const fetchProviderSchools = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -61,8 +68,34 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
         if (schools && schools.length > 0) {
           setAvailableSchools(schools);
-          const primarySchool = schools.find(s => s.is_primary) || schools[0];
-          setCurrentSchool(primarySchool);
+
+          // Check for saved school preference BEFORE setting any school
+          const savedSchool = localStorage.getItem('selectedSchool');
+          let schoolToSet = null;
+
+          if (savedSchool) {
+            try {
+              const parsedSchool = JSON.parse(savedSchool);
+              // Find the matching school from the fetched schools
+              const matchingSchool = schools.find(s => 
+                s.school_site === parsedSchool.school_site && 
+                s.school_district === parsedSchool.school_district
+              );
+
+              if (matchingSchool) {
+                schoolToSet = matchingSchool;
+              }
+            } catch (e) {
+              console.error('Error parsing saved school:', e);
+            }
+          }
+
+          // Only use primary as fallback if no valid saved school
+          if (!schoolToSet) {
+            schoolToSet = schools.find(s => s.is_primary) || schools[0];
+          }
+
+          setCurrentSchool(schoolToSet);
         }
       }
     } catch (error) {
