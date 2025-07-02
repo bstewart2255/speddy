@@ -316,7 +316,6 @@ export class OptimizedScheduler {
 
       if (foundSlots.length >= slotsNeeded) {
         console.log(`Already have enough slots, breaking`);
-        break;
       }
 
       // Get all valid slots for this day
@@ -516,7 +515,6 @@ export class OptimizedScheduler {
         completed_by: session.completed_by,
         session_notes: session.session_notes,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
       });
     }
   }
