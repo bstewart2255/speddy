@@ -15,6 +15,15 @@ interface TimeSlot {
   conflicts: string[];
 }
 
+interface StudentSchedule {
+  studentId: string;
+  sessions: Array<{
+    day: number;
+    startTime: string;
+    endTime: string;
+  }>;
+}
+
 interface SchedulingContext {
   schoolSite: string;
   workDays: number[];
@@ -90,8 +99,14 @@ export class OptimizedScheduler {
         .eq('school_site', schoolSite),
       this.supabase
         .from('schedule_sessions')
-        .select('*')
+        .select(`
+          *,
+          students!inner(
+            school_site
+          )
+        `)
         .eq('provider_id', this.providerId)
+        .eq('students.school_site', schoolSite)
     ]);
 
     const context: SchedulingContext = {
@@ -224,6 +239,10 @@ export class OptimizedScheduler {
     const sessionsNeeded = student.sessions_per_week;
     const duration = student.minutes_per_session;
 
+    console.log(`\nScheduling ${student.initials}: ${sessionsNeeded} sessions x ${duration}min`);
+    console.log('Context available?', !!this.context);
+    console.log('Valid slots in context:', this.context?.validSlots.size);
+
     // Find available slots for this student
     const availableSlots = this.findStudentSlots(student, duration, sessionsNeeded);
 
@@ -245,7 +264,10 @@ export class OptimizedScheduler {
         end_time: slot.endTime,
         service_type: this.providerRole,
         assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
-        delivered_by: this.providerRole === 'sea' ? 'sea' : 'provider'
+        delivered_by: this.providerRole === 'sea' ? 'sea' : 'provider',
+        completed_at: null,
+        completed_by: null,
+        session_notes: null
       });
     }
 
@@ -263,6 +285,9 @@ export class OptimizedScheduler {
     duration: number,
     slotsNeeded: number
   ): TimeSlot[] {
+    console.log(`\n>>> ENTERING findStudentSlots for ${student.initials}`);
+    console.log(`\nFinding slots for ${student.initials} (Grade ${student.grade_level})`);
+    
     const foundSlots: TimeSlot[] = [];
     const scheduledDays = new Set<number>();
 
@@ -273,20 +298,34 @@ export class OptimizedScheduler {
       return aCount - bCount;
     });
 
+    console.log(`Work days from context: ${this.context!.workDays}`);
+    console.log(`sortedDays: ${sortedDays}`);
+    console.log(`All days being checked: ${sortedDays.join(', ')}`);
+    
     // Try to find slots
     for (const day of sortedDays) {
-      if (foundSlots.length >= slotsNeeded) break;
-      if (scheduledDays.has(day)) continue; // One session per day rule
+      console.log(`\nChecking day ${day}, foundSlots.length: ${foundSlots.length}, slotsNeeded: ${slotsNeeded}`);
 
+      if (foundSlots.length >= slotsNeeded) {
+        console.log(`Already have enough slots, breaking`);
+        break;
+      }
+
+      console.log(`Proceeding to check slots for day ${day}`);
+      
       // Get all valid slots for this day
       const daySlots = Array.from(this.context!.validSlots.entries())
         .filter(([key, slot]) => slot.dayOfWeek === day && slot.capacity > 0)
         .map(([key, slot]) => ({ key, ...slot }));
 
+      console.log(`Day ${day}: Found ${daySlots.length} potential slots`);
+      
       // Check each slot for student-specific constraints
       for (const slotInfo of daySlots) {
         const slot = slotInfo;
         const endTime = this.addMinutesToTime(slot.startTime, duration);
+
+        console.log(`  Checking slot ${slot.startTime}-${endTime}`);
 
         // Check bell schedule conflicts for this student's grade
         const hasBellConflict = this.context!.bellSchedules.some(bell => {
@@ -296,7 +335,10 @@ export class OptimizedScheduler {
                  this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
         });
 
-        if (hasBellConflict) continue;
+        if (hasBellConflict) {
+          console.log(`    ❌ Bell schedule conflict`);
+          continue;
+        }
 
         // Check special activities for this student's teacher
         const hasActivityConflict = this.context!.specialActivities.some(activity =>
@@ -311,12 +353,12 @@ export class OptimizedScheduler {
         if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) continue;
 
         // Valid slot found!
+        console.log(`    ✅ Valid slot found!`);
         foundSlots.push({
           ...slot,
           endTime
         });
         scheduledDays.add(day);
-        break; // Move to next day
       }
     }
 
