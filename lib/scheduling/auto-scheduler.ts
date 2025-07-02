@@ -130,15 +130,23 @@ export class AutoScheduler {
       return false;
     }
 
-    // If no schedules defined, assume available everywhere (backwards compatibility)
-    if (!siteSchedules || siteSchedules.length === 0) {
-      return true;
+    // If no schedules defined, check if any schedules exist for this provider
+    const { data: anySchedules } = await this.supabase
+      .from('user_site_schedules')
+      .select('id')
+      .eq('user_id', this.providerId)
+      .limit(1);
+
+    // If provider has defined any schedules, they must have one for this day/site
+    if (anySchedules && anySchedules.length > 0) {
+      // Check if provider is scheduled at this specific school on this day
+      return siteSchedules?.some(schedule => 
+        schedule.provider_schools.school_site === schoolSite
+      ) || false;
     }
 
-    // Check if provider is scheduled at this specific school on this day
-    return siteSchedules.some(schedule => 
-      schedule.provider_schools.school_site === schoolSite
-    );
+    // Only allow backwards compatibility if no schedules are defined at all
+    return true;
   }
 
   /**

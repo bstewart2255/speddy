@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { AutoScheduler } from '../../scheduling/auto-scheduler';
+import { OptimizedScheduler } from '../../scheduling/optimized-scheduler';
 import { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -27,46 +27,21 @@ export function useAutoSchedule() {
 
       if (!profile) throw new Error('Profile not found');
 
-      // Fetch all necessary data
-      const [sessionsData, bellData, activitiesData] = await Promise.all([
-        supabase
-          .from('schedule_sessions')
-          .select('*')
-          .eq('provider_id', user.id),
-        supabase
-          .from('bell_schedules')
-          .select('*')
-          .eq('provider_id', user.id),
-        supabase
-          .from('special_activities')
-          .select('*')
-          .eq('provider_id', user.id)
-      ]);
+      // Create optimized scheduler instance
+      const scheduler = new OptimizedScheduler(user.id, profile.role);
 
-      const existingSessions = sessionsData.data || [];
-      const bellSchedules = bellData.data || [];
-      const specialActivities = activitiesData.data || [];
+      // Initialize context for the student's school
+      await scheduler.initializeContext(student.school_site);
 
-      // Create scheduler instance
-      const scheduler = new AutoScheduler(user.id, profile.role);
+      // Schedule just this one student
+      const results = await scheduler.scheduleBatch([student]);
 
-      // Schedule the student
-      const result = await scheduler.scheduleStudent(
-        student,
-        existingSessions,
-        bellSchedules,
-        specialActivities
-      );
-
-      // Save the scheduled sessions to database
-      if (result.scheduledSessions.length > 0) {
-        const { error: insertError } = await supabase
-          .from('schedule_sessions')
-          .insert(result.scheduledSessions);
-
-        if (insertError) throw insertError;
-        console.log(`Successfully saved sessions for ${student.initials}`);
-      }
+      const result = {
+        success: results.totalScheduled === 1,
+        scheduledSessions: [],
+        unscheduledStudents: results.totalFailed > 0 ? [student] : [],
+        errors: results.errors
+      };
 
       // Set any errors
       if (result.errors.length > 0) {
@@ -87,7 +62,6 @@ export function useAutoSchedule() {
       setIsScheduling(false);
     }
   };
-
   const scheduleBatchStudents = async (students: Student[]) => {
     setIsScheduling(true);
     setSchedulingErrors([]);
@@ -111,57 +85,32 @@ export function useAutoSchedule() {
 
       if (!profile) throw new Error('Profile not found');
 
-      // Create scheduler instance
-      const scheduler = new AutoScheduler(user.id, profile.role);
-
-      // Schedule each student sequentially to avoid conflicts
-      for (const student of students) {
-        // Fetch fresh data for each student to include previously scheduled sessions
-        const [sessionsData, bellData, activitiesData] = await Promise.all([
-          supabase
-            .from('schedule_sessions')
-            .select('*')
-            .eq('provider_id', user.id),
-          supabase
-            .from('bell_schedules')
-            .select('*')
-            .eq('provider_id', user.id),
-          supabase
-            .from('special_activities')
-            .select('*')
-            .eq('provider_id', user.id)
-        ]);
-
-        const result = await scheduler.scheduleStudent(
-          student,
-          sessionsData.data || [],
-          bellData.data || [],
-          activitiesData.data || []
-        );
-
-        // Save scheduled sessions
-        if (result.scheduledSessions.length > 0) {
-          console.log(`Attempting to save ${result.scheduledSessions.length} sessions for ${student.initials}`);
-          console.log('Sessions to save:', result.scheduledSessions);
-
-          const { error: insertError } = await supabase
-            .from('schedule_sessions')
-            .insert(result.scheduledSessions);
-
-          if (!insertError) {
-            console.log(`Successfully saved ${result.scheduledSessions.length} sessions for ${student.initials}`);
-            results.totalScheduled++;
-          } else {
-            console.log(`Error saving sessions for ${student.initials}:`, insertError);
-            results.totalFailed++;
-            results.errors.push(`Failed to save sessions for ${student.initials}: ${insertError.message}`);
-          }
-        } else {
-          results.totalFailed++;
+      // Group students by school
+      const studentsBySchool = new Map<string, Student[]>();
+      students.forEach(student => {
+        const school = student.school_site;
+        if (!studentsBySchool.has(school)) {
+          studentsBySchool.set(school, []);
         }
+        studentsBySchool.get(school)!.push(student);
+      });
 
-        // Collect errors
-        results.errors.push(...result.errors);
+      // Schedule each school separately
+      for (const [schoolSite, schoolStudents] of studentsBySchool) {
+        console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
+
+        // Create optimized scheduler instance
+        const scheduler = new OptimizedScheduler(user.id, profile.role);
+
+        // Initialize context once for the school
+        await scheduler.initializeContext(schoolSite);
+
+        // Schedule all students at this school
+        const schoolResults = await scheduler.scheduleBatch(schoolStudents);
+
+        results.totalScheduled += schoolResults.totalScheduled;
+        results.totalFailed += schoolResults.totalFailed;
+        results.errors.push(...schoolResults.errors);
       }
 
       setSchedulingErrors(results.errors);
