@@ -8,6 +8,7 @@ import { StatsGrid, StudentStats, SessionStats, CompletionStats } from '../../co
 import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { TodoWidget } from '../../components/todo-widget';
+import { WeeklyView } from '../../components/weekly-view';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -70,8 +71,11 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
         </div>
         {/* Main Content Area */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <TodoWidget />
+        <div className="space-y-4">
+          <WeeklyView />
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <TodoWidget />
+          </div>
         </div>
       </div>
     </div>
