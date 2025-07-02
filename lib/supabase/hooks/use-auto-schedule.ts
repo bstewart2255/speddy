@@ -31,6 +31,9 @@ export function useAutoSchedule() {
       const scheduler = new OptimizedScheduler(user.id, profile.role);
 
       // Initialize context for the student's school
+      if (!student.school_site) {
+        throw new Error('Student school site is required but not set');
+      }
       await scheduler.initializeContext(student.school_site);
 
       // Schedule just this one student
@@ -89,6 +92,9 @@ export function useAutoSchedule() {
       const studentsBySchool = new Map<string, Student[]>();
       students.forEach(student => {
         const school = student.school_site;
+        if (!school) {
+          throw new Error(`Student ${student.initials || student.id} has no school site assigned`);
+        }
         if (!studentsBySchool.has(school)) {
           studentsBySchool.set(school, []);
         }
