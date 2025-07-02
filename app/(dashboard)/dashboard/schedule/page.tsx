@@ -272,8 +272,8 @@ export default function SchedulePage() {
         hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
     ).length;
 
-    if (slotOccupancy >= 4) {
-      return { hasConflict: true, reason: "Time slot is full (max 4 sessions)" };
+    if (slotOccupancy >= 6) {
+      return { hasConflict: true, reason: "Time slot is full (max 6 sessions)" };
     }
 
     return { hasConflict: false };
@@ -1216,7 +1216,7 @@ export default function SchedulePage() {
                         // Get pre-calculated column position
                         const columnIndex = sessionColumns.get(session.id) ?? 0;
 
-                        const fixedWidth = 28;
+                        const fixedWidth = 25;
                         const gap = 1;
                         const leftOffset = columnIndex * (fixedWidth + gap);
 
@@ -1282,18 +1282,6 @@ export default function SchedulePage() {
                                 </div>
                               )}
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteSession(session.id);
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white hover:bg-red-600"
-                              title="Remove session"
-                              draggable={false}
-                            >
-                              <span className="text-xs leading-none">×</span>
-                            </button>
                           </div>
                         );
                       })}

@@ -8,6 +8,12 @@ import type { User } from '@supabase/supabase-js';
 import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
 
+type NavigationItem = {
+  name: string;
+  href: string;
+  subItems?: NavigationItem[];
+};
+
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -57,9 +63,14 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-        { name: 'Special Activities', href: '/dashboard/special-activities' },
-        { name: 'Schedule', href: '/dashboard/schedule' },
+        { 
+          name: 'Schedule', 
+          href: '/dashboard/schedule',
+          subItems: [
+            { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+            { name: 'Special Activities', href: '/dashboard/special-activities' }
+          ]
+        },
       ];
     } else {
       // Other roles (speech, ot, counseling, specialist) see standard navigation
@@ -87,17 +98,62 @@ export default function Navbar() {
           {/* Navigation Links */}
           <div className="hidden sm:flex sm:space-x-8 h-full">
             {navigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full ${
-                  pathname === item.href
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {item.name}
-              </Link>
+                item.subItems ? (
+                  <div key={item.name} className="relative group h-full">
+                    <div className="inline-flex items-center h-full">
+                      <Link
+                        href={item.href}
+                        className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full ${
+                          pathname.startsWith(item.href)
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                        }`}
+                      >
+                        {item.name}
+                      </Link>
+                      <button
+                        className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full ${
+                          pathname.startsWith(item.href)
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                        }`}
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="absolute left-0 mt-0 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                      <div className="py-1">
+                        {item.subItems.map((subItem) => (
+                          <Link
+                            key={subItem.name}
+                            href={subItem.href}
+                            className={`block px-4 py-2 text-sm ${
+                              pathname === subItem.href
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {subItem.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`inline-flex items-center px-1 border-b-2 text-sm font-medium transition-colors h-full ${
+                    pathname === item.href
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
+                >
+                  {item.name}
+                </Link>
+              )
             ))}
           </div>
 
