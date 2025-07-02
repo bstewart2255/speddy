@@ -47,13 +47,6 @@ export function WeeklyView() {
           .order("day_of_week")
           .order("start_time");
 
-        console.log("Raw session data:", {
-          count: sessionData?.length,
-          sessions: sessionData,
-          error: sessionError,
-          userId: user.id,
-        });
-
         if (sessionError) {
           console.error("Session fetch error:", sessionError);
           setLoading(false);
@@ -70,11 +63,6 @@ export function WeeklyView() {
             ),
           }));
 
-          console.log("Transformed sessions:", {
-            count: transformedSessions.length,
-            sessions: transformedSessions,
-          });
-
           setSessions(transformedSessions);
 
           // Get unique student IDs
@@ -88,12 +76,6 @@ export function WeeklyView() {
             .from("students")
             .select("id, initials")
             .in("id", studentIds);
-
-            console.log("Student query result:", {
-              studentData,
-              studentError,
-              studentIds,
-            });
 
             if (studentData && !studentError && isMounted) {
               const studentMap: Record<string, any> = {};
@@ -123,10 +105,10 @@ export function WeeklyView() {
   }, []); // Empty dependency array - only run once on mount
 
   // Helper functions
-  const getDayIndex = (date: string) => {
-    const sessionDate = new Date(date);
-    const dayIndex = sessionDate.getDay() - 1;
-    return dayIndex;
+  const getDayIndex = (session: any): number => {
+    // The session already has day_of_week from database (1 = Monday, 5 = Friday)
+    // Return it adjusted for 0-based array indexing
+    return session.day_of_week - 1; // Returns 0-4 for Monday-Friday
   };
 
   const getTimeSlotIndex = (timeString: string) => {
@@ -167,12 +149,13 @@ export function WeeklyView() {
     const grouped: Record<string, any[]> = {}; // Note: now stores arrays of sessions
 
     sessions.forEach((session) => {
-      const dayIndex = getDayIndex(session.date);
+      const dayIndex = getDayIndex(session); // Pass session, not session.date
       const timeIndex = getTimeSlotIndex(session.start_time);
       const span = getSessionSpan(session.start_time, session.end_time);
 
       if (dayIndex >= 0 && dayIndex < 5 && timeIndex >= 0) {
         const key = `${dayIndex}-${timeIndex}`;
+
 
         // Initialize array if it doesn't exist
         if (!grouped[key]) {
@@ -187,21 +170,12 @@ export function WeeklyView() {
     return grouped;
   }, [sessions]);
 
-// ADD THE DEBUGGING CODE HERE (after line 168)
-  // Temporary debugging
   React.useEffect(() => {
     let visibleCount = 0;
     Object.values(sessionsByDayTime).forEach(slotSessions => {
       if (Array.isArray(slotSessions)) {
         visibleCount += slotSessions.length;
       }
-    });
-
-    console.log('Session visibility:', {
-      totalSessions: sessions.length,
-      visibleSessions: visibleCount,
-      slotsWithSessions: Object.keys(sessionsByDayTime).length,
-      averagePerSlot: (visibleCount / Object.keys(sessionsByDayTime).length).toFixed(2)
     });
 
     // Find slots with many sessions
@@ -212,10 +186,6 @@ export function WeeklyView() {
         count: (sessions as any[]).length,
         times: (sessions as any[]).map(s => s.start_time)
       }));
-
-    if (crowdedSlots.length > 0) {
-      console.log('Crowded slots:', crowdedSlots);
-    }
   }, [sessions, sessionsByDayTime]);
 
   // Calculate the starting day (today or next Monday if weekend)
@@ -231,11 +201,10 @@ export function WeeklyView() {
   const MORNING_SLOTS = ["8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM"];
   const AFTERNOON_SLOTS = ["12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM"];
 
-  // Debug: Count sessions in the 3-day view
   React.useEffect(() => {
     let displayedCount = 0;
 
-    for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
+    for (let dayOffset = 0; dayOffset < 2; dayOffset++) {
       const currentDate = addDays(startDay, dayOffset);
       const dayIndex = currentDate.getDay() - 1;
 
@@ -248,16 +217,6 @@ export function WeeklyView() {
       }
     }
 
-    console.log('3-Day View Debug:', {
-      totalSessions: sessions.length,
-      displayedInView: displayedCount,
-      startDay: format(startDay, 'yyyy-MM-dd'),
-      sessionsByDay: sessions.reduce((acc, s) => {
-        const day = s.day_of_week;
-        acc[day] = (acc[day] || 0) + 1;
-        return acc;
-      }, {})
-    });
   }, [sessions, sessionsByDayTime, startDay]);
 
   if (loading) {
@@ -270,17 +229,14 @@ export function WeeklyView() {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="flex justify-between items-center mb-4">
+      <div className="mb-4">
         <h2 className="text-lg font-semibold">
-          3-Day Schedule
+          2-Day Schedule
         </h2>
-        <span className="text-sm text-gray-600">
-          Session Count: {sessions.length}
-        </span>
       </div>
 
       <div className="space-y-4">
-        {[0, 1, 2].map(dayOffset => {
+        {[0, 1].map(dayOffset => {
           const currentDate = addDays(startDay, dayOffset);
           const dayIndex = currentDate.getDay() - 1; // 0 = Monday
           const isToday = format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
