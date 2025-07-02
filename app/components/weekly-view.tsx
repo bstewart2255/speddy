@@ -47,12 +47,6 @@ export function WeeklyView() {
           .order("day_of_week")
           .order("start_time");
 
-        console.log("Raw session data:", {
-          count: sessionData?.length,
-          sessions: sessionData,
-          error: sessionError,
-          userId: user.id,
-        });
 
         if (sessionError) {
           console.error("Session fetch error:", sessionError);
@@ -70,10 +64,6 @@ export function WeeklyView() {
             ),
           }));
 
-          console.log("Transformed sessions:", {
-            count: transformedSessions.length,
-            sessions: transformedSessions,
-          });
 
           setSessions(transformedSessions);
 
@@ -89,11 +79,6 @@ export function WeeklyView() {
             .select("id, initials")
             .in("id", studentIds);
 
-            console.log("Student query result:", {
-              studentData,
-              studentError,
-              studentIds,
-            });
 
             if (studentData && !studentError && isMounted) {
               const studentMap: Record<string, any> = {};
@@ -187,36 +172,6 @@ export function WeeklyView() {
     return grouped;
   }, [sessions]);
 
-// ADD THE DEBUGGING CODE HERE (after line 168)
-  // Temporary debugging
-  React.useEffect(() => {
-    let visibleCount = 0;
-    Object.values(sessionsByDayTime).forEach(slotSessions => {
-      if (Array.isArray(slotSessions)) {
-        visibleCount += slotSessions.length;
-      }
-    });
-
-    console.log('Session visibility:', {
-      totalSessions: sessions.length,
-      visibleSessions: visibleCount,
-      slotsWithSessions: Object.keys(sessionsByDayTime).length,
-      averagePerSlot: (visibleCount / Object.keys(sessionsByDayTime).length).toFixed(2)
-    });
-
-    // Find slots with many sessions
-    const crowdedSlots = Object.entries(sessionsByDayTime)
-      .filter(([key, sessions]) => Array.isArray(sessions) && sessions.length > 2)
-      .map(([key, sessions]) => ({
-        key,
-        count: (sessions as any[]).length,
-        times: (sessions as any[]).map(s => s.start_time)
-      }));
-
-    if (crowdedSlots.length > 0) {
-      console.log('Crowded slots:', crowdedSlots);
-    }
-  }, [sessions, sessionsByDayTime]);
 
   // Calculate the starting day (today or next Monday if weekend)
   const startDay = React.useMemo(() => {
@@ -231,34 +186,6 @@ export function WeeklyView() {
   const MORNING_SLOTS = ["8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM"];
   const AFTERNOON_SLOTS = ["12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM"];
 
-  // Debug: Count sessions in the 3-day view
-  React.useEffect(() => {
-    let displayedCount = 0;
-
-    for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
-      const currentDate = addDays(startDay, dayOffset);
-      const dayIndex = currentDate.getDay() - 1;
-
-      if (dayIndex >= 0 && dayIndex <= 4) {
-        TIME_SLOTS.forEach((time, timeIndex) => {
-          const sessionKey = `${dayIndex}-${timeIndex}`;
-          const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
-          displayedCount += sessionsInSlot.length;
-        });
-      }
-    }
-
-    console.log('3-Day View Debug:', {
-      totalSessions: sessions.length,
-      displayedInView: displayedCount,
-      startDay: format(startDay, 'yyyy-MM-dd'),
-      sessionsByDay: sessions.reduce((acc, s) => {
-        const day = s.day_of_week;
-        acc[day] = (acc[day] || 0) + 1;
-        return acc;
-      }, {})
-    });
-  }, [sessions, sessionsByDayTime, startDay]);
 
   if (loading) {
     return (
