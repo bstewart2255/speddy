@@ -1,3 +1,4 @@
+
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../src/types/database';
 
@@ -144,7 +145,7 @@ export class OptimizedScheduler {
           startTime,
           endTime: '', // Will be set based on session duration
           available: true,
-          capacity: 4, // Max students per slot
+          capacity: 6, // Updated to 6 as per new rules
           conflicts: []
         };
 
@@ -285,22 +286,29 @@ export class OptimizedScheduler {
     duration: number,
     slotsNeeded: number
   ): TimeSlot[] {
-    console.log(`\n>>> ENTERING findStudentSlots for ${student.initials}`);
     console.log(`\nFinding slots for ${student.initials} (Grade ${student.grade_level})`);
     
     const foundSlots: TimeSlot[] = [];
     const scheduledDays = new Set<number>();
 
-    // Sort days to distribute sessions evenly
-    const sortedDays = [...this.context!.workDays].sort((a, b) => {
+    // Validate that we only check work days for this school
+    const validWorkDays = this.context!.workDays.filter(day => day >= 1 && day <= 5);
+    
+    if (validWorkDays.length === 0) {
+      console.log(`❌ No valid work days found for ${this.context!.schoolSite}`);
+      return [];
+    }
+
+    // Sort days to distribute sessions evenly when possible
+    const sortedDays = [...validWorkDays].sort((a, b) => {
       const aCount = this.context!.existingSessions.filter(s => s.day_of_week === a).length;
       const bCount = this.context!.existingSessions.filter(s => s.day_of_week === b).length;
       return aCount - bCount;
     });
 
     console.log(`Work days from context: ${this.context!.workDays}`);
-    console.log(`sortedDays: ${sortedDays}`);
-    console.log(`All days being checked: ${sortedDays.join(', ')}`);
+    console.log(`Valid work days: ${validWorkDays.join(', ')}`);
+    console.log(`Sorted days for distribution: ${sortedDays.join(', ')}`);
     
     // Try to find slots
     for (const day of sortedDays) {
@@ -311,12 +319,11 @@ export class OptimizedScheduler {
         break;
       }
 
-      console.log(`Proceeding to check slots for day ${day}`);
-      
       // Get all valid slots for this day
       const daySlots = Array.from(this.context!.validSlots.entries())
         .filter(([key, slot]) => slot.dayOfWeek === day && slot.capacity > 0)
-        .map(([key, slot]) => ({ key, ...slot }));
+        .map(([key, slot]) => ({ key, ...slot }))
+        .sort((a, b) => this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime)); // Sort by time
 
       console.log(`Day ${day}: Found ${daySlots.length} potential slots`);
       
@@ -327,30 +334,54 @@ export class OptimizedScheduler {
 
         console.log(`  Checking slot ${slot.startTime}-${endTime}`);
 
-        // Check bell schedule conflicts for this student's grade
-        const hasBellConflict = this.context!.bellSchedules.some(bell => {
-          const grades = bell.grade_level.split(',').map(g => g.trim());
-          return grades.includes(student.grade_level.trim()) &&
-                 bell.day_of_week === day &&
-                 this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
-        });
-
-        if (hasBellConflict) {
-          console.log(`    ❌ Bell schedule conflict`);
+        // Check if session extends beyond school hours (3:00 PM)
+        if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) {
+          console.log(`    ❌ Session extends beyond 3:00 PM`);
           continue;
         }
 
+        // Check bell schedule conflicts for this student's grade
+        const hasBellConflict = this.context!.bellSchedules.some(bell => {
+          const grades = bell.grade_level.split(',').map(g => g.trim());
+          const hasGrade = grades.includes(student.grade_level.trim());
+          const hasTimeOverlap = bell.day_of_week === day &&
+                 this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
+          
+          if (hasGrade && hasTimeOverlap) {
+            console.log(`    ❌ Bell schedule conflict: ${bell.period_name} for grade ${student.grade_level}`);
+          }
+          
+          return hasGrade && hasTimeOverlap;
+        });
+
+        if (hasBellConflict) continue;
+
         // Check special activities for this student's teacher
-        const hasActivityConflict = this.context!.specialActivities.some(activity =>
-          activity.teacher_name === student.teacher_name &&
-          activity.day_of_week === day &&
-          this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time)
-        );
+        const hasActivityConflict = this.context!.specialActivities.some(activity => {
+          const hasTeacherConflict = activity.teacher_name === student.teacher_name &&
+                 activity.day_of_week === day &&
+                 this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
+          
+          if (hasTeacherConflict) {
+            console.log(`    ❌ Special activity conflict: ${activity.activity_name} for teacher ${student.teacher_name}`);
+          }
+          
+          return hasTeacherConflict;
+        });
 
         if (hasActivityConflict) continue;
 
-        // Check if session extends beyond school hours
-        if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) continue;
+        // Check consecutive session rules (max 60 minutes without break)
+        if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime)) {
+          console.log(`    ❌ Consecutive session rule violation`);
+          continue;
+        }
+
+        // Check break requirements (30-minute break between non-consecutive sessions)
+        if (!this.validateBreakRequirements(student, day, slot.startTime, endTime)) {
+          console.log(`    ❌ Break requirement violation`);
+          continue;
+        }
 
         // Valid slot found!
         console.log(`    ✅ Valid slot found!`);
@@ -359,10 +390,99 @@ export class OptimizedScheduler {
           endTime
         });
         scheduledDays.add(day);
+
+        // For students with 3+ sessions, try to distribute across multiple days
+        if (slotsNeeded >= 3 && foundSlots.length < slotsNeeded) {
+          // Try to move to next day if we have more slots needed
+          break;
+        }
       }
     }
 
+    console.log(`Found ${foundSlots.length} slots for ${student.initials}`);
     return foundSlots;
+  }
+
+  /**
+   * Validate consecutive session rules (max 60 minutes without break)
+   */
+  private validateConsecutiveSessionRules(
+    student: Student, 
+    day: number, 
+    startTime: string, 
+    endTime: string
+  ): boolean {
+    const existingStudentSessions = this.context!.existingSessions.filter(
+      s => s.student_id === student.id && s.day_of_week === day
+    );
+
+    const sessionDuration = student.minutes_per_session;
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+
+    for (const existing of existingStudentSessions) {
+      const existingStart = this.timeToMinutes(existing.start_time);
+      const existingEnd = this.timeToMinutes(existing.end_time);
+
+      // Check if sessions are consecutive (back-to-back)
+      const isConsecutiveBefore = existingEnd === startMinutes;
+      const isConsecutiveAfter = endMinutes === existingStart;
+
+      if (isConsecutiveBefore) {
+        // Check total consecutive time doesn't exceed 60 minutes
+        const totalConsecutiveTime = endMinutes - existingStart;
+        if (totalConsecutiveTime > 60) {
+          return false;
+        }
+      }
+
+      if (isConsecutiveAfter) {
+        // Check total consecutive time doesn't exceed 60 minutes
+        const totalConsecutiveTime = existingEnd - startMinutes;
+        if (totalConsecutiveTime > 60) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Validate break requirements (30-minute break between non-consecutive sessions)
+   */
+  private validateBreakRequirements(
+    student: Student, 
+    day: number, 
+    startTime: string, 
+    endTime: string
+  ): boolean {
+    const existingStudentSessions = this.context!.existingSessions.filter(
+      s => s.student_id === student.id && s.day_of_week === day
+    );
+
+    const startMinutes = this.timeToMinutes(startTime);
+    const endMinutes = this.timeToMinutes(endTime);
+
+    for (const existing of existingStudentSessions) {
+      const existingStart = this.timeToMinutes(existing.start_time);
+      const existingEnd = this.timeToMinutes(existing.end_time);
+
+      // Check if sessions are consecutive
+      const isConsecutive = existingEnd === startMinutes || endMinutes === existingStart;
+
+      if (!isConsecutive) {
+        // Check if there's enough break time (30 minutes minimum)
+        const gapBefore = startMinutes - existingEnd;
+        const gapAfter = existingStart - endMinutes;
+
+        if ((gapBefore > 0 && gapBefore < 30) || (gapAfter > 0 && gapAfter < 30)) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -380,6 +500,24 @@ export class OptimizedScheduler {
           this.context!.validSlots.delete(key);
         }
       }
+
+      // Also add to existing sessions for future constraint checking
+      this.context!.existingSessions.push({
+        id: 'temp-' + Math.random(),
+        student_id: session.student_id,
+        provider_id: session.provider_id,
+        day_of_week: session.day_of_week,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        service_type: session.service_type,
+        assigned_to_sea_id: session.assigned_to_sea_id,
+        delivered_by: session.delivered_by,
+        completed_at: session.completed_at,
+        completed_by: session.completed_by,
+        session_notes: session.session_notes,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
     }
   }
 
