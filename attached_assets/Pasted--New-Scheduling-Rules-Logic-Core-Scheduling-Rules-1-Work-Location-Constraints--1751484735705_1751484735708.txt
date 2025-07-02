@@ -1,0 +1,55 @@
+## New Scheduling Rules & Logic
+
+### Core Scheduling Rules
+
+#### 1. **Work Location Constraints**
+- **Rule**: Sessions can ONLY be scheduled on days when the provider works at that specific school
+- **Implementation**: Check `user_site_schedules` table for provider availability at each school
+- **Example**: If provider works at Bancroft on Mon/Tue, no Bancroft student sessions on Wed/Thu/Fri
+
+#### 2. **Session Distribution**
+- **Rule**: No limit on sessions per day (removed old one-per-day restriction)
+- **Preference**: For students with 3+ sessions, TRY to distribute across multiple days when possible
+- **Implementation**: Sort days by existing session count, attempt distribution in first pass
+
+#### 3. **Concurrent Session Limit**
+- **Rule**: Maximum 6 sessions can occur at the same time (increased from 4)
+- **Implementation**: Check slot capacity before scheduling
+
+#### 4. **Consecutive Session Rules**
+- **Rule**: Maximum 60 consecutive minutes without a break
+- **Example**: Can have 2x30min back-to-back, but not 3x30min
+- **Implementation**: Check total consecutive time when validating slots
+
+#### 5. **Break Requirements**
+- **Rule**: Minimum 30-minute break between non-consecutive sessions
+- **Example**: If session ends at 9:00, next session can't start until 9:30 (unless back-to-back)
+- **Implementation**: Calculate gap between sessions, require ≥30 min if not consecutive
+
+#### 6. **School Hours**
+- **Rule**: All sessions must end by 3:00 PM (15:00)
+- **Implementation**: Validate end time ≤ 15:00
+
+#### 7. **Bell Schedule Conflicts**
+- **Rule**: No sessions during bell schedule periods for student's grade
+- **Implementation**: Check bell schedules by grade level and day
+
+#### 8. **Special Activities**
+- **Rule**: No sessions during teacher's special activities
+- **Implementation**: Check special activities by teacher name and day
+
+### Removed Rules
+1. ~~One session per student per day~~ ❌
+2. ~~Daily minute cap (was 120 minutes)~~ ❌
+3. ~~4 concurrent session limit~~ ❌ (now 6)
+
+### Scheduling Priority Order
+1. Students with more sessions needed (harder to schedule)
+2. Distribute across available days when possible
+3. Fill morning slots before afternoon
+4. Respect all constraints above
+
+### Edge Cases to Handle
+- If insufficient slots due to constraints, schedule as many as possible
+- If provider has no defined work schedule, assume all weekdays available
+- Grade levels in bell schedules can be comma-separated (e.g., "1,2,3")
