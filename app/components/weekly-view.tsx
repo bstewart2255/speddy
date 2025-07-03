@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -21,6 +21,8 @@ export function WeeklyView() {
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
   const [loading, setLoading] = React.useState(true);
+  const [viewMode, setViewMode] = useState<'provider' | 'sea'>('provider');
+  const [showToggle, setShowToggle] = useState<boolean>(false);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -37,15 +39,52 @@ export function WeeklyView() {
           return;
         }
 
-        // Fetch schedule sessions
-        const { data: sessionData, error: sessionError } = await supabase
+        // Check if user is a Resource Specialist and has SEAs
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, school_site')
+          .eq('id', user.id)
+          .single();
+
+        console.log('User profile:', profile); // ADD THIS
+
+
+        if (profile?.role === 'resource' && profile.school_site) {
+          // Check if there are any SEAs at the same school
+          const { data: seas, count: seaCount } = await supabase
+            .from('profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('role', 'sea')
+            .eq('school_site', profile.school_site);
+          
+          console.log('SEA count at school:', seaCount); 
+          setShowToggle((seaCount || 0) > 0);
+        } else {
+          console.log('Not showing toggle - role:', profile?.role); // ADD THIS
+          setShowToggle(false);
+        }
+
+        // Fetch schedule sessions based on view mode
+        let sessionQuery = supabase
           .from("schedule_sessions")
-          .select("id, day_of_week, start_time, end_time, student_id")
-          .eq("provider_id", user.id)
+          .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id")
           .gte("day_of_week", 1)
           .lte("day_of_week", 5)
           .order("day_of_week")
           .order("start_time");
+
+        if (showToggle && viewMode === 'sea') {
+          // Show sessions assigned to SEAs
+          sessionQuery = sessionQuery
+            .eq("provider_id", user.id)
+            .eq("delivered_by", "sea");
+        } else {
+          // Show all provider sessions (default behavior)
+          sessionQuery = sessionQuery
+            .eq("provider_id", user.id);
+        }
+
+        const { data: sessionData, error: sessionError } = await sessionQuery;
 
         if (sessionError) {
           console.error("Session fetch error:", sessionError);
@@ -102,7 +141,7 @@ export function WeeklyView() {
     return () => {
       isMounted = false;
     };
-  }, []); // Empty dependency array - only run once on mount
+  }, [viewMode]); // Re-run when viewMode changes
 
   // Helper functions
   const getDayIndex = (session: any): number => {
@@ -227,16 +266,51 @@ export function WeeklyView() {
     );
   }
 
-  return (
+return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">
-          2-Day Schedule
+          Today's Schedule
         </h2>
+
+        {/* Only show toggle for Resource Specialists with SEAs */}
+        {showToggle && (
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('provider')}
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                viewMode === 'provider'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Me
+            </button>
+            <button
+              onClick={() => setViewMode('sea')}
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                viewMode === 'sea'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              SEA
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Only show description if toggle is visible */}
+      {showToggle && (
+        <p className="text-sm text-gray-600 mb-3">
+          {viewMode === 'provider' 
+            ? "Showing sessions you will deliver" 
+            : "Showing sessions assigned to SEAs"}
+        </p>
+      )}
+
       <div className="space-y-4">
-        {[0, 1].map(dayOffset => {
+        {[0].map(dayOffset => {
           const currentDate = addDays(startDay, dayOffset);
           const dayIndex = currentDate.getDay() - 1; // 0 = Monday
           const isToday = format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
@@ -248,7 +322,6 @@ export function WeeklyView() {
             <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
               <div className={`px-3 py-2 font-medium text-sm ${isToday ? 'bg-blue-100' : 'bg-gray-50'}`}>
                 {format(currentDate, 'EEEE, MMM d')}
-                {isToday && <span className="ml-2 text-xs text-blue-600">(Today)</span>}
               </div>
 
               <div className="grid grid-cols-2 divide-x divide-gray-200">
