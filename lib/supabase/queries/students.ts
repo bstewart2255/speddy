@@ -133,8 +133,10 @@ export async function deleteStudent(studentId: string) {
  * Update a student's session requirements if owned by the user.
  */
 export async function updateStudent(studentId: string, updates: {
-  sessions_per_week: number;
-  minutes_per_session: number;
+  grade_level?: string;
+  teacher_name?: string;
+  sessions_per_week?: number;
+  minutes_per_session?: number;
 }) {
   const supabase = createClientComponentClient();
 
@@ -142,13 +144,16 @@ export async function updateStudent(studentId: string, updates: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
 
-  // Only allow updating sessions_per_week and minutes_per_session
+  // Build update object with only provided fields
+  const updateData: any = {};
+  if (updates.grade_level !== undefined) updateData.grade_level = updates.grade_level;
+  if (updates.teacher_name !== undefined) updateData.teacher_name = updates.teacher_name;
+  if (updates.sessions_per_week !== undefined) updateData.sessions_per_week = updates.sessions_per_week;
+  if (updates.minutes_per_session !== undefined) updateData.minutes_per_session = updates.minutes_per_session;
+
   const { data, error } = await supabase
     .from('students')
-    .update({
-      sessions_per_week: updates.sessions_per_week,
-      minutes_per_session: updates.minutes_per_session
-    })
+    .update(updateData)
     .eq('id', studentId)
     .eq('provider_id', user.id) // CRITICAL: Only update if user owns this student
     .select()
@@ -165,20 +170,20 @@ export async function updateStudent(studentId: string, updates: {
 }
 
 /**
- * Convenience wrapper that creates a student and returns the new record.
- */
+* Convenience wrapper that creates a student and returns the new record.
+*/
 export async function createStudentWithAutoSchedule(studentData: {
-  initials: string;
-  grade_level: string;
-  teacher_name: string;
-  sessions_per_week: number;
-  minutes_per_session: number;
+initials: string;
+grade_level: string;
+teacher_name: string;
+sessions_per_week: number;
+minutes_per_session: number;
 }) {
-  const supabase = createClientComponentClient();
+const supabase = createClientComponentClient();
 
-  // First create the student as before
-  const student = await createStudent(studentData);
+// First create the student as before
+const student = await createStudent(studentData);
 
-  // Return the student - scheduling will be handled by the component
-  return student;
+// Return the student - scheduling will be handled by the component
+return student;
 }

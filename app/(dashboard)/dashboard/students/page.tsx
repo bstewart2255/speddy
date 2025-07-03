@@ -10,6 +10,7 @@ import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/sc
 import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 
 type Student = {
   id: string;
@@ -41,6 +42,7 @@ export default function StudentsPage() {
     minutes_per_session: ''
   });
 
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
@@ -373,6 +375,29 @@ export default function StudentsPage() {
           </div>
         )}
 
+        {/* Student Details Modal */}
+        {selectedStudent && (
+          <StudentDetailsModal
+            isOpen={!!selectedStudent}
+            onClose={() => setSelectedStudent(null)}
+            student={selectedStudent}
+            onSave={(studentId, details) => {
+              alert('Student details saved successfully!');
+            }}
+            onUpdateStudent={async (studentId, updates) => {
+              try {
+                await updateStudent(studentId, updates);
+                // Refresh the students list
+                await fetchStudents();
+                alert('Student information updated successfully!');
+              } catch (error) {
+                console.error('Error updating student:', error);
+                alert('Failed to update student information.');
+              }
+            }}
+          />
+        )}
+        
         {/* Students List */}
         <Card>
           <CardHeader
@@ -420,7 +445,12 @@ export default function StudentsPage() {
                   .map((student) => (
                   <TableRow key={student.id}>
                     <TableCell>
-                      <StudentTag initials={student.initials} />
+                      <button
+                        onClick={() => setSelectedStudent(student)}
+                        className="hover:opacity-80 transition-opacity"
+                      >
+                        <StudentTag initials={student.initials} />
+                      </button>
                     </TableCell>
                     <TableCell>
                       <GradeTag grade={student.grade_level} />

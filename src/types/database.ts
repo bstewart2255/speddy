@@ -189,6 +189,47 @@ export interface Database {
           updated_at?: string
         }
       },
+      student_details: {
+        Row: {
+          id: string
+          student_id: string
+          first_name: string | null
+          last_name: string | null
+          date_of_birth: string | null
+          district_id: string | null
+          upcoming_iep_date: string | null
+          upcoming_triennial_date: string | null
+          iep_goals: string[] | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          student_id: string
+          first_name?: string | null
+          last_name?: string | null
+          date_of_birth?: string | null
+          district_id?: string | null
+          upcoming_iep_date?: string | null
+          upcoming_triennial_date?: string | null
+          iep_goals?: string[] | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          student_id?: string
+          first_name?: string | null
+          last_name?: string | null
+          date_of_birth?: string | null
+          district_id?: string | null
+          upcoming_iep_date?: string | null
+          upcoming_triennial_date?: string | null
+          iep_goals?: string[] | null
+          created_at?: string
+          updated_at?: string
+        }
+      },
       bell_schedules: {
         Row: {
           id: string
