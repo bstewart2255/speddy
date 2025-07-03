@@ -2,6 +2,7 @@
 
 import React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
+import { WorksheetGenerator } from '../../lib/worksheet-generator';
 
 interface Student {
   id: string;
@@ -126,6 +127,25 @@ export function AIContentModal({
     }, 250);
   };
 
+  const handlePrintWorksheet = (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
+    const generator = new WorksheetGenerator();
+
+    const worksheetData = generator.generateWorksheet({
+      studentName: studentInitials,
+      subject: subject,
+      gradeLevel: gradeLevel as any,
+      sessionDate: new Date()
+    });
+
+    // Open PDF in new window for printing
+    const printWindow = window.open(worksheetData, '_blank');
+    if (printWindow) {
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -156,9 +176,36 @@ export function AIContentModal({
               <p className="text-sm text-gray-500 mt-2">This may take a few moments...</p>
             </div>
           ) : content ? (
-            <div className="prose max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: content }} />
-            </div>
+      <>
+        <div className="prose max-w-none">
+          <div dangerouslySetInnerHTML={{ __html: content }} />
+        </div>
+        {/* Add worksheet buttons for each student */}
+        <div className="mt-6 border-t pt-4">
+          <h4 className="text-lg font-semibold mb-3">Print Worksheets</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {students.map((student) => (
+              <div key={student.id} className="border rounded-lg p-3 bg-gray-50">
+                <p className="font-medium mb-2">{student.initials} (Grade {student.grade_level})</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'math')}
+                    className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-colors"
+                  >
+                    Math Worksheet
+                  </button>
+                  <button
+                    onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'ela')}
+                    className="flex-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded transition-colors"
+                  >
+                    ELA Worksheet
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
           ) : (
             <div className="text-center py-12 text-gray-500">
               No content generated yet.

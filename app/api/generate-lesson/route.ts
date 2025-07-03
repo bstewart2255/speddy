@@ -125,7 +125,41 @@ For each activity, specify:
 - What accommodations to implement
 - How to assess progress
 
-Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a special education teacher.`;
+Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a special education teacher.
+
+IMPORTANT - Available Printable Worksheets:
+The teacher has instant access to these grade-specific worksheets (available via Print Worksheet buttons):
+
+Kindergarten:
+- ELA: Letter Recognition (uppercase/lowercase matching practice)
+- Math: Number Sense (counting objects, number recognition)
+
+Grade 1:
+- ELA: Phonemic Awareness (blending sounds like c-a-t → cat, segmenting words)
+- Math: Addition & Subtraction within 20 (fact fluency practice)
+
+Grade 2:
+- ELA: Reading Comprehension (short passages with comprehension questions)
+- Math: Place Value (expanded form, comparing numbers, ordering numbers)
+
+Grade 3:
+- ELA: Main Idea & Inferencing (passages requiring deeper comprehension)
+- Math: Multiplication Facts (timed practice, word problems)
+
+Grade 4:
+- ELA: Summarizing and Synthesizing Text (identifying key points, main ideas)
+- Math: Multi-digit Multiplication and Long Division (step-by-step problems)
+
+Grade 5:
+- ELA: Analyzing Texts and Citing Evidence (supporting answers with text evidence)
+- Math: Fractions (adding/subtracting with unlike denominators, word problems)
+
+When planning activities, specifically reference these worksheets when appropriate. For example:
+- "Have [Student] complete the Grade 2 Place Value worksheet (print via button below)"
+- "Start with the Letter Recognition worksheet for [Student]"
+- "Use the Reading Comprehension worksheet to assess [Student]'s progress"
+
+This helps the teacher know exactly which materials are ready to print and use.`;
 }
 
 // Keep your existing generateMockResponse function here
