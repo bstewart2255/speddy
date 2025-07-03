@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import Anthropic from '@anthropic-ai/sdk';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,51 +15,59 @@ export async function POST(request: NextRequest) {
 
     const { students, timeSlot, duration = 30 } = await request.json();
 
-    // Group students by grade
-    const gradeGroups = students.reduce((acc: any, student: any) => {
-      const grade = student.grade_level;
-      if (!acc[grade]) acc[grade] = [];
-      acc[grade].push(student);
-      return acc;
-    }, {});
+    // Get recent session logs for enhanced personalization
+    const studentIds = students.map((s: any) => s.id);
+    const { data: recentLogs } = await supabase
+      .from('session_logs')
+      .select('*')
+      .in('student_id', studentIds)
+      .order('date', { ascending: false })
+      .limit(10);
 
-    // Create a detailed prompt
-    const prompt = `You are an expert special education teacher. Generate a detailed ${duration}-minute lesson plan for a group session with the following students:
-
-${Object.entries(gradeGroups).map(([grade, studentList]: [string, any]) => 
-  `Grade ${grade}: ${studentList.map((s: any) => `${s.initials} (Teacher: ${s.teacher_name})`).join(', ')}`
-).join('\n')}
-
-Please create a comprehensive lesson plan that includes:
-
-1. **Learning Objectives** - Clear, measurable objectives appropriate for mixed grade levels
-2. **Materials Needed** - List all required materials
-3. **Lesson Structure**:
-   - Opening/Warm-up Activity (5 minutes) - Engaging activity to start
-   - Main Instruction (${duration - 10} minutes) - Core teaching with differentiation strategies
-   - Closing/Assessment (5 minutes) - Quick assessment or exit ticket
-4. **Differentiation Strategies** - Specific accommodations for each grade level
-5. **Assessment Methods** - How to evaluate student understanding
-6. **Extension Activities** - For students who finish early
-7. **IEP Considerations** - General accommodations for special education students
-
-IMPORTANT: Format the response as clean HTML with proper headings and sections. Use <h3> for main sections, <h4> for subsections, <ul> and <li> for lists, and <p> for paragraphs. Make it practical and immediately usable by a special education teacher. The HTML should be well-structured and ready to display or print.`;
+    // Create enhanced prompt
+    const prompt = createEnhancedPrompt(students, duration, recentLogs || []);
 
     let content;
 
-    // Check if we're in the browser environment with claude.complete available
-    if (typeof window !== 'undefined' && window.claude?.complete) {
+    // Check if API key exists in Replit Secrets
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (apiKey) {
       try {
-        const response = await window.claude.complete(prompt);
-        content = response;
-      } catch (error) {
-        console.error('Claude API error:', error);
-        // Fall back to the detailed mock response
-        content = await generateMockResponse(prompt, gradeGroups, duration);
+        console.log('Using Anthropic API for lesson generation...');
+
+        const anthropic = new Anthropic({
+          apiKey: apiKey,
+        });
+
+        const message = await anthropic.messages.create({
+          model: "claude-3-haiku-20240307", // Cheapest and fastest model
+          max_tokens: 2000,
+          temperature: 0.7,
+          system: "You are an expert special education teacher creating highly personalized lesson plans. Format all responses as clean HTML with proper semantic tags.",
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ]
+        });
+
+        // Extract the text content from Claude's response
+        content = message.content[0].type === 'text' ? message.content[0].text : '';
+
+        // Log usage for monitoring (visible in Replit console)
+        console.log(`✅ Anthropic API Success - Tokens used: ${message.usage.input_tokens + message.usage.output_tokens}`);
+
+      } catch (apiError: any) {
+        console.error('❌ Anthropic API error:', apiError.message);
+        // Fall back to mock response if API fails
+        content = await generateMockResponse(students, duration);
       }
     } else {
-      // Use mock response for now (server-side or no Claude available)
-      content = await generateMockResponse(prompt, gradeGroups, duration);
+      // No API key configured, use mock response
+      console.log('⚠️ No Anthropic API key found in Secrets. Using mock response.');
+      content = await generateMockResponse(students, duration);
     }
 
     return NextResponse.json({ content });
@@ -71,121 +80,77 @@ IMPORTANT: Format the response as clean HTML with proper headings and sections. 
   }
 }
 
-// Keep the existing generateMockResponse function
-async function generateMockResponse(prompt: string, gradeGroups: any, duration: number) {
+function createEnhancedPrompt(students: any[], duration: number, recentLogs: any[]) {
+  // Create detailed student profiles
+  const studentProfiles = students.map(student => {
+    const studentLogs = recentLogs.filter(log => log.student_id === student.id);
+
+    return `
+Student: ${student.initials} (Grade ${student.grade_level})
+- Teacher: ${student.teacher_name}
+- Reading Level: ${student.reading_level || 'Not specified'}
+- Math Level: ${student.math_level || 'Not specified'}
+- Learning Style: ${student.learning_style || 'Mixed'}
+- IEP Goals: ${student.iep_goals?.join('; ') || 'Standard curriculum goals'}
+- Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
+- Strengths: ${student.strengths?.join(', ') || 'To be identified'}
+- Accommodations: ${student.accommodations?.join(', ') || 'Standard classroom accommodations'}
+${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.join(', ') || 'N/A'}` : ''}
+${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
+  }).join('\n');
+
+  return `Create a detailed, practical ${duration}-minute special education lesson plan for the following students:
+
+${studentProfiles}
+
+Requirements:
+1. Address each student's SPECIFIC IEP goals with targeted activities
+2. Differentiate instruction based on actual reading/math levels, not just grade
+3. Incorporate each student's learning style (visual/auditory/kinesthetic)
+4. Build on recent work and recommended next steps where provided
+5. Include all required accommodations for each student
+6. Use student strengths to support areas of need
+
+Structure the lesson with:
+- Opening (5 min): Multi-sensory warm-up engaging all learning styles
+- Main Instruction (${duration - 10} min): 
+  * Differentiated activities for each ability level
+  * Specific IEP goal practice for each student
+  * Clear instructions for grouping/individual work
+- Closing (5 min): Individual assessment aligned to goals
+
+For each activity, specify:
+- Which student(s) it targets
+- Which IEP goal/skill it addresses
+- What accommodations to implement
+- How to assess progress
+
+Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a special education teacher.`;
+}
+
+// Keep your existing generateMockResponse function here
+async function generateMockResponse(students: any[], duration: number) {
+  // ... (keep the existing mock response code from the original file)
+  const gradeGroups = students.reduce((acc: any, student: any) => {
+    const grade = student.grade_level;
+    if (!acc[grade]) acc[grade] = [];
+    acc[grade].push(student);
+    return acc;
+  }, {});
+
   const grades = Object.keys(gradeGroups).sort();
-  const studentCount = Object.values(gradeGroups).flat().length;
+  const studentCount = students.length;
 
   return `
     <div class="lesson-plan">
       <h3>Multi-Grade Special Education Lesson Plan</h3>
+      <p><em>Note: Using mock response. Add Anthropic API key in Replit Secrets for AI-generated lessons.</em></p>
       <div class="lesson-header">
         <p><strong>Duration:</strong> ${duration} minutes</p>
         <p><strong>Group Size:</strong> ${studentCount} students</p>
         <p><strong>Grade Levels:</strong> ${grades.join(', ')}</p>
-        <p><strong>Subject Focus:</strong> Mathematics - Number Sense and Operations</p>
       </div>
-
-      <h3>Learning Objectives</h3>
-      <ul>
-        ${grades.map(grade => {
-          if (grade === 'K' || grade === '1') {
-            return '<li><strong>Grades K-1:</strong> Students will identify and count numbers 1-20 with 80% accuracy</li>';
-          } else if (grade === '2' || grade === '3') {
-            return '<li><strong>Grades 2-3:</strong> Students will solve addition and subtraction problems within 100</li>';
-          } else {
-            return '<li><strong>Grades 4-5:</strong> Students will solve multi-step word problems involving all operations</li>';
-          }
-        }).join('\n')}
-      </ul>
-
-      <h3>Materials Needed</h3>
-      <ul>
-        <li>Whiteboard and colored markers</li>
-        <li>Number cards (1-100)</li>
-        <li>Manipulatives (counting bears, base-10 blocks)</li>
-        <li>Differentiated worksheets by grade level</li>
-        <li>Visual number line</li>
-        <li>Timer</li>
-        <li>Exit ticket forms</li>
-      </ul>
-
-      <h3>Lesson Structure</h3>
-
-      <h4>1. Opening Activity (5 minutes) - "Number of the Day"</h4>
-      <p>Display a number on the board (e.g., 24). Each student shares something about this number:</p>
-      <ul>
-        <li><strong>K-1:</strong> Count to the number, identify if it's bigger/smaller than 10</li>
-        <li><strong>2-3:</strong> Break it into tens and ones, find numbers that add to it</li>
-        <li><strong>4-5:</strong> Find factors, create equations that equal this number</li>
-      </ul>
-
-      <h4>2. Main Instruction (${duration - 10} minutes) - Differentiated Centers</h4>
-      <p>Divide class into 3 rotating centers (${Math.floor((duration - 10) / 3)} minutes each):</p>
-
-      <div style="margin-left: 20px;">
-        <p><strong>Center A - Hands-On Manipulation:</strong></p>
-        <ul>
-          <li>K-1: Sort and count objects, create number sets</li>
-          <li>2-3: Use base-10 blocks for addition/subtraction</li>
-          <li>4-5: Model word problems with manipulatives</li>
-        </ul>
-
-        <p><strong>Center B - Guided Practice with Teacher:</strong></p>
-        <ul>
-          <li>Direct instruction tailored to each grade's objectives</li>
-          <li>Use of visual aids and step-by-step modeling</li>
-          <li>Immediate feedback and error correction</li>
-        </ul>
-
-        <p><strong>Center C - Independent/Partner Work:</strong></p>
-        <ul>
-          <li>Grade-appropriate worksheets or task cards</li>
-          <li>Peer tutoring opportunities</li>
-          <li>Self-checking activities</li>
-        </ul>
-      </div>
-
-      <h4>3. Closing Activity (5 minutes) - "Show What You Know"</h4>
-      <p>Quick formative assessment:</p>
-      <ul>
-        <li>Each student completes one problem at their level</li>
-        <li>Share strategies with a partner</li>
-        <li>Teacher does quick check of understanding</li>
-      </ul>
-
-      <h3>Differentiation Strategies</h3>
-      <ul>
-        <li><strong>For struggling learners:</strong> Provide number lines, hundreds charts, additional manipulatives</li>
-        <li><strong>For advanced learners:</strong> Offer challenge problems, peer tutoring roles</li>
-        <li><strong>Visual supports:</strong> Color-coding, graphic organizers, step-by-step visual guides</li>
-        <li><strong>Reduced problem sets:</strong> Quality over quantity, focus on mastery</li>
-      </ul>
-
-      <h3>Assessment Methods</h3>
-      <ul>
-        <li>Observation during center rotations</li>
-        <li>Exit ticket performance</li>
-        <li>Anecdotal notes on student strategies</li>
-        <li>Photo documentation of manipulative work</li>
-      </ul>
-
-      <h3>IEP Accommodations</h3>
-      <ul>
-        <li>Extended time as needed</li>
-        <li>Preferential seating near instruction</li>
-        <li>Frequent breaks between activities</li>
-        <li>Modified problem complexity based on IEP goals</li>
-        <li>Use of assistive technology as specified</li>
-      </ul>
-
-      <h3>Extension Activities</h3>
-      <ul>
-        <li>Create their own word problems for classmates</li>
-        <li>Math journal reflections</li>
-        <li>Digital math games on tablets</li>
-        <li>Teach a concept to a younger student</li>
-      </ul>
+      <!-- Rest of mock response... -->
     </div>
   `;
 }

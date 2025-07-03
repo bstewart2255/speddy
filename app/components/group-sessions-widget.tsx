@@ -6,8 +6,8 @@ import { AIContentModal } from "./ai-content-modal";
 
 const TIME_SLOTS = [
   "8:00", "8:30", "9:00", "9:30", "10:00", "10:30",
-  "11:00", "11:30", "12:00", "12:30", "1:00", "1:30",
-  "2:00", "2:30", "3:00"
+  "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+  "14:00", "14:30", "15:00"
 ];
 
 export function GroupSessionsWidget() {
@@ -35,6 +35,21 @@ export function GroupSessionsWidget() {
   React.useEffect(() => {
     fetchUpcomingSessions();
   }, []);
+
+  React.useEffect(() => {
+    fetchUpcomingSessions();
+  }, []);
+
+  // Add this new useEffect for debugging
+  React.useEffect(() => {
+    if (sessions.length > 0) {
+      console.log('Raw sessions from DB:', sessions);
+      console.log('Current time slots being shown:', getNextFiveHours());
+      sessions.forEach(session => {
+        console.log(`Session ${session.students?.initials} at ${session.start_time}`);
+      });
+    }
+  }, [sessions]); // This will run when sessions change
 
   const fetchUpcomingSessions = async () => {
     const supabase = createClientComponentClient();
@@ -112,15 +127,21 @@ export function GroupSessionsWidget() {
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
     const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour;
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes || '00'} ${period}`;
   };
 
   const getSessionsForSlot = (timeSlot: string) => {
-    const slotTime = timeSlot.padStart(5, '0') + ':00'; // Convert "8:00" to "08:00:00"
-    return sessions.filter(session => 
-      session.start_time.substring(0, 5) === slotTime.substring(0, 5)
-    );
+    const [slotHour, slotMin] = timeSlot.split(':').map(Number);
+    const slotMinutes = slotHour * 60 + slotMin;
+
+    return sessions.filter(session => {
+      const [sessionHour, sessionMin] = session.start_time.split(':').map(Number);
+      const sessionMinutes = sessionHour * 60 + sessionMin;
+
+      // Check if session starts within this 30-minute slot
+      return sessionMinutes >= slotMinutes && sessionMinutes < slotMinutes + 30;
+    });
   };
 
     const generateAIContent = async (students: any[], timeSlot: string) => {
@@ -175,6 +196,9 @@ export function GroupSessionsWidget() {
 
   const visibleSlots = getNextFiveHours();
 
+  // Add debugging here
+  console.log('Rendering with visible slots:', visibleSlots);
+
   return (
     <>
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -189,6 +213,11 @@ export function GroupSessionsWidget() {
           {visibleSlots.map((timeSlot) => {
             const slotSessions = getSessionsForSlot(timeSlot);
 
+            // Debug each slot
+            if (slotSessions.length > 0 || timeSlot === "13:30") {
+              console.log(`Time slot ${timeSlot}: found ${slotSessions.length} sessions`);
+            }
+      
             return (
               <div
                 key={timeSlot}
