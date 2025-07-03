@@ -341,6 +341,44 @@ export interface Database {
           session_notes?: string | null
         }
       },
+      lessons: {
+        Row: {
+          id: string
+          provider_id: string
+          created_at: string
+          time_slot: string
+          student_ids: string[]
+          student_details: Json
+          content: string
+          lesson_date: string
+          school_site: string | null
+          notes: string | null
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          created_at?: string
+          time_slot: string
+          student_ids: string[]
+          student_details: Json
+          content: string
+          lesson_date: string
+          school_site?: string | null
+          notes?: string | null
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          created_at?: string
+          time_slot?: string
+          student_ids?: string[]
+          student_details?: Json
+          content?: string
+          lesson_date?: string
+          school_site?: string | null
+          notes?: string | null
+        }
+      },
       todos: {
         Row: {
           id: string
