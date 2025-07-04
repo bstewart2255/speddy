@@ -798,7 +798,7 @@ export default function SchedulePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-gray-50 flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading schedule...</p>
@@ -1120,7 +1120,7 @@ export default function SchedulePage() {
                     {/* Create a relative container for absolute positioning */}
                     <div
                       className="relative"
-                      style={{ height: `${TOTAL_HEIGHT}px` }}
+                      style={{ height: `${timeMarkers.length * (PIXELS_PER_HOUR / 4)}px` }}
                       onDragOver={(e) => handleDragOver(e, dayIndex + 1)}
                       onDrop={(e) => handleDrop(e, dayIndex + 1)}
                     >
