@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../../lib/supabase/queries/student-details';
+import { SkillsChecklist } from './skills-checklist';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -25,21 +26,12 @@ interface StudentDetailsModalProps {
   }) => void;
 }
 
-interface StudentDetails {
-  first_name: string;
-  last_name: string;
-  date_of_birth: string;
-  district_id: string;
-  upcoming_iep_date: string;
-  upcoming_triennial_date: string;
-  iep_goals: string[];
-}
-
 export function StudentDetailsModal({ 
   isOpen, 
   onClose, 
   student,
-  onSave 
+  onSave,
+  onUpdateStudent
 }: StudentDetailsModalProps) {
   const [details, setDetails] = useState<StudentDetails>({
     first_name: '',
@@ -49,6 +41,7 @@ export function StudentDetailsModal({
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
     iep_goals: [],
+    working_skills: [],
   });
   const [loading, setLoading] = useState(false);
 
@@ -86,6 +79,7 @@ export function StudentDetailsModal({
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
               iep_goals: [],
+              working_skills: [],
             });
           }
         } catch (error) {
@@ -100,12 +94,17 @@ export function StudentDetailsModal({
   const handleSave = async () => {
     setLoading(true);
     try {
+      console.log('Saving student details:', details);
+
       // Save student details
       await upsertStudentDetails(student.id, details);
+      console.log('Student details saved successfully');
 
       // Update student info if changed
       if (onUpdateStudent) {
-        onUpdateStudent(student.id, studentInfo);
+        console.log('Updating student info:', studentInfo);
+        await onUpdateStudent(student.id, studentInfo);
+        console.log('Student info updated successfully');
       }
 
       if (onSave) {
@@ -114,6 +113,12 @@ export function StudentDetailsModal({
       onClose();
     } catch (error) {
       console.error('Error saving:', error);
+      console.error('Full error details:', {
+        message: error.message,
+        stack: error.stack,
+        details: error.details,
+        hint: error.hint
+      });
       alert('Failed to save. Please try again.');
     } finally {
       setLoading(false);
@@ -293,57 +298,85 @@ export function StudentDetailsModal({
                 </FormGroup>
               </div>
             </div>
+            
             {/* IEP Goals Section */}
             <div className="space-y-3 pt-4 border-t">
-              <div className="flex items-center justify-between">
+              <div className="space-y-1">
                 <h4 className="font-medium text-gray-900">IEP Goals</h4>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setDetails({
-                    ...details,
-                    iep_goals: [...details.iep_goals, '']
-                  })}
-                  type="button"
-                >
-                  + Add Goal
-                </Button>
+                <p className="text-sm text-gray-600">
+                  Add specific goals from the student's IEP
+                </p>
               </div>
-
-              {details.iep_goals.length === 0 ? (
-                <p className="text-sm text-gray-500 italic">No goals added yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {details.iep_goals.map((goal, index) => (
-                    <div key={index} className="flex gap-2">
-                      <textarea
-                        value={goal}
-                        onChange={(e) => {
-                          const newGoals = [...details.iep_goals];
-                          newGoals[index] = e.target.value;
-                          setDetails({ ...details, iep_goals: newGoals });
-                        }}
-                        placeholder="Enter IEP goal..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                        rows={2}
-                      />
-                      <button
-                        onClick={() => {
-                          const newGoals = details.iep_goals.filter((_, i) => i !== index);
-                          setDetails({ ...details, iep_goals: newGoals });
-                        }}
-                        className="text-red-600 hover:text-red-800 px-2"
-                        type="button"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+  
+              <div className="space-y-2">
+                <div className="flex justify-end">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setDetails({
+                      ...details,
+                      iep_goals: [...details.iep_goals, '']
+                    })}
+                    type="button"
+                  >
+                    + Add Goal
+                  </Button>
                 </div>
-              )}
+  
+                {details.iep_goals.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic py-4 text-center bg-gray-50 rounded-md">
+                    No goals added yet
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {details.iep_goals.map((goal, index) => (
+                      <div key={index} className="flex gap-2">
+                        <textarea
+                          value={goal}
+                          onChange={(e) => {
+                            const newGoals = [...details.iep_goals];
+                            newGoals[index] = e.target.value;
+                            setDetails({...details, iep_goals: newGoals});
+                          }}
+                          placeholder="Enter IEP goal..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            const newGoals = details.iep_goals.filter((_, i) => i !== index);
+                            setDetails({...details, iep_goals: newGoals});
+                          }}
+                          type="button"
+                          className="self-start"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+  
+            {/* Working Skills Section */}
+            <div className="space-y-3 pt-4 border-t">
+              <div className="space-y-1">
+                <h4 className="font-medium text-gray-900">Areas of Need</h4>
+                <p className="text-sm text-gray-600">
+                  Select the skills {student.initials} is currently working on
+                </p>
+              </div>
+  
+              <SkillsChecklist
+                gradeLevel={studentInfo.grade_level}
+                selectedSkills={details.working_skills}
+                onSkillsChange={(skills) => setDetails({...details, working_skills: skills})}
+              />
             </div>
           </div>
-
+          
           {/* Footer */}
           <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
             <Button variant="secondary" onClick={onClose}>

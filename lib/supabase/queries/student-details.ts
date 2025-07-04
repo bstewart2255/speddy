@@ -9,6 +9,7 @@ export interface StudentDetails {
   upcoming_iep_date: string;
   upcoming_triennial_date: string;
   iep_goals: string[];
+  working_skills: string[];
 }
 
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
@@ -36,6 +37,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
+    working_skills: data.working_skills || [],
   };
 }
 
@@ -56,12 +58,15 @@ export async function upsertStudentDetails(
       upcoming_iep_date: details.upcoming_iep_date || null,
       upcoming_triennial_date: details.upcoming_triennial_date || null,
       iep_goals: details.iep_goals,
+      working_skills: details.working_skills,
       updated_at: new Date().toISOString(),
-    })
-    .eq('student_id', studentId);
+    }, {
+      onConflict: 'student_id'  // Add this to specify the conflict column
+    });
 
   if (error) {
     console.error('Error saving student details:', error);
+    console.error('Error details:', error.message, error.details, error.hint);
     throw error;
   }
 }

@@ -382,7 +382,6 @@ export default function StudentsPage() {
             onClose={() => setSelectedStudent(null)}
             student={selectedStudent}
             onSave={(studentId, details) => {
-              alert('Student details saved successfully!');
             }}
             onUpdateStudent={async (studentId, updates) => {
               try {

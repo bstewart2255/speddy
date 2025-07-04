@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Anthropic from '@anthropic-ai/sdk';
+import { getStudentDetails } from '../../../lib/supabase/queries/student-details';
+import { GRADE_SKILLS_CONFIG } from '../../../lib/grade-skills-config';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,9 +27,9 @@ export async function POST(request: NextRequest) {
       .limit(10);
 
     // Create enhanced prompt
-    const prompt = createEnhancedPrompt(students, duration, recentLogs || []);
+    const promptContent = await createEnhancedPrompt(students, duration, recentLogs || []);
 
-    let content;
+    let content: string;
 
     // Check if API key exists in Replit Secrets
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
           messages: [
             {
               role: "user",
-              content: prompt
+              content: promptContent
             }
           ]
         });
@@ -80,10 +82,35 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function createEnhancedPrompt(students: any[], duration: number, recentLogs: any[]) {
-  // Create detailed student profiles
-  const studentProfiles = students.map(student => {
+async function createEnhancedPrompt(
+  students: any[], 
+  duration: number, 
+  recentLogs: any[]
+): Promise<string> {
+  // Create detailed student profiles with skills
+  const studentProfiles = await Promise.all(students.map(async (student) => {
     const studentLogs = recentLogs.filter(log => log.student_id === student.id);
+    
+    // Fetch student details to get working skills
+    const details = await getStudentDetails(student.id);
+    
+    // Get skill labels for the selected skills
+    let workingSkillsText = 'General curriculum';
+    if (details?.working_skills && details.working_skills.length > 0) {
+      const gradeConfig = GRADE_SKILLS_CONFIG[student.grade_level];
+      if (gradeConfig) {
+        const skillLabels = details.working_skills
+          .map(skillId => {
+            const skill = gradeConfig.skills.find(s => s.id === skillId);
+            return skill ? `${skill.label} (${skill.category.toUpperCase()})` : null;
+          })
+          .filter(Boolean);
+        
+        if (skillLabels.length > 0) {
+          workingSkillsText = skillLabels.join(', ');
+        }
+      }
+    }
 
     return `
 Student: ${student.initials} (Grade ${student.grade_level})
@@ -92,24 +119,28 @@ Student: ${student.initials} (Grade ${student.grade_level})
 - Math Level: ${student.math_level || 'Not specified'}
 - Learning Style: ${student.learning_style || 'Mixed'}
 - IEP Goals: ${student.iep_goals?.join('; ') || 'Standard curriculum goals'}
+- Current Working Skills: ${workingSkillsText}
 - Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
 - Strengths: ${student.strengths?.join(', ') || 'To be identified'}
 - Accommodations: ${student.accommodations?.join(', ') || 'Standard classroom accommodations'}
 ${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.join(', ') || 'N/A'}` : ''}
 ${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
-  }).join('\n');
+  }));
 
   return `Create a detailed, practical ${duration}-minute special education lesson plan for the following students:
 
-${studentProfiles}
+${studentProfiles.join('\n')}
 
 Requirements:
 1. Address each student's SPECIFIC IEP goals with targeted activities
-2. Differentiate instruction based on actual reading/math levels, not just grade
-3. Incorporate each student's learning style (visual/auditory/kinesthetic)
-4. Build on recent work and recommended next steps where provided
-5. Include all required accommodations for each student
-6. Use student strengths to support areas of need
+2. Focus on the Current Working Skills listed for each student - these are the exact skills they need practice with
+3. Differentiate instruction based on actual reading/math levels, not just grade
+4. Incorporate each student's learning style (visual/auditory/kinesthetic)
+5. Build on recent work and recommended next steps where provided
+6. Include all required accommodations for each student
+7. Use student strengths to support areas of need
+
+CRITICAL: Pay special attention to the "Current Working Skills" for each student. These are the specific skills the teacher has identified as current focus areas. Design activities that directly practice these skills.
 
 Structure the lesson with:
 - Opening (5 min): Multi-sensory warm-up engaging all learning styles
