@@ -5,6 +5,37 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getStudentDetails } from '../../../lib/supabase/queries/student-details';
 import { GRADE_SKILLS_CONFIG } from '../../../lib/grade-skills-config';
 
+// Curriculum mapping
+const CURRICULUM_DETAILS: Record<string, string> = {
+  'wilson-reading': 'Wilson Reading System - structured literacy program',
+  'orton-gillingham': 'Orton-Gillingham - multisensory phonics approach',
+  'lindamood-bell': 'Lindamood-Bell - sensory-cognitive instruction',
+  'reading-mastery': 'Reading Mastery - direct instruction program',
+  'corrective-reading': 'Corrective Reading - remedial reading program',
+  'rewards': 'REWARDS - reading comprehension strategies',
+  'spire': 'S.P.I.R.E. - intensive reading intervention',
+  'phonics-first': 'Phonics First - systematic phonics instruction',
+  'fundations': 'Fundations - Wilson language basics',
+  'raz-kids': 'Raz-Kids - digital leveled reading',
+  'lexia-core5': 'Lexia Core5 - adaptive blended learning',
+  'touch-math': 'TouchMath - multisensory math program',
+  'math-u-see': 'Math-U-See - manipulative-based math',
+  'saxon-math': 'Saxon Math - incremental development approach',
+  'singapore-math': 'Singapore Math - conceptual understanding focus',
+  'enumeracy': 'Do The Math - intensive math intervention',
+  'number-worlds': 'Number Worlds - prevention/intervention program',
+  'connecting-math': 'Connecting Math Concepts - explicit instruction',
+  'handwriting-without-tears': 'Handwriting Without Tears - developmental approach',
+  'step-up-to-writing': 'Step Up to Writing - writing instruction framework',
+  'social-thinking': 'Social Thinking - social cognitive teaching',
+  'zones-of-regulation': 'Zones of Regulation - self-regulation framework',
+  'second-step': 'Second Step - social-emotional learning',
+  'superflex': 'Superflex - social thinking curriculum',
+  'unique-learning': 'Unique Learning System - standards-based special ed',
+  'edmark': 'Edmark Reading Program - whole-word approach',
+  'teachtown': 'TeachTown - computer-assisted instruction'
+};
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
@@ -17,6 +48,13 @@ export async function POST(request: NextRequest) {
 
     const { students, timeSlot, duration = 30 } = await request.json();
 
+    // Get user profile for curriculum information
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('selected_curriculums')
+      .eq('id', user.id)
+      .single();
+
     // Get recent session logs for enhanced personalization
     const studentIds = students.map((s: any) => s.id);
     const { data: recentLogs } = await supabase
@@ -27,7 +65,7 @@ export async function POST(request: NextRequest) {
       .limit(10);
 
     // Create enhanced prompt
-    const promptContent = await createEnhancedPrompt(students, duration, recentLogs || []);
+    const promptContent = await createEnhancedPrompt(students, duration, recentLogs || [], profile);
 
     let content: string;
 
@@ -85,7 +123,8 @@ export async function POST(request: NextRequest) {
 async function createEnhancedPrompt(
   students: any[], 
   duration: number, 
-  recentLogs: any[]
+  recentLogs: any[],
+  profile: any
 ): Promise<string> {
   // Create detailed student profiles with skills
   const studentProfiles = await Promise.all(students.map(async (student) => {
@@ -187,10 +226,25 @@ Structure the lesson with:
   * Clear instructions for grouping/individual work
 - Closing (5 min): Individual assessment aligned to goals
 
+${profile?.selected_curriculums?.length > 0 ? `
+
+AVAILABLE CURRICULUMS:
+The district uses these special education curriculums that you should incorporate when relevant:
+${profile.selected_curriculums.map((id: string) => 
+  CURRICULUM_DETAILS[id] || id
+).join('\n')}
+
+When designing activities, reference these specific curriculums where appropriate. For example:
+- Use Wilson Reading System techniques for phonics instruction
+- Apply TouchMath strategies for number concepts
+- Incorporate Zones of Regulation for self-regulation activities
+` : ''}
+
 For each activity, specify:
 - Which student(s) it targets
 - Which IEP goal/skill it addresses
 - What accommodations to implement
+- Which curriculum/program to use (if applicable)
 - How to assess progress
 
 Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a special education teacher.
@@ -230,9 +284,7 @@ When planning activities, specifically reference these worksheets when appropria
 This helps the teacher know exactly which materials are ready to print and use.
 ${personalizationInstructions}}`;
 
-// Keep your existing generateMockResponse function here
 async function generateMockResponse(students: any[], duration: number) {
-  // ... (keep the existing mock response code from the original file)
   const gradeGroups = students.reduce((acc: any, student: any) => {
     const grade = student.grade_level;
     if (!acc[grade]) acc[grade] = [];
@@ -240,19 +292,52 @@ async function generateMockResponse(students: any[], duration: number) {
     return acc;
   }, {});
 
-  const grades = Object.keys(gradeGroups).sort();
-  const studentCount = students.length;
+    const grades = Object.keys(gradeGroups).sort();
+    const studentCount = students.length;
 
-  return `
-    <div class="lesson-plan">
-      <h3>Multi-Grade Special Education Lesson Plan</h3>
-      <p><em>Note: Using mock response. Add Anthropic API key in Replit Secrets for AI-generated lessons.</em></p>
-      <div class="lesson-header">
-        <p><strong>Duration:</strong> ${duration} minutes</p>
-        <p><strong>Group Size:</strong> ${studentCount} students</p>
-        <p><strong>Grade Levels:</strong> ${grades.join(', ')}</p>
+    return `
+      <div class="lesson-plan">
+        <h3>Multi-Grade Special Education Lesson Plan</h3>
+        <p><em>Note: Using mock response. Add Anthropic API key in Replit Secrets for AI-generated lessons.</em></p>
+        <div class="lesson-header">
+          <p><strong>Duration:</strong> ${duration} minutes</p>
+          <p><strong>Group Size:</strong> ${studentCount} students</p>
+          <p><strong>Grade Levels:</strong> ${grades.join(', ')}</p>
+        </div>
+
+        <h4>Opening Activity (5 minutes)</h4>
+        <p>Begin with a multi-sensory warm-up that engages all students regardless of grade level.</p>
+        <ul>
+          ${grades.map(grade => 
+            `<li><strong>Grade ${grade} students:</strong> Practice grade-appropriate skills</li>`
+          ).join('')}
+        </ul>
+
+        <h4>Main Instruction (${duration - 10} minutes)</h4>
+        <p>Differentiated activities based on individual student needs:</p>
+        ${students.map(student => `
+          <div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px;">
+            <p><strong>${student.initials}</strong> (Grade ${student.grade_level}):</p>
+            <ul>
+              <li>Focus: Grade-level appropriate skills</li>
+              <li>Accommodations: Standard classroom supports</li>
+              <li>Assessment: Observe progress and engagement</li>
+            </ul>
+          </div>
+        `).join('')}
+
+        <h4>Closing Activity (5 minutes)</h4>
+        <p>Individual assessment and wrap-up:</p>
+        <ul>
+          <li>Quick check-in with each student</li>
+          <li>Review key concepts covered</li>
+          <li>Preview next session's goals</li>
+        </ul>
+
+        <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 5px;">
+          <p><strong>Teacher Note:</strong> This is a basic template. For personalized, curriculum-aligned lessons, please configure your Anthropic API key.</p>
+        </div>
       </div>
-      <!-- Rest of mock response... -->
-    </div>
-  `;
+    `;
+  }
 }

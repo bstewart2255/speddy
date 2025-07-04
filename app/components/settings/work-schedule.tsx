@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { getUserSiteSchedules, setUserSiteSchedule } from '../../../lib/supabase/queries/user-site-schedules';
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { CollapsibleCard } from '../ui/collapsible-card';
 
 interface ProviderSchool {
   id: string;
@@ -117,57 +118,52 @@ export function WorkScheduleSettings() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Work Schedule</CardTitle>
+    <CollapsibleCard title="Work Schedule" defaultOpen={false}>
+      <div className="space-y-4">
         <p className="text-sm text-gray-600">
-          Select which days you work at each school site
+          Specify which days you work at the different sites. This is required in order for the auto-scheduling system to correctly assign sessions.
         </p>
-      </CardHeader>
-      <CardBody>
-        <div className="space-y-6">
-          {schools.map(school => (
-            <div key={school.id} className="border rounded-lg p-4">
-              <h3 className="font-medium mb-3">
-                {school.school_site}
-                <span className="text-sm text-gray-500 ml-2">
-                  ({school.school_district})
-                </span>
-              </h3>
 
-              <div className="flex gap-2">
-                {DAYS_OF_WEEK.map(day => {
-                  const isSelected = schedules[school.id]?.includes(day.value);
-                  return (
-                    <button
-                      key={day.value}
-                      onClick={() => toggleDay(school.id, day.value)}
-                      className={`
-                        px-3 py-2 rounded-md text-sm font-medium transition-colors
-                        ${isSelected 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }
-                      `}
-                    >
-                      {day.short}
-                    </button>
-                  );
-                })}
-              </div>
+        {schools.map((school) => (
+          <div key={school.id} className="border rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 mb-3">
+              {school.school_site}
+              <span className="text-sm text-gray-500 ml-2">
+                ({school.school_district})
+              </span>
+            </h4>
+            <div className="flex gap-2">
+              {DAYS_OF_WEEK.map((day) => {
+                const isSelected = schedules[school.id]?.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    onClick={() => toggleDay(school.id, day.value)}
+                    className={`
+                      px-3 py-2 rounded-md text-sm font-medium transition-colors
+                      ${isSelected 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }
+                    `}
+                  >
+                    {day.short}
+                  </button>
+                );
+              })}
             </div>
-          ))}
-
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={saveSchedule}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save Schedule'}
-            </Button>
           </div>
+        ))}
+
+        <div className="flex justify-end pt-4">
+          <Button
+            onClick={saveSchedule}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save Schedule'}
+          </Button>
         </div>
-      </CardBody>
-    </Card>
+      </div>
+    </CollapsibleCard>
   );
 }

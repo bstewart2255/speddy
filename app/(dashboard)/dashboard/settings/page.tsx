@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/ca
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { TeamWidget } from '../../../components/team-widget';
+import { CurriculumsSettings } from '../../../components/settings/curriculums';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -81,6 +82,9 @@ export default function SettingsPage() {
           {userProfile?.works_at_multiple_schools && (
             <WorkScheduleSettings />
           )}
+
+          {/* Curriculums Settings */}
+          <CurriculumsSettings />
 
           {/* Team Information */}
           <TeamWidget />
