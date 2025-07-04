@@ -155,23 +155,14 @@ export function WeeklyView() {
     const hours = time.getHours();
     const minutes = time.getMinutes();
 
-    // Round to nearest 30-minute slot
-    let roundedHours = hours;
-    let roundedMinutes;
+    // Find the 30-minute slot this time falls into (not rounding, but which window it starts in)
+    let slotHours = hours;
+    let slotMinutes = minutes < 30 ? 0 : 30;
 
-    if (minutes < 15) {
-      roundedMinutes = 0;
-    } else if (minutes < 45) {
-      roundedMinutes = 30;
-    } else {
-      roundedMinutes = 0;
-      roundedHours = hours + 1;
-    }
-
-    // Create a new date with rounded time
-    const roundedTime = new Date();
-    roundedTime.setHours(roundedHours, roundedMinutes, 0);
-    const formattedTime = format(roundedTime, "h:mm a");
+    // Create a new date with the slot time
+    const slotTime = new Date();
+    slotTime.setHours(slotHours, slotMinutes, 0);
+    const formattedTime = format(slotTime, "h:mm a");
 
     return TIME_SLOTS.findIndex((slot) => slot === formattedTime);
   };
@@ -299,15 +290,6 @@ return (
           </div>
         )}
       </div>
-
-      {/* Only show description if toggle is visible */}
-      {showToggle && (
-        <p className="text-sm text-gray-600 mb-3">
-          {viewMode === 'provider' 
-            ? "Showing sessions you will deliver" 
-            : "Showing sessions assigned to SEAs"}
-        </p>
-      )}
 
       <div className="space-y-4">
         {[0].map(dayOffset => {

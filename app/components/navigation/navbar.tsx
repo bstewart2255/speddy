@@ -90,11 +90,13 @@ export default function Navbar() {
     <nav className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
+        {/* Left side: Logo and Navigation */}
+        <div className="flex items-center h-full space-x-10">
           {/* Brand/Logo */}
           <div className="flex-shrink-0">
             <span className="text-xl font-bold text-gray-900">Speddy</span>
           </div>
-
+  
           {/* Navigation Links */}
           <div className="hidden sm:flex sm:space-x-8 h-full">
             {navigation.map((item) => (
@@ -156,7 +158,8 @@ export default function Navbar() {
               )
             ))}
           </div>
-
+        </div>
+          
           {/* User Section */}
           <div className="flex items-center gap-4">
             <SchoolSwitcher />
