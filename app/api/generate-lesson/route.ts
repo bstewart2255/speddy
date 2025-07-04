@@ -118,7 +118,9 @@ Student: ${student.initials} (Grade ${student.grade_level})
 - Reading Level: ${student.reading_level || 'Not specified'}
 - Math Level: ${student.math_level || 'Not specified'}
 - Learning Style: ${student.learning_style || 'Mixed'}
-- IEP Goals: ${student.iep_goals?.join('; ') || 'Standard curriculum goals'}
+- IEP Goals: ${details?.iep_goals && details.iep_goals.length > 0 
+    ? details.iep_goals.join('; ') 
+    : 'Standard curriculum goals'}
 - Current Working Skills: ${workingSkillsText}
 - Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
 - Strengths: ${student.strengths?.join(', ') || 'To be identified'}
@@ -127,7 +129,42 @@ ${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.jo
 ${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
   }));
 
-  return `Create a detailed, practical ${duration}-minute special education lesson plan for the following students:
+    // Check what data we have across all students
+    const studentDetailsArray = await Promise.all(
+      students.map(student => getStudentDetails(student.id))
+    );
+
+    const hasIEPGoals = studentDetailsArray.some(details => 
+      details?.iep_goals && details.iep_goals.length > 0
+    );
+
+    const hasWorkingSkills = studentDetailsArray.some(details => 
+      details?.working_skills && details.working_skills.length > 0
+    );
+
+    // Build conditional personalization requirements
+    let personalizationInstructions = '';
+
+    if (hasIEPGoals || hasWorkingSkills) {
+      personalizationInstructions = `
+
+  PERSONALIZATION REQUIREMENTS:
+  ${hasIEPGoals ? `
+  1. For students with IEP goals listed above, explicitly reference these goals in activities:
+     - State which IEP goal each activity addresses
+     - Use format: "This activity targets [Student]'s IEP goal: '[goal text]'"
+  ` : ''}
+  ${hasWorkingSkills ? `
+  2. For students with specific working skills listed above:
+     - Reference skills by their exact names from the profile
+     - Design activities that directly practice these identified skills
+  ` : ''}
+  ${hasIEPGoals || hasWorkingSkills ? `
+  3. Start the lesson with a "Today's Focus" section listing each student's specific targets
+  ` : ''}`;
+    }
+
+    return `Create a detailed, practical ${duration}-minute special education lesson plan for the following students:
 
 ${studentProfiles.join('\n')}
 
@@ -190,8 +227,8 @@ When planning activities, specifically reference these worksheets when appropria
 - "Start with the Letter Recognition worksheet for [Student]"
 - "Use the Reading Comprehension worksheet to assess [Student]'s progress"
 
-This helps the teacher know exactly which materials are ready to print and use.`;
-}
+This helps the teacher know exactly which materials are ready to print and use.
+${personalizationInstructions}}`;
 
 // Keep your existing generateMockResponse function here
 async function generateMockResponse(students: any[], duration: number) {
