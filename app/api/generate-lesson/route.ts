@@ -96,6 +96,17 @@ export async function POST(request: NextRequest) {
         // Extract the text content from Claude's response
         content = message.content[0].type === 'text' ? message.content[0].text : '';
 
+        // Map student numbers back to initials for display
+        students.forEach((student, index) => {
+          const studentNum = `Student ${index + 1}`;
+          const studentInitials = student.initials;
+          // Replace all instances of "Student 1" with actual initials
+          content = content.replace(
+            new RegExp(studentNum, 'g'), 
+            studentInitials
+          );
+        });
+
         // Log usage for monitoring (visible in Replit console)
         console.log(`✅ Anthropic API Success - Tokens used: ${message.usage.input_tokens + message.usage.output_tokens}`);
 
@@ -108,6 +119,17 @@ export async function POST(request: NextRequest) {
       // No API key configured, use mock response
       console.log('⚠️ No Anthropic API key found in Secrets. Using mock response.');
       content = await generateMockResponse(students, duration);
+
+      // Map student numbers back to initials for display
+      students.forEach((student, index) => {
+        const studentNum = `Student ${index + 1}`;
+        const studentInitials = student.initials;
+        // Replace all instances of "Student 1" with actual initials
+        content = content.replace(
+          new RegExp(studentNum, 'g'), 
+          studentInitials
+        );
+      });
     }
 
     return NextResponse.json({ content });
@@ -151,21 +173,30 @@ async function createEnhancedPrompt(
       }
     }
 
-    return `
-Student: ${student.initials} (Grade ${student.grade_level})
-- Teacher: ${student.teacher_name}
-- Reading Level: ${student.reading_level || 'Not specified'}
-- Math Level: ${student.math_level || 'Not specified'}
-- Learning Style: ${student.learning_style || 'Mixed'}
-- IEP Goals: ${details?.iep_goals && details.iep_goals.length > 0 
-    ? details.iep_goals.join('; ') 
-    : 'Standard curriculum goals'}
-- Current Working Skills: ${workingSkillsText}
-- Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
-- Strengths: ${student.strengths?.join(', ') || 'To be identified'}
-- Accommodations: ${student.accommodations?.join(', ') || 'Standard classroom accommodations'}
-${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.join(', ') || 'N/A'}` : ''}
-${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
+    // Anonymize student data before sending to AI
+        const studentIndex = students.indexOf(student) + 1;
+
+        // Sanitize IEP goals if they exist
+        const sanitizedGoals = details?.iep_goals?.map(goal => 
+          goal.replace(/\b\d{4}\b/g, 'this year') // Replace years
+              .replace(/January|February|March|April|May|June|July|August|September|October|November|December/gi, 'this term') // Replace months
+              .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi, 'this term') // Replace abbreviated months
+        );
+
+        return `
+    Student ${studentIndex} (Grade ${student.grade_level})
+    - Reading Level: ${student.reading_level || 'Not specified'}
+    - Math Level: ${student.math_level || 'Not specified'}
+    - Learning Style: ${student.learning_style || 'Mixed'}
+    - IEP Goals: ${sanitizedGoals && sanitizedGoals.length > 0 
+        ? sanitizedGoals.join('; ') 
+        : 'Standard curriculum goals'}
+    - Current Working Skills: ${workingSkillsText}
+    - Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
+    - Strengths: ${student.strengths?.join(', ') || 'To be identified'}
+    - Accommodations: ${student.accommodations?.length > 0 ? 'Specific accommodations required' : 'Standard classroom accommodations'}
+    ${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.join(', ') || 'N/A'}` : ''}
+    ${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
   }));
 
     // Check what data we have across all students

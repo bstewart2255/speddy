@@ -310,6 +310,30 @@ export function SignupForm() {
           FERPA Compliance
         </Link>
       </div>
+
+      <div className="border border-gray-200 rounded-md p-4 mb-4">
+        <h4 className="text-sm font-medium text-gray-900 mb-2">Compliance Checklist</h4>
+        <div className="space-y-2">
+          <label className="flex items-start">
+            <input type="checkbox" required className="mr-2 mt-1" />
+            <span className="text-sm text-gray-700">
+              I have permission from my institution to use external tools for student data
+            </span>
+          </label>
+          <label className="flex items-start">
+            <input type="checkbox" required className="mr-2 mt-1" />
+            <span className="text-sm text-gray-700">
+              I understand I can only input data for my assigned students
+            </span>
+          </label>
+          <label className="flex items-start">
+            <input type="checkbox" required className="mr-2 mt-1" />
+            <span className="text-sm text-gray-700">
+              I will follow my district's data retention policies
+            </span>
+          </label>
+        </div>
+      </div>
       
       <div>
         <button

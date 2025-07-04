@@ -306,8 +306,24 @@ export function StudentDetailsModal({
                 <p className="text-sm text-gray-600">
                   Add specific goals from the student's IEP
                 </p>
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-sm text-blue-900 font-medium mb-1">
+                    ⚠️ Privacy Guidelines for IEP Goals:
+                  </p>
+                  <p className="text-sm text-blue-800">
+                    Enter goals WITHOUT student names or specific dates
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-green-700">
+                      ✅ Good: "Will read 60 wpm with 90% accuracy"
+                    </p>
+                    <p className="text-sm text-red-700">
+                      ❌ Avoid: "By March 2024, Johnny will read 60 wpm"
+                    </p>
+                  </div>
+                </div>
               </div>
-  
+
               <div className="space-y-2">
                 <div className="flex justify-end">
                   <Button
@@ -322,7 +338,7 @@ export function StudentDetailsModal({
                     + Add Goal
                   </Button>
                 </div>
-  
+
                 {details.iep_goals.length === 0 ? (
                   <p className="text-sm text-gray-500 italic py-4 text-center bg-gray-50 rounded-md">
                     No goals added yet
@@ -338,7 +354,7 @@ export function StudentDetailsModal({
                             newGoals[index] = e.target.value;
                             setDetails({...details, iep_goals: newGoals});
                           }}
-                          placeholder="Enter IEP goal..."
+                          placeholder="Enter IEP goal (no names or specific dates)..."
                           className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y"
                         />
                         <Button
