@@ -6,7 +6,7 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: [DATE]</p>
+            <p className="text-gray-600">Last Updated: July 4, 2025</p>
           </div>
 
           {/* Content */}
