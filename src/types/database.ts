@@ -407,6 +407,109 @@ export interface Database {
           due_date?: string | null
           updated_at?: string
         }
+      },
+      },
+      worksheets: {
+        Row: {
+          id: string
+          lesson_id: string
+          student_id: string
+          worksheet_type: string
+          content: Json
+          answer_key: Json | null
+          qr_code: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lesson_id: string
+          student_id: string
+          worksheet_type: string
+          content: Json
+          answer_key?: Json | null
+          qr_code: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lesson_id?: string
+          student_id?: string
+          worksheet_type?: string
+          content?: Json
+          answer_key?: Json | null
+          qr_code?: string
+          created_at?: string
+        }
+      },
+      worksheet_submissions: {
+        Row: {
+          id: string
+          worksheet_id: string
+          submitted_at: string
+          submitted_by: string
+          image_url: string | null
+          student_responses: Json | null
+          accuracy_percentage: number | null
+          skills_assessed: Json | null
+          ai_analysis: string | null
+        }
+        Insert: {
+          id?: string
+          worksheet_id: string
+          submitted_at?: string
+          submitted_by: string
+          image_url?: string | null
+          student_responses?: Json | null
+          accuracy_percentage?: number | null
+          skills_assessed?: Json | null
+          ai_analysis?: string | null
+        }
+        Update: {
+          id?: string
+          worksheet_id?: string
+          submitted_at?: string
+          submitted_by?: string
+          image_url?: string | null
+          student_responses?: Json | null
+          accuracy_percentage?: number | null
+          skills_assessed?: Json | null
+          ai_analysis?: string | null
+        }
+      },
+      iep_goal_progress: {
+        Row: {
+          id: string
+          student_id: string
+          iep_goal: string
+          target_metric: Json
+          current_performance: number | null
+          trend: 'improving' | 'stable' | 'declining' | 'insufficient_data' | null
+          last_assessed: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          student_id: string
+          iep_goal: string
+          target_metric: Json
+          current_performance?: number | null
+          trend?: 'improving' | 'stable' | 'declining' | 'insufficient_data' | null
+          last_assessed?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          student_id?: string
+          iep_goal?: string
+          target_metric?: Json
+          current_performance?: number | null
+          trend?: 'improving' | 'stable' | 'declining' | 'insufficient_data' | null
+          last_assessed?: string | null
+          created_at?: string
+          updated_at?: string
+        }
       }
     }
   }
@@ -418,3 +521,6 @@ export type Student = Tables<'students'>
 export type BellSchedule = Tables<'bell_schedules'>
 export type SpecialActivity = Tables<'special_activities'>
 export type ScheduleSession = Tables<'schedule_sessions'>
+export type Worksheet = Tables<'worksheets'>
+export type WorksheetSubmission = Tables<'worksheet_submissions'>
+export type IEPGoalProgress = Tables<'iep_goal_progress'>

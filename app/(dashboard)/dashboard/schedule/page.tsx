@@ -815,9 +815,9 @@ export default function SchedulePage() {
           <div className="flex justify-between items-center mb-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Weekly Schedule
+                Main Schedule
               </h1>
-              <p className="text-gray-600">View and manage sessions</p>
+              <p className="text-gray-600">This schedule is the base schedule for the platform.</p>
             </div>
             <div className="flex gap-3">
               <ScheduleSessions

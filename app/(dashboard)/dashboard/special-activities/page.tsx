@@ -112,7 +112,7 @@ export default function SpecialActivitiesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
-            <p className="text-gray-600">Manage teacher special activities and pull-out times</p>
+            <p className="text-gray-600">Add class-specific time blocks for things like music, library, etc.</p>
           </div>
           <div className="flex gap-3">
             <Button 

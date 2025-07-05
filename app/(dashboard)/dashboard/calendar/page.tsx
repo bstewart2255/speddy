@@ -186,7 +186,7 @@ export default function CalendarPage() {
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Calendar</h1>
-          <p className="text-gray-600">View your schedule in different formats</p>
+          <p className="text-gray-600">View your sessions in calendar view and mark down holidays.</p>
         </div>
 
         {/* View Toggle Tabs */}

@@ -11,6 +11,7 @@ import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
+import { useRouter } from 'next/navigation';
 
 type Student = {
   id: string;
@@ -49,6 +50,7 @@ export default function StudentsPage() {
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = createClientComponentClient();
   const { currentSchool } = useSchool();
+  const router = useRouter();
 
   // Check if user works at multiple schools
   useEffect(() => {
@@ -422,6 +424,7 @@ export default function StudentsPage() {
                   <TableHead>Grade</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Schedule Requirements</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -481,6 +484,14 @@ export default function StudentsPage() {
                       ) : (
                         `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => router.push(`/progress/${student.id}`)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View Progress
+                      </button>
                     </TableCell>
                     <TableActionCell>
                       {editingId === student.id ? (
