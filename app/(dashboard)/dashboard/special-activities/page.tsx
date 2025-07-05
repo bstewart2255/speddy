@@ -135,7 +135,7 @@ export default function SpecialActivitiesPage() {
           <div className="mb-8">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <CardTitle>Import Special Activities</CardTitle>
                   <Button 
                     variant="secondary" 
@@ -161,7 +161,7 @@ export default function SpecialActivitiesPage() {
           <div className="mb-8">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <CardTitle>Add New Special Activity</CardTitle>
                   <Button 
                     variant="secondary" 

@@ -1055,7 +1055,7 @@ export default function SchedulePage() {
             </div>
 
             {/* Grid Body */}
-            <div className="grid grid-cols-6">
+            <div className="grid grid-cols-6 overflow-hidden">
               {/* Time Column */}
               <div>
                 {timeMarkers.map((time, index) => (

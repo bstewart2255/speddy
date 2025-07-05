@@ -102,7 +102,7 @@ export default function BellSchedulesPage() {
           <div className="mb-8">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <CardTitle>Import Bell Schedules</CardTitle>
                   <Button 
                     variant="secondary" 
@@ -128,7 +128,7 @@ export default function BellSchedulesPage() {
           <div className="mb-8">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <CardTitle>Add New Bell Schedule</CardTitle>
                   <Button 
                     variant="secondary" 

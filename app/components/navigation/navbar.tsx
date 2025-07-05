@@ -67,6 +67,7 @@ export default function Navbar() {
           name: 'Schedule', 
           href: '/dashboard/schedule',
           subItems: [
+            { name: 'Main Schedule', href: '/dashboard/schedule' },
             { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
@@ -77,9 +78,15 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-        { name: 'Special Activities', href: '/dashboard/special-activities' },
-        { name: 'Schedule', href: '/dashboard/schedule' },
+        { 
+          name: 'Schedule', 
+          href: '/dashboard/schedule',
+          subItems: [
+            { name: 'Main Schedule', href: '/dashboard/schedule' },
+            { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+            { name: 'Special Activities', href: '/dashboard/special-activities' }
+          ]
+        },
       ];
     }
   };
