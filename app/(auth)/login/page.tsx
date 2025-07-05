@@ -7,7 +7,7 @@ export default function LoginPage() {
         <div>
           {/* Logo */}
           <div className="flex justify-center mb-6">
-            <span className="text-4xl font-bold text-gray-900">Speddy</span>
+            <span className="text-5xl font-logo text-gray-900">Speddy</span>
           </div>
 
           <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">

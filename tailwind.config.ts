@@ -49,6 +49,9 @@ const config: Config = {
           900: '#1a202c',
         },
       },
+      fontFamily: {
+        'logo': ['var(--font-logo)', 'cursive'],
+      },
       animation: {
         'shimmer': 'shimmer 2s infinite linear',
       },

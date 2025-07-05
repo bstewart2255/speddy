@@ -75,26 +75,34 @@ export default function DashboardPage() {
         {/* Main Content Area */}
         <div className="space-y-4">
           <WeeklyView />
+
+          {/* Two column layout with different behavior */}
           <div className="grid gap-4 md:grid-cols-2">
-            <TodoWidget />
-            <GroupSessionsWidget />
-          </div>
-          {/* Quick Actions */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Link 
-              href="/dashboard/lessons"
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Saved Lessons</h3>
-                  <p className="text-sm text-gray-600 mt-1">View and print your AI-generated lessons</p>
+            {/* Left column - Todo widget can expand */}
+            <div>
+              <TodoWidget />
+            </div>
+
+            {/* Right column - Fixed height widgets */}
+            <div className="space-y-4">
+              <GroupSessionsWidget />
+
+              {/* Saved Lessons - moved here */}
+              <Link 
+                href="/dashboard/lessons"
+                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow block"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Saved Lessons</h3>
+                    <p className="text-sm text-gray-600 mt-1">View and print your AI-generated lessons</p>
+                  </div>
+                  <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
-                <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </Link>
+              </Link>
+            </div>
           </div>
         </div>
       </div>

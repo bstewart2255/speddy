@@ -4,6 +4,11 @@ import React, { useState, useEffect } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+interface Holiday {
+  date: string;
+  name?: string;
+}
+
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 // Compact time slots - only 30-minute intervals from 8 AM to 3 PM
 const TIME_SLOTS = [
@@ -23,6 +28,7 @@ export function WeeklyView() {
   const [loading, setLoading] = React.useState(true);
   const [viewMode, setViewMode] = useState<'provider' | 'sea'>('provider');
   const [showToggle, setShowToggle] = useState<boolean>(false);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -126,6 +132,19 @@ export function WeeklyView() {
               console.error("Failed to fetch students:", studentError);
             }
           }
+
+          // Fetch holidays for the current school
+          if (profile?.school_site && profile?.school_district) {
+            const { data: holidayData } = await supabase
+              .from('holidays')
+              .select('date, name')
+              .eq('school_site', profile.school_site)
+              .eq('school_district', profile.school_district);
+
+            if (holidayData) {
+              setHolidays(holidayData);
+            }
+          }
         }
       } catch (error) {
         console.error("Fetch error:", error);
@@ -172,6 +191,12 @@ export function WeeklyView() {
     const end = parse(endTime, "HH:mm:ss", new Date());
     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     return Math.ceil(durationMinutes / 30);
+  };
+
+  const isHoliday = (date: Date): { isHoliday: boolean; name?: string } => {
+    const dateStr = date.toISOString().split('T')[0];
+    const holiday = holidays.find(h => h.date === dateStr);
+    return { isHoliday: !!holiday, name: holiday?.name };
   };
 
   // Group sessions by day and time
@@ -319,15 +344,20 @@ return (
                       <div key={time} className="text-xs mb-1">
                         <span className="text-gray-500">{time}:</span>
                         <span className="ml-1 text-blue-700">
-                          {sessionsInSlot.length > 0 
-                            ? sessionsInSlot.map((session, i) => (
-                                <span key={session.id}>
-                                  {students[session.student_id]?.initials || 'S'}
-                                  {i < sessionsInSlot.length - 1 && ', '}
-                                </span>
-                              ))
-                            : <span className="text-gray-400">-</span>
-                          }
+                          {(() => {
+                            const holidayCheck = isHoliday(currentDate);
+                            if (holidayCheck.isHoliday) {
+                              return <span className="text-red-600 font-medium">Holiday!</span>;
+                            }
+                            return sessionsInSlot.length > 0 
+                              ? sessionsInSlot.map((session, i) => (
+                                  <span key={session.id}>
+                                    {students[session.student_id]?.initials || 'S'}
+                                    {i < sessionsInSlot.length - 1 && ', '}
+                                  </span>
+                                ))
+                              : <span className="text-gray-400">-</span>;
+                          })()}
                         </span>
                       </div>
                     );
@@ -346,15 +376,20 @@ return (
                       <div key={time} className="text-xs mb-1">
                         <span className="text-gray-500">{time}:</span>
                         <span className="ml-1 text-blue-700">
-                          {sessionsInSlot.length > 0 
-                            ? sessionsInSlot.map((session, i) => (
-                                <span key={session.id}>
-                                  {students[session.student_id]?.initials || 'S'}
-                                  {i < sessionsInSlot.length - 1 && ', '}
-                                </span>
-                              ))
-                            : <span className="text-gray-400">-</span>
-                          }
+                          {(() => {
+                            const holidayCheck = isHoliday(currentDate);
+                            if (holidayCheck.isHoliday) {
+                              return <span className="text-red-600 font-medium">Holiday!</span>;
+                            }
+                            return sessionsInSlot.length > 0 
+                              ? sessionsInSlot.map((session, i) => (
+                                  <span key={session.id}>
+                                    {students[session.student_id]?.initials || 'S'}
+                                    {i < sessionsInSlot.length - 1 && ', '}
+                                  </span>
+                                ))
+                              : <span className="text-gray-400">-</span>;
+                          })()}
                         </span>
                       </div>
                     );

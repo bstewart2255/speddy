@@ -69,7 +69,8 @@ export default function Navbar() {
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
             { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-            { name: 'Special Activities', href: '/dashboard/special-activities' }
+            { name: 'Special Activities', href: '/dashboard/special-activities' },
+            { name: 'Calendar', href: '/dashboard/calendar' }
           ]
         },
       ];
@@ -84,7 +85,8 @@ export default function Navbar() {
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
             { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-            { name: 'Special Activities', href: '/dashboard/special-activities' }
+            { name: 'Special Activities', href: '/dashboard/special-activities' },
+            { name: 'Calendar', href: '/dashboard/calendar' }
           ]
         },
       ];
@@ -101,7 +103,7 @@ export default function Navbar() {
         <div className="flex items-center h-full space-x-10">
           {/* Brand/Logo */}
           <div className="flex-shrink-0">
-            <span className="text-xl font-bold text-gray-900">Speddy</span>
+            <span className="text-2xl font-logo text-gray-900">Speddy</span>
           </div>
   
           {/* Navigation Links */}
