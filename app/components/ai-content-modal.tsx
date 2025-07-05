@@ -19,6 +19,8 @@ interface AIContentModalProps {
   content: string | null;
   isLoading: boolean;
   schoolSite?: string;
+  onSave?: (savedLesson: any) => void;  
+  isViewingSaved?: boolean;
 }
 
 export function AIContentModal({ 
@@ -28,7 +30,9 @@ export function AIContentModal({
   students, 
   content, 
   isLoading,
-  schoolSite 
+  schoolSite,
+  onSave,
+  isViewingSaved = false
 }: AIContentModalProps) {
   const printRef = React.useRef<HTMLDivElement>(null);
   const [saving, setSaving] = React.useState(false);
@@ -50,6 +54,27 @@ export function AIContentModal({
 
     setSaving(true);
     try {
+      // Extract the date from the timeSlot if it contains "Daily Lessons"
+      let lessonDate = new Date().toISOString().split('T')[0];
+
+      // If this is a daily lesson, try to parse the date from the timeSlot
+      if (timeSlot.includes('Daily Lessons')) {
+        // The timeSlot format is "Daily Lessons - Mon, Jan 15"
+        // We need to extract and parse this date
+        const dateMatch = timeSlot.match(/Daily Lessons - (.+)/);
+        if (dateMatch) {
+          const dateStr = dateMatch[1];
+          // Add the current year to the date string
+          const currentYear = new Date().getFullYear();
+          const parsedDate = new Date(`${dateStr}, ${currentYear}`);
+          if (!isNaN(parsedDate.getTime())) {
+            lessonDate = parsedDate.toISOString().split('T')[0];
+          }
+        }
+      }
+
+      console.log('Saving lesson with date:', lessonDate); // Add logging
+
       const response = await fetch('/api/save-lesson', {
         method: 'POST',
         headers: {
@@ -59,17 +84,27 @@ export function AIContentModal({
           timeSlot,
           students,
           content,
-          lessonDate: new Date().toISOString().split('T')[0],
-          schoolSite,
-          notes: notes.trim()
+          lessonDate,
+          schoolSite: schoolSite || null,
+          notes: notes.trim() || null
         }),
       });
 
       if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Save lesson error:', errorData);
         throw new Error('Failed to save lesson');
       }
 
+      const data = await response.json();
+
       setSaved(true);
+
+      // Call the onSave callback if provided
+      if (onSave && data.lesson) {
+        onSave(data.lesson);
+      }
+
       // Reset saved indicator after 3 seconds
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
@@ -238,7 +273,7 @@ export function AIContentModal({
                 Lesson saved successfully!
               </span>
             )}
-            {!saved && content && "Tip: Save this lesson to access it later."}
+            {!saved && content && !isViewingSaved && "Tip: Save this lesson to access it later."}
           </div>
           <div className="flex gap-3">
             <button
@@ -247,7 +282,7 @@ export function AIContentModal({
             >
               Close
             </button>
-            {content && (
+            {content && !isViewingSaved && (  // Add !isViewingSaved condition here
               <>
                 <button
                   onClick={() => setShowNotes(!showNotes)}
@@ -276,15 +311,15 @@ export function AIContentModal({
                     </>
                   )}
                 </button>
-                <button
-                  onClick={handlePrint}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-md transition-colors flex items-center gap-2"
-                >
-                  <Printer className="w-4 h-4" />
-                  Print
-                </button>
               </>
             )}
+            <button
+              onClick={handlePrint}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-md transition-colors flex items-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
           </div>
         </div>
       </div>

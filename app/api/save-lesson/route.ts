@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         school_site: schoolSite,
         notes: notes
       })
-      .select()
+      .select('*') // Make sure we're selecting all fields
       .single();
 
     if (error) {
@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
     }
 
+    console.log('Saved lesson data:', data);
     return NextResponse.json({ success: true, lesson: data });
   } catch (error) {
     console.error('Error in save-lesson route:', error);

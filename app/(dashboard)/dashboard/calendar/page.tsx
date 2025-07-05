@@ -24,6 +24,7 @@ interface Holiday {
 interface Student {
   id: string;
   initials: string;
+  grade_level: string;
 }
 
 export default function CalendarPage() {
@@ -72,7 +73,7 @@ export default function CalendarPage() {
       // Fetch students
       const { data: studentData, error: studentError } = await supabase
         .from('students')
-        .select('id, initials')
+        .select('id, initials, grade_level')
         .eq('provider_id', user.id);
 
       if (studentError) throw studentError;
