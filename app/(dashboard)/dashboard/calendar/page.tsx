@@ -40,6 +40,44 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const { currentSchool } = useSchool();
   const supabase = createClientComponentClient();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  // Navigation handlers
+  const handlePreviousDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() - 1);
+    setCurrentDate(newDate);
+  };
+
+  const handleNextDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() + 1);
+    setCurrentDate(newDate);
+  };
+
+  const handlePreviousWeek = () => {
+    setWeekOffset(prev => prev - 1);
+  };
+
+  const handleNextWeek = () => {
+    setWeekOffset(prev => prev + 1);
+  };
+
+  const handlePreviousMonth = () => {
+    setMonthOffset(prev => prev - 1);
+  };
+
+  const handleNextMonth = () => {
+    setMonthOffset(prev => prev + 1);
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+    setWeekOffset(0);
+    setMonthOffset(0);
+  };
 
   useEffect(() => {
     fetchData();
@@ -84,16 +122,38 @@ export default function CalendarPage() {
       });
       setStudents(studentMap);
 
-      // Fetch holidays
+      // Fetch holidays - add better error handling and logging
       if (currentSchool) {
-        const { data: holidayData, error: holidayError } = await supabase
-          .from('holidays')
-          .select('*')
-          .eq('school_site', currentSchool.site)
-          .eq('school_district', currentSchool.district);
+        // Log to see what properties currentSchool actually has
+        console.log('Current school object:', currentSchool);
+        console.log('Current school keys:', Object.keys(currentSchool));
 
-        if (holidayError) throw holidayError;
-        setHolidays(holidayData || []);
+        // Check which properties exist
+        const schoolSite = (currentSchool as any).site || (currentSchool as any).school_site;
+        const schoolDistrict = (currentSchool as any).district || (currentSchool as any).school_district;
+
+        if (schoolSite && schoolDistrict) {
+          console.log('Fetching holidays for:', { schoolSite, schoolDistrict });
+
+          const { data: holidayData, error: holidayError } = await supabase
+            .from('holidays')
+            .select('*')
+            .eq('school_site', schoolSite)
+            .eq('school_district', schoolDistrict);
+
+          if (holidayError) {
+            console.error('Error fetching holidays:', holidayError);
+          } else {
+            console.log('Holidays fetched:', holidayData);
+            setHolidays(holidayData || []);
+          }
+        } else {
+          console.log('School site or district missing');
+          setHolidays([]);
+        }
+      } else {
+        console.log('No currentSchool available yet');
+        setHolidays([]);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -170,6 +230,32 @@ export default function CalendarPage() {
     console.log('Session clicked:', session);
   };
 
+  // Add this handler function after the other navigation handlers
+  const handleDateClick = (date: Date) => {
+    // Calculate the week offset from today to the clicked date
+    const today = new Date();
+    const clickedDate = new Date(date);
+
+    // Get the Monday of the current week
+    const currentWeekMonday = new Date(today);
+    const currentDay = today.getDay();
+    const daysToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    currentWeekMonday.setDate(today.getDate() + daysToMonday);
+
+    // Get the Monday of the clicked date's week
+    const clickedWeekMonday = new Date(clickedDate);
+    const clickedDay = clickedDate.getDay();
+    const clickedDaysToMonday = clickedDay === 0 ? -6 : 1 - clickedDay;
+    clickedWeekMonday.setDate(clickedDate.getDate() + clickedDaysToMonday);
+
+    // Calculate week difference
+    const weekDiff = Math.round((clickedWeekMonday.getTime() - currentWeekMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+    // Set the week offset and switch to week view
+    setWeekOffset(weekDiff);
+    setCurrentView('week');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -231,11 +317,73 @@ export default function CalendarPage() {
         {/* Calendar Content */}
         <Card>
           <CardBody className="p-6">
+            {/* Navigation Header */}
+            <div className="flex items-center justify-between mb-6">
+              <button
+                onClick={() => {
+                  if (currentView === 'today') handlePreviousDay();
+                  else if (currentView === 'week') handlePreviousWeek();
+                  else if (currentView === 'month') handlePreviousMonth();
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Previous"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              <div className="text-center">
+                <h2 className="text-lg font-semibold">
+                  {currentView === 'today' && currentDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                  {currentView === 'week' && `Week of ${new Date(new Date().setDate(new Date().getDate() + (weekOffset * 7))).toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}`}
+                  {currentView === 'month' && new Date(new Date().getFullYear(), new Date().getMonth() + monthOffset, 1).toLocaleDateString('en-US', {
+                    month: 'long',
+                    year: 'numeric'
+                  })}
+                </h2>
+                {((currentView === 'today' && currentDate.toDateString() !== new Date().toDateString()) ||
+                  (currentView === 'week' && weekOffset !== 0) ||
+                  (currentView === 'month' && monthOffset !== 0)) && (
+                  <button
+                    onClick={handleToday}
+                    className="text-sm text-blue-600 hover:text-blue-700 mt-1"
+                  >
+                    Back to today
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  if (currentView === 'today') handleNextDay();
+                  else if (currentView === 'week') handleNextWeek();
+                  else if (currentView === 'month') handleNextMonth();
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Next"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
             {currentView === 'today' && (
               <CalendarTodayView 
                 sessions={sessions} 
                 students={students}
                 onSessionClick={handleSessionClick}
+                currentDate={currentDate}
               />
             )}
             {currentView === 'week' && (
@@ -243,6 +391,7 @@ export default function CalendarPage() {
                 sessions={sessions} 
                 students={students}
                 onSessionClick={handleSessionClick}
+                weekOffset={weekOffset}
               />
             )}
             {currentView === 'month' && (
@@ -251,6 +400,8 @@ export default function CalendarPage() {
                 holidays={holidays}
                 onDayClick={handleDayClick}
                 userRole={userRole}
+                monthOffset={monthOffset}
+                onDateClick={handleDateClick}  // Add this to navigate from 'month' to 'week'
               />
             )}
           </CardBody>
@@ -259,7 +410,7 @@ export default function CalendarPage() {
         {/* Instructions for month view */}
         {currentView === 'month' && userRole !== 'sea' && (
           <div className="mt-4 text-sm text-gray-600">
-            <p>Click on any day to mark it as a holiday. Click again to remove the holiday.</p>
+            <p>Click the checkbox to mark the day as a holiday.</p>
           </div>
         )}
       </div>

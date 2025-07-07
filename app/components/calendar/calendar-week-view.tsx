@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
 
@@ -8,23 +9,26 @@ type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 
 interface CalendarWeekViewProps {
   sessions: ScheduleSession[];
-  students: Map<
-    string,
-    {
-      initials: string;
-      grade_level?: string; // Made this change from Replit Agent suggestion
-    }
-  >;
+  students: Map<string, {
+    initials: string;
+    grade_level?: string;
+  }>;
   onSessionClick?: (session: ScheduleSession) => void;
+  weekOffset?: number;
 }
+
 
 export function CalendarWeekView({
   sessions,
   students,
   onSessionClick,
-}: CalendarWeekViewProps) {
+  weekOffset = 0,  // Add default
+  }: CalendarWeekViewProps) {
   const getWeekDates = () => {
     const today = new Date();
+    // Apply week offset
+    today.setDate(today.getDate() + (weekOffset * 7));
+
     const currentDay = today.getDay();
     const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust for Monday start
     const monday = new Date(today);
@@ -52,6 +56,91 @@ export function CalendarWeekView({
   const [savedLessons, setSavedLessons] = useState<Map<string, any>>(new Map());
   const [loadingSavedLessons, setLoadingSavedLessons] = useState(true);
   const [viewingSavedLesson, setViewingSavedLesson] = useState(false);
+  
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [notesValue, setNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [sessionsState, setSessionsState] = useState(sessions);
+
+  const supabase = createClientComponentClient();
+
+  // Update sessions when props change
+  React.useEffect(() => {
+    setSessionsState(sessions);
+  }, [sessions]);
+
+  // Handler for completing/uncompleting a session
+  const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const updateData: any = completed 
+        ? { 
+            completed_at: new Date().toISOString(),
+            completed_by: user.id
+          }
+        : {
+            completed_at: null,
+            completed_by: null
+          };
+
+      const { error } = await supabase
+        .from('schedule_sessions')
+        .update(updateData)
+        .eq('id', sessionId);
+
+      if (error) throw error;
+
+      // Update local state
+      setSessionsState(prev => prev.map(session => 
+        session.id === sessionId 
+          ? { ...session, ...updateData }
+          : session
+      ));
+    } catch (error) {
+      console.error('Error updating completion status:', error);
+      alert('Failed to update completion status');
+    }
+  };
+
+  // Handler for notes
+  const handleNotesClick = (session: ScheduleSession) => {
+    setSelectedSession(session);
+    setNotesValue(session.session_notes || '');
+    setNotesModalOpen(true);
+  };
+
+  // Handler for saving notes
+  const handleSaveNotes = async () => {
+    if (!selectedSession) return;
+
+    setSavingNotes(true);
+
+    try {
+      const { error } = await supabase
+        .from('schedule_sessions')
+        .update({ session_notes: notesValue.trim() || null })
+        .eq('id', selectedSession.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setSessionsState(prev => prev.map(session => 
+        session.id === selectedSession.id 
+          ? { ...session, session_notes: notesValue.trim() || null }
+          : session
+      ));
+
+      setNotesModalOpen(false);
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      alert('Failed to save notes');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
 
   // Add this after your state declarations
   React.useEffect(() => {
@@ -276,7 +365,7 @@ export function CalendarWeekView({
   };
 
   // Group sessions by day
-  const sessionsByDay = sessions.reduce(
+  const sessionsByDay = sessionsState.reduce(
     (acc, session) => {
       if (!acc[session.day_of_week]) {
         acc[session.day_of_week] = [];
@@ -420,7 +509,10 @@ export function CalendarWeekView({
                     return (
                       <div
                         key={session.id}
-                        onClick={() => onSessionClick?.(session)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSession(sessionsState.find(s => s.id === session.id) || session);
+                        }}
                         className="p-2 text-xs bg-white border border-gray-200 rounded cursor-pointer hover:shadow-sm transition-shadow"
                       >
                         <div className="font-medium text-gray-900">
@@ -429,9 +521,19 @@ export function CalendarWeekView({
                         <div className="text-gray-600 truncate">
                           {student?.initials || "Unknown"}
                         </div>
-                        {session.delivered_by === "sea" && (
-                          <div className="text-green-600 text-xs">SEA</div>
-                        )}
+                        <div className="flex items-center justify-between">
+                          {session.delivered_by === "sea" && (
+                            <div className="text-green-600 text-xs">SEA</div>
+                          )}
+                          <div className="flex items-center gap-1">
+                            {session.completed_at && (
+                              <span className="text-green-600" title="Completed">✓</span>
+                            )}
+                            {session.session_notes && (
+                              <span className="text-blue-600" title="Has notes">📝</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     );
                   })
@@ -487,7 +589,128 @@ export function CalendarWeekView({
             setSavedLessons(newSavedLessons);
           }
         }}
-      />
-    </div>
-  );
-}
+        />
+
+        {/* Session Details Popup */}
+        {selectedSession && !notesModalOpen && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedSession(null)}
+          >
+            <div 
+              className="bg-white rounded-lg shadow-xl max-w-sm w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Session Details</h3>
+
+                <div className="space-y-3 mb-6">
+                  <div>
+                    <p className="text-sm text-gray-600">Student</p>
+                    <p className="font-medium">{students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Time</p>
+                    <p className="font-medium">{formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Delivered by</p>
+                    <p className="font-medium">{selectedSession.delivered_by === 'sea' ? 'SEA' : 'Provider'}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Completed Checkbox */}
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!sessionsState.find(s => s.id === selectedSession.id)?.completed_at}
+                      onChange={() => {
+                        const currentSession = sessionsState.find(s => s.id === selectedSession.id);
+                        handleCompleteToggle(selectedSession.id, !currentSession?.completed_at);
+                      }}
+                      className="mr-2 h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                    />
+                    <span className="text-sm">Mark as completed</span>
+                  </label>
+
+                  {/* Notes Button */}
+                  <button
+                    onClick={() => handleNotesClick(selectedSession)}
+                    className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-sm flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
+                      />
+                    </svg>
+                    {sessionsState.find(s => s.id === selectedSession.id)?.session_notes ? 'Edit Notes' : 'Add Notes'}
+                  </button>
+
+                  {selectedSession.session_notes && (
+                    <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                      <p className="text-sm text-gray-600 mb-1">Current Notes:</p>
+                      <p className="text-sm">{selectedSession.session_notes}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setSelectedSession(null)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes Modal */}
+        {notesModalOpen && selectedSession && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Session Notes</h3>
+
+                <div className="mb-4 text-sm text-gray-600">
+                  <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                  <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                </div>
+
+                <textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Add notes about this session..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={4}
+                  autoFocus
+                />
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setNotesModalOpen(false);
+                      setNotesValue('');
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveNotes}
+                    disabled={savingNotes}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingNotes ? 'Saving...' : 'Save Notes'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }

@@ -183,18 +183,13 @@ async function createEnhancedPrompt(
               .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi, 'this term') // Replace abbreviated months
         );
 
-        return `
+      return `
     Student ${studentIndex} (Grade ${student.grade_level})
-    - Reading Level: ${student.reading_level || 'Not specified'}
-    - Math Level: ${student.math_level || 'Not specified'}
-    - Learning Style: ${student.learning_style || 'Mixed'}
     - IEP Goals: ${sanitizedGoals && sanitizedGoals.length > 0 
         ? sanitizedGoals.join('; ') 
         : 'Standard curriculum goals'}
     - Current Working Skills: ${workingSkillsText}
     - Focus Areas: ${student.focus_areas?.join(', ') || 'General academic skills'}
-    - Strengths: ${student.strengths?.join(', ') || 'To be identified'}
-    - Accommodations: ${student.accommodations?.length > 0 ? 'Specific accommodations required' : 'Standard classroom accommodations'}
     ${studentLogs.length > 0 ? `- Recent Work: ${studentLogs[0].skills_practiced?.join(', ') || 'N/A'}` : ''}
     ${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
   }));
@@ -242,10 +237,8 @@ Requirements:
 1. Address each student's SPECIFIC IEP goals with targeted activities
 2. Focus on the Current Working Skills listed for each student - these are the exact skills they need practice with
 3. Differentiate instruction based on actual reading/math levels, not just grade
-4. Incorporate each student's learning style (visual/auditory/kinesthetic)
-5. Build on recent work and recommended next steps where provided
-6. Include all required accommodations for each student
-7. Use student strengths to support areas of need
+4. Build on recent work and recommended next steps where provided
+5. Use each student's focus areas to guide instruction
 
 CRITICAL: Pay special attention to the "Current Working Skills" for each student. These are the specific skills the teacher has identified as current focus areas. Design activities that directly practice these skills.
 
@@ -274,7 +267,6 @@ When designing activities, reference these specific curriculums where appropriat
 For each activity, specify:
 - Which student(s) it targets
 - Which IEP goal/skill it addresses
-- What accommodations to implement
 - Which curriculum/program to use (if applicable)
 - How to assess progress
 
@@ -351,7 +343,6 @@ async function generateMockResponse(students: any[], duration: number) {
             <p><strong>${student.initials}</strong> (Grade ${student.grade_level}):</p>
             <ul>
               <li>Focus: Grade-level appropriate skills</li>
-              <li>Accommodations: Standard classroom supports</li>
               <li>Assessment: Observe progress and engagement</li>
             </ul>
           </div>

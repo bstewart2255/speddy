@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -10,15 +10,21 @@ interface CalendarMonthViewProps {
   holidays: Array<{ date: string; name?: string }>;
   onDayClick: (date: Date) => void;
   userRole: string;
+  monthOffset?: number;
+  onDateClick?: (date: Date) => void;  // Add this for navigation
 }
 
 export function CalendarMonthView({ 
   sessions, 
   holidays,
   onDayClick,
-  userRole
+  userRole,
+  monthOffset = 0,
+  onDateClick, 
 }: CalendarMonthViewProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Calculate current month based on offset
+  const currentMonth = new Date();
+  currentMonth.setMonth(currentMonth.getMonth() + monthOffset);
 
   // Get calendar grid
   const getCalendarDays = () => {
@@ -33,7 +39,8 @@ export function CalendarMonthView({
     const daysToSubtract = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
     startDate.setDate(startDate.getDate() - daysToSubtract);
 
-    const days = [];
+    // Ensure the days array is explicitly typed to hold Date objects
+    const days: Date[] = [];
     const current = new Date(startDate);
 
     // Generate 6 weeks (42 days)
@@ -64,43 +71,10 @@ export function CalendarMonthView({
     return holiday?.name;
   };
 
-  // Navigation
-  const goToPreviousMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const goToNextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
   const calendarDays = getCalendarDays();
-  const monthYear = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   return (
     <div>
-      {/* Month Navigation */}
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={goToPreviousMonth}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-
-        <h2 className="text-xl font-semibold text-gray-900">{monthYear}</h2>
-
-        <button
-          onClick={goToNextMonth}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
-
       {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1">
         {/* Day Headers */}
@@ -122,16 +96,39 @@ export function CalendarMonthView({
           return (
             <div
               key={index}
-              onClick={() => onDayClick(date)}
+              onClick={() => onDateClick?.(date)}
               className={`
-                min-h-[80px] p-2 border rounded-lg cursor-pointer transition-all
+                relative min-h-[80px] p-2 border rounded-lg transition-all group
                 ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
                 ${isToday ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}
                 ${holiday ? 'bg-red-50 border-red-200' : ''}
                 ${isWeekend ? 'bg-gray-100' : ''}
-                ${userRole !== 'sea' ? 'hover:shadow-md' : 'hover:shadow-sm'}
               `}
             >
+              {/* Holiday checkbox - only show for non-SEA users */}
+              {userRole !== 'sea' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDayClick(date);
+                  }}
+                  className={`
+                    absolute top-1 right-1 w-5 h-5 rounded border-2 
+                    ${holiday ? 'bg-red-500 border-red-500' : 'bg-white border-red-300'}
+                    ${holiday ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                    transition-opacity duration-200 flex items-center justify-center
+                    hover:border-red-500
+                  `}
+                  title={holiday ? 'Remove holiday' : 'Mark as holiday'}
+                >
+                  {holiday && (
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              )}
+
               <div className={`text-sm font-medium ${
                 isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
               } ${isToday ? 'text-blue-600' : ''}`}>

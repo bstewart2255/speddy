@@ -1,7 +1,8 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Database } from '../../../src/types/database';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -9,23 +10,41 @@ interface CalendarTodayViewProps {
   sessions: ScheduleSession[];
   students: Map<string, { initials: string }>;
   onSessionClick?: (session: ScheduleSession) => void;
+  currentDate?: Date;  // Add this
 }
 
 export function CalendarTodayView({ 
   sessions, 
   students,
-  onSessionClick 
+  onSessionClick,
+  currentDate = new Date()  // Add default
 }: CalendarTodayViewProps) {
-  const todayDate = new Date().toLocaleDateString('en-US', {
+  
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [notesValue, setNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
+
+  const supabase = createClientComponentClient();
+
+  const [sessionsState, setSessionsState] = useState(sessions);
+
+  // Update sessions when props change
+  React.useEffect(() => {
+    setSessionsState(sessions);
+  }, [sessions]);
+   
+  const todayDate = currentDate.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
 
-  // Filter sessions for today (based on day_of_week)
-  const todayDayOfWeek = new Date().getDay();
-  const adjustedDayOfWeek = todayDayOfWeek === 0 ? 7 : todayDayOfWeek; // Convert Sunday (0) to 7
+  // Filter sessions for the selected date (based on day_of_week)
+  const selectedDayOfWeek = currentDate.getDay();
+  const adjustedDayOfWeek = selectedDayOfWeek === 0 ? 7 : selectedDayOfWeek; // Convert Sunday (0) to 7
   const todaySessions = sessions.filter(s => s.day_of_week === adjustedDayOfWeek);
 
   // Sort sessions by start time
@@ -41,6 +60,82 @@ export function CalendarTodayView({
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
 
+  // Handler for completing/uncompleting a session
+  const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
+    setUpdatingCompletion(sessionId);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const updateData: any = completed 
+        ? { 
+            completed_at: new Date().toISOString(),
+            completed_by: user.id
+          }
+        : {
+            completed_at: null,
+            completed_by: null
+          };
+
+      const { error } = await supabase
+        .from('schedule_sessions')
+        .update(updateData)
+        .eq('id', sessionId);
+
+      if (error) throw error;
+
+      // Update local session data
+      setSessionsState(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, ...updateData }
+          : s
+      ));
+    } catch (error) {
+      console.error('Error updating completion status:', error);
+      alert('Failed to update completion status');
+    } finally {
+      setUpdatingCompletion(null);
+    }
+  };
+
+  // Handler for notes button click
+  const handleNotesClick = (session: ScheduleSession) => {
+    setSelectedSession(session);
+    setNotesValue(session.session_notes || '');
+    setNotesModalOpen(true);
+  };
+
+  // Handler for saving notes
+  const handleSaveNotes = async () => {
+    if (!selectedSession) return;
+
+    setSavingNotes(true);
+
+    try {
+      const { error } = await supabase
+        .from('schedule_sessions')
+        .update({ session_notes: notesValue.trim() || null })
+        .eq('id', selectedSession.id);
+
+      if (error) throw error;
+
+      // Update local session data
+      setSessionsState(prev => prev.map(s => 
+        s.id === selectedSession.id 
+          ? { ...s, session_notes: notesValue.trim() || null }
+          : s
+      ));
+
+      setNotesModalOpen(false);
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      alert('Failed to save notes');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-900 mb-4">{todayDate}</h2>
@@ -53,13 +148,17 @@ export function CalendarTodayView({
         <div className="space-y-2">
           {sortedSessions.map((session) => {
             const student = students.get(session.student_id);
+            const currentSession = sessionsState.find(s => s.id === session.id) || session;
+
             return (
               <div
                 key={session.id}
-                onClick={() => onSessionClick?.(session)}
-                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm cursor-pointer transition-shadow"
+                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow"
               >
-                <div className="flex items-center space-x-4">
+                <div 
+                  className="flex items-center space-x-4 flex-1 cursor-pointer"
+                  onClick={() => onSessionClick?.(session)}
+                >
                   <div className="text-sm font-medium text-gray-900">
                     {formatTime(session.start_time)} - {formatTime(session.end_time)}
                   </div>
@@ -67,7 +166,8 @@ export function CalendarTodayView({
                     {student?.initials || 'Unknown'}
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
+
+                <div className="flex items-center space-x-3">
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     session.delivered_by === 'sea' 
                       ? 'bg-green-100 text-green-800' 
@@ -75,15 +175,92 @@ export function CalendarTodayView({
                   }`}>
                     {session.delivered_by === 'sea' ? 'SEA' : 'Provider'}
                   </span>
-                  {session.completed_at && (
-                    <span className="text-xs text-green-600">✓ Completed</span>
-                  )}
+
+                  {/* Completed Checkbox */}
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!currentSession.completed_at}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleCompleteToggle(session.id, !currentSession.completed_at);
+                      }}
+                      disabled={updatingCompletion === session.id}
+                      className="mr-1.5 h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500 disabled:opacity-50"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {updatingCompletion === session.id ? 'Updating...' : 'Completed'}
+                    </span>
+                  </label>
+
+                  {/* Notes Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleNotesClick(session);
+                    }}
+                    className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${
+                      currentSession.session_notes ? 'text-blue-600' : 'text-gray-400'
+                    }`}
+                    title={currentSession.session_notes ? 'Edit notes' : 'Add notes'}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
+                      />
+                    </svg>
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Notes Modal */}
+      {notesModalOpen && selectedSession && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Session Notes</h3>
+
+              <div className="mb-4 text-sm text-gray-600">
+                <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+              </div>
+
+              <textarea
+                value={notesValue}
+                onChange={(e) => setNotesValue(e.target.value)}
+                placeholder="Add notes about this session..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+                autoFocus
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setNotesModalOpen(false);
+                    setNotesValue('');
+                    setSelectedSession(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveNotes}
+                  disabled={savingNotes}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingNotes ? 'Saving...' : 'Save Notes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
+    );
+  }
