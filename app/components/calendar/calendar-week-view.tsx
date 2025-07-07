@@ -84,9 +84,9 @@ export function CalendarWeekView({
             const slotSessions = sessionsByTimeSlot[timeSlot];
             const studentDetails = slotSessions.map((session) => ({
               id: session.student_id,
-              initials: students.get(session.student_id)?.initials || '',
-              grade_level: students.get(session.student_id)?.grade_level || '',
-              ...students.get(session.student_id),
+              initials: students.get(session.student_id)?.initials || 'Unknown',
+              grade_level: students.get(session.student_id)?.grade_level || '1', // Default grade if missing
+              teacher_name: '' // Intentionally empty for PII protection
             }));
 
             const response = await fetch("/api/generate-lesson", {
@@ -101,7 +101,12 @@ export function CalendarWeekView({
               }),
             });
 
-            if (!response.ok) throw new Error("Failed to generate content");
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('API Error Response:', errorText);
+              console.error('Response status:', response.status);
+              throw new Error(`Failed to generate content: ${errorText}`);
+            }
 
             const { content } = await response.json();
             return {
@@ -205,7 +210,16 @@ export function CalendarWeekView({
     daySessions: ScheduleSession[],
   ) => {
     setSelectedDate(date);
-    setSelectedDaySessions(daySessions);
+
+    // Deduplicate sessions by student_id to avoid duplicate worksheets
+    const uniqueStudentSessions = daySessions.reduce((acc, session) => {
+      if (!acc.find(s => s.student_id === session.student_id)) {
+        acc.push(session);
+      }
+      return acc;
+    }, [] as ScheduleSession[]);
+
+    setSelectedDaySessions(uniqueStudentSessions);
     setModalOpen(true);
     setAiContent(null);
     setViewingSavedLesson(false); // Add this line

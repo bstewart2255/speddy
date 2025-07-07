@@ -162,22 +162,86 @@ export function AIContentModal({
     }, 250);
   };
 
-  const handlePrintWorksheet = (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
-    const generator = new WorksheetGenerator();
+  const handlePrintWorksheet = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
+    try {
+      console.log('Generating worksheet for:', { studentInitials, gradeLevel, subject });
 
-    const worksheetData = generator.generateWorksheet({
-      studentName: studentInitials,
-      subject: subject,
-      gradeLevel: gradeLevel as any,
-      sessionDate: new Date()
-    });
+      const generator = new WorksheetGenerator();
 
-    // Open PDF in new window for printing
-    const printWindow = window.open(worksheetData, '_blank');
-    if (printWindow) {
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
+      // Extract session time from the timeSlot prop
+      let sessionTime = '';
+      let sessionDate = new Date();
+
+      // TODO: Connect lessonId from saved lessons
+      // When a lesson is saved, store its ID and pass it here:
+      // lessonId: savedLessonId || undefined
+      // This will enable tracking worksheets back to their source lessons
+      // for analytics and student performance tracking
+
+      // Check if this is a daily lesson or single session
+      if (timeSlot.includes('Daily Lessons')) {
+        // For daily lessons, use the current time slot being viewed
+        sessionTime = 'Daily Practice';
+        // Extract date from timeSlot like "Daily Lessons - Tue, Jul 8"
+        const dateMatch = timeSlot.match(/Daily Lessons - (.+)/);
+        if (dateMatch) {
+          sessionDate = new Date(dateMatch[1] + ', ' + new Date().getFullYear());
+        }
+      } else {
+        // For single sessions, use the time slot directly
+        sessionTime = timeSlot;
+      }
+
+      // Generate worksheet with session context
+      const worksheetData = await generator.generateWorksheet({
+        studentName: studentInitials,
+        subject: subject,
+        gradeLevel: gradeLevel as any,
+        sessionDate: sessionDate,
+        sessionTime: sessionTime // Add this new field
+      });
+
+      if (!worksheetData || worksheetData.length === 0) {
+        console.error('No worksheet data generated');
+        alert('Failed to generate worksheet - no data returned');
+        return;
+      }
+
+      // Convert data URI to blob
+      const base64Data = worksheetData.split(',')[1];
+      const binaryData = atob(base64Data);
+      const arrayBuffer = new ArrayBuffer(binaryData.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      for (let i = 0; i < binaryData.length; i++) {
+        uint8Array[i] = binaryData.charCodeAt(i);
+      }
+
+      const blob = new Blob([uint8Array], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Open PDF in new window
+      const printWindow = window.open(blobUrl, '_blank');
+
+      if (printWindow) {
+        // Clean up the blob URL after a delay
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 1000);
+      } else {
+        // If popup blocked, try direct download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `${studentInitials}_Grade${gradeLevel}_${subject.toUpperCase()}_Worksheet.pdf`;
+        link.click();
+
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error generating worksheet:', error);
+      alert('Failed to generate worksheet: ' + error.message);
     }
   };
 

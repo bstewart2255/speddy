@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 
 export type Subject = 'math' | 'ela';
 export type GradeLevel = 'K' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
@@ -8,6 +9,8 @@ export interface WorksheetConfig {
   subject: Subject;
   gradeLevel: GradeLevel;
   sessionDate?: Date;
+  sessionTime?: string; // Add this line
+  lessonId?: string; // Add this line
 }
 
 export class WorksheetGenerator {
@@ -17,25 +20,80 @@ export class WorksheetGenerator {
     this.doc = new jsPDF();
   }
 
-  generateWorksheet(config: WorksheetConfig): string {
+  async generateWorksheet(config: WorksheetConfig): Promise<string> {
     this.doc = new jsPDF(); // Reset for new worksheet
 
+    // Generate QR code with worksheet metadata
+    const qrData = JSON.stringify({
+      ws: `WS-${Date.now()}`, // Worksheet ID
+      student: config.studentName,
+      grade: config.gradeLevel,
+      subject: config.subject,
+      date: config.sessionDate?.toISOString() || new Date().toISOString(),
+      session: config.sessionTime || null, // Add session time
+      lessonId: config.lessonId || null
+    });
+
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+        width: 60,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+
+      // Add smaller QR code to top right corner with border
+      this.doc.setDrawColor(0);
+      this.doc.setLineWidth(0.5);
+      this.doc.rect(170, 10, 25, 25); // Reduced from 165,8,32,32 to 170,10,25,25
+      this.doc.addImage(qrCodeDataUrl, 'PNG', 171, 11, 23, 23); // Reduced from 166,9,30,30 to 171,11,23,23
+
+      // Add small text below QR code
+      this.doc.setFontSize(7); // Reduced from 8
+      this.doc.setTextColor(100);
+      this.doc.text('Scan to submit', 182.5, 37, { align: 'center' }); // Adjusted position
+      this.doc.setTextColor(0); // Reset to black
+
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      // Continue without QR code if there's an error
+    }
+
     if (config.subject === 'math') {
-      return this.generateMathWorksheet(config);
+      return await this.generateMathWorksheet(config);
     } else {
-      return this.generateELAWorksheet(config);
+      return await this.generateELAWorksheet(config);
     }
   }
 
-  private generateELAWorksheet(config: WorksheetConfig): string {
-    const { studentName, gradeLevel } = config;
+  private addStandardHeader(config: WorksheetConfig): void {
+    const { studentName, gradeLevel, sessionTime, sessionDate } = config;
 
-    // Add header
+    // Add header information (left side)
     this.doc.setFontSize(16);
     this.doc.text(`Name: ${studentName || '_________________'}`, 20, 20);
-    this.doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 20);
+    this.doc.text(`Date: ${sessionDate ? sessionDate.toLocaleDateString() : new Date().toLocaleDateString()}`, 20, 30);
 
-    switch (gradeLevel) {
+    // Add grade level and session time
+    this.doc.setFontSize(12);
+    this.doc.text(`Grade: ${gradeLevel}`, 20, 40);
+    if (sessionTime) {
+      this.doc.text(`Session: ${sessionTime}`, 80, 40);
+    }
+
+    // Draw a line under the header for separation
+    this.doc.setLineWidth(0.5);
+    this.doc.line(20, 45, 190, 45);
+  }
+
+  private async generateELAWorksheet(config: WorksheetConfig): Promise<string> {
+    // Add standard header
+    this.addStandardHeader(config);
+
+    switch (config.gradeLevel) {
       case 'K':
         this.generateKindergartenELA();
         break;
@@ -55,21 +113,17 @@ export class WorksheetGenerator {
         this.generateFifthGradeELA();
         break;
       default:
-        this.doc.text('Worksheet coming soon!', 20, 40);
+        this.doc.text('Worksheet coming soon!', 20, 60);
     }
 
     return this.doc.output('datauristring');
   }
 
-  private generateMathWorksheet(config: WorksheetConfig): string {
-    const { studentName, gradeLevel } = config;
+  private async generateMathWorksheet(config: WorksheetConfig): Promise<string> {
+    // Add standard header
+    this.addStandardHeader(config);
 
-    // Add header
-    this.doc.setFontSize(16);
-    this.doc.text(`Name: ${studentName || '_________________'}`, 20, 20);
-    this.doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 20);
-
-    switch (gradeLevel) {
+    switch (config.gradeLevel) {
       case 'K':
         this.generateKindergartenMath();
         break;
@@ -89,7 +143,7 @@ export class WorksheetGenerator {
         this.generateFifthGradeMath();
         break;
       default:
-        this.doc.text('Worksheet coming soon!', 20, 40);
+        this.doc.text('Worksheet coming soon!', 20, 60);
     }
 
     return this.doc.output('datauristring');
@@ -98,21 +152,23 @@ export class WorksheetGenerator {
   // KINDERGARTEN WORKSHEETS
   private generateKindergartenELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Letter Recognition Practice', 105, 35, { align: 'center' });
+    this.doc.text('Letter Recognition Practice', 105, 60, { align: 'center' });
 
     // Generate target letter
     const targetLetter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
 
     // Upper case section
     this.doc.setFontSize(14);
-    this.doc.text(`1. Circle all the letter ${targetLetter}:`, 20, 50);
+    this.doc.text(`1. Circle all the letter ${targetLetter}:`, 20, 75);
 
     this.doc.setFontSize(24);
     let x = 20;
-    let y = 65;
+    let y = 90;
+
+    // Corrected Declaration with Type Annotation
+    let letters: string[] = [];
 
     // Create array with target letter appearing 3-4 times
-    const letters = [];
     const targetCount = 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < targetCount; i++) {
       letters.push(targetLetter);
@@ -222,7 +278,7 @@ export class WorksheetGenerator {
   // FIRST GRADE WORKSHEETS
   private generateFirstGradeELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Phonemic Awareness', 105, 35, { align: 'center' });
+    this.doc.text('Phonemic Awareness', 105, 60, { align: 'center' });
 
     // Blending sounds
     this.doc.setFontSize(14);
@@ -307,7 +363,7 @@ export class WorksheetGenerator {
   // SECOND GRADE WORKSHEETS
   private generateSecondGradeELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Reading Comprehension', 105, 35, { align: 'center' });
+    this.doc.text('Reading Comprehension', 105, 60, { align: 'center' });
 
     // Simple passage
     this.doc.setFontSize(12);
@@ -317,12 +373,12 @@ Every morning, the farmer came to feed them. The cows gave milk.
 The sheep gave wool. The horse helped pull the wagon.
 All the animals were happy on the farm.`;
 
-    const lines = passage.split('\n');
-    let y = 50;
+    const wrappedText = this.doc.splitTextToSize(passage, 170);
+    let y = 75; // Standard starting position for content
 
-    lines.forEach((line) => {
+    wrappedText.forEach((line: string) => {
       this.doc.text(line, 20, y);
-      y += 8;
+      y += 7;
     });
 
     // Questions
@@ -349,7 +405,7 @@ All the animals were happy on the farm.`;
 
   private generateSecondGradeMath(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Place Value Practice', 105, 35, { align: 'center' });
+    this.doc.text('Place Value Practice', 105, 60, { align: 'center' });
 
     // Understanding place value
     this.doc.setFontSize(14);
@@ -396,7 +452,7 @@ All the animals were happy on the farm.`;
   // THIRD GRADE WORKSHEETS
   private generateThirdGradeELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Main Idea & Inferencing', 105, 35, { align: 'center' });
+    this.doc.text('Main Idea & Inferencing', 105, 60, { align: 'center' });
 
     // Passage with inference opportunities
     this.doc.setFontSize(11);
@@ -408,10 +464,10 @@ her raincoat from the closet and sighed. Maybe they could move the
 picnic indoors. Her mom was making sandwiches in the kitchen.
 "Don't worry," her mom said, "We'll figure something out."`;
 
-    const lines = passage.split('\n');
-    let y = 50;
+    const wrappedText = this.doc.splitTextToSize(passage, 170);
+    let y = 75; // Standard starting position for content
 
-    lines.forEach((line) => {
+    wrappedText.forEach((line: string) => {
       this.doc.text(line, 20, y);
       y += 7;
     });
@@ -511,7 +567,7 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
   // FOURTH GRADE WORKSHEETS
   private generateFourthGradeELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Summarizing & Synthesizing', 105, 35, { align: 'center' });
+    this.doc.text('Summarizing & Synthesizing', 105, 60, { align: 'center' });
 
     // Passage for summarizing
     this.doc.setFontSize(11);
@@ -524,10 +580,10 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
   Unfortunately, deforestation threatens this vital ecosystem, with thousands of acres
   being cleared each year for farming and development.`;
 
-    const lines = passage.split('\n');
-    let y = 50;
+    const wrappedText = this.doc.splitTextToSize(passage, 170);
+    let y = 75; // Standard starting position for content
 
-    lines.forEach((line) => {
+    wrappedText.forEach((line: string) => {
       this.doc.text(line, 20, y);
       y += 7;
     });
@@ -565,7 +621,7 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
 
   private generateFourthGradeMath(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Multi-Digit Multiplication & Division', 105, 35, { align: 'center' });
+    this.doc.text('Multi-Digit Multiplication & Division', 105, 60, { align: 'center' });
 
     // Multi-digit multiplication
     this.doc.setFontSize(14);
@@ -632,7 +688,7 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
   // FIFTH GRADE WORKSHEETS
   private generateFifthGradeELA(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Analyzing Text & Citing Evidence', 105, 35, { align: 'center' });
+    this.doc.text('Analyzing Text & Citing Evidence', 105, 60, { align: 'center' });
 
     // Passage with evidence opportunities
     this.doc.setFontSize(11);
@@ -645,10 +701,10 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
   success required preparation. By summer's end, her careful planning paid off - her garden
   overflowed with ripe tomatoes while her neighbor's wilted in the heat.`;
 
-    const lines = passage.split('\n');
-    let y = 50;
+    const wrappedText = this.doc.splitTextToSize(passage, 170);
+    let y = 75; // Standard starting position for content
 
-    lines.forEach((line) => {
+    wrappedText.forEach((line: string) => {
       this.doc.text(line, 20, y);
       y += 7;
     });
@@ -684,13 +740,13 @@ picnic indoors. Her mom was making sandwiches in the kitchen.
 
   private generateFifthGradeMath(): void {
     this.doc.setFontSize(20);
-    this.doc.text('Fractions Practice', 105, 35, { align: 'center' });
+    this.doc.text('Fractions Practice', 105, 60, { align: 'center' });
 
     // Adding fractions with unlike denominators
     this.doc.setFontSize(14);
-    this.doc.text('1. Add or subtract (show your work):', 20, 50);
+    this.doc.text('1. Add or subtract (show your work):', 20, 75);
 
-    let y = 65;
+    let y = 90;
     const fractionProblems = [
       { num1: 2, den1: 3, num2: 1, den2: 4, op: '+' },
       { num1: 3, den1: 5, num2: 1, den2: 2, op: '+' },
