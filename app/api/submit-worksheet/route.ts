@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         const base64Image = imageBuffer.toString('base64');
 
         const message = await anthropic.messages.create({
-          model: "claude-3-haiku-20240307",
+          model: "claude-3-5-sonnet-20241022",
           max_tokens: 1000,
           messages: [{
             role: "user",
@@ -129,26 +129,45 @@ export async function POST(request: NextRequest) {
               },
               {
                 type: "text",
-                text: `Analyze this completed worksheet and extract the student's responses. 
-                       The worksheet contains: ${JSON.stringify(worksheet.content)}
+                text: `Analyze this completed student worksheet carefully.
 
-                       For each question, determine:
-                       1. What the student wrote/selected
-                       2. Whether it's correct based on the answer key
-                       3. Any notable observations about their work
+                Worksheet details:
+                - Type: ${worksheet.worksheet_type}
+                - Questions and answers: ${JSON.stringify(worksheet.content)}
 
-                       Return as JSON: {
-                         "responses": [{"questionId": "1", "studentAnswer": "...", "isCorrect": true/false}],
-                         "accuracy": 0.85,
-                         "observations": "..."
-                       }`
+                For each question in the worksheet:
+                1. Identify what the student wrote or selected
+                2. Compare with the correct answer
+                3. Note any patterns in errors or strengths
+
+                Please provide a detailed analysis in this exact JSON format:
+                {
+                  "responses": [
+                    {
+                      "questionId": "1",
+                      "questionText": "actual question text",
+                      "correctAnswer": "expected answer",
+                      "studentAnswer": "what student wrote",
+                      "isCorrect": true/false,
+                      "errorType": "conceptual/computational/spelling/none"
+                    }
+                  ],
+                  "accuracy": 0.00,
+                  "skillsAnalysis": {
+                    "strengths": ["skill areas where student excelled"],
+                    "needsImprovement": ["skill areas needing work"],
+                    "errorPatterns": ["consistent types of mistakes"]
+                  },
+                  "observations": "Overall assessment and recommendations",
+                  "confidenceLevel": "high/medium/low"
+                }`
               }
             ]
           }]
         });
 
         const responseText = message.content[0].type === 'text' ? message.content[0].text : '{}';
-        analysisResult = JSON.parse(responseText);
+        const analysisResult: AnalysisResult = JSON.parse(responseText);
       } catch (error) {
         console.error('Claude Vision API error:', error);
         // Fall back to mock grading
@@ -195,7 +214,7 @@ export async function POST(request: NextRequest) {
       success: true,
       submission: submission,
       studentInitials: worksheet.students.initials,
-      accuracy: (analysisResult.accuracy * 100).toFixed(1),
+      accuracy: analysisResult?.accuracy ? parseFloat((analysisResult.accuracy * 100).toFixed(1)) : '0',
       worksheetType: worksheet.worksheet_type,
       message: 'Worksheet processed successfully!'
     });
@@ -233,7 +252,6 @@ async function extractQRCode(imageBuffer: Buffer): Promise<string | null> {
 }
 
 function extractSkillsAssessed(worksheet: any, analysis: any): any {
-  // Map worksheet type to skills and calculate performance
   const skillsMap: Record<string, string> = {
     'spelling': 'Spelling',
     'math': 'Math Computation',
@@ -243,16 +261,40 @@ function extractSkillsAssessed(worksheet: any, analysis: any): any {
     'practice': 'General Practice'
   };
 
-  const skill = skillsMap[worksheet.worksheet_type] || 'General';
+  const primarySkill = skillsMap[worksheet.worksheet_type] || 'General';
   const correct = analysis?.responses?.filter((r: any) => r.isCorrect).length || 0;
   const total = analysis?.responses?.length || 0;
 
-  return [{
-    skill,
+  // Build skills array with primary skill
+  const skills = [{
+    skill: primarySkill,
     correct,
     total,
     percentage: total > 0 ? (correct / total) * 100 : 0
   }];
+
+  // Add sub-skills based on error analysis if available
+  if (analysis?.skillsAnalysis) {
+    // Group errors by type
+    const errorTypes = analysis.responses?.reduce((acc: any, r: any) => {
+      if (!r.isCorrect && r.errorType && r.errorType !== 'none') {
+        acc[r.errorType] = (acc[r.errorType] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    // Add sub-skill performance
+    Object.entries(errorTypes || {}).forEach(([errorType, count]: [string, any]) => {
+      skills.push({
+        skill: `${primarySkill} - ${errorType}`,
+        correct: total - count,
+        total,
+        percentage: ((total - count) / total) * 100
+      });
+    });
+  }
+
+  return skills;
 }
 
 async function updateIEPProgress(worksheet: any, analysis: any, supabase: any): Promise<void> {
