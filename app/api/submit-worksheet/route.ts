@@ -8,6 +8,19 @@ import Anthropic from '@anthropic-ai/sdk';
 const Jimp = require('jimp');
 const QrCode = require('qrcode-reader');
 
+// Interface for analysis result
+interface AnalysisResult {
+  accuracy: number;
+  responses?: any[];
+  observations?: string;
+  skillsAnalysis?: {
+    strengths: string[];
+    needsImprovement: string[];
+    errorPatterns: string[];
+  };
+  confidenceLevel?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
