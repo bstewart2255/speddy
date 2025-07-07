@@ -258,7 +258,7 @@ export function generatePrintableWorksheet(
       }).join('')}
 
       <div class="no-print" style="margin-top: 40px; padding: 20px; background: #f9f9f9; border: 1px solid #ddd;">
-        <p><strong>For Provider:</strong> After student completes, take a photo and email to: progress@yourapp.com</p>
+        <p><strong>For Provider:</strong> After student completes, take a photo and email to: progress@speddy.xyz</p>
         <p>The QR code will automatically link this worksheet to the student's progress tracking.</p>
       </div>
     </body>

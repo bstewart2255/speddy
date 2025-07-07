@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { ProgressChart } from './progress-chart';
+import { Download } from 'lucide-react';
 import { Database } from '../../../src/types/database';
 import { TrendingUp, TrendingDown, Minus, FileText, Target, Calendar } from 'lucide-react';
 
@@ -65,8 +67,9 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
         .select('*')
         .eq('student_id', studentId);
 
-      // Get worksheet submissions
-      const { data: submissions } = await supabase
+      // Get worksheet submissions with time filter
+      const timeFilter = getTimeRangeFilter();
+      let submissionsQuery = supabase
         .from('worksheet_submissions')
         .select(`
           *,
@@ -78,6 +81,12 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
         `)
         .eq('worksheets.student_id', studentId)
         .order('submitted_at', { ascending: false });
+
+      if (timeFilter) {
+        submissionsQuery = submissionsQuery.gte('submitted_at', timeFilter);
+      }
+
+      const { data: submissions } = await submissionsQuery;
 
       // Process the data
       const iepGoals = goalProgress?.map(goal => ({
@@ -141,6 +150,75 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
     }
   };
 
+  const calculateProgressTrend = (submissions: any[]) => {
+    if (submissions.length < 2) return 'insufficient_data';
+
+    const recentSubmissions = submissions.slice(0, 5);
+    const olderSubmissions = submissions.slice(5, 10);
+
+    if (olderSubmissions.length === 0) return 'insufficient_data';
+
+    const recentAvg = recentSubmissions.reduce((sum, sub) => sum + sub.accuracy, 0) / recentSubmissions.length;
+    const olderAvg = olderSubmissions.reduce((sum, sub) => sum + sub.accuracy, 0) / olderSubmissions.length;
+
+    const difference = recentAvg - olderAvg;
+
+    if (difference > 5) return 'improving';
+    if (difference < -5) return 'declining';
+    return 'stable';
+  };
+
+  const getTimeRangeFilter = () => {
+    const now = new Date();
+    switch (selectedTimeRange) {
+      case 'week':
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return weekAgo.toISOString();
+      case 'month':
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return monthAgo.toISOString();
+      default:
+        return null;
+    }
+  };
+
+  const handleExportReport = () => {
+    if (!progressData) return;
+
+    // Create a simple text report for now (since jsPDF might not be installed)
+    const report = `
+  STUDENT PROGRESS REPORT
+  =======================
+  Student: ${progressData.student.initials}
+  Grade: ${progressData.student.grade_level}
+  Report Date: ${new Date().toLocaleDateString()}
+  Time Period: ${selectedTimeRange === 'week' ? 'Last 7 days' : selectedTimeRange === 'month' ? 'Last 30 days' : 'All time'}
+
+  OVERALL PERFORMANCE
+  -------------------
+  Average Accuracy: ${progressData.overallProgress.averageAccuracy.toFixed(1)}%
+  Worksheets Completed: ${progressData.overallProgress.totalWorksheets}
+  Strongest Area: ${progressData.overallProgress.strongestSkill || 'N/A'}
+  Needs Practice: ${progressData.overallProgress.needsWork || 'N/A'}
+
+  IEP GOALS PROGRESS
+  ------------------
+  ${progressData.iepGoals.map((goal, i) => 
+  `${i + 1}. ${goal.goal}
+   Current: ${goal.current}% | Target: ${goal.target}% | Trend: ${goal.trend}`
+  ).join('\n\n')}
+  `;
+
+    // Create and download text file
+    const blob = new Blob([report], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `progress-report-${progressData.student.initials}-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -176,6 +254,47 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
               Progress Report: {progressData.student.initials}
             </h2>
             <p className="text-gray-600 mt-1">Grade {progressData.student.grade_level}</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedTimeRange('week')}
+                className={`px-3 py-1 rounded ${
+                  selectedTimeRange === 'week' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                Week
+              </button>
+              <button
+                onClick={() => setSelectedTimeRange('month')}
+                className={`px-3 py-1 rounded ${
+                  selectedTimeRange === 'month' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                Month
+              </button>
+              <button
+                onClick={() => setSelectedTimeRange('all')}
+                className={`px-3 py-1 rounded ${
+                  selectedTimeRange === 'all' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                All Time
+              </button>
+            </div>
+            <button
+              onClick={handleExportReport}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export Report
+            </button>
           </div>
           <div className="flex gap-2">
             <button
@@ -336,6 +455,11 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
         ) : (
           <p className="text-gray-500 text-center py-4">No worksheets completed yet</p>
         )}
+      </div>
+      {/* Progress Chart */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold mb-4">Progress Over Time</h3>
+        <ProgressChart data={progressData.recentSubmissions} />
       </div>
     </div>
   );

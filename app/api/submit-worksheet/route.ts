@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       .getPublicUrl(fileName);
 
     // Use Claude Vision API to analyze the worksheet (if API key exists)
-    let analysisResult = null;
+    let analysisResult: AnalysisResult | null = null;
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (apiKey) {
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         });
 
         const responseText = message.content[0].type === 'text' ? message.content[0].text : '{}';
-        const analysisResult: AnalysisResult = JSON.parse(responseText);
+        analysisResult = JSON.parse(responseText);
       } catch (error) {
         console.error('Claude Vision API error:', error);
         // Fall back to mock grading

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (!attachments || attachments.length === 0) {
       // Send error email back
       await resend.emails.send({
-        from: 'IEP Progress <progress@yourapp.com>',
+        from: 'IEP Progress <progress@speddy.xyz>',
         to: from,
         subject: 'No image attached - Please resend',
         html: `
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         // Send success confirmation
         if (result.success) {
           await resend.emails.send({
-            from: 'IEP Progress <progress@yourapp.com>',
+            from: 'IEP Progress <progress@speddy.xyz>',
             to: from,
             subject: 'Worksheet processed successfully!',
             html: `
@@ -221,7 +221,7 @@ async function processWorksheetSubmission(
 async function sendErrorEmail(to: string, message: string) {
   try {
     await resend.emails.send({
-      from: 'IEP Progress <progress@yourapp.com>',
+      from: 'IEP Progress <progress@speddy.xyz>',
       to: to,
       subject: 'Error processing worksheet',
       html: `
