@@ -118,7 +118,7 @@ Continue?`;
     <Button
       onClick={handleUndo}
       disabled={isProcessing}
-      variant="outline"
+      variant="secondary"
       title={`Undo - Restore schedule from ${minutesSince} minutes ago`}
       className="p-2"
     >
