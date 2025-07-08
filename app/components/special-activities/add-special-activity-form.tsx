@@ -84,7 +84,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
   };
 
   // Generate time options (7 AM to 3 PM in 15-minute increments)
-  const timeOptions = [];
+  const timeOptions: Array<{ value: string; label: string }> = [];
   for (let hour = 7; hour <= 15; hour++) {
     for (let minute = 0; minute < 60; minute += 15) {
       const displayHour = hour > 12 ? hour - 12 : hour;
