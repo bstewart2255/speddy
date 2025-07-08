@@ -408,7 +408,6 @@ export interface Database {
           updated_at?: string
         }
       },
-      },
       worksheets: {
         Row: {
           id: string
