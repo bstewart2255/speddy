@@ -512,13 +512,14 @@ export interface Database {
       }
     }
   }
+}
 
-export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row']
-export type Profile = Tables<'profiles'>
-export type Student = Tables<'students'>
-export type BellSchedule = Tables<'bell_schedules'>
-export type SpecialActivity = Tables<'special_activities'>
-export type ScheduleSession = Tables<'schedule_sessions'>
-export type Worksheet = Tables<'worksheets'>
-export type WorksheetSubmission = Tables<'worksheet_submissions'>
-export type IEPGoalProgress = Tables<'iep_goal_progress'>
+export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
+export type Profile = Tables<'profiles'>;
+export type Student = Tables<'students'>;
+export type BellSchedule = Tables<'bell_schedules'>;
+export type SpecialActivity = Tables<'special_activities'>;
+export type ScheduleSession = Tables<'schedule_sessions'>;
+export type Worksheet = Tables<'worksheets'>;
+export type WorksheetSubmission = Tables<'worksheet_submissions'>;
+export type IEPGoalProgress = Tables<'iep_goal_progress'>;
