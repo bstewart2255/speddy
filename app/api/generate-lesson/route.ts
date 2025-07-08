@@ -307,7 +307,7 @@ When planning activities, specifically reference these worksheets when appropria
 This helps the teacher know exactly which materials are ready to print and use.
 ${personalizationInstructions}}`;
 
-async function // generateMockResponse(students: any[], duration: number) {
+async function generateMockResponse(students: any[], duration: number): Promise<string> {
   const gradeGroups = students.reduce((acc: any, student: any) => {
     const grade = student.grade_level;
     if (!acc[grade]) acc[grade] = [];
@@ -315,51 +315,51 @@ async function // generateMockResponse(students: any[], duration: number) {
     return acc;
   }, {});
 
-    const grades = Object.keys(gradeGroups).sort();
-    const studentCount = students.length;
+  const grades = Object.keys(gradeGroups).sort();
+  const studentCount = students.length;
 
-    return `
-      <div class="lesson-plan">
-        <h3>Multi-Grade Special Education Lesson Plan</h3>
-        <p><em>Note: Using mock response. Add Anthropic API key in Replit Secrets for AI-generated lessons.</em></p>
-        <div class="lesson-header">
-          <p><strong>Duration:</strong> ${duration} minutes</p>
-          <p><strong>Group Size:</strong> ${studentCount} students</p>
-          <p><strong>Grade Levels:</strong> ${grades.join(', ')}</p>
-        </div>
-
-        <h4>Opening Activity (5 minutes)</h4>
-        <p>Begin with a multi-sensory warm-up that engages all students regardless of grade level.</p>
-        <ul>
-          ${grades.map(grade => 
-            `<li><strong>Grade ${grade} students:</strong> Practice grade-appropriate skills</li>`
-          ).join('')}
-        </ul>
-
-        <h4>Main Instruction (${duration - 10} minutes)</h4>
-        <p>Differentiated activities based on individual student needs:</p>
-        ${students.map(student => `
-          <div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px;">
-            <p><strong>${student.initials}</strong> (Grade ${student.grade_level}):</p>
-            <ul>
-              <li>Focus: Grade-level appropriate skills</li>
-              <li>Assessment: Observe progress and engagement</li>
-            </ul>
-          </div>
-        `).join('')}
-
-        <h4>Closing Activity (5 minutes)</h4>
-        <p>Individual assessment and wrap-up:</p>
-        <ul>
-          <li>Quick check-in with each student</li>
-          <li>Review key concepts covered</li>
-          <li>Preview next session's goals</li>
-        </ul>
-
-        <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 5px;">
-          <p><strong>Teacher Note:</strong> This is a basic template. For personalized, curriculum-aligned lessons, please configure your Anthropic API key.</p>
-        </div>
+  return `
+    <div class="lesson-plan">
+      <h3>Multi-Grade Special Education Lesson Plan</h3>
+      <p><em>Note: Using mock response. Add Anthropic API key in Replit Secrets for AI-generated lessons.</em></p>
+      <div class="lesson-header">
+        <p><strong>Duration:</strong> ${duration} minutes</p>
+        <p><strong>Group Size:</strong> ${studentCount} students</p>
+        <p><strong>Grade Levels:</strong> ${grades.join(', ')}</p>
       </div>
-    `;
-  }
+
+      <h4>Opening Activity (5 minutes)</h4>
+      <p>Begin with a multi-sensory warm-up that engages all students regardless of grade level.</p>
+      <ul>
+        ${grades.map(grade => 
+          `<li><strong>Grade ${grade} students:</strong> Practice grade-appropriate skills</li>`
+        ).join('')}
+      </ul>
+
+      <h4>Main Instruction (${duration - 10} minutes)</h4>
+      <p>Differentiated activities based on individual student needs:</p>
+      ${students.map(student => `
+        <div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px;">
+          <p><strong>${student.initials}</strong> (Grade ${student.grade_level}):</p>
+          <ul>
+            <li>Focus: Grade-level appropriate skills</li>
+            <li>Assessment: Observe progress and engagement</li>
+          </ul>
+        </div>
+      `).join('')}
+
+      <h4>Closing Activity (5 minutes)</h4>
+      <p>Individual assessment and wrap-up:</p>
+      <ul>
+        <li>Quick check-in with each student</li>
+        <li>Review key concepts covered</li>
+        <li>Preview next session's goals</li>
+      </ul>
+
+      <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 5px;">
+        <p><strong>Teacher Note:</strong> This is a basic template. For personalized, curriculum-aligned lessons, please configure your Anthropic API key.</p>
+      </div>
+    </div>
+  `;
+}
 }
