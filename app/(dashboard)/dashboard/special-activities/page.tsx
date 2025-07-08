@@ -177,7 +177,7 @@ export default function SpecialActivitiesPage() {
                   teacherName=""
                   onSuccess={() => {
                     setShowAddForm(false);
-                    fetchActivities();
+                    fetchSpecialActivities();
                   }}
                   onCancel={() => setShowAddForm(false)}
                 />

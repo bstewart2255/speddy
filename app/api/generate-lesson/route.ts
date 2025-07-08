@@ -307,7 +307,7 @@ When planning activities, specifically reference these worksheets when appropria
 This helps the teacher know exactly which materials are ready to print and use.
 ${personalizationInstructions}}`;
 
-async function generateMockResponse(students: any[], duration: number) {
+async function // generateMockResponse(students: any[], duration: number) {
   const gradeGroups = students.reduce((acc: any, student: any) => {
     const grade = student.grade_level;
     if (!acc[grade]) acc[grade] = [];

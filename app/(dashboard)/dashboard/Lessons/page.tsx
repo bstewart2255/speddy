@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { X } from 'lucide-react';
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Calendar, Clock, Users, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -250,7 +251,7 @@ export default function LessonsPage() {
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="px-4 py-2 text-sm text-gray-700">
+                <span className="px-4 py-2 text-sm text-gray-700">
                 Page {currentPage} of {totalPages}
               </span>
 
