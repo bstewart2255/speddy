@@ -75,7 +75,7 @@ export default function DashboardPage() {
         </div>
         {/* Main Content Area */}
         <div className="space-y-4">
-          <WeeklyView />
+          <WeeklyView viewMode="provider" />
 
           {/* Two column layout with different behavior */}
           <div className="grid gap-4 md:grid-cols-2">
