@@ -13,8 +13,8 @@ const pacifico = Pacifico({
 });
 
 export const metadata: Metadata = {
-  title: "Premium IEP Scheduler",
-  description: "Collaborative scheduling platform for special education providers",
+  title: "Speddy",
+  description: "Super helpful SpEd platform",
 };
 
 export default function RootLayout({

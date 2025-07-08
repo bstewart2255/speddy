@@ -33,7 +33,77 @@ const CURRICULUM_DETAILS: Record<string, string> = {
   'superflex': 'Superflex - social thinking curriculum',
   'unique-learning': 'Unique Learning System - standards-based special ed',
   'edmark': 'Edmark Reading Program - whole-word approach',
-  'teachtown': 'TeachTown - computer-assisted instruction'
+  'teachtown': 'TeachTown - computer-assisted instruction',
+
+  // Speech Therapy Resources
+  'speech-articulation': 'Articulation Station - speech sound practice',
+  'language-builder': 'Language Builder - vocabulary and concept development',
+  'social-language': 'Social Language Development - pragmatic skills',
+  'aac-pecs': 'PECS - Picture Exchange Communication System',
+  'aac-proloquo': 'Proloquo2Go - AAC communication app',
+  'phonological-awareness': 'Phonological Awareness Activities',
+  'fluency-shaping': 'Fluency Shaping Techniques',
+
+  // Occupational Therapy Resources
+  'handwriting-hwt': 'Handwriting Without Tears - fine motor program',
+  'sensory-diet': 'Sensory Diet Activities - regulation strategies',
+  'zones-regulation': 'Zones of Regulation - self-regulation',
+  'brain-gym': 'Brain Gym - movement-based learning',
+  'alert-program': 'Alert Program - self-regulation',
+  'fine-motor-skills': 'Fine Motor Skills Development Kit',
+  'visual-motor': 'Visual Motor Integration Activities',
+
+  // Counseling Resources
+  'second-step-sel': 'Second Step - social emotional learning',
+  'mindfulness-schools': 'Mindfulness in Schools curriculum',
+  'cbt-worksheets': 'CBT Worksheets for Children',
+  'restorative-practices': 'Restorative Justice Practices',
+
+  // Life Skills/Transition
+  'life-centered': 'Life Centered Education curriculum',
+  'transition-planning': 'Transition Planning Toolkit',
+  'job-skills': 'Job Skills Assessment and Training'
+};
+// Role-specific lesson templates
+const ROLE_SPECIFIC_PROMPTS: Record<string, string> = {
+  speech: `Create a detailed speech therapy session plan that focuses on:
+- Articulation and phonological processes appropriate for each student's age
+- Receptive and expressive language development
+- Pragmatic/social communication skills
+- Oral motor exercises if needed
+- AAC strategies for non-verbal or minimally verbal students
+- Functional communication in natural contexts`,
+
+  ot: `Create a detailed occupational therapy session plan that focuses on:
+- Fine motor skill development (pencil grasp, cutting, manipulation)
+- Gross motor coordination and motor planning
+- Sensory integration and regulation strategies
+- Visual-motor integration and visual perception
+- Self-care and activities of daily living (ADL) skills
+- Handwriting and pre-writing skills appropriate to grade level
+- Executive functioning and organizational skills`,
+
+  resource: `Create a detailed special education lesson plan that focuses on:
+- Academic skills in ELA and Math aligned to grade-level standards
+- Differentiated instruction based on learning needs
+- Multi-sensory teaching approaches
+- Evidence-based interventions for reading and math
+- Study skills and learning strategies`,
+
+  counseling: `Create a detailed counseling session plan that focuses on:
+- Social-emotional learning (SEL) skills
+- Coping strategies and emotional regulation
+- Social skills and peer relationships
+- Self-advocacy and self-awareness
+- Behavioral strategies and positive behavior support
+- Crisis prevention and de-escalation techniques`,
+
+  specialist: `Create a detailed program specialist session plan that focuses on:
+- Transition planning and life skills
+- Vocational readiness and career exploration
+- Community-based instruction
+- Functional academics
+- Self-determination and independence skills`
 };
 
 export async function POST(request: NextRequest) {
@@ -48,10 +118,10 @@ export async function POST(request: NextRequest) {
 
     const { students, timeSlot, duration = 30 } = await request.json();
 
-    // Get user profile for curriculum information
+    /// Get user profile for curriculum information and role
     const { data: profile } = await supabase
       .from('profiles')
-      .select('selected_curriculums')
+      .select('selected_curriculums, role')
       .eq('id', user.id)
       .single();
 
@@ -64,8 +134,15 @@ export async function POST(request: NextRequest) {
       .order('date', { ascending: false })
       .limit(10);
 
-    // Create enhanced prompt
-    const promptContent = await createEnhancedPrompt(students, duration, recentLogs || [], profile);
+    // Create enhanced prompt with role information
+    const promptContent = await createEnhancedPrompt(
+      students, 
+      duration, 
+      recentLogs || [], 
+      profile,
+      profile?.role || 'resource' // Pass the role, default to resource
+    );
+    
 
     let content: string;
 
@@ -80,18 +157,35 @@ export async function POST(request: NextRequest) {
           apiKey: apiKey,
         });
 
-        const message = await anthropic.messages.create({
-          model: "claude-3-haiku-20240307", // Cheapest and fastest model
-          max_tokens: 2000,
-          temperature: 0.7,
-          system: "You are an expert special education teacher creating highly personalized lesson plans. Format all responses as clean HTML with proper semantic tags.",
-          messages: [
-            {
-              role: "user",
-              content: promptContent
-            }
-          ]
-        });
+      const userRole = profile?.role || 'resource';
+      const systemContent = `You are an expert ${
+        userRole === 'speech' ? 'speech-language pathologist' : 
+        userRole === 'ot' ? 'occupational therapist' : 
+        userRole === 'counseling' ? 'school counselor' :
+        userRole === 'specialist' ? 'program specialist' :
+        'special education teacher'
+      } creating highly personalized ${
+        userRole === 'speech' ? 'speech therapy session plans' :
+        userRole === 'ot' ? 'occupational therapy session plans' :
+        userRole === 'counseling' ? 'counseling session plans' :
+        'lesson plans'
+      }. You have deep knowledge of evidence-based practices, developmental milestones, and therapeutic interventions specific to your field. Always create practical, engaging activities appropriate for the school setting.`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307", // Cheapest and fastest model
+        max_tokens: 2000,
+        temperature: 0.7,
+        messages: [
+          {
+            role: "user",
+            content: systemContent
+          },
+          {
+            role: "user",
+            content: promptContent
+          }
+        ]
+      });
 
         // Extract the text content from Claude's response
         content = message.content[0].type === 'text' ? message.content[0].text : '';
@@ -152,7 +246,8 @@ async function createEnhancedPrompt(
   students: any[], 
   duration: number, 
   recentLogs: any[],
-  profile: any
+  profile: any,
+  userRole: string
 ): Promise<string> {
   // Create detailed student profiles with skills
   const studentProfiles = await Promise.all(students.map(async (student) => {
@@ -235,16 +330,23 @@ async function createEnhancedPrompt(
   ` : ''}`;
     }
 
-    return `Create a detailed, practical ${duration}-minute special education lesson plan for the following students:
+    // Get the role-specific prompt or default to resource
+    const rolePrompt = ROLE_SPECIFIC_PROMPTS[userRole] || ROLE_SPECIFIC_PROMPTS.resource;
+    
+    return `${rolePrompt}
 
+Duration: ${duration} minutes
+
+Student Information:
 ${studentProfiles.join('\n')}
 
 Requirements:
 1. Address each student's SPECIFIC IEP goals with targeted activities
 2. Focus on the Current Working Skills listed for each student - these are the exact skills they need practice with
-3. Differentiate instruction based on actual reading/math levels, not just grade
+3. Differentiate instruction based on actual needs, not just grade level
 4. Build on recent work and recommended next steps where provided
 5. Use each student's focus areas to guide instruction
+6. For therapy sessions (speech/OT), incorporate evidence-based practices appropriate for each student's age and developmental level
 
 CRITICAL: Pay special attention to the "Current Working Skills" for each student. These are the specific skills the teacher has identified as current focus areas. Design activities that directly practice these skills.
 
@@ -276,8 +378,15 @@ For each activity, specify:
 - Which curriculum/program to use (if applicable)
 - How to assess progress
 
-Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a special education teacher.
+Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a ${
+  userRole === 'speech' ? 'speech-language pathologist' :
+  userRole === 'ot' ? 'occupational therapist' :
+  userRole === 'counseling' ? 'school counselor' :
+  userRole === 'specialist' ? 'program specialist' :
+  'special education teacher'
+}.
 
+${userRole === 'resource' || !userRole ? `
 IMPORTANT - Available Printable Worksheets:
 The teacher has instant access to these grade-specific worksheets (available via Print Worksheet buttons):
 
@@ -305,11 +414,27 @@ Grade 5:
 - ELA: Analyzing Texts and Citing Evidence (supporting answers with text evidence)
 - Math: Fractions (adding/subtracting with unlike denominators, word problems)
 
-When planning activities, specifically reference these worksheets when appropriate. For example:
-- "Have [Student] complete the Grade 2 Place Value worksheet (print via button below)"
-- "Start with the Letter Recognition worksheet for [Student]"
-- "Use the Reading Comprehension worksheet to assess [Student]'s progress"
+When planning activities, specifically reference these worksheets when appropriate.` : ''}
 
-This helps the teacher know exactly which materials are ready to print and use.
+${userRole !== 'resource' && !hasIEPGoals ? `
+IMPORTANT: Since no specific IEP goals are provided, create activities based on best practices for this age group:
+
+${userRole === 'speech' ? `
+- For Kindergarten-1st: Focus on articulation of early sounds (/p/, /b/, /m/), vocabulary building, following directions
+- For 2nd-3rd: Work on later sounds (/r/, /l/, /s/ blends), narrative skills, answering WH questions
+- For 4th-5th: Target complex language skills, inferencing, social language, conversational skills
+- Include oral motor exercises and phonological awareness activities as appropriate` : ''}
+
+${userRole === 'ot' ? `
+- For Kindergarten-1st: Focus on pencil grasp, cutting skills, letter formation, sensory regulation
+- For 2nd-3rd: Work on handwriting fluency, bilateral coordination, visual-motor skills
+- For 4th-5th: Target organizational skills, typing, complex fine motor tasks, self-advocacy
+- Include sensory breaks and movement activities throughout` : ''}
+
+${userRole === 'counseling' ? `
+- For all grades: Focus on identifying emotions, coping strategies, friendship skills
+- For younger students: Use play-based interventions, social stories, visual supports
+- For older students: Include problem-solving, conflict resolution, self-advocacy skills` : ''}
+` : ''}
 ${personalizationInstructions}}`;
 }
