@@ -26,26 +26,39 @@ export function CalendarMonthView({
   const currentMonth = new Date();
   currentMonth.setMonth(currentMonth.getMonth() + monthOffset);
 
-  // Get calendar grid
+  // Get calendar grid - only weekdays
   const getCalendarDays = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
+
+    // Find the first Monday of the month or before
     const startDate = new Date(firstDay);
     const startDayOfWeek = firstDay.getDay();
 
-    // Adjust to start on Monday
-    const daysToSubtract = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
-    startDate.setDate(startDate.getDate() - daysToSubtract);
+    // If the month starts on a weekend, go to the next Monday
+    if (startDayOfWeek === 0) { // Sunday
+      startDate.setDate(startDate.getDate() + 1);
+    } else if (startDayOfWeek === 6) { // Saturday
+      startDate.setDate(startDate.getDate() + 2);
+    } else if (startDayOfWeek > 1) { // Tuesday-Friday
+      // Go back to previous Monday
+      startDate.setDate(startDate.getDate() - (startDayOfWeek - 1));
+    }
 
-    // Ensure the days array is explicitly typed to hold Date objects
     const days: Date[] = [];
     const current = new Date(startDate);
 
-    // Generate 6 weeks (42 days)
-    for (let i = 0; i < 42; i++) {
-      days.push(new Date(current));
+    // Generate 6 weeks worth of weekdays (30 days max)
+    while (days.length < 30 && current <= new Date(year, month + 1, 7)) {
+      const dayOfWeek = current.getDay();
+
+      // Only add Monday-Friday (1-5)
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        days.push(new Date(current));
+      }
+
       current.setDate(current.getDate() + 1);
     }
 
@@ -76,9 +89,9 @@ export function CalendarMonthView({
   return (
     <div>
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-5 gap-1">
         {/* Day Headers */}
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (
           <div key={day} className="text-center text-sm font-medium text-gray-700 py-2">
             {day}
           </div>

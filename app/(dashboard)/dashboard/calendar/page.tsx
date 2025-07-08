@@ -384,6 +384,7 @@ export default function CalendarPage() {
                 students={students}
                 onSessionClick={handleSessionClick}
                 currentDate={currentDate}
+                holidays={holidays}  // Add this line
               />
             )}
             {currentView === 'week' && (
@@ -392,6 +393,7 @@ export default function CalendarPage() {
                 students={students}
                 onSessionClick={handleSessionClick}
                 weekOffset={weekOffset}
+                holidays={holidays}  // Add this line
               />
             )}
             {currentView === 'month' && (

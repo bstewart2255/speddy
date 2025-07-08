@@ -21,6 +21,7 @@ interface AIContentModalProps {
   schoolSite?: string;
   onSave?: (savedLesson: any) => void;  
   isViewingSaved?: boolean;
+  hideControls?: boolean;
 }
 
 export function AIContentModal({ 
@@ -32,7 +33,8 @@ export function AIContentModal({
   isLoading,
   schoolSite,
   onSave,
-  isViewingSaved = false
+  isViewingSaved = false,
+  hideControls = false
 }: AIContentModalProps) {
   const printRef = React.useRef<HTMLDivElement>(null);
   const [saving, setSaving] = React.useState(false);
@@ -346,7 +348,7 @@ export function AIContentModal({
             >
               Close
             </button>
-            {content && !isViewingSaved && (  // Add !isViewingSaved condition here
+            {content && !isViewingSaved && !hideControls && (  // Add !hideControls condition here
               <>
                 <button
                   onClick={() => setShowNotes(!showNotes)}

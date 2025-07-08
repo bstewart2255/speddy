@@ -7,6 +7,7 @@ import Navbar from '../components/navigation/navbar';
 import Footer from '../components/navigation/footer';
 import { ErrorBoundary } from '../components/ui/error-boundary';
 import { SchoolProvider } from '../components/providers/school-context';
+import { CrispUserIdentifier } from '../components/crisp-user-identifier';
 
 export default function DashboardLayout({
   children,
@@ -42,6 +43,7 @@ export default function DashboardLayout({
       <SchoolProvider>
         <div className="min-h-screen bg-gray-50 flex flex-col">
           <Navbar />
+          <CrispUserIdentifier />
           <main className="flex-1 max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
             {children}
           </main>

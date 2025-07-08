@@ -346,6 +346,7 @@ export function GroupSessionsWidget() {
         students={selectedStudents}
         content={aiContent}
         isLoading={generatingContent}
+        hideControls={true}  // Add this line to hide controls in upcoming sessions widget
       />
     </>
   );

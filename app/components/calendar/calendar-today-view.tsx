@@ -10,14 +10,16 @@ interface CalendarTodayViewProps {
   sessions: ScheduleSession[];
   students: Map<string, { initials: string }>;
   onSessionClick?: (session: ScheduleSession) => void;
-  currentDate?: Date;  // Add this
+  currentDate?: Date;  
+  holidays?: Array<{ date: string; name?: string }>;  // Add holidays prop
 }
 
 export function CalendarTodayView({ 
   sessions, 
   students,
   onSessionClick,
-  currentDate = new Date()  // Add default
+  currentDate = new Date(),
+  holidays = []  // Add holiday feature
 }: CalendarTodayViewProps) {
   
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -34,6 +36,22 @@ export function CalendarTodayView({
   React.useEffect(() => {
     setSessionsState(sessions);
   }, [sessions]);
+
+  // Check if current date is a holiday
+  const isHoliday = () => {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    return holidays.some(h => h.date === dateStr);
+  };
+
+  // Get holiday name for current date
+  const getHolidayName = () => {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    const holiday = holidays.find(h => h.date === dateStr);
+    return holiday?.name || 'Holiday';
+  };
+
+  const todayIsHoliday = isHoliday();
+  const holidayName = getHolidayName();
    
   const todayDate = currentDate.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -138,7 +156,14 @@ export function CalendarTodayView({
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">{todayDate}</h2>
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold">{todayDate}</h3>
+        {todayIsHoliday && (
+          <div className="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            {holidayName}
+          </div>
+        )}
+      </div>
 
       {sortedSessions.length === 0 ? (
         <div className="text-center py-12">

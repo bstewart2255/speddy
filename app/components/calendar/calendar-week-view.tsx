@@ -15,6 +15,7 @@ interface CalendarWeekViewProps {
   }>;
   onSessionClick?: (session: ScheduleSession) => void;
   weekOffset?: number;
+  holidays?: Array<{ date: string; name?: string }>;
 }
 
 
@@ -22,7 +23,8 @@ export function CalendarWeekView({
   sessions,
   students,
   onSessionClick,
-  weekOffset = 0,  // Add default
+  weekOffset = 0,
+  holidays = [] // Add holiday feature
   }: CalendarWeekViewProps) {
   const getWeekDates = () => {
     const today = new Date();
@@ -45,6 +47,19 @@ export function CalendarWeekView({
   };
 
   const weekDates = getWeekDates();
+
+  // Check if a date is a holiday
+  const isHoliday = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return holidays.some(h => h.date === dateStr);
+  };
+
+  // Get holiday name for a date
+  const getHolidayName = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const holiday = holidays.find(h => h.date === dateStr);
+    return holiday?.name || 'Holiday';
+  };
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -394,17 +409,22 @@ export function CalendarWeekView({
           return (
             <div
               key={dayOfWeek}
-              className={`border rounded-lg ${isToday ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}
+              className={`border rounded-lg ${isToday ? "border-blue-400 bg-blue-50" : isHoliday(date) ? "border-red-200 bg-red-50" : "border-gray-200"}`}
             >
               <div
                 className={`p-2 text-center font-medium text-sm ${
-                  isToday ? "bg-blue-100" : "bg-gray-50"
+                  isToday ? "bg-blue-100" : isHoliday(date) ? "bg-red-100" : "bg-gray-50"
                 }`}
               >
                 <div>
                   {date.toLocaleDateString("en-US", { weekday: "short" })}
                 </div>
                 <div className="text-lg">{date.getDate()}</div>
+                {isHoliday(date) && (
+                  <div className="text-xs text-red-600 font-medium mt-0.5">
+                    {getHolidayName(date)}
+                  </div>
+                )}
               </div>
 
               {/* AI Lesson Buttons - only show if there are sessions */}
