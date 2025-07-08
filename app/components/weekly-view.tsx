@@ -51,7 +51,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         // Check if user is a Resource Specialist and has SEAs
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role, school_site')
+          .select('role, school_site, school_district')
           .eq('id', user.id)
           .single();
 
