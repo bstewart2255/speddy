@@ -84,7 +84,7 @@ export function SignupForm() {
     schoolSite: "",
     supervisingProviderEmail: "",
     multipleSchools: 'no', // default to single school
-    additionalSchools: [''] // for storing multiple school names
+    additionalSchools: ["", "", ""] // for storing multiple school names
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -107,45 +107,60 @@ export function SignupForm() {
       return;
     }
 
-    /// Validate password strength
+    // Validate password strength
     const passwordValidation = validatePassword(formData.password);
     if (!passwordValidation.isValid) {
-      setError(passwordValidation.errors[0]); // Show first error
+      setError(passwordValidation.errors[0]);
       setLoading(false);
       return;
     }
 
-    // Validate additional schools if multiple schools selected
+    // Prepare additional schools array
+    let additionalSchoolsArray: string[] = [];
+
     if (formData.multipleSchools === 'yes') {
-      const validSchools = formData.additionalSchools.filter(school => school.trim() !== '');
-      if (validSchools.length === 0) {
+      // Filter out empty school names and trim whitespace
+      additionalSchoolsArray = formData.additionalSchools
+        .filter(school => school.trim() !== '')
+        .map(school => school.trim());
+
+      if (additionalSchoolsArray.length === 0) {
         setError("Please enter at least one additional school site");
         setLoading(false);
         return;
       }
     }
 
-    const { error } = await signUp(formData.email, formData.password, {
-      full_name: formData.fullName,
-      role: formData.role,
-      state: formData.state,
-      school_district: formData.schoolDistrict,
-      school_site: formData.schoolSite,
-      works_at_multiple_schools: formData.multipleSchools === 'yes',
-      additional_schools: formData.multipleSchools === 'yes' 
-        ? formData.additionalSchools.filter(school => school.trim() !== '') 
-        : []
-    });
+    try {
+      // Log the metadata being sent (for debugging)
+      const metadata = {
+        full_name: formData.fullName.trim(),
+        role: formData.role,
+        state: formData.state,
+        school_district: formData.schoolDistrict.trim(),
+        school_site: formData.schoolSite.trim(),
+        works_at_multiple_schools: formData.multipleSchools === 'yes',
+        additional_schools: additionalSchoolsArray
+      };
 
-    if (error) {
-      console.error("Signup error details:", error);
-      setError(error.message);
+      console.log('Signup metadata:', metadata);
+
+      const { error } = await signUp(formData.email, formData.password, metadata);
+
+      if (error) {
+        console.error("Signup error details:", error);
+        setError(error.message);
+        setLoading(false);
+      } else {
+        setSuccess(true);
+        setTimeout(() => {
+          router.push("/login");
+        }, 3000);
+      }
+    } catch (err) {
+      console.error("Unexpected signup error:", err);
+      setError("An unexpected error occurred. Please try again.");
       setLoading(false);
-    } else {
-      setSuccess(true);
-      setTimeout(() => {
-        router.push("/login");
-      }, 3000);
     }
   };
 
