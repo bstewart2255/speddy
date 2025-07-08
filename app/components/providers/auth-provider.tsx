@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "../../../lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { validatePassword } from "../../../lib/utils/password-validation";
 
 interface AuthContextType {
   user: User | null;
@@ -20,9 +21,11 @@ interface AuthContextType {
 interface SignUpMetadata {
   full_name: string;
   role: string;
+  state: string;
   school_district: string;
   school_site: string;
-  works_at_multiple_schools?: boolean; // Add this line
+  works_at_multiple_schools?: boolean;
+  additional_schools?: string[]; // Add this
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -72,6 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     metadata: SignUpMetadata & { works_at_multiple_schools?: boolean },
   ) => {
     try {
+      // Validate password requirements
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.isValid) {
+        throw new Error(passwordValidation.errors[0]);
+      }
       // Role mapping from form values to database values
       const roleMap: { [key: string]: string } = {
         resource_specialist: "resource",
@@ -110,10 +118,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             full_name: metadata.full_name,
+            state: metadata.state,
             school_district: metadata.school_district,
             school_site: metadata.school_site,
-            role: dbRole,  // Put role explicitly without spreading metadata
-            works_at_multiple_schools: metadata.works_at_multiple_schools || false
+            role: dbRole,
+            works_at_multiple_schools: metadata.works_at_multiple_schools || false,
+            additional_schools: metadata.additional_schools || [] // Add this
           },
         },
       });

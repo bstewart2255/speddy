@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PasswordInput } from "../../components/auth/password-input";
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -78,13 +79,12 @@ export default function LoginForm() {
         <label htmlFor="password" className="block text-sm font-medium text-gray-700">
           Password
         </label>
-        <input
+        <PasswordInput
           id="password"
-          type="password"
+          name="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
         />
       </div>
 
@@ -102,14 +102,16 @@ export default function LoginForm() {
           Sign up
         </Link>
       </p>
-      <div className="mt-6 text-center text-xs text-gray-500">
-        By signing in, you agree to our{' '}
+      <div className="text-xs text-gray-500 mb-4">
+        By creating an account, you agree to our{' '}
         <Link href="/terms" className="text-blue-600 hover:text-blue-500">
           Terms of Service
-        </Link>{' '}
-        and{' '}
+        </Link>,{' '}
         <Link href="/privacy" className="text-blue-600 hover:text-blue-500">
           Privacy Policy
+        </Link>, and{' '}
+        <Link href="/ferpa" className="text-blue-600 hover:text-blue-500">
+          FERPA Compliance
         </Link>
       </div>
     </form>

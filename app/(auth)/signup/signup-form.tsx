@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useAuth } from "../../components/providers/auth-provider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { validatePassword } from "../../../lib/utils/password-validation";
+import { PasswordRequirements } from "../../components/auth/password-requirements";
+import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
+import { PasswordInput } from "../../components/auth/password-input";
 
 const PROVIDER_ROLES = [
   { value: "resource_specialist", label: "Resource Specialist" },
@@ -15,6 +19,59 @@ const PROVIDER_ROLES = [
   { value: "other", label: "Other Special Education Provider" },
 ];
 
+const US_STATES = [
+  { value: "AL", label: "Alabama" },
+  { value: "AK", label: "Alaska" },
+  { value: "AZ", label: "Arizona" },
+  { value: "AR", label: "Arkansas" },
+  { value: "CA", label: "California" },
+  { value: "CO", label: "Colorado" },
+  { value: "CT", label: "Connecticut" },
+  { value: "DE", label: "Delaware" },
+  { value: "FL", label: "Florida" },
+  { value: "GA", label: "Georgia" },
+  { value: "HI", label: "Hawaii" },
+  { value: "ID", label: "Idaho" },
+  { value: "IL", label: "Illinois" },
+  { value: "IN", label: "Indiana" },
+  { value: "IA", label: "Iowa" },
+  { value: "KS", label: "Kansas" },
+  { value: "KY", label: "Kentucky" },
+  { value: "LA", label: "Louisiana" },
+  { value: "ME", label: "Maine" },
+  { value: "MD", label: "Maryland" },
+  { value: "MA", label: "Massachusetts" },
+  { value: "MI", label: "Michigan" },
+  { value: "MN", label: "Minnesota" },
+  { value: "MS", label: "Mississippi" },
+  { value: "MO", label: "Missouri" },
+  { value: "MT", label: "Montana" },
+  { value: "NE", label: "Nebraska" },
+  { value: "NV", label: "Nevada" },
+  { value: "NH", label: "New Hampshire" },
+  { value: "NJ", label: "New Jersey" },
+  { value: "NM", label: "New Mexico" },
+  { value: "NY", label: "New York" },
+  { value: "NC", label: "North Carolina" },
+  { value: "ND", label: "North Dakota" },
+  { value: "OH", label: "Ohio" },
+  { value: "OK", label: "Oklahoma" },
+  { value: "OR", label: "Oregon" },
+  { value: "PA", label: "Pennsylvania" },
+  { value: "RI", label: "Rhode Island" },
+  { value: "SC", label: "South Carolina" },
+  { value: "SD", label: "South Dakota" },
+  { value: "TN", label: "Tennessee" },
+  { value: "TX", label: "Texas" },
+  { value: "UT", label: "Utah" },
+  { value: "VT", label: "Vermont" },
+  { value: "VA", label: "Virginia" },
+  { value: "WA", label: "Washington" },
+  { value: "WV", label: "West Virginia" },
+  { value: "WI", label: "Wisconsin" },
+  { value: "WY", label: "Wyoming" }
+];
+
 export function SignupForm() {
   const [formData, setFormData] = useState({
     email: "",
@@ -22,10 +79,12 @@ export function SignupForm() {
     confirmPassword: "",
     fullName: "",
     role: "",
+    state: "CA", // default to California
     schoolDistrict: "",
     schoolSite: "",
     supervisingProviderEmail: "",
-    multipleSchools: 'no' // default to single school
+    multipleSchools: 'no', // default to single school
+    additionalSchools: [''] // for storing multiple school names
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +92,8 @@ export function SignupForm() {
   const { signUp } = useAuth();
   const router = useRouter();
   const [isSEARole, setIsSEARole] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,18 +107,34 @@ export function SignupForm() {
       return;
     }
 
-    // Validate password strength
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters");
+    /// Validate password strength
+    const passwordValidation = validatePassword(formData.password);
+    if (!passwordValidation.isValid) {
+      setError(passwordValidation.errors[0]); // Show first error
       setLoading(false);
       return;
+    }
+
+    // Validate additional schools if multiple schools selected
+    if (formData.multipleSchools === 'yes') {
+      const validSchools = formData.additionalSchools.filter(school => school.trim() !== '');
+      if (validSchools.length === 0) {
+        setError("Please enter at least one additional school site");
+        setLoading(false);
+        return;
+      }
     }
 
     const { error } = await signUp(formData.email, formData.password, {
       full_name: formData.fullName,
       role: formData.role,
+      state: formData.state,
       school_district: formData.schoolDistrict,
       school_site: formData.schoolSite,
+      works_at_multiple_schools: formData.multipleSchools === 'yes',
+      additional_schools: formData.multipleSchools === 'yes' 
+        ? formData.additionalSchools.filter(school => school.trim() !== '') 
+        : []
     });
 
     if (error) {
@@ -192,8 +269,31 @@ export function SignupForm() {
           placeholder="e.g., San Francisco Unified School District"
         />
         <p className="mt-1 text-xs text-gray-500">
-          Enter your full school district name
+          Enter your full school district name (spell correctly!)
         </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="state"
+          className="block text-sm font-medium text-gray-700"
+        >
+          State
+        </label>
+        <select
+          id="state"
+          name="state"
+          required
+          value={formData.state}
+          onChange={handleChange}
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+        >
+          {US_STATES.map((state) => (
+            <option key={state.value} value={state.value}>
+              {state.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>
@@ -214,7 +314,7 @@ export function SignupForm() {
           placeholder="Lincoln Elementary School"
         />
         <p className="mt-1 text-xs text-gray-500">
-          Enter full school name (no abbreviations)
+          Enter full school name (no abbreviations - and spell correctly!)
         </p>
       </div>
 
@@ -248,6 +348,58 @@ export function SignupForm() {
         </div>
       </div>
 
+      {formData.multipleSchools === 'yes' && (
+        <div className="mt-4 space-y-2">
+          <p className="text-sm font-medium text-gray-700">
+            List your additional school sites:
+          </p>
+          {formData.additionalSchools.map((school, index) => (
+            <div key={index} className="flex gap-2">
+              <input
+                type="text"
+                value={school}
+                onChange={(e) => {
+                  const newSchools = [...formData.additionalSchools];
+                  newSchools[index] = e.target.value;
+                  setFormData(prev => ({ ...prev, additionalSchools: newSchools }));
+                }}
+                placeholder={`Additional school site ${index + 1}`}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              {formData.additionalSchools.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newSchools = formData.additionalSchools.filter((_, i) => i !== index);
+                    setFormData(prev => ({ ...prev, additionalSchools: newSchools }));
+                  }}
+                  className="px-3 py-2 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+                >
+                  Remove
+                </button>
+              )}
+              {index === formData.additionalSchools.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      additionalSchools: [...prev.additionalSchools, '']
+                    }));
+                  }}
+                  className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                >
+                  + Add another
+                </button>
+              )}
+            </div>
+          ))}
+          <p className="text-xs text-gray-500">
+            You'll be able to set your schedule for each school after signup
+          </p>
+        </div>
+      )}
+
       <div>
         <label
           htmlFor="password"
@@ -255,16 +407,20 @@ export function SignupForm() {
         >
           Password
         </label>
-        <input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
-          required
           value={formData.password}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          onFocus={() => setShowPasswordRequirements(true)}
+          onBlur={() => setShowPasswordRequirements(false)}
+          required
         />
-        <p className="mt-1 text-xs text-gray-500">At least 6 characters</p>
+        <PasswordStrengthIndicator password={formData.password} />
+        <PasswordRequirements 
+          password={formData.password} 
+          showRequirements={showPasswordRequirements || formData.password.length > 0}
+        />
       </div>
 
       <div>
@@ -274,41 +430,16 @@ export function SignupForm() {
         >
           Confirm Password
         </label>
-        <input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
-          required
           value={formData.confirmPassword}
           onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          required
         />
-      </div>
-
-      <div className="text-xs text-gray-500 mb-4">
-        By creating an account, you agree to our{' '}
-        <Link href="/terms" className="text-blue-600 hover:text-blue-500">
-          Terms of Service
-        </Link>,{' '}
-        <Link href="/privacy" className="text-blue-600 hover:text-blue-500">
-          Privacy Policy
-        </Link>, and{' '}
-        <Link href="/ferpa" className="text-blue-600 hover:text-blue-500">
-          FERPA Compliance
-        </Link>
-      </div>
-
-      <div className="text-xs text-gray-500 mb-4">
-        By creating an account, you agree to our{' '}
-        <Link href="/terms" className="text-blue-600 hover:text-blue-500">
-          Terms of Service
-        </Link>,{' '}
-        <Link href="/privacy" className="text-blue-600 hover:text-blue-500">
-          Privacy Policy
-        </Link>, and{' '}
-        <Link href="/ferpa" className="text-blue-600 hover:text-blue-500">
-          FERPA Compliance
-        </Link>
+        {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+          <p className="mt-1 text-xs text-red-600">Passwords do not match</p>
+        )}
       </div>
 
       <div className="border border-gray-200 rounded-md p-4 mb-4">
@@ -333,6 +464,19 @@ export function SignupForm() {
             </span>
           </label>
         </div>
+      </div>
+
+      <div className="text-xs text-gray-500 mb-4">
+        By creating an account, you agree to our{' '}
+        <Link href="/terms" className="text-blue-600 hover:text-blue-500">
+          Terms of Service
+        </Link>,{' '}
+        <Link href="/privacy" className="text-blue-600 hover:text-blue-500">
+          Privacy Policy
+        </Link>, and{' '}
+        <Link href="/ferpa" className="text-blue-600 hover:text-blue-500">
+          FERPA Compliance
+        </Link>
       </div>
       
       <div>
