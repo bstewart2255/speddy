@@ -17,7 +17,11 @@ const TIME_SLOTS = [
   "2:00 PM", "2:30 PM", "3:00 PM"
 ];
 
-export function WeeklyView() {
+interface WeeklyViewProps {
+  viewMode: 'provider' | 'sea';
+}
+
+export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const today = new Date();
   const weekStart = isWeekend(today)
     ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
@@ -26,7 +30,6 @@ export function WeeklyView() {
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
   const [loading, setLoading] = React.useState(true);
-  const [viewMode, setViewMode] = useState<'provider' | 'sea'>('provider');
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
 
@@ -284,36 +287,10 @@ export function WeeklyView() {
 
 return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4">
         <h2 className="text-lg font-semibold">
           Today's Schedule
         </h2>
-
-        {/* Only show toggle for Resource Specialists with SEAs */}
-        {showToggle && (
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('provider')}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                viewMode === 'provider'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Me
-            </button>
-            <button
-              onClick={() => setViewMode('sea')}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                viewMode === 'sea'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              SEA
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="space-y-4">
