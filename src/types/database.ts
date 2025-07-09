@@ -475,6 +475,50 @@ export interface Database {
           ai_analysis?: string | null
         }
       },
+      school_hours: {
+        Row: {
+          id: string
+          provider_id: string
+          school_site: string | null
+          day_of_week: number
+          grade_level: string
+          start_time: string
+          end_time: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          school_site?: string | null
+          day_of_week: number
+          grade_level: string
+          start_time: string
+          end_time: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          school_site?: string | null
+          day_of_week?: number
+          grade_level?: string
+          start_time?: string
+          end_time?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "school_hours_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
       iep_goal_progress: {
         Row: {
           id: string

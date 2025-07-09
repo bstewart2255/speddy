@@ -1,5 +1,6 @@
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Database } from "../../src/types/database";
+import { getSchoolHours } from '../supabase/queries/school-hours';
 
 type Student = Database["public"]["Tables"]["students"]["Row"];
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
@@ -31,7 +32,13 @@ interface SchedulingContext {
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   existingSessions: ScheduleSession[];
-  validSlots: Map<string, TimeSlot>; // key: "day-startTime"
+  validSlots: Map<string, TimeSlot>;
+  schoolHours: Array<{  // Add this
+    day_of_week: number;
+    grade_level: string;
+    start_time: string;
+    end_time: string;
+  }>;
 }
 
 interface SchedulingResult {
@@ -91,8 +98,8 @@ export class OptimizedScheduler {
 
     console.log(`Work days at ${schoolSite}: ${workDays.join(", ")}`);
 
-    // 2. Get all bell schedules and special activities
-    const [bellData, activitiesData, sessionsData] = await Promise.all([
+    // 2. Get all bell schedules, special activities, and school hours
+    const [bellData, activitiesData, sessionsData, hoursData] = await Promise.all([
       this.supabase
         .from("bell_schedules")
         .select("*")
@@ -115,6 +122,11 @@ export class OptimizedScheduler {
         )
         .eq("provider_id", this.providerId)
         .eq("students.school_site", schoolSite),
+      this.supabase
+        .from("school_hours")
+        .select("*")
+        .eq("provider_id", this.providerId)
+        .eq("school_site", schoolSite)
     ]);
 
     const context: SchedulingContext = {
@@ -124,6 +136,7 @@ export class OptimizedScheduler {
       specialActivities: activitiesData.data || [],
       existingSessions: sessionsData.data || [],
       validSlots: new Map(),
+      schoolHours: hoursData.data || [],
     };
 
     // 3. Pre-compute all valid time slots
@@ -139,7 +152,7 @@ export class OptimizedScheduler {
   private buildValidSlotsMap(context: SchedulingContext) {
     console.log("Building valid slots map...");
 
-    const timeSlots = this.generateTimeSlots();
+    const timeSlots = this.generateTimeSlots(8, 14); // Default hours for slot generation
     let totalSlots = 0;
     let validSlots = 0;
 
@@ -175,6 +188,49 @@ export class OptimizedScheduler {
     console.log(
       `Valid slots: ${validSlots}/${totalSlots} (${Math.round((validSlots / totalSlots) * 100)}% available)`,
     );
+  }
+
+  /**
+   * Get school hours for a specific grade and day
+   */
+  private getSchoolHoursForGrade(day: number, grade: string, sessionTime?: string): { start: string; end: string } {
+    if (!this.context) {
+      return { start: '08:00', end: '15:00' };
+    }
+
+    // For K and TK, check if there are AM/PM specific schedules
+    if ((grade === 'K' || grade === 'TK') && sessionTime) {
+      const sessionHour = parseInt(sessionTime.split(':')[0]);
+      const isAM = sessionHour < 12;
+
+      // Try to find AM/PM specific schedule first
+      const amPmGrade = `${grade}-${isAM ? 'AM' : 'PM'}`;
+      const amPmHours = this.context.schoolHours.find(h => 
+        h.day_of_week === day && h.grade_level === amPmGrade
+      );
+
+      if (amPmHours) {
+        return {
+          start: amPmHours.start_time.substring(0, 5),
+          end: amPmHours.end_time.substring(0, 5)
+        };
+      }
+    }
+
+    // Fall back to regular grade hours
+    const hours = this.context.schoolHours.find(h => 
+      h.day_of_week === day && 
+      (h.grade_level === grade || (h.grade_level === 'default' && !['TK', 'K'].includes(grade)))
+    );
+
+    if (!hours) {
+      return { start: '08:00', end: '15:00' }; // Default fallback
+    }
+
+    return {
+      start: hours.start_time.substring(0, 5),
+      end: hours.end_time.substring(0, 5)
+    };
   }
 
   /**
@@ -389,9 +445,15 @@ export class OptimizedScheduler {
 
         console.log(`  Checking slot ${slot.startTime}-${endTime}`);
 
-        // Check if session extends beyond school hours (3:00 PM)
-        if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) {
-          console.log(`    ❌ Session extends beyond 3:00 PM`);
+        // Check if session extends beyond school hours for this grade
+        const schoolHours = this.getSchoolHoursForGrade(day, student.grade_level.trim(), slot.startTime);
+        const schoolStartMinutes = this.timeToMinutes(schoolHours.start);
+        const schoolEndMinutes = this.timeToMinutes(schoolHours.end);
+        const sessionStartMinutes = this.timeToMinutes(slot.startTime);
+        const sessionEndMinutes = this.timeToMinutes(endTime);
+
+        if (sessionStartMinutes < schoolStartMinutes || sessionEndMinutes > schoolEndMinutes) {
+          console.log(`    ❌ Session outside school hours (${schoolHours.start} - ${schoolHours.end})`);
           continue;
         }
 
@@ -728,15 +790,17 @@ export class OptimizedScheduler {
     }
   }
 
-  // Utility methods
-  private generateTimeSlots(): string[] {
+  /**
+   * Generate time slots based on school hours
+   */
+  private generateTimeSlots(startHour: number = 8, endHour: number = 14): string[] {
     const slots: string[] = [];
-    for (let hour = 8; hour <= 14; hour++) {
+    // Generate slots every 5 minutes for maximum flexibility
+    for (let hour = startHour; hour <= endHour; hour++) {
       for (let minute = 0; minute < 60; minute += 5) {
-        if (hour === 14 && minute > 30) break;
-        slots.push(
-          `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`,
-        );
+        // Don't go past end hour:30 to leave buffer
+        if (hour === endHour && minute > 30) break;
+        slots.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
       }
     }
     return slots;

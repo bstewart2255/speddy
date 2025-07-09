@@ -11,6 +11,8 @@ import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/q
 import { useSchool } from '../../../components/providers/school-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import { CollapsibleCard } from '../../../components/ui/collapsible-card';
+import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -130,6 +132,16 @@ export default function BellSchedulesPage() {
             </Card>
           </div>
         )}
+
+        {/* School Start & End Times Section */}
+        <div className="mb-8">
+          <CollapsibleCard title="School Start & End Times" defaultOpen={true}>
+            <SchoolHoursForm onSuccess={() => {
+              // Optionally refresh any data if needed
+              console.log('School hours saved successfully');
+            }} />
+          </CollapsibleCard>
+        </div>
 
         {/* Add Schedule Form - Inline */}
         {showAddForm && (

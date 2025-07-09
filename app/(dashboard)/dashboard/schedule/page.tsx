@@ -10,6 +10,7 @@ import { SessionAssignmentPopup } from "./session-assignment-popup";
 import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../../components/providers/school-context';
 import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
+import { getSchoolHours } from '../../../../lib/supabase/queries/school-hours';
 
 interface Student {
   id: string;
@@ -86,12 +87,13 @@ export default function SchedulePage() {
   const [sessionFilter, setSessionFilter] = useState<"all" | "mine" | "sea">(
     "all",
   );
-  // Add this state variable with your other useState declarations
   const [seaProfiles, setSeaProfiles] = useState<
     Array<{ id: string; full_name: string }>
   >([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [schoolHours, setSchoolHours] = useState<any[]>([]);
+  const [showSchoolHours, setShowSchoolHours] = useState(true);
   
   const latestDragPositionRef = useRef<string | null>(null);
   const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -299,6 +301,43 @@ export default function SchedulePage() {
     return !(end1Min <= start2Min || start1Min >= end2Min);
   };
 
+  // Helper to get school hours for a specific day and grade
+  const getSchoolHoursForDay = (day: number, grade: string, sessionTime?: string) => {
+    // For K and TK, check if there are AM/PM specific schedules
+    if ((grade === 'K' || grade === 'TK') && sessionTime) {
+      const sessionHour = parseInt(sessionTime.split(':')[0]);
+      const isAM = sessionHour < 12;
+
+      // Try to find AM/PM specific schedule first
+      const amPmGrade = `${grade}-${isAM ? 'AM' : 'PM'}`;
+      const amPmHours = schoolHours.find(h => 
+        h.day_of_week === day && h.grade_level === amPmGrade
+      );
+
+      if (amPmHours) {
+        return {
+          start: amPmHours.start_time.substring(0, 5),
+          end: amPmHours.end_time.substring(0, 5)
+        };
+      }
+    }
+
+    // Fall back to regular grade hours
+    const hours = schoolHours.find(h => 
+      h.day_of_week === day && 
+      (h.grade_level === grade || (h.grade_level === 'default' && !['TK', 'K'].includes(grade)))
+    );
+
+    if (!hours) {
+      return { start: '08:00', end: '15:00' }; // Default fallback
+    }
+
+    return {
+      start: hours.start_time.substring(0, 5),
+      end: hours.end_time.substring(0, 5)
+    };
+  };
+
   // Handle drag start
   const handleDragStart = (e: React.DragEvent, session: ScheduleSession) => {
     setDraggedSession(session);
@@ -357,8 +396,16 @@ export default function SchedulePage() {
 
     let quickConflict = false;
 
-    // 1. Check if extends beyond school hours
-    if (endTime.getHours() >= 15) {
+    // Check against school hours
+    const studentGrade = student.grade_level.trim();
+    const schoolHoursForGrade = getSchoolHoursForDay(day, studentGrade, time);
+
+    const schoolStartMinutes = timeToMinutes(schoolHoursForGrade.start);
+    const schoolEndMinutes = timeToMinutes(schoolHoursForGrade.end);
+    const sessionStart = parseInt(hours) * 60 + parseInt(minutes);
+    const sessionEnd = endTime.getHours() * 60 + endTime.getMinutes();
+
+    if (sessionStart < schoolStartMinutes || sessionEnd > schoolEndMinutes) {
       quickConflict = true;
     }
 
@@ -632,6 +679,10 @@ export default function SchedulePage() {
       if (studentsData.data) setStudents(studentsData.data);
       if (bellData.data) setBellSchedules(bellData.data);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
+
+      // Fetch school hours
+      const hoursData = await getSchoolHours(currentSchool?.school_site);
+      setSchoolHours(hoursData);
 
       if (sessionsData.data) {
         setSessions(sessionsData.data);
@@ -1124,6 +1175,42 @@ export default function SchedulePage() {
                       onDragOver={(e) => handleDragOver(e, dayIndex + 1)}
                       onDrop={(e) => handleDrop(e, dayIndex + 1)}
                     >
+                      {/* School hours boundary indicators */}
+                      {showSchoolHours && (() => {
+                        const uniqueHours = new Map();
+
+                        // Get unique school hours across selected grades
+                        Array.from(selectedGrades).forEach(grade => {
+                          const hours = getSchoolHoursForDay(dayIndex + 1, grade);
+                          const key = `${hours.start}-${hours.end}`;
+                          if (!uniqueHours.has(key)) {
+                            uniqueHours.set(key, { ...hours, grades: [grade] });
+                          } else {
+                            uniqueHours.get(key).grades.push(grade);
+                          }
+                        });
+
+                        return Array.from(uniqueHours.values()).map((hours, idx) => {
+                          const startPixels = timeToPixels(hours.start);
+                          const endPixels = timeToPixels(hours.end);
+                          const height = endPixels - startPixels;
+
+                          return (
+                            <div
+                              key={`boundary-${dayIndex}-${idx}`}
+                              className="absolute left-0 right-0 pointer-events-none"
+                              style={{
+                                top: `${startPixels}px`,
+                                height: `${height}px`,
+                                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                borderTop: '2px dashed rgba(59, 130, 246, 0.3)',
+                                borderBottom: '2px dashed rgba(59, 130, 246, 0.3)',
+                                zIndex: 0
+                              }}
+                            />
+                          );
+                        });
+                      })()}
                       {/* Hour grid lines */}
                       {timeMarkers.map((_, index) => (
                         <div
@@ -1293,15 +1380,26 @@ export default function SchedulePage() {
           </CardBody>
         </Card>
 
-        {/* Total Sessions Counter */}
+        {/* Total Sessions Counter - Outside the card */}
         <div className="mt-4 flex justify-between items-center">
-          <div className="text-sm text-gray-600 font-medium">
+          <div className="text-sm text-gray-600">
             Total Sessions: {
               providerRole === "sea" && currentUserId
                 ? sessions.filter(s => s.assigned_to_sea_id === currentUserId).length
                 : getFilteredSessions(sessions).length
             }
           </div>
+
+          {/* School Hours Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={showSchoolHours}
+              onChange={(e) => setShowSchoolHours(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Show school hours
+          </label>
         </div>
 
         {/* Add the SessionAssignmentPopup component here - after line 1113 */}

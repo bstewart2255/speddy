@@ -1,5 +1,6 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '../../src/types/database';
+import { getSchoolHours } from '../supabase/queries/school-hours';
 
 /**
  * Utility class used to automatically generate schedule sessions for students.
@@ -34,11 +35,36 @@ export class AutoScheduler {
   private supabase;
   private providerId: string;
   private providerRole: string;
+  private schoolHours: Array<{  // Add this
+    day_of_week: number;
+    grade_level: string;
+    start_time: string;
+    end_time: string;
+  }> = [];
 
   constructor(providerId: string, providerRole: string) {
     this.supabase = createClientComponentClient<Database>();
     this.providerId = providerId;
     this.providerRole = providerRole;
+  }
+
+  /**
+   * Get school hours for a specific grade and day
+   */
+  private getSchoolHoursForGrade(day: number, grade: string): { start: string; end: string } {
+    const hours = this.schoolHours.find(h => 
+      h.day_of_week === day && 
+      (h.grade_level === grade || (h.grade_level === 'default' && !['TK', 'K'].includes(grade)))
+    );
+
+    if (!hours) {
+      return { start: '08:00', end: '15:00' }; // Default fallback
+    }
+
+    return {
+      start: hours.start_time.substring(0, 5),
+      end: hours.end_time.substring(0, 5)
+    };
   }
 
   /**
@@ -48,39 +74,47 @@ export class AutoScheduler {
    * slots and then creates `schedule_sessions` rows for each valid slot until
    * the student's weekly requirement is met.
    */
-  async scheduleStudent(
-    student: Student,
-    existingSessions: ScheduleSession[],
-    bellSchedules: BellSchedule[],
-    specialActivities: SpecialActivity[]
-  ): Promise<SchedulingResult> {
-    const result: SchedulingResult = {
-      success: false,
-      scheduledSessions: [],
-      unscheduledStudents: [],
-      errors: []
-    };
-
-    try {
-      const sessionsNeeded = student.sessions_per_week;
-      const sessionDuration = student.minutes_per_session;
-
-      // Find the best slots for this student
-      const availableSlots = await this.findAvailableSlots(
-        student,
-        sessionDuration,
-        sessionsNeeded,
-        existingSessions,
-        bellSchedules,
-        specialActivities
-      );
-
-      if (availableSlots.length < sessionsNeeded) {
-        result.unscheduledStudents.push(student);
-        result.errors.push(`Could only find ${availableSlots.length} of ${sessionsNeeded} required slots for ${student.initials}`);
+    async scheduleStudent(student: Student): Promise<SchedulingResult> {
+      // Fetch school hours if not already loaded
+      if (this.schoolHours.length === 0 && student.school_site) {
+        const hours = await getSchoolHours(student.school_site);
+        this.schoolHours = hours;
       }
 
-      // Create session objects for the available slots
+      const result: SchedulingResult = {
+        success: false,
+        scheduledSessions: [],
+        unscheduledStudents: [],
+        errors: []
+      };
+
+      try {
+        // Get current data
+        const [bellSchedules, specialActivities, existingSessions] = await Promise.all([
+          this.getBellSchedules(),
+          this.getSpecialActivities(),
+          this.getExistingSessions()
+        ]);
+
+        const sessionsNeeded = student.sessions_per_week;
+        const sessionDuration = student.minutes_per_session;
+
+        // Find the best slots for this student
+        const availableSlots = await this.findAvailableSlots(
+          student,
+          sessionDuration,
+          sessionsNeeded,
+          existingSessions,
+          bellSchedules,
+          specialActivities
+        );
+
+        if (availableSlots.length < sessionsNeeded) {
+          result.unscheduledStudents.push(student);
+          result.errors.push(`Could only find ${availableSlots.length} of ${sessionsNeeded} required slots for ${student.initials}`);
+        }
+
+        // Create session objects for the available slots
         for (let i = 0; i < Math.min(availableSlots.length, sessionsNeeded); i++) {
           const slot = availableSlots[i];
           result.scheduledSessions.push({
@@ -95,15 +129,42 @@ export class AutoScheduler {
           });
         }
 
-      console.log(`Created ${result.scheduledSessions.length} sessions for ${student.initials}`);
+        console.log(`Created ${result.scheduledSessions.length} sessions for ${student.initials}`);
 
-      result.success = result.scheduledSessions.length === sessionsNeeded;
-    } catch (error) {
-      result.errors.push(`Error scheduling ${student.initials}: ${error.message}`);
+        result.success = result.scheduledSessions.length === sessionsNeeded;
+      } catch (error: any) {
+        result.errors.push(`Error scheduling ${student.initials}: ${error.message}`);
+      }
+
+      return result;
     }
 
-    return result;
-  }
+    /**
+     * Helper methods to fetch data
+     */
+    private async getBellSchedules(): Promise<BellSchedule[]> {
+      const { data } = await this.supabase
+        .from('bell_schedules')
+        .select('*')
+        .eq('provider_id', this.providerId);
+      return data || [];
+    }
+
+    private async getSpecialActivities(): Promise<SpecialActivity[]> {
+      const { data } = await this.supabase
+        .from('special_activities')
+        .select('*')
+        .eq('provider_id', this.providerId);
+      return data || [];
+    }
+
+    private async getExistingSessions(): Promise<ScheduleSession[]> {
+      const { data } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('provider_id', this.providerId);
+      return data || [];
+    }
 
   /**
    * Check if provider is available at a specific school on a given day
@@ -325,9 +386,18 @@ export class AutoScheduler {
       };
     }
 
-    // Check if session fits within school hours (before 3:00 PM)
-    if (this.timeToMinutes(endTime) > this.timeToMinutes('15:00')) {
-      return { valid: false, reason: 'Extends beyond school hours' };
+    // Check if session fits within school hours for this grade
+    const schoolHours = this.getSchoolHoursForGrade(dayOfWeek, student.grade_level.trim());
+    const schoolStartMinutes = this.timeToMinutes(schoolHours.start);
+    const schoolEndMinutes = this.timeToMinutes(schoolHours.end);
+    const sessionStartMinutes = this.timeToMinutes(startTime);
+    const sessionEndMinutes = this.timeToMinutes(endTime);
+
+    if (sessionStartMinutes < schoolStartMinutes || sessionEndMinutes > schoolEndMinutes) {
+      return { 
+        valid: false, 
+        reason: `Outside school hours (${schoolHours.start} - ${schoolHours.end})` 
+      };
     }
 
     // Check bell schedule conflicts
