@@ -123,12 +123,7 @@ export class ConflictResolver {
 
         // Try to reschedule
         const student = session.students;
-        const result = await scheduler.scheduleStudent(
-          student,
-          remainingSessions || [],
-          bellData.data || [],
-          activitiesData.data || []
-        );
+        const result = await scheduler.scheduleStudent(student);
 
         if (result.scheduledSessions.length > 0) {
           // Save the new session
