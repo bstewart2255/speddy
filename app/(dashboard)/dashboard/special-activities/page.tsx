@@ -10,6 +10,7 @@ import SpecialActivitiesCSVImport from '../../../components/special-activities/c
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useSchool } from '../../../components/providers/school-context';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 interface SpecialActivity {
   id: string;
@@ -112,15 +113,22 @@ export default function SpecialActivitiesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
-            <p className="text-gray-600">Add class-specific time blocks for things like music, library, etc.</p>
+            <p className="text-gray-600">Manage teacher special activities and prep periods</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button 
-              variant="secondary"
+              variant="secondary" 
               onClick={() => setShowImportSection(!showImportSection)}
             >
               Import CSV
             </Button>
+            <AIUploadButton 
+              uploadType="special_activities" 
+              onSuccess={() => {
+                // Refresh special activities
+                window.location.reload();
+              }} 
+            />
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}

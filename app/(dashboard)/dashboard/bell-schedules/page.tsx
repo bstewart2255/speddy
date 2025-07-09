@@ -10,6 +10,7 @@ import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -81,13 +82,20 @@ export default function BellSchedulesPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
             <p className="text-gray-600">Manage grade-level time restrictions</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button 
-              variant="secondary"
+              variant="secondary" 
               onClick={() => setShowImportSection(!showImportSection)}
             >
               Import CSV
             </Button>
+            <AIUploadButton 
+              uploadType="bell_schedule" 
+              onSuccess={() => {
+                // Refresh bell schedules
+                window.location.reload();
+              }} 
+            />
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}

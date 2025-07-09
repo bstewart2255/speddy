@@ -12,6 +12,7 @@ import { useSchool } from '../../../components/providers/school-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { useRouter } from 'next/navigation';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 type Student = {
   id: string;
@@ -201,16 +202,20 @@ export default function StudentsPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Students</h1>
             <p className="text-gray-600">Manage your student caseload</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button 
-              variant="secondary"
+              variant="secondary" 
               onClick={() => setShowImportSection(!showImportSection)}
             >
               Import CSV
             </Button>
+            <AIUploadButton 
+              uploadType="students" 
+              onSuccess={fetchStudents} 
+            />
             <Button 
               variant="primary" 
-              onClick={() => setShowAddForm(!showAddForm)}
+              onClick={() => setShowAddForm(true)}
             >
               + Add Student
             </Button>
@@ -219,27 +224,15 @@ export default function StudentsPage() {
 
         {/* Import Section */}
         {showImportSection && (
-          <div className="mb-8">
+          <div className="mb-6">
             <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center gap-4">
-                  <CardTitle>Import Students</CardTitle>
-                  <Button 
-                    variant="secondary" 
-                    onClick={() => setShowImportSection(false)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ×
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardBody>
+              <CardBody className="p-6">
                 <StudentsCSVImport 
                   onSuccess={() => {
-                    setShowImportSection(false);
                     fetchStudents();
+                    setShowImportSection(false);
                   }} 
-                  currentSchool={currentSchool}
+                  currentSchool={currentSchool} 
                 />
               </CardBody>
             </Card>
