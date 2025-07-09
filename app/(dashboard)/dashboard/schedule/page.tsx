@@ -400,6 +400,12 @@ export default function SchedulePage() {
     const studentGrade = student.grade_level.trim();
     const schoolHoursForGrade = getSchoolHoursForDay(day, studentGrade, time);
 
+    // Helper function to convert time string to minutes
+    const timeToMinutes = (timeString: string): number => {
+      const [hours, minutes] = timeString.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
     const schoolStartMinutes = timeToMinutes(schoolHoursForGrade.start);
     const schoolEndMinutes = timeToMinutes(schoolHoursForGrade.end);
     const sessionStart = parseInt(hours) * 60 + parseInt(minutes);

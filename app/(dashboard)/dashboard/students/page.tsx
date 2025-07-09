@@ -209,10 +209,10 @@ export default function StudentsPage() {
             >
               Import CSV
             </Button>
-            <AIUploadButton 
+            {/*<AIUploadButton 
               uploadType="students" 
               onSuccess={fetchStudents} 
-            />
+            /> */}
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(true)}

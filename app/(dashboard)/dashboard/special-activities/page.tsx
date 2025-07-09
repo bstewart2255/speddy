@@ -113,7 +113,7 @@ export default function SpecialActivitiesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
-            <p className="text-gray-600">Manage teacher special activities and prep periods</p>
+            <p className="text-gray-600">Manage teacher-specific activities (Music, Library, STEM, etc)</p>
           </div>
           <div className="flex items-center gap-3">
             <Button 
@@ -122,13 +122,13 @@ export default function SpecialActivitiesPage() {
             >
               Import CSV
             </Button>
-            <AIUploadButton 
+            {/*<AIUploadButton 
               uploadType="special_activities" 
               onSuccess={() => {
                 // Refresh special activities
                 window.location.reload();
               }} 
-            />
+            /> */}
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}

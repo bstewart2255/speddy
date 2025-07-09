@@ -157,7 +157,6 @@ export function CalendarTodayView({
   return (
     <div>
       <div className="mb-4">
-        <h3 className="text-lg font-semibold">{todayDate}</h3>
         {todayIsHoliday && (
           <div className="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
             {holidayName}

@@ -143,7 +143,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
   };
 
   const handleTimeChange = (
-    schedule: 'default' | 'tk' | 'k',
+    schedule: 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm', // Updated to include additional schedule types
     day: keyof DaySchedule,
     field: 'start' | 'end',
     value: string
@@ -190,6 +190,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     e.preventDefault();
     setLoading(true);
 
+
     try {
       // Process all schedules in sequence rather than parallel to avoid conflicts
       // Save default schedule
@@ -202,6 +203,20 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
           end_time: times.end + ':00'
         });
       }
+
+      const promises: Promise<any>[] = [];
+
+      Object.entries(kSchedule).forEach(([day, times]) => {
+        promises.push(
+          upsertSchoolHours({
+            school_site: currentSchool?.school_site,
+            day_of_week: dayNameToNumber(day),
+            grade_level: 'K',
+            start_time: times.start + ':00',
+            end_time: times.end + ':00'
+          })
+        );
+      });
 
       // Save K schedule if enabled
       if (showK) {
@@ -299,6 +314,9 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         }
       }
 
+      // Wait for all promises to complete
+      await Promise.all(promises);
+
       onSuccess();
     } catch (error) {
       console.error('Error saving school hours:', error);
@@ -321,7 +339,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
 
   const renderScheduleGrid = (
     schedule: DaySchedule,
-    scheduleType: 'default' | 'tk' | 'k',
+    scheduleType: 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm', // Updated type definition
     title: string
   ) => (
     <div className="mb-6">
@@ -334,20 +352,28 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
             </label>
             <select
               value={times.start}
-              onChange={(e) => handleTimeChange(scheduleType, day as keyof DaySchedule, 'start', e.target.value)}
+              onChange={(e) =>
+                handleTimeChange(scheduleType, day as keyof DaySchedule, 'start', e.target.value)
+              }
               className="w-full text-sm border border-gray-300 rounded-md px-2 py-1"
             >
-              {timeOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {timeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
             <select
               value={times.end}
-              onChange={(e) => handleTimeChange(scheduleType, day as keyof DaySchedule, 'end', e.target.value)}
+              onChange={(e) =>
+                handleTimeChange(scheduleType, day as keyof DaySchedule, 'end', e.target.value)
+              }
               className="w-full text-sm border border-gray-300 rounded-md px-2 py-1"
             >
-              {timeOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {timeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </div>

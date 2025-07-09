@@ -82,7 +82,7 @@ export default function BellSchedulesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-            <p className="text-gray-600">Manage grade-level time restrictions</p>
+            <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
           </div>
           <div className="flex items-center gap-3">
             <Button 
@@ -91,13 +91,13 @@ export default function BellSchedulesPage() {
             >
               Import CSV
             </Button>
-            <AIUploadButton 
+            {/* <AIUploadButton 
               uploadType="bell_schedule" 
               onSuccess={() => {
                 // Refresh bell schedules
                 window.location.reload();
               }} 
-            />
+            /> */}
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
