@@ -300,19 +300,21 @@ export default function AIUploadModal({
               </div>
             )}
 
-            {parsedData.ambiguous.length > 0 && (
+            {parsedData.ambiguous.length > 0 && parsedData.ambiguous.some((item: any) => item.original) && (
               <div>
                 <h4 className="font-medium mb-2 flex items-center">
                   <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
-                  Need Review ({parsedData.ambiguous.length})
+                  Need Review ({parsedData.ambiguous.filter((item: any) => item.original).length})
                 </h4>
                 <div className="space-y-2">
                   {parsedData.ambiguous.map((item: any, index: number) => (
-                    <div key={index} className="p-3 bg-yellow-50 rounded">
-                      <p className="text-sm font-medium">Original: {item.original}</p>
-                      <p className="text-sm text-gray-600">Suggested: {JSON.stringify(item.suggested)}</p>
-                      <p className="text-sm text-yellow-700">Reason: {item.reason}</p>
-                    </div>
+                    item.original ? (
+                      <div key={index} className="p-3 bg-yellow-50 rounded">
+                        <p className="text-sm font-medium">Original: {item.original}</p>
+                        <p className="text-sm text-gray-600">Suggested: {JSON.stringify(item.suggested)}</p>
+                        <p className="text-sm text-yellow-700">Reason: {item.reason}</p>
+                      </div>
+                    ) : null
                   ))}
                 </div>
               </div>
