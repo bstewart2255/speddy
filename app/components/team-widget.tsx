@@ -69,35 +69,76 @@
               .select("school_site, school_district")
               .eq("provider_id", user.id);
 
+            let schoolsToCheck: School[] = [];
+            
             if (!providerSchools || providerSchools.length === 0) {
               // Fallback to profile school if no provider_schools entries
               if (userProfile.school_site) {
-                setUserSchools([{
+                schoolsToCheck = [{
                   school_site: userProfile.school_site,
                   school_district: userProfile.school_district || ""
-                }]);
+                }];
               }
             } else {
-              setUserSchools(providerSchools);
+              schoolsToCheck = providerSchools;
             }
+            
+            setUserSchools(schoolsToCheck);
 
-            // Fetch teammates for each school
+            // Fetch teammates for each school using the new fuzzy matching functions
             const teamsMap = new Map<string, Profile[]>();
 
-            for (const school of providerSchools || []) {
-              const { data: teammates } = await supabase
-                .from("profiles")
-                .select("id, full_name, role, school_site, school_district")
-                .eq("school_site", school.school_site)
-                .eq("school_district", school.school_district)
-                .neq("id", user.id)
-                .order("role")
-                .order("full_name");
+            for (const school of schoolsToCheck) {
+              // First, try to get teammates from profiles table (single school users)
+              const { data: profileTeammates } = await supabase
+                .rpc('find_team_members', {
+                  p_school_site: school.school_site,
+                  p_school_district: school.school_district,
+                  p_exclude_user_id: user.id
+                });
 
-              if (teammates) {
-                const schoolKey = `${school.school_district}-${school.school_site}`;
-                teamsMap.set(schoolKey, teammates);
+              // Then, get teammates from provider_schools table (multi-school users)
+              const { data: multiSchoolTeammates } = await supabase
+                .rpc('find_team_members_multi_school', {
+                  p_school_site: school.school_site,
+                  p_school_district: school.school_district,
+                  p_exclude_user_id: user.id
+                });
+
+              // Combine and deduplicate teammates
+              const allTeammates = new Map<string, Profile>();
+              
+              // Add single school teammates
+              if (profileTeammates) {
+                profileTeammates.forEach((teammate) => {
+                  allTeammates.set(teammate.id, teammate);
+                });
               }
+
+              // Add multi-school teammates (will override if duplicate)
+              if (multiSchoolTeammates) {
+                multiSchoolTeammates.forEach((teammate) => {
+                  allTeammates.set(teammate.id, teammate);
+                });
+              }
+
+              // Convert map to array and sort
+              const teammates = Array.from(allTeammates.values())
+                .sort((a, b) => {
+                  // Sort by role first, then by name
+                  const roleOrder = ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'];
+                  const aRoleIndex = roleOrder.indexOf(a.role || '');
+                  const bRoleIndex = roleOrder.indexOf(b.role || '');
+                  
+                  if (aRoleIndex !== bRoleIndex) {
+                    return aRoleIndex - bRoleIndex;
+                  }
+                  
+                  return (a.full_name || '').localeCompare(b.full_name || '');
+                });
+
+              const schoolKey = `${school.school_district}-${school.school_site}`;
+              teamsMap.set(schoolKey, teammates);
             }
 
             if (!isCancelled) {
