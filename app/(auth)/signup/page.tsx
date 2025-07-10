@@ -22,6 +22,11 @@ export default function SignupPage() {
           <SignupForm />
         </div>
       </div>
+      
+      {/* Footer */}
+      <footer className="py-4 text-center text-sm text-gray-600">
+        Made by SpEd people, for SpEd people.
+      </footer>
     </div>
   );
 }
