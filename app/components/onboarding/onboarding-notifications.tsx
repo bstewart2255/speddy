@@ -23,12 +23,13 @@ export function OnboardingNotifications() {
       const dismissedSetup = localStorage.getItem(`dismissed-setup-banner-${user.id}`);
       const dismissedMultiSchool = localStorage.getItem(`dismissed-multi-school-banner-${user.id}`);
 
-      // Get user profile to check if they work at multiple schools
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('works_at_multiple_schools')
-        .eq('id', user.id)
-        .single();
+      // Check if user works at multiple schools
+      const { data: providerSchools } = await supabase
+        .from('provider_schools')
+        .select('id')
+        .eq('provider_id', user.id);
+
+      const worksAtMultipleSchools = providerSchools && providerSchools.length > 1;
 
       // Check if user has students
       const { data: students } = await supabase
@@ -62,7 +63,7 @@ export function OnboardingNotifications() {
       }
 
       // Show multi-school banner if applicable and not dismissed
-      if (profile?.works_at_multiple_schools && !dismissedMultiSchool) {
+      if (worksAtMultipleSchools && !dismissedMultiSchool) {
         setShowMultiSchoolBanner(true);
       }
     } catch (error) {
