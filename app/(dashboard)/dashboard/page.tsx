@@ -11,6 +11,7 @@ import { TodoWidget } from '../../components/todo-widget';
 import { ProgressNotifications } from '../../components/progress/progress-notifications';
 import { WeeklyView } from '../../components/weekly-view';
 import { GroupSessionsWidget } from "../../../app/components/group-sessions-widget";
+import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
 import Link from 'next/link';
 
 export default function DashboardPage() {
@@ -73,6 +74,10 @@ export default function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
         </div>
+        
+        {/* Onboarding Notifications */}
+        <OnboardingNotifications />
+        
         {/* Main Content Area */}
         <div className="space-y-4">
           <WeeklyView viewMode="provider" />
