@@ -1,3 +1,4 @@
+<!-- Test commit from Claude MCP - 2025-07-10 8:47 AM PST -->
 Welcome to the NextJS base template bootstrapped using the `create-next-app`. This template supports TypeScript, but you can use normal JavaScript as well.
 
 ## Getting Started
