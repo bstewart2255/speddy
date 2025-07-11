@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { stripe } from '@/src/lib/stripe';
-import { isCurrentMonthPauseable } from '@/src/lib/stripe';
+import { stripe, isCurrentMonthPauseable } from '../../../../src/lib/stripe';
 
 export async function POST(request: NextRequest) {
   try {

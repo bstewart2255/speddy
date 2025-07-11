@@ -1,6 +1,6 @@
 'use client';
 
-import { SubscriptionManager } from '@/app/components/billing/subscription-manager';
+import { SubscriptionManager } from '../../components/billing/subscription-manager';
 
 export default function BillingPage() {
   return (
