@@ -18,7 +18,8 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
-  const signature = headers().get('stripe-signature')!;
+  const headersList = headers();
+  const signature = headersList.get('stripe-signature')!;
 
   let event: Stripe.Event;
 
