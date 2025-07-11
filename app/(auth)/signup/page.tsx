@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SignupForm } from './signup-form';
 import { PaymentStep } from './payment-step';
 import { useRouter } from 'next/navigation';
+import { ReferralProgramModal } from '../../components/referral-program-modal';
 
 export default function SignupPage() {
   const [currentStep, setCurrentStep] = useState<'signup' | 'payment' | 'complete'>('signup');
@@ -40,7 +41,7 @@ export default function SignupPage() {
                   Create your account
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600">
-                  Join your school site's collaborative scheduling platform
+                  Let Speddy start lowering your stress levels
                 </p>
               </div>
               <SignupForm onComplete={handleSignupComplete} />
@@ -66,7 +67,10 @@ export default function SignupPage() {
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
         Made by SpEd people, for SpEd people.
+        
       </footer>
+      {/* Add the referral modal */}
+      <ReferralProgramModal />
     </div>
   );
 }

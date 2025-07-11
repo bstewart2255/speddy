@@ -1,4 +1,5 @@
 import LoginForm from './login-form';
+import { ReferralProgramModal } from '../../components/referral-program-modal';
 
 export default function LoginPage() {
   return (
@@ -21,7 +22,8 @@ export default function LoginPage() {
           <LoginForm />
         </div>
       </div>
-      
+      {/* Add the modal */}
+      <ReferralProgramModal />
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
         Made by SpEd people, for SpEd people.

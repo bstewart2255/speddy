@@ -8,6 +8,7 @@ import { PasswordRequirements } from "../../components/auth/password-requirement
 import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
 import { PasswordInput } from "../../components/auth/password-input";
 
+
 interface SignupFormProps {
   onComplete?: (role: string, email: string) => void;
 }
@@ -217,6 +218,22 @@ export function SignupForm({ onComplete }: SignupFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Referral Program Link - placed high above the header */}
+      <div className="mb-6 text-center">
+        <button
+          type="button"
+          onClick={() => {
+            console.log('Referral button clicked!');
+            const url = new URL(window.location.href);
+            url.searchParams.set('referral-program', 'true');
+            window.history.pushState({}, '', url);
+            window.dispatchEvent(new Event('popstate'));
+          }}
+          className="text-sm text-blue-600 hover:text-blue-500"
+        >
+          Learn about our referral program!
+        </button>
+      </div>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
           {error}
