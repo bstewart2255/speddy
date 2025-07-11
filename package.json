@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
     "@heroicons/react": "^2.2.0",
+    "@stripe/stripe-js": "^4.1.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.10",
@@ -29,6 +30,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^4.6.0",
+    "stripe": "^16.2.0",
     "tailwind-merge": "^3.3.1",
     "xlsx": "^0.18.5"
   },
