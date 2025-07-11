@@ -57,6 +57,12 @@ interface SpecialActivity {
   school_site: string; // Add this line
 }
 
+// Helper function to convert time to minutes
+const timeToMinutes = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+};
+
 export default function SchedulePage() {
   const [providerRole, setProviderRole] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
@@ -288,15 +294,10 @@ export default function SchedulePage() {
     start2: string,
     end2: string,
   ): boolean => {
-    const toMinutes = (time: string) => {
-      const [h, m] = time.split(":").map(Number);
-      return h * 60 + m;
-    };
-
-    const start1Min = toMinutes(start1);
-    const end1Min = toMinutes(end1);
-    const start2Min = toMinutes(start2);
-    const end2Min = toMinutes(end2);
+    const start1Min = timeToMinutes(start1);
+    const end1Min = timeToMinutes(end1);
+    const start2Min = timeToMinutes(start2);
+    const end2Min = timeToMinutes(end2);
 
     return !(end1Min <= start2Min || start1Min >= end2Min);
   };
