@@ -553,6 +553,160 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+      },
+      subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          status: 'active' | 'canceled' | 'past_due' | 'paused' | 'trialing'
+          current_period_start: string
+          current_period_end: string
+          cancel_at_period_end: boolean
+          trial_end: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          status: 'active' | 'canceled' | 'past_due' | 'paused' | 'trialing'
+          current_period_start: string
+          current_period_end: string
+          cancel_at_period_end?: boolean
+          trial_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          stripe_customer_id?: string
+          stripe_subscription_id?: string
+          status?: 'active' | 'canceled' | 'past_due' | 'paused' | 'trialing'
+          current_period_start?: string
+          current_period_end?: string
+          cancel_at_period_end?: boolean
+          trial_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      referral_codes: {
+        Row: {
+          id: string
+          user_id: string
+          code: string
+          uses_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          code: string
+          uses_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          code?: string
+          uses_count?: number
+          created_at?: string
+        }
+      },
+      referral_relationships: {
+        Row: {
+          id: string
+          referrer_id: string
+          referred_id: string
+          subscription_id: string | null
+          status: 'trial' | 'active' | 'canceled' | 'paused'
+          credit_amount: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          referrer_id: string
+          referred_id: string
+          subscription_id?: string | null
+          status: 'trial' | 'active' | 'canceled' | 'paused'
+          credit_amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          referrer_id?: string
+          referred_id?: string
+          subscription_id?: string | null
+          status?: 'trial' | 'active' | 'canceled' | 'paused'
+          credit_amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      subscription_pauses: {
+        Row: {
+          id: string
+          subscription_id: string
+          pause_start: string
+          pause_end: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          subscription_id: string
+          pause_start: string
+          pause_end: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          subscription_id?: string
+          pause_start?: string
+          pause_end?: string
+          created_at?: string
+        }
+      },
+      referral_credits: {
+        Row: {
+          id: string
+          user_id: string
+          month: string
+          total_credits: number
+          credits_applied: number
+          payout_amount: number
+          status: 'pending' | 'applied' | 'paid_out'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          month: string
+          total_credits?: number
+          credits_applied?: number
+          payout_amount?: number
+          status: 'pending' | 'applied' | 'paid_out'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          month?: string
+          total_credits?: number
+          credits_applied?: number
+          payout_amount?: number
+          status?: 'pending' | 'applied' | 'paid_out'
+          created_at?: string
+          updated_at?: string
+        }
       }
     }
   }
@@ -567,3 +721,8 @@ export type ScheduleSession = Tables<'schedule_sessions'>;
 export type Worksheet = Tables<'worksheets'>;
 export type WorksheetSubmission = Tables<'worksheet_submissions'>;
 export type IEPGoalProgress = Tables<'iep_goal_progress'>;
+export type Subscription = Tables<'subscriptions'>;
+export type ReferralCode = Tables<'referral_codes'>;
+export type ReferralRelationship = Tables<'referral_relationships'>;
+export type SubscriptionPause = Tables<'subscription_pauses'>;
+export type ReferralCredit = Tables<'referral_credits'>;
