@@ -40,37 +40,49 @@ export default function LoginForm() {
         console.log('Login successful, session:', data.session);
 
         // Check if user needs to complete payment
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', data.session.user.id)
           .single();
 
+        console.log('Profile check:', { profile, profileError });
+
         // If not SEA user, check for subscription
         if (profile?.role !== 'sea') {
-          const { data: subscription } = await supabase
+          const { data: subscription, error: subError } = await supabase
             .from('subscriptions')
             .select('status')
             .eq('user_id', data.session.user.id)
             .maybeSingle();
 
+          console.log('Subscription check:', { subscription, subError });
+
           // If no subscription, redirect to payment
           if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
+            console.log('Redirecting to payment page');
             router.push('/signup?step=payment&subscription_required=true');
             return;
           }
         }
 
         // Otherwise, proceed to dashboard
-        router.push('/dashboard');
-        router.refresh();
+        console.log('Redirecting to dashboard');
+        // Use replace instead of push to prevent back button issues
+        await router.replace('/dashboard');
+        // If that doesn't work, force it
+        setTimeout(() => {
+          if (window.location.pathname !== '/dashboard') {
+            window.location.replace('/dashboard');
+          }
+        }, 500);
       } else {
         console.log('No session returned');
         setError('Login failed - no session created');
       }
     } catch (err) {
-      console.error('Unexpected error:', err);
-      setError('An unexpected error occurred');
+      console.error('Error during login redirect logic:', err);
+      setError('Login successful but encountered an error. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +106,8 @@ export default function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"          placeholder="teacher@school.edu"
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"          
+          placeholder="teacher@school.edu"
         />
       </div>
 

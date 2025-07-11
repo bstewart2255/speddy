@@ -6,6 +6,7 @@ import { SignupForm } from './signup-form';
 import { PaymentStep } from './payment-step';
 import { useRouter } from 'next/navigation';
 import { ReferralProgramModal } from '../../components/referral-program-modal';
+import Link from 'next/link';
 
 export default function SignupPage() {
   const [currentStep, setCurrentStep] = useState<'signup' | 'payment' | 'complete'>('signup');
@@ -37,7 +38,12 @@ export default function SignupPage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Header with Speddy logo */}
       <div className="px-4 sm:px-6 lg:px-8 py-4">
-        <span className="text-4xl font-logo text-gray-900">Speddy</span>
+        <Link 
+          href="/login" 
+          className="text-4xl font-logo text-gray-900 hover:text-gray-700 transition-colors cursor-pointer"
+        >
+          Speddy
+        </Link>
       </div>
 
       {/* Main content */}
@@ -59,6 +65,13 @@ export default function SignupPage() {
 
           {currentStep === 'payment' && (
             <>
+              {searchParams.get('subscription_required') === 'true' && (
+                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    Please complete your subscription to access Speddy.
+                  </p>
+                </div>
+              )}
               <PaymentStep 
                 userEmail={userEmail} 
                 showSubscriptionRequired={searchParams.get('subscription_required') === 'true'}
