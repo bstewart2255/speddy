@@ -18,6 +18,8 @@ type DaySchedule = {
   friday: TimeSlot;
 };
 
+type ScheduleType = 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm';
+
 export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }) {
   const { currentSchool } = useSchool();
   const [loading, setLoading] = useState(false);
@@ -143,7 +145,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
   };
 
   const handleTimeChange = (
-    schedule: 'default' | 'tk' | 'k',
+    schedule: ScheduleType,
     day: keyof DaySchedule,
     field: 'start' | 'end',
     value: string
@@ -190,17 +192,20 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     e.preventDefault();
     setLoading(true);
 
+    const promises: Promise<any>[] = [];
+
     try {
-      // Process all schedules in sequence rather than parallel to avoid conflicts
       // Save default schedule
       for (const [day, times] of Object.entries(defaultSchedule)) {
-        await upsertSchoolHours({
-          school_site: currentSchool?.school_site,
-          day_of_week: dayNameToNumber(day),
-          grade_level: 'default',
-          start_time: times.start + ':00',
-          end_time: times.end + ':00'
-        });
+        promises.push(
+          upsertSchoolHours({
+            school_site: currentSchool?.school_site,
+            day_of_week: dayNameToNumber(day),
+            grade_level: 'default',
+            start_time: times.start + ':00',
+            end_time: times.end + ':00'
+          })
+        );
       }
 
       // Save K schedule if enabled
@@ -299,6 +304,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         }
       }
 
+      await Promise.all(promises);
       onSuccess();
     } catch (error) {
       console.error('Error saving school hours:', error);
@@ -321,7 +327,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
 
   const renderScheduleGrid = (
     schedule: DaySchedule,
-    scheduleType: 'default' | 'tk' | 'k',
+    scheduleType: ScheduleType,
     title: string
   ) => (
     <div className="mb-6">
