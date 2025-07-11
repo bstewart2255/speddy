@@ -5,7 +5,7 @@ modules = ["nodejs-22"]
 
 [nix]
 channel = "stable-24_11"
-packages = ["nano"]
+packages = ["nano", "supabase-cli"]
 
 [env]
 NEXT_TELEMETRY_DISABLED = "1"
