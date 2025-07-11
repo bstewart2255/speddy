@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { formatPrice, SUBSCRIPTION_CONFIG, isCurrentMonthPauseable } from '@/src/lib/stripe';
+import { formatPrice, SUBSCRIPTION_CONFIG, isCurrentMonthPauseable } from '../../../src/lib/stripe';
 import { format } from 'date-fns';
-import type { Subscription, ReferralCode, ReferralCredit } from '@/src/types/database';
+import type { Subscription, ReferralCode, ReferralCredit } from '../../../src/types/database';
 
 interface SubscriptionData extends Subscription {
   referral_code?: ReferralCode;

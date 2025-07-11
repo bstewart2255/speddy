@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { getStripe } from '@/src/lib/stripe-client';
-import { formatPrice, SUBSCRIPTION_CONFIG } from '@/src/lib/stripe';
+import { getStripe } from '../../../src/lib/stripe-client';
+import { formatPrice, SUBSCRIPTION_CONFIG } from '../../../src/lib/stripe';
 
 interface CheckoutFormProps {
   onSuccess?: () => void;
