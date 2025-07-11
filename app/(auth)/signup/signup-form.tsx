@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { useAuth } from "../../components/providers/auth-provider";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { validatePassword } from "../../../lib/utils/password-validation";
 import { PasswordRequirements } from "../../components/auth/password-requirements";
 import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
 import { PasswordInput } from "../../components/auth/password-input";
+
+interface SignupFormProps {
+  onComplete?: (role: string, email: string) => void;
+}
 
 const PROVIDER_ROLES = [
   { value: "resource_specialist", label: "Resource Specialist" },
@@ -72,7 +75,7 @@ const US_STATES = [
   { value: "WY", label: "Wyoming" }
 ];
 
-export function SignupForm() {
+export function SignupForm({ onComplete }: SignupFormProps) {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -90,7 +93,6 @@ export function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const { signUp } = useAuth();
-  const router = useRouter();
   const [isSEARole, setIsSEARole] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
@@ -132,6 +134,19 @@ export function SignupForm() {
     }
 
     try {
+      // Get the mapped role for database
+      const roleMap: { [key: string]: string } = {
+        resource_specialist: "resource",
+        speech_therapist: "speech",
+        occupational_therapist: "ot",
+        counselor: "counseling",
+        program_specialist: "specialist",
+        sea: "sea",
+        other: "resource", // Default to resource for "other"
+      };
+
+      const dbRole = roleMap[formData.role] || formData.role;
+
       // Log the metadata being sent (for debugging)
       const metadata = {
         full_name: formData.fullName.trim(),
@@ -153,9 +168,11 @@ export function SignupForm() {
         setLoading(false);
       } else {
         setSuccess(true);
-        setTimeout(() => {
-          router.push("/login");
-        }, 3000);
+        // Call onComplete callback with the mapped role instead of redirecting
+        if (onComplete) {
+          // Pass the mapped database role, not the form role
+          onComplete(dbRole, formData.email);
+        }
       }
     } catch (err) {
       console.error("Unexpected signup error:", err);
@@ -189,7 +206,11 @@ export function SignupForm() {
             Check your email to verify your account before signing in.
           </p>
         </div>
-        <p className="text-sm text-gray-600">Redirecting to login...</p>
+        {isSEARole && (
+          <p className="text-sm text-gray-600">
+            As a Special Education Assistant, you have free access to Speddy!
+          </p>
+        )}
       </div>
     );
   }
@@ -264,6 +285,11 @@ export function SignupForm() {
             </option>
           ))}
         </select>
+        {formData.role === 'sea' && (
+          <p className="mt-1 text-xs text-green-600">
+            Special Education Assistants get free access to Speddy!
+          </p>
+        )}
       </div>
 
       <div>
@@ -500,7 +526,7 @@ export function SignupForm() {
           disabled={loading}
           className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Creating account..." : "Create account"}
+          {loading ? "Creating account..." : isSEARole ? "Create Free Account" : "Create account"}
         </button>
       </div>
 

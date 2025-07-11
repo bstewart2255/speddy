@@ -16,6 +16,7 @@ export function SubscriptionManager() {
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
   const [pauseLoading, setPauseLoading] = useState(false);
+  const [userRole, setUserRole] = useState<string>('');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -26,6 +27,23 @@ export function SubscriptionManager() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Get user profile to check role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        setUserRole(profile.role);
+        
+        // If user is SEA, they don't need a subscription
+        if (profile.role === 'sea') {
+          setLoading(false);
+          return;
+        }
+      }
 
       // Get subscription
       const { data: sub } = await supabase
@@ -137,6 +155,32 @@ export function SubscriptionManager() {
 
   if (loading) {
     return <div className="animate-pulse">Loading subscription...</div>;
+  }
+
+  // Special message for SEA users
+  if (userRole === 'sea') {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+        <h3 className="text-lg font-medium text-green-900 mb-2">
+          Free Access for Special Education Assistants
+        </h3>
+        <p className="text-green-700">
+          As a Special Education Assistant, you have free access to all Speddy features! 
+          Thank you for your important work supporting students with special needs.
+        </p>
+        <div className="mt-4 p-4 bg-white rounded-md">
+          <h4 className="font-medium text-gray-900 mb-2">Your Benefits Include:</h4>
+          <ul className="text-sm text-gray-700 space-y-1">
+            <li>• Full access to all features</li>
+            <li>• Unlimited student profiles</li>
+            <li>• AI-powered lesson planning</li>
+            <li>• Progress tracking & reports</li>
+            <li>• Team collaboration features</li>
+            <li>• No payment required</li>
+          </ul>
+        </div>
+      </div>
+    );
   }
 
   if (!subscription) {
