@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
+    "@headlessui/react": "^2.1.2",
     "@heroicons/react": "^2.2.0",
     "@stripe/stripe-js": "^4.1.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
