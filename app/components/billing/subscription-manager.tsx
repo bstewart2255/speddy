@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { formatPrice, SUBSCRIPTION_CONFIG, isCurrentMonthPauseable } from '@/src/lib/stripe';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import type { Subscription, ReferralCode, ReferralCredit } from '@/src/types/database';
 
 interface SubscriptionData extends Subscription {
@@ -28,7 +28,7 @@ export function SubscriptionManager() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get user profile to check role
+      // Get user role
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -37,44 +37,19 @@ export function SubscriptionManager() {
 
       if (profile) {
         setUserRole(profile.role);
-        
-        // If user is SEA, they don't need a subscription
-        if (profile.role === 'sea') {
-          setLoading(false);
-          return;
-        }
       }
 
-      // Get subscription
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('*')
+        .select(`
+          *,
+          referral_code:referral_codes(*),
+          current_credits:referral_credits(*)
+        `)
         .eq('user_id', user.id)
         .single();
 
-      if (sub) {
-        // Get referral code
-        const { data: code } = await supabase
-          .from('referral_codes')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        // Get current month's credits
-        const currentMonth = format(new Date(), 'yyyy-MM-01');
-        const { data: credits } = await supabase
-          .from('referral_credits')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('month', currentMonth)
-          .single();
-
-        setSubscription({
-          ...sub,
-          referral_code: code || undefined,
-          current_credits: credits || undefined,
-        });
-      }
+      setSubscription(sub);
     } catch (error) {
       console.error('Error loading subscription:', error);
     } finally {
@@ -85,24 +60,24 @@ export function SubscriptionManager() {
   const openCustomerPortal = async () => {
     setPortalLoading(true);
     try {
-      const response = await fetch('/api/stripe/customer-portal', {
+      const response = await fetch('/api/stripe/create-portal-session', {
         method: 'POST',
       });
 
-      const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
+      if (response.ok) {
+        const { url } = await response.json();
+        window.location.href = url;
       }
     } catch (error) {
-      console.error('Error opening portal:', error);
+      console.error('Error opening customer portal:', error);
+      alert('Failed to open billing portal');
     } finally {
       setPortalLoading(false);
     }
   };
 
   const pauseSubscription = async () => {
-    if (!isCurrentMonthPauseable()) {
-      alert('Subscriptions can only be paused during June or July.');
+    if (!confirm('Pause your subscription for the summer months? You can resume anytime.')) {
       return;
     }
 
@@ -153,6 +128,31 @@ export function SubscriptionManager() {
     }
   };
 
+  const renderTrialCountdown = () => {
+    if (!subscription || !subscription.trial_end) return null;
+
+    const trialEndDate = new Date(subscription.trial_end);
+    const now = new Date();
+
+    if (now >= trialEndDate) return null;
+
+    const daysRemaining = differenceInDays(trialEndDate, now);
+    const hoursRemaining = Math.floor((trialEndDate.getTime() - now.getTime()) / (1000 * 60 * 60)) % 24;
+
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h3 className="text-lg font-medium text-blue-900 mb-2">Free Trial Period</h3>
+        <div className="text-3xl font-bold text-blue-900 mb-2">
+          {daysRemaining} days, {hoursRemaining} hours remaining
+        </div>
+        <p className="text-sm text-blue-700">
+          Your trial ends on {format(trialEndDate, 'MMMM d, yyyy')}. 
+          You'll be charged {formatPrice(SUBSCRIPTION_CONFIG.monthlyPrice)} on this date.
+        </p>
+      </div>
+    );
+  };
+
   if (loading) {
     return <div className="animate-pulse">Loading subscription...</div>;
   }
@@ -187,12 +187,6 @@ export function SubscriptionManager() {
     return (
       <div className="text-center py-8">
         <p className="text-gray-600 mb-4">No active subscription found.</p>
-        <a
-          href="/subscribe"
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-        >
-          Subscribe Now
-        </a>
       </div>
     );
   }
@@ -203,6 +197,9 @@ export function SubscriptionManager() {
 
   return (
     <div className="space-y-6">
+      {/* Trial Countdown */}
+      {renderTrialCountdown()}
+
       {/* Subscription Status */}
       <div className="bg-white shadow rounded-lg p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Subscription Status</h3>
@@ -222,20 +219,20 @@ export function SubscriptionManager() {
               )}
             </dd>
           </div>
-          {subscription.trial_end && new Date(subscription.trial_end) > new Date() && (
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Trial Ends</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {format(new Date(subscription.trial_end), 'MMM d, yyyy')}
-              </dd>
-            </div>
-          )}
           <div>
             <dt className="text-sm font-medium text-gray-500">Current Period</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {format(new Date(subscription.current_period_start), 'MMM d')} - {format(new Date(subscription.current_period_end), 'MMM d, yyyy')}
             </dd>
           </div>
+          {subscription.status === 'trialing' && subscription.trial_end && (
+            <div>
+              <dt className="text-sm font-medium text-gray-500">First Payment Date</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {format(new Date(subscription.trial_end), 'MMMM d, yyyy')}
+              </dd>
+            </div>
+          )}
         </dl>
       </div>
 
@@ -271,7 +268,7 @@ export function SubscriptionManager() {
           >
             {portalLoading ? 'Opening...' : 'Manage Payment Method'}
           </button>
-          
+
           {subscription.status === 'active' && isCurrentMonthPauseable() && (
             <button
               onClick={pauseSubscription}
@@ -281,7 +278,7 @@ export function SubscriptionManager() {
               {pauseLoading ? 'Processing...' : 'Pause for Summer'}
             </button>
           )}
-          
+
           {subscription.status === 'paused' && (
             <button
               onClick={resumeSubscription}

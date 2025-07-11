@@ -8,7 +8,6 @@ import { StatsGrid, StudentStats, SessionStats, CompletionStats } from '../../co
 import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { TodoWidget } from '../../components/todo-widget';
-import { ProgressNotifications } from '../../components/progress/progress-notifications';
 import { WeeklyView } from '../../components/weekly-view';
 import { GroupSessionsWidget } from "../../../app/components/group-sessions-widget";
 import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
@@ -93,10 +92,6 @@ export default function DashboardPage() {
             {/* Right column - Fixed height widgets */}
             <div className="space-y-4">
               <GroupSessionsWidget />
-              {/* Progress Notifications */}
-              <div className="md:col-span-2 lg:col-span-3">
-                <ProgressNotifications />
-              </div>
             </div>
           </div>
         </div>

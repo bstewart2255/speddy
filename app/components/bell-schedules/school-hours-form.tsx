@@ -192,10 +192,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     e.preventDefault();
     setLoading(true);
 
-<<<<<<< HEAD
-=======
     const promises: Promise<any>[] = [];
->>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
 
     try {
       // Save default schedule
@@ -210,8 +207,6 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
           })
         );
       }
-
-      const promises: Promise<any>[] = [];
 
       Object.entries(kSchedule).forEach(([day, times]) => {
         promises.push(
@@ -321,13 +316,9 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         }
       }
 
-<<<<<<< HEAD
       // Wait for all promises to complete
       await Promise.all(promises);
-
-=======
-      await Promise.all(promises);
->>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
+        
       onSuccess();
     } catch (error) {
       console.error('Error saving school hours:', error);
@@ -350,11 +341,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
 
   const renderScheduleGrid = (
     schedule: DaySchedule,
-<<<<<<< HEAD
-    scheduleType: 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm', // Updated type definition
-=======
     scheduleType: ScheduleType,
->>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
     title: string
   ) => (
     <div className="mb-6">

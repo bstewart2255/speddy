@@ -22,14 +22,7 @@ const filesToFix = [
   './app/terms/page.tsx'
 ];
 
-// Replacements
-const replacements = [
-  { from: /'/g, to: '&apos;' },
-  { from: /"/g, to: '&quot;' },
-  { from: /"/g, to: '&ldquo;' },
-  { from: /"/g, to: '&rdquo;' }
-];
-
+// Only one double quote replacement is needed
 filesToFix.forEach(filePath => {
   try {
     let content = fs.readFileSync(filePath, 'utf8');
@@ -42,8 +35,6 @@ filesToFix.forEach(filePath => {
       fixedText = fixedText.replace(/(\s)'(\s)/g, '$1&apos;$2');
       // Replace double quotes
       fixedText = fixedText.replace(/"/g, '&quot;');
-      fixedText = fixedText.replace(/"/g, '&ldquo;');
-      fixedText = fixedText.replace(/"/g, '&rdquo;');
       return `>${fixedText}<`;
     });
 

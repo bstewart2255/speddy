@@ -14,21 +14,13 @@ export default function SignupPage() {
   const handleSignupComplete = (role: string, email: string) => {
     setUserRole(role);
     setUserEmail(email);
-    
+
     // Skip payment for SEA users
     if (role === 'sea') {
       router.push('/login');
     } else {
       setCurrentStep('payment');
     }
-  };
-
-  const handlePaymentComplete = () => {
-    router.push('/login');
-  };
-
-  const handlePaymentSkip = () => {
-    router.push('/login');
   };
 
   return (
@@ -54,7 +46,7 @@ export default function SignupPage() {
               <SignupForm onComplete={handleSignupComplete} />
             </>
           )}
-          
+
           {currentStep === 'payment' && (
             <>
               <div className="mb-8">
@@ -62,18 +54,15 @@ export default function SignupPage() {
                   Complete Setup
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600">
-                  Start your free trial to access all features
+                  Start your 30-day free trial • No charges today
                 </p>
               </div>
-              <PaymentStep 
-                userEmail={userEmail} 
-                onSkip={handlePaymentSkip}
-              />
+              <PaymentStep userEmail={userEmail} />
             </>
           )}
         </div>
       </div>
-      
+
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
         Made by SpEd people, for SpEd people.
