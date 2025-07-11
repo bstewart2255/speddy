@@ -7,6 +7,7 @@ import { validatePassword } from "../../../lib/utils/password-validation";
 import { PasswordRequirements } from "../../components/auth/password-requirements";
 import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
 import { PasswordInput } from "../../components/auth/password-input";
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 
 interface SignupFormProps {
@@ -98,89 +99,107 @@ export function SignupForm({ onComplete }: SignupFormProps) {
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError("");
+  setLoading(true);
 
-    // Validate passwords match
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
+  // Validate passwords match
+  if (formData.password !== formData.confirmPassword) {
+    setError("Passwords do not match");
+    setLoading(false);
+    return;
+  }
+
+  // Validate password strength
+  const passwordValidation = validatePassword(formData.password);
+  if (!passwordValidation.isValid) {
+    setError(passwordValidation.errors[0]);
+    setLoading(false);
+    return;
+  }
+
+  // Prepare additional schools array
+  let additionalSchoolsArray: string[] = [];
+
+  if (formData.multipleSchools === 'yes') {
+    // Filter out empty school names and trim whitespace
+    additionalSchoolsArray = formData.additionalSchools
+      .filter(school => school.trim() !== '')
+      .map(school => school.trim());
+
+    if (additionalSchoolsArray.length === 0) {
+      setError("Please enter at least one additional school site");
       setLoading(false);
       return;
     }
+  }
 
-    // Validate password strength
-    const passwordValidation = validatePassword(formData.password);
-    if (!passwordValidation.isValid) {
-      setError(passwordValidation.errors[0]);
+  try {
+    // Get the mapped role for database
+    const roleMap: { [key: string]: string } = {
+      resource_specialist: "resource",
+      speech_therapist: "speech",
+      occupational_therapist: "ot",
+      counselor: "counseling",
+      program_specialist: "specialist",
+      sea: "sea",
+      other: "resource", // Default to resource for "other"
+    };
+
+    const dbRole = roleMap[formData.role] || formData.role;
+
+    // Log the metadata being sent (for debugging)
+    const metadata = {
+      full_name: formData.fullName.trim(),
+      role: formData.role,
+      state: formData.state,
+      school_district: formData.schoolDistrict.trim(),
+      school_site: formData.schoolSite.trim(),
+      works_at_multiple_schools: formData.multipleSchools === 'yes',
+      additional_schools: additionalSchoolsArray
+    };
+
+    console.log('Signup metadata:', metadata);
+
+    const { error } = await signUp(formData.email, formData.password, metadata);
+
+    if (error) {
+      console.error("Signup error details:", error);
+      setError(error.message);
       setLoading(false);
-      return;
-    }
+    } else {
+      setSuccess(true);
 
-    // Prepare additional schools array
-    let additionalSchoolsArray: string[] = [];
+      // Automatically sign in the user after successful signup
+      const supabase = createClientComponentClient();
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
 
-    if (formData.multipleSchools === 'yes') {
-      // Filter out empty school names and trim whitespace
-      additionalSchoolsArray = formData.additionalSchools
-        .filter(school => school.trim() !== '')
-        .map(school => school.trim());
-
-      if (additionalSchoolsArray.length === 0) {
-        setError("Please enter at least one additional school site");
+      if (signInError) {
+        console.error("Auto sign-in error:", signInError);
+        setError("Account created but couldn't sign in automatically. Please login.");
         setLoading(false);
         return;
       }
-    }
 
-    try {
-      // Get the mapped role for database
-      const roleMap: { [key: string]: string } = {
-        resource_specialist: "resource",
-        speech_therapist: "speech",
-        occupational_therapist: "ot",
-        counselor: "counseling",
-        program_specialist: "specialist",
-        sea: "sea",
-        other: "resource", // Default to resource for "other"
-      };
+      // Wait a moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const dbRole = roleMap[formData.role] || formData.role;
-
-      // Log the metadata being sent (for debugging)
-      const metadata = {
-        full_name: formData.fullName.trim(),
-        role: formData.role,
-        state: formData.state,
-        school_district: formData.schoolDistrict.trim(),
-        school_site: formData.schoolSite.trim(),
-        works_at_multiple_schools: formData.multipleSchools === 'yes',
-        additional_schools: additionalSchoolsArray
-      };
-
-      console.log('Signup metadata:', metadata);
-
-      const { error } = await signUp(formData.email, formData.password, metadata);
-
-      if (error) {
-        console.error("Signup error details:", error);
-        setError(error.message);
-        setLoading(false);
-      } else {
-        setSuccess(true);
-        // Call onComplete callback with the mapped role instead of redirecting
-        if (onComplete) {
-          // Pass the mapped database role, not the form role
-          onComplete(dbRole, formData.email);
-        }
+      // Call onComplete callback with the mapped role instead of redirecting
+      if (onComplete) {
+        // Pass the mapped database role, not the form role
+        onComplete(dbRole, formData.email);
       }
-    } catch (err) {
-      console.error("Unexpected signup error:", err);
-      setError("An unexpected error occurred. Please try again.");
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    console.error("Unexpected signup error:", err);
+    setError("An unexpected error occurred. Please try again.");
+    setLoading(false);
+  }
+};
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,

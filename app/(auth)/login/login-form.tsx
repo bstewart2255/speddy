@@ -38,7 +38,30 @@ export default function LoginForm() {
 
       if (data?.session) {
         console.log('Login successful, session:', data.session);
-        // Force a hard refresh to ensure auth state is updated
+
+        // Check if user needs to complete payment
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.session.user.id)
+          .single();
+
+        // If not SEA user, check for subscription
+        if (profile?.role !== 'sea') {
+          const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('status')
+            .eq('user_id', data.session.user.id)
+            .maybeSingle();
+
+          // If no subscription, redirect to payment
+          if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
+            router.push('/signup?step=payment&subscription_required=true');
+            return;
+          }
+        }
+
+        // Otherwise, proceed to dashboard
         router.push('/dashboard');
         router.refresh();
       } else {

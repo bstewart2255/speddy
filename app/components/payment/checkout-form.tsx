@@ -144,6 +144,7 @@ export function CheckoutForm({ onSuccess, referralCode: initialCode }: CheckoutF
           <ul className="text-sm text-gray-700 space-y-1">
             <li>• Unlimited student profiles</li>
             <li>• AI-powered lesson planning</li>
+            <li>• Intelligent auto-scheduling</li>
             <li>• Progress tracking & reports</li>
             <li>• Team collaboration features</li>
             <li>• Summer pause option (June & July)</li>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { SignupForm } from './signup-form';
 import { PaymentStep } from './payment-step';
 import { useRouter } from 'next/navigation';
@@ -11,6 +12,14 @@ export default function SignupPage() {
   const [userRole, setUserRole] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    // Check if user was redirected here for payment
+    if (searchParams.get('step') === 'payment' && searchParams.get('subscription_required') === 'true') {
+      setCurrentStep('payment');
+    }
+  }, [searchParams]);
 
   const handleSignupComplete = (role: string, email: string) => {
     setUserRole(role);
@@ -50,15 +59,10 @@ export default function SignupPage() {
 
           {currentStep === 'payment' && (
             <>
-              <div className="mb-8">
-                <h2 className="text-center text-3xl font-extrabold text-gray-900">
-                  Complete Setup
-                </h2>
-                <p className="mt-2 text-center text-sm text-gray-600">
-                  Start your 30-day free trial • No charges today
-                </p>
-              </div>
-              <PaymentStep userEmail={userEmail} />
+              <PaymentStep 
+                userEmail={userEmail} 
+                showSubscriptionRequired={searchParams.get('subscription_required') === 'true'}
+              />
             </>
           )}
         </div>
@@ -67,7 +71,6 @@ export default function SignupPage() {
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
         Made by SpEd people, for SpEd people.
-        
       </footer>
       {/* Add the referral modal */}
       <ReferralProgramModal />
