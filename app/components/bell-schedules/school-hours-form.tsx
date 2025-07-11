@@ -18,6 +18,8 @@ type DaySchedule = {
   friday: TimeSlot;
 };
 
+type ScheduleType = 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm';
+
 export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }) {
   const { currentSchool } = useSchool();
   const [loading, setLoading] = useState(false);
@@ -143,7 +145,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
   };
 
   const handleTimeChange = (
-    schedule: 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm', // Updated to include additional schedule types
+    schedule: ScheduleType,
     day: keyof DaySchedule,
     field: 'start' | 'end',
     value: string
@@ -190,18 +192,23 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     e.preventDefault();
     setLoading(true);
 
+<<<<<<< HEAD
+=======
+    const promises: Promise<any>[] = [];
+>>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
 
     try {
-      // Process all schedules in sequence rather than parallel to avoid conflicts
       // Save default schedule
       for (const [day, times] of Object.entries(defaultSchedule)) {
-        await upsertSchoolHours({
-          school_site: currentSchool?.school_site,
-          day_of_week: dayNameToNumber(day),
-          grade_level: 'default',
-          start_time: times.start + ':00',
-          end_time: times.end + ':00'
-        });
+        promises.push(
+          upsertSchoolHours({
+            school_site: currentSchool?.school_site,
+            day_of_week: dayNameToNumber(day),
+            grade_level: 'default',
+            start_time: times.start + ':00',
+            end_time: times.end + ':00'
+          })
+        );
       }
 
       const promises: Promise<any>[] = [];
@@ -314,9 +321,13 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         }
       }
 
+<<<<<<< HEAD
       // Wait for all promises to complete
       await Promise.all(promises);
 
+=======
+      await Promise.all(promises);
+>>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
       onSuccess();
     } catch (error) {
       console.error('Error saving school hours:', error);
@@ -339,7 +350,11 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
 
   const renderScheduleGrid = (
     schedule: DaySchedule,
+<<<<<<< HEAD
     scheduleType: 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm', // Updated type definition
+=======
+    scheduleType: ScheduleType,
+>>>>>>> 7f4dcb1cea91b0167f3cb52c1b0d177748863c2a
     title: string
   ) => (
     <div className="mb-6">

@@ -95,18 +95,6 @@ export class ConflictResolver {
 
     const scheduler = new AutoScheduler(this.providerId, profile.role);
 
-    // Get current data for rescheduling
-    const [bellData, activitiesData] = await Promise.all([
-      this.supabase
-        .from('bell_schedules')
-        .select('*')
-        .eq('provider_id', this.providerId),
-      this.supabase
-        .from('special_activities')
-        .select('*')
-        .eq('provider_id', this.providerId)
-    ]);
-
     for (const session of conflictingSessions) {
       try {
         // Delete the conflicting session
@@ -115,13 +103,7 @@ export class ConflictResolver {
           .delete()
           .eq('id', session.id);
 
-        // Get all sessions except the one we just deleted
-        const { data: remainingSessions } = await this.supabase
-          .from('schedule_sessions')
-          .select('*')
-          .eq('provider_id', this.providerId);
-
-        // Try to reschedule
+        // Try to reschedule using the AutoScheduler which handles all the complexity
         const student = session.students;
         const result = await scheduler.scheduleStudent(student);
 
