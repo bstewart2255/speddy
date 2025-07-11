@@ -119,6 +119,9 @@ export default function UserProfileDropdown({ user }: { user: User }) {
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Role</p>
                 <p className="mt-1 text-sm text-gray-900">{getRoleDisplay(profile.role)}</p>
+                {profile.role === 'sea' && (
+                  <p className="mt-1 text-xs text-green-600">Free access - no payment required</p>
+                )}
               </div>
 
               <div>
@@ -141,6 +144,15 @@ export default function UserProfileDropdown({ user }: { user: User }) {
             >
               Settings
             </button>
+            {/* Only show billing link for non-SEA users */}
+            {profile && profile.role !== 'sea' && (
+              <button
+                onClick={() => router.push('/billing')}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Billing & Subscription
+              </button>
+            )}
             <div className="border-t border-gray-200 my-1"></div>
             <button
               onClick={handleSignOut}
