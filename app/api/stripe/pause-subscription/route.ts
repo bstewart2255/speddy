@@ -1,113 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { stripe, isCurrentMonthPauseable } from '../../../../src/lib/stripe';
+import { stripe, isCurrentMonthPauseable } from '@/src/lib/stripe';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    // Check if current month is pauseable
+    // Check if pausing is allowed
     if (!isCurrentMonthPauseable()) {
       return NextResponse.json(
-        { error: 'Subscriptions can only be paused in June or July' },
+        { error: 'Subscriptions can only be paused for future months' },
         { status: 400 }
       );
     }
 
-    const { pauseUntil } = await request.json();
-    const pauseEndDate = new Date(pauseUntil);
-
-    // Validate pause end date is in June or July
-    const pauseEndMonth = pauseEndDate.getMonth() + 1;
-    if (![6, 7].includes(pauseEndMonth)) {
-      return NextResponse.json(
-        { error: 'Pause must end in June or July' },
-        { status: 400 }
-      );
-    }
-
-    // Get subscription
-    const { data: subscription, error: subError } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (subError || !subscription) {
-      return NextResponse.json(
-        { error: 'No subscription found' },
-        { status: 404 }
-      );
-    }
-
-    // Pause the subscription in Stripe
-    const stripeSubscription = await stripe.subscriptions.update(
-      subscription.stripe_subscription_id,
-      {
-        pause_collection: {
-          behavior: 'void',
-          resumes_at: Math.floor(pauseEndDate.getTime() / 1000),
-        },
-      }
-    );
-
-    // Record the pause in our database
-    const { error: pauseError } = await supabase
-      .from('subscription_pauses')
-      .insert({
-        subscription_id: subscription.id,
-        pause_start: new Date().toISOString().split('T')[0],
-        pause_end: pauseEndDate.toISOString().split('T')[0],
-      });
-
-    if (pauseError) {
-      console.error('Error recording pause:', pauseError);
-    }
-
-    // Update subscription status
-    await supabase
-      .from('subscriptions')
-      .update({ status: 'paused' })
-      .eq('id', subscription.id);
-
-    // Update referral relationships to paused
-    await supabase
-      .from('referral_relationships')
-      .update({ status: 'paused' })
-      .eq('subscription_id', subscription.stripe_subscription_id)
-      .eq('status', 'active');
-
-    return NextResponse.json({ 
-      success: true,
-      pauseUntil: pauseEndDate.toISOString(),
-    });
-  } catch (error) {
-    console.error('Error pausing subscription:', error);
-    return NextResponse.json(
-      { error: 'Failed to pause subscription' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get subscription
+    // Get the user's subscription
     const { data: subscription } = await supabase
       .from('subscriptions')
       .select('*')
@@ -121,32 +37,46 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Resume the subscription in Stripe
-    await stripe.subscriptions.update(
-      subscription.stripe_subscription_id,
-      {
-        pause_collection: null,
-      }
-    );
+    if (subscription.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Only active subscriptions can be paused' },
+        { status: 400 }
+      );
+    }
 
-    // Update subscription status
+    // Calculate next month's dates
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const pauseEnd = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0); // Last day of next month
+
+    // Create pause record
+    await supabase
+      .from('subscription_pauses')
+      .insert({
+        subscription_id: subscription.id,
+        pause_start: nextMonth.toISOString(),
+        pause_end: pauseEnd.toISOString(),
+      });
+
+    // Update subscription status (will be synced with Stripe webhook)
     await supabase
       .from('subscriptions')
-      .update({ status: 'active' })
+      .update({ status: 'paused' })
       .eq('id', subscription.id);
 
-    // Reactivate referral relationships
-    await supabase
-      .from('referral_relationships')
-      .update({ status: 'active' })
-      .eq('subscription_id', subscription.stripe_subscription_id)
-      .eq('status', 'paused');
+    // Pause the subscription in Stripe
+    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+      pause_collection: {
+        behavior: 'void',
+        resumes_at: Math.floor(pauseEnd.getTime() / 1000),
+      },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error resuming subscription:', error);
+    console.error('Error pausing subscription:', error);
     return NextResponse.json(
-      { error: 'Failed to resume subscription' },
+      { error: 'Failed to pause subscription' },
       { status: 500 }
     );
   }

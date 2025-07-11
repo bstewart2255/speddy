@@ -1,27 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { stripe } from '../../../../src/lib/stripe';
+import { stripe } from '@/src/lib/stripe';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Get the user's subscription
-    const { data: subscription, error: subError } = await supabase
+    const { data: subscription } = await supabase
       .from('subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', user.id)
       .single();
 
-    if (subError || !subscription) {
+    if (!subscription?.stripe_customer_id) {
       return NextResponse.json(
         { error: 'No subscription found' },
         { status: 404 }
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Create a portal session
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
     });
 
     return NextResponse.json({ url: session.url });
