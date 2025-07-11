@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { stripe } from '../../../../src/lib/stripe';
+import { stripe } from '@/src/lib/stripe';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-// Initialize Supabase admin client
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(request: NextRequest) {
@@ -40,204 +33,159 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutSessionCompleted(session);
+        const userId = session.metadata?.user_id;
+        const referrerId = session.metadata?.referrer_id;
+        
+        if (!userId) {
+          console.error('No user_id in session metadata');
+          break;
+        }
+
+        // Get the subscription details
+        const subscription = await stripe.subscriptions.retrieve(
+          session.subscription as string
+        );
+
+        // Create subscription record
+        const { data: subData, error: subError } = await supabase
+          .from('subscriptions')
+          .insert({
+            user_id: userId,
+            stripe_customer_id: session.customer as string,
+            stripe_subscription_id: subscription.id,
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+          })
+          .select()
+          .single();
+
+        if (subError) {
+          console.error('Error creating subscription:', subError);
+          break;
+        }
+
+        // Create referral code for new user
+        const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        await supabase
+          .from('referral_codes')
+          .insert({
+            user_id: userId,
+            code: referralCode,
+          });
+
+        // If there's a referrer, create the relationship
+        if (referrerId && subData) {
+          await supabase
+            .from('referral_relationships')
+            .insert({
+              referrer_id: referrerId,
+              referred_id: userId,
+              subscription_id: subData.id,
+              status: subscription.status === 'trialing' ? 'trial' : 'active',
+            });
+        }
         break;
       }
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
-        await handleSubscriptionUpdated(subscription);
+        const userId = subscription.metadata?.user_id;
+        
+        if (!userId) {
+          console.error('No user_id in subscription metadata');
+          break;
+        }
+
+        // Update subscription record
+        await supabase
+          .from('subscriptions')
+          .update({
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+          })
+          .eq('stripe_subscription_id', subscription.id);
+
+        // Update referral relationships if status changed
+        if (subscription.status === 'active' || subscription.status === 'canceled') {
+          await supabase
+            .from('referral_relationships')
+            .update({ status: subscription.status })
+            .eq('referred_id', userId);
+        }
         break;
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        await handleSubscriptionDeleted(subscription);
+        
+        // Update subscription record
+        await supabase
+          .from('subscriptions')
+          .update({
+            status: 'canceled',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('stripe_subscription_id', subscription.id);
+
+        // Update referral relationships
+        const userId = subscription.metadata?.user_id;
+        if (userId) {
+          await supabase
+            .from('referral_relationships')
+            .update({ status: 'canceled' })
+            .eq('referred_id', userId);
+        }
         break;
       }
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        await handleInvoicePaymentSucceeded(invoice);
-        break;
-      }
+        const subscription = await stripe.subscriptions.retrieve(
+          invoice.subscription as string
+        );
+        const userId = subscription.metadata?.user_id;
+        
+        if (!userId) break;
 
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice;
-        await handleInvoicePaymentFailed(invoice);
+        // Calculate and apply referral credits for the upcoming month
+        const { count: activeReferrals } = await supabase
+          .from('referral_relationships')
+          .select('*', { count: 'exact' })
+          .eq('referrer_id', userId)
+          .in('status', ['active', 'trial']);
+
+        if (activeReferrals && activeReferrals > 0) {
+          const creditAmount = Math.min(activeReferrals * 5, 15); // Max $15 credit
+          const nextMonth = new Date();
+          nextMonth.setMonth(nextMonth.getMonth() + 1);
+          const monthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+
+          await supabase
+            .from('referral_credits')
+            .upsert({
+              user_id: userId,
+              month: monthKey,
+              total_credits: creditAmount,
+              credits_applied: creditAmount,
+              status: 'pending',
+            });
+        }
         break;
       }
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
+    console.error('Webhook error:', error);
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
     );
   }
-}
-
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  const userId = session.metadata?.user_id;
-  const referrerId = session.metadata?.referrer_id;
-  
-  if (!userId || !session.subscription || !session.customer) return;
-
-  // Get the subscription details
-  const subscription = await stripe.subscriptions.retrieve(
-    session.subscription as string
-  );
-
-  // Create subscription record
-  const { error: subError } = await supabaseAdmin
-    .from('subscriptions')
-    .insert({
-      user_id: userId,
-      stripe_customer_id: session.customer as string,
-      stripe_subscription_id: subscription.id,
-      status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-      trial_end: subscription.trial_end 
-        ? new Date(subscription.trial_end * 1000).toISOString() 
-        : null,
-    });
-
-  if (subError) {
-    console.error('Error creating subscription record:', subError);
-    throw subError;
-  }
-
-  // Create referral relationship if applicable
-  if (referrerId) {
-    const { error: refError } = await supabaseAdmin
-      .from('referral_relationships')
-      .insert({
-        referrer_id: referrerId,
-        referred_id: userId,
-        subscription_id: subscription.id,
-        status: 'trial',
-      });
-
-    if (refError) {
-      console.error('Error creating referral relationship:', refError);
-    }
-
-    // Increment referral code usage
-    await supabaseAdmin.rpc('increment', {
-      table_name: 'referral_codes',
-      column_name: 'uses_count',
-      row_id: referrerId,
-    });
-  }
-}
-
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  const { error } = await supabaseAdmin
-    .from('subscriptions')
-    .update({
-      status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-      cancel_at_period_end: subscription.cancel_at_period_end,
-      trial_end: subscription.trial_end 
-        ? new Date(subscription.trial_end * 1000).toISOString() 
-        : null,
-    })
-    .eq('stripe_subscription_id', subscription.id);
-
-  if (error) {
-    console.error('Error updating subscription:', error);
-    throw error;
-  }
-
-  // Update referral relationship status if transitioning from trial
-  if (subscription.status === 'active' && !subscription.trial_end) {
-    await supabaseAdmin
-      .from('referral_relationships')
-      .update({ status: 'active' })
-      .eq('subscription_id', subscription.id)
-      .eq('status', 'trial');
-  }
-}
-
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  // Update subscription status
-  const { error } = await supabaseAdmin
-    .from('subscriptions')
-    .update({ status: 'canceled' })
-    .eq('stripe_subscription_id', subscription.id);
-
-  if (error) {
-    console.error('Error canceling subscription:', error);
-    throw error;
-  }
-
-  // Update referral relationship
-  await supabaseAdmin
-    .from('referral_relationships')
-    .update({ status: 'canceled' })
-    .eq('subscription_id', subscription.id);
-}
-
-async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
-  // Only process for subscription invoices (not one-time payments)
-  if (!invoice.subscription) return;
-
-  // Get the subscription
-  const { data: subscription } = await supabaseAdmin
-    .from('subscriptions')
-    .select('user_id')
-    .eq('stripe_subscription_id', invoice.subscription as string)
-    .single();
-
-  if (!subscription) return;
-
-  // Calculate and apply referral credits for this month
-  const invoiceMonth = new Date(invoice.period_start * 1000);
-  await calculateMonthlyReferralCredits(subscription.user_id, invoiceMonth);
-}
-
-async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  if (!invoice.subscription) return;
-
-  // Update subscription status to past_due
-  await supabaseAdmin
-    .from('subscriptions')
-    .update({ status: 'past_due' })
-    .eq('stripe_subscription_id', invoice.subscription as string);
-}
-
-async function calculateMonthlyReferralCredits(userId: string, month: Date) {
-  // Get all active referrals for this user
-  const { data: activeReferrals } = await supabaseAdmin
-    .from('referral_relationships')
-    .select('*')
-    .eq('referrer_id', userId)
-    .eq('status', 'active');
-
-  if (!activeReferrals || activeReferrals.length === 0) return;
-
-  // Calculate total credits
-  const totalCredits = activeReferrals.reduce(
-    (sum, ref) => sum + ref.credit_amount,
-    0
-  );
-
-  // Format month for storage (YYYY-MM-01)
-  const monthStr = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-01`;
-
-  // Upsert referral credits for this month
-  await supabaseAdmin
-    .from('referral_credits')
-    .upsert({
-      user_id: userId,
-      month: monthStr,
-      total_credits: totalCredits,
-      credits_applied: Math.min(totalCredits, 11.99), // Cap at subscription price
-      payout_amount: Math.max(0, totalCredits - 11.99), // Amount over subscription price
-      status: 'applied',
-    });
 }
