@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "../../../../src/types/database";
 import { Card, CardBody } from "../../../components/ui/card";
+import { createClient } from '@/lib/supabase/client';
 
 interface SEAProfile {
   id: string;
@@ -16,7 +17,7 @@ export default function TeamPage() {
   const [seas, setSeas] = useState<SEAProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>("");
-  const supabase = createClientComponentClient();
+  const supabase = createClient<Database>();
 
   useEffect(() => {
     fetchTeamData();

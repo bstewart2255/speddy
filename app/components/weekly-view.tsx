@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 
 interface Holiday {
   date: string;
@@ -35,7 +35,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
   React.useEffect(() => {
     let isMounted = true;
-    const supabase = createClientComponentClient();
+    const supabase = createClient();
 
     // Inside React.useEffect
     const fetchData = async () => {

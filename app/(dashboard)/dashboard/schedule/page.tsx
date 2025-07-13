@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useMemo } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
 import { DEFAULT_SCHEDULING_CONFIG } from "../../../../lib/scheduling/scheduling-config";
 import { SessionAssignmentPopup } from "./session-assignment-popup";
-import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
+// import { ConflictResolver } from '../../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../../components/providers/school-context';
 import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
 import { getSchoolHours } from '../../../../lib/supabase/queries/school-hours';
@@ -104,7 +104,7 @@ export default function SchedulePage() {
   const latestDragPositionRef = useRef<string | null>(null);
   const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const studentMap = useMemo(
     () => new Map(students.map((s) => [s.id, s])),
     [students],

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 
@@ -21,7 +21,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
   const { currentSchool } = useSchool();
 
   const handleSubmit = async (e: React.FormEvent) => {

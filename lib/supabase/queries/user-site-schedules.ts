@@ -1,11 +1,11 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 type UserSiteSchedule = Database['public']['Tables']['user_site_schedules']['Row'];
 type UserSiteScheduleInsert = Database['public']['Tables']['user_site_schedules']['Insert'];
 
 export async function getUserSiteSchedules(userId: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data, error } = await supabase
     .from('user_site_schedules')
@@ -29,7 +29,7 @@ export async function setUserSiteSchedule(
   siteId: string,
   daysOfWeek: number[]
 ) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   // First, delete existing schedules for this user/site combination
   const { error: deleteError } = await supabase
@@ -57,7 +57,7 @@ export async function setUserSiteSchedule(
 }
 
 export async function clearUserSiteSchedules(userId: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { error } = await supabase
     .from('user_site_schedules')

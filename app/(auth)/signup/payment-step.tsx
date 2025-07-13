@@ -3,7 +3,7 @@
 import { CheckoutForm } from '@/app/components/payment/checkout-form';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 interface PaymentStepProps {
   userEmail: string;
@@ -12,7 +12,7 @@ interface PaymentStepProps {
 
 export function PaymentStep({ userEmail, showSubscriptionRequired }: PaymentStepProps) {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const [showMessage, setShowMessage] = useState(showSubscriptionRequired);
 
   useEffect(() => {

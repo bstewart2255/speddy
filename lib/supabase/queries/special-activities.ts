@@ -1,11 +1,11 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { SpecialActivity } from '../../../src/types/database';
 
 /**
  * Retrieve all special activities belonging to the logged in provider.
  */
 export async function getSpecialActivities(): Promise<SpecialActivity[]> {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   
   // Get current user first - CRITICAL for security
   const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -34,7 +34,7 @@ export async function getSpecialActivities(): Promise<SpecialActivity[]> {
 export async function addSpecialActivity(
   activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string }
 ): Promise<SpecialActivity> {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -79,7 +79,7 @@ export async function addSpecialActivity(
  * Delete a special activity by id after verifying ownership.
  */
 export async function deleteSpecialActivity(id: string): Promise<void> {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -104,7 +104,7 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
  * Remove all activities for a specific teacher owned by the user.
  */
 export async function deleteTeacherActivities(teacherName: string): Promise<void> {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();

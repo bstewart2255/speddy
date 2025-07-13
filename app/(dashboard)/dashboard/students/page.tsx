@@ -9,10 +9,10 @@ import { getStudents, createStudent, deleteStudent, updateStudent } from '../../
 import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
 import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { useRouter } from 'next/navigation';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+// import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 type Student = {
   id: string;
@@ -49,7 +49,7 @@ export default function StudentsPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const { currentSchool } = useSchool();
   const router = useRouter();
 

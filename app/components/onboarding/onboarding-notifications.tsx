@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { OnboardingBanner } from './onboarding-banner';
 
 export function OnboardingNotifications() {
   const [showSetupBanner, setShowSetupBanner] = useState(false);
   const [showMultiSchoolBanner, setShowMultiSchoolBanner] = useState(false);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     checkOnboardingStatus();

@@ -1,5 +1,5 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
 
@@ -9,7 +9,7 @@ type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
  * @returns The created bell schedule row.
  */
 export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at' | 'provider_id'> & { school_site?: string }) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to set provider_id
   const { data: { user } } = await supabase.auth.getUser();
@@ -48,7 +48,7 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
  * Remove a bell schedule by id if it belongs to the current user.
  */
 export async function deleteBellSchedule(id: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to verify ownership
   const { data: { user } } = await supabase.auth.getUser();
@@ -67,7 +67,7 @@ export async function deleteBellSchedule(id: string) {
  * Delete all bell schedules for a given grade for the current user.
  */
 export async function deleteGradeSchedules(gradeLevel: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
@@ -85,7 +85,7 @@ export async function deleteGradeSchedules(gradeLevel: string) {
  * Fetch all bell schedules owned by the current user ordered for display.
  */
 export async function getBellSchedules(schoolSite?: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');

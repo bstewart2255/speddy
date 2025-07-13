@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Papa from "papaparse";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Database } from "../../../src/types/database";
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
 export default function SpecialActivitiesCSVImport({ onSuccess }: Props) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
   const { currentSchool } = useSchool();
 
   const downloadTemplate = () => {

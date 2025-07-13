@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { getSchoolHours } from '../supabase/queries/school-hours';
 
@@ -43,7 +43,7 @@ export class AutoScheduler {
   }> = [];
 
   constructor(providerId: string, providerRole: string) {
-    this.supabase = createClientComponentClient<Database>();
+    this.supabase = createClient();
     this.providerId = providerId;
     this.providerRole = providerRole;
   }

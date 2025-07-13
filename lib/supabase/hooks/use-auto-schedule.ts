@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { OptimizedScheduler } from '../../scheduling/optimized-scheduler';
-import { Database } from '../../../src/types/database';
+import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
 
 export function useAutoSchedule() {
   const [isScheduling, setIsScheduling] = useState(false);
   const [schedulingErrors, setSchedulingErrors] = useState<string[]>([]);
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const scheduleStudent = async (student: Student) => {
     setIsScheduling(true);

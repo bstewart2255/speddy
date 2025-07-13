@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 interface School {
   school_site: string;
@@ -22,7 +22,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const [currentSchool, setCurrentSchool] = useState<School | null>(null);
   const [availableSchools, setAvailableSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchProviderSchools();

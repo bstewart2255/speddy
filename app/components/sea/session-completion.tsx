@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 interface SessionCompletionProps {
   session: {
@@ -19,7 +19,7 @@ export function SessionCompletion({ session, onUpdate }: SessionCompletionProps)
   const [loading, setLoading] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState(session.session_notes || '');
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const handleMarkComplete = async () => {
     setLoading(true);

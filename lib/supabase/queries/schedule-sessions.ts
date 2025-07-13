@@ -1,5 +1,5 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 /**
  * Calculate how many sessions still need to be scheduled this week.
@@ -8,7 +8,7 @@ import { Database } from '../../../src/types/database';
  * sessions already scheduled to return the remaining count.
  */
 export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');

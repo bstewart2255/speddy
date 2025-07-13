@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * Create a student record for the logged in provider.
@@ -12,7 +12,7 @@ export async function createStudent(studentData: {
   school_site?: string;
   school_district?: string;
 }) {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
@@ -69,7 +69,7 @@ export async function createStudent(studentData: {
  * Fetch all students owned by the current provider.
  */
 export async function getStudents(schoolSite?: string) {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
@@ -94,8 +94,8 @@ export async function getStudents(schoolSite?: string) {
  * Delete a student and their sessions if the user owns them.
  */
 export async function deleteStudent(studentId: string) {
-  const supabase = createClientComponentClient();
-
+  const supabase = createClient();
+  
   // CRITICAL: Get current user to verify ownership
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No user found');
@@ -138,7 +138,7 @@ export async function updateStudent(studentId: string, updates: {
   sessions_per_week?: number;
   minutes_per_session?: number;
 }) {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // CRITICAL: Get current user to verify ownership
   const { data: { user } } = await supabase.auth.getUser();
@@ -179,7 +179,7 @@ teacher_name: string;
 sessions_per_week: number;
 minutes_per_session: number;
 }) {
-const supabase = createClientComponentClient();
+const supabase = createClient();
 
 // First create the student as before
 const student = await createStudent(studentData);

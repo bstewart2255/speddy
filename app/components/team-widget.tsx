@@ -1,7 +1,7 @@
     "use client";
 
     import { useEffect, useState } from "react";
-    import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+    import { createClient } from '@/lib/supabase/client';
     import { Card, CardBody, CardHeader, CardTitle } from "../components/ui/card";
     import type { Database } from "../../src/types/database";
 
@@ -35,7 +35,7 @@
       const [teamsBySchool, setTeamsBySchool] = useState<Map<string, Profile[]>>(new Map());
       const [userSchools, setUserSchools] = useState<School[]>([]);
       const [loading, setLoading] = useState(true);
-      const supabase = createClientComponentClient<Database>();
+      const supabase = createClient<Database>();
 
       useEffect(() => {
         let isCancelled = false;

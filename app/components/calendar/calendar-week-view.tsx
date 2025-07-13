@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Database } from "../../../src/types/database";
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
@@ -78,7 +78,7 @@ export function CalendarWeekView({
   const [savingNotes, setSavingNotes] = useState(false);
   const [sessionsState, setSessionsState] = useState(sessions);
 
-  const supabase = createClientComponentClient();
+  const supabase = createClient<Database>();
 
   // Update sessions when props change
   React.useEffect(() => {

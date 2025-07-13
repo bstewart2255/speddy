@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 export async function logAccess(params: {
   user_id: string;
@@ -7,7 +7,7 @@ export async function logAccess(params: {
   resource_id?: string;
   metadata?: any;
 }) {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Fire and forget - don't await to avoid performance impact
   (async () => {

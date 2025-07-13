@@ -1,4 +1,4 @@
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { Database } from "../../src/types/database";
 import { getSchoolHours } from '../supabase/queries/school-hours';
 
@@ -52,7 +52,7 @@ interface SchedulingResult {
 }
 
 export class OptimizedScheduler {
-  private supabase = createClientComponentClient<Database>();
+  private supabase = createClient();
   private context: SchedulingContext | null = null;
 
   constructor(

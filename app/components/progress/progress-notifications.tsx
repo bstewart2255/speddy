@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { Bell, TrendingUp, Trophy, AlertCircle, Target } from 'lucide-react';
 
 interface Notification {
@@ -22,7 +22,7 @@ export function ProgressNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     loadNotifications();

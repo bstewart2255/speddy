@@ -1,7 +1,6 @@
 // app/api/email-webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env['RESEND_API_KEY']);
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Process each image attachment
     for (const attachment of attachments) {

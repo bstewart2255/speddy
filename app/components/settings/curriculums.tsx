@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardBody } from "../ui/card";
 import { Button } from "../ui/button";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { CollapsibleCard } from "../ui/collapsible-card";
 
 // Common special education curriculums used in US elementary schools
@@ -62,7 +62,7 @@ export function CurriculumsSettings() {
   const [selectedCurriculums, setSelectedCurriculums] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     loadCurriculums();

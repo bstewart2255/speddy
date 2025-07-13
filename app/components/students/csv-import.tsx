@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Papa from 'papaparse';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 interface Props {
   onSuccess: () => void;
@@ -16,7 +16,7 @@ interface Props {
 export default function StudentsCSVImport({ onSuccess, currentSchool }: Props) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const downloadTemplate = () => {
     const csvContent = `Initials,Grade,Teacher,Sessions Per Week,Minutes Per Session

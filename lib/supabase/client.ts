@@ -1,12 +1,12 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-// Export the instance for backward compatibility
-export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey)
-
-// Export a function that creates a new client
-export const createClient = () => {
-  return createSupabaseClient(supabaseUrl, supabaseAnonKey)
+export const createClient = <T = any>() => {
+  return createBrowserClient<T>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 }
+
+// Export the supabase instance for backward compatibility
+// (creates a new client instance for each usage)
+export const supabase = createClient()

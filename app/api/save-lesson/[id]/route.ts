@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 
 export async function DELETE(
   request: NextRequest,
@@ -8,7 +7,7 @@ export async function DELETE(
 ) {
   const params = await props.params;
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Check authentication
     const { data: { user } } = await supabase.auth.getUser();

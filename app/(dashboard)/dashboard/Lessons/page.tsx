@@ -2,7 +2,7 @@
 
 import React from "react";
 import { X } from 'lucide-react';
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { Calendar, Clock, Users, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
@@ -26,7 +26,7 @@ export default function LessonsPage() {
   const [totalLessons, setTotalLessons] = React.useState(0);
   const lessonsPerPage = 10;
 
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   React.useEffect(() => {
     fetchLessons();

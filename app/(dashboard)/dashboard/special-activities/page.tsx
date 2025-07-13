@@ -8,9 +8,9 @@ import { Tag } from '../../../components/ui/tag';
 import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
 import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+// import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 interface SpecialActivity {
   id: string;
@@ -29,7 +29,7 @@ export default function SpecialActivitiesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Fetch special activities from database
   const fetchSpecialActivities = async () => {

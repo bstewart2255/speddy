@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { ProgressChart } from './progress-chart';
 import { Download } from 'lucide-react';
 import { Database } from '../../../src/types/database';
@@ -42,7 +42,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
   const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTimeRange, setSelectedTimeRange] = useState<'week' | 'month' | 'all'>('month');
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   useEffect(() => {
     loadProgressData();

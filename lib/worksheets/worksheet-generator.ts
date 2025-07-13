@@ -1,7 +1,7 @@
 // lib/worksheets/worksheet-generator.ts
 import QRCode from 'qrcode';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../src/types/database';
 
 interface WorksheetQuestion {
   id: string;
@@ -24,7 +24,7 @@ export async function generateWorksheetWithQR(
   worksheetType: string,
   content: WorksheetContent
 ): Promise<{ worksheetId: string; qrCodeDataUrl: string }> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   // Generate unique QR code identifier
   const qrCode = `WS-${lessonId.slice(0, 8)}-${studentId.slice(0, 8)}-${Date.now()}`;

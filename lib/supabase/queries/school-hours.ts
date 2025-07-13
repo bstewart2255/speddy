@@ -1,5 +1,5 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 type SchoolHours = Database['public']['Tables']['school_hours']['Insert'];
 
@@ -7,7 +7,7 @@ type SchoolHours = Database['public']['Tables']['school_hours']['Insert'];
  * Get school hours for the current user and school
  */
 export async function getSchoolHours(schoolSite?: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
@@ -33,7 +33,7 @@ export async function getSchoolHours(schoolSite?: string) {
  * Upsert school hours (insert or update)
  */
 export async function upsertSchoolHours(hours: Omit<SchoolHours, 'id' | 'created_at' | 'updated_at' | 'provider_id'>) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
@@ -58,7 +58,7 @@ export async function upsertSchoolHours(hours: Omit<SchoolHours, 'id' | 'created
  * Delete school hours for a specific grade level
  */
 export async function deleteSchoolHours(gradeLevel: string, schoolSite?: string) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');

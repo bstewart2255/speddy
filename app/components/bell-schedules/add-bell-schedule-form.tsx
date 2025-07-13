@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
@@ -19,7 +19,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
   const [subject, setSubject] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { currentSchool } = useSchool();
 

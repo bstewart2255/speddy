@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 
@@ -17,7 +17,7 @@ export default function UserProfileDropdown({ user }: { user: User }) {
   const [isOpen, setIsOpen] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   const router = useRouter();
 
   // Fetch user profile data

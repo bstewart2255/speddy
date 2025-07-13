@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardBody } from '../ui/card';
 import { Button } from '../ui/button';
 import { getUserSiteSchedules, setUserSiteSchedule } from '../../../lib/supabase/queries/user-site-schedules';
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { CollapsibleCard } from '../ui/collapsible-card';
 
 interface ProviderSchool {
@@ -26,7 +26,7 @@ export function WorkScheduleSettings() {
   const [saving, setSaving] = useState(false);
   const [schools, setSchools] = useState<ProviderSchool[]>([]);
   const [schedules, setSchedules] = useState<Record<string, number[]>>({});
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     loadData();

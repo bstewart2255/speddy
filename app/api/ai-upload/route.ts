@@ -1,7 +1,6 @@
 // app/api/ai-upload/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createClient } from '@/lib/supabase/server';
 import Anthropic from "@anthropic-ai/sdk";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
@@ -24,7 +23,7 @@ const SUPPORTED_TYPES = [
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Check authentication
     const {

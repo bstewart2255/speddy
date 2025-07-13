@@ -1,5 +1,5 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
+import type { Database } from '../../../src/types/database';
 
 export interface StudentDetails {
   first_name: string;
@@ -13,7 +13,7 @@ export interface StudentDetails {
 }
 
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { data, error } = await supabase
     .from('student_details')
@@ -45,7 +45,7 @@ export async function upsertStudentDetails(
   studentId: string, 
   details: StudentDetails
 ): Promise<void> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClient<Database>();
 
   const { error } = await supabase
     .from('student_details')

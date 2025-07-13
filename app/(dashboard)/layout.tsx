@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Navbar from '../components/navigation/navbar';
 import Footer from '../components/navigation/footer';
@@ -16,7 +16,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     const checkUser = async () => {

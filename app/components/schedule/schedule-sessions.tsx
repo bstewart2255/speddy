@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
 import { saveScheduleSnapshot } from './undo-schedule';
@@ -18,7 +18,7 @@ interface ScheduleSessionsProps {
 export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { scheduleBatchStudents } = useAutoSchedule();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const handleScheduleSessions = async () => {
     if (unscheduledCount === 0) return;

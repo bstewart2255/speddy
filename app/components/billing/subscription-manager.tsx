@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { formatPrice, SUBSCRIPTION_CONFIG, isCurrentMonthPauseable } from '@/src/lib/stripe';
 import { format, differenceInDays } from 'date-fns';
 import type { Subscription, ReferralCode, ReferralCredit } from '@/src/types/database';
@@ -17,7 +17,7 @@ export function SubscriptionManager() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [pauseLoading, setPauseLoading] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     loadSubscriptionData();

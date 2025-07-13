@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
 import { saveScheduleSnapshot } from './undo-schedule';
@@ -17,7 +17,7 @@ interface RescheduleAllProps {
 export function RescheduleAll({ onComplete, currentSchool }: RescheduleAllProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { scheduleBatchStudents } = useAutoSchedule();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const handleRescheduleAll = async () => {
     const confirmMessage = `This will clear your entire schedule and rebuild it from scratch. 

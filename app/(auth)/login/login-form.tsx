@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PasswordInput } from "../../components/auth/password-input";
@@ -12,7 +11,6 @@ export default function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,70 +18,33 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      console.log('Attempting login with:', email);
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Use fetch to call our API route instead of direct Supabase client
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      console.log('Login response:', { data, error });
+      const data = await response.json();
 
-      if (error) {
-        console.error('Login error:', error);
-        setError(error.message);
+      if (!response.ok) {
+        setError(data.error || 'Login failed');
         setLoading(false);
         return;
       }
 
-      if (data?.session) {
-        console.log('Login successful, session:', data.session);
-
-        // Check if user needs to complete payment
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.session.user.id)
-          .single();
-
-        console.log('Profile check:', { profile, profileError });
-
-        // If not SEA user, check for subscription
-        if (profile?.role !== 'sea') {
-          const { data: subscription, error: subError } = await supabase
-            .from('subscriptions')
-            .select('status')
-            .eq('user_id', data.session.user.id)
-            .maybeSingle();
-
-          console.log('Subscription check:', { subscription, subError });
-
-          // If no subscription, redirect to payment
-          if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
-            console.log('Redirecting to payment page');
-            router.push('/signup?step=payment&subscription_required=true');
-            return;
-          }
-        }
-
-        // Otherwise, proceed to dashboard
-        console.log('Redirecting to dashboard');
-        // Use replace instead of push to prevent back button issues
-        await router.replace('/dashboard');
-        // If that doesn't work, force it
-        setTimeout(() => {
-          if (window.location.pathname !== '/dashboard') {
-            window.location.replace('/dashboard');
-          }
-        }, 500);
+      // Success - redirect based on subscription status
+      if (data.needsPayment) {
+        router.push('/signup?step=payment&subscription_required=true');
       } else {
-        console.log('No session returned');
-        setError('Login failed - no session created');
+        // Use window.location for a full page refresh to ensure cookies are set
+        window.location.href = '/dashboard';
       }
     } catch (err) {
-      console.error('Error during login redirect logic:', err);
-      setError('Login successful but encountered an error. Please try again.');
-    } finally {
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
   };
@@ -106,7 +67,7 @@ export default function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"          
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           placeholder="teacher@school.edu"
         />
       </div>
@@ -150,7 +111,7 @@ export default function LoginForm() {
           FERPA Compliance
         </Link>
       </div>
-      
+
       {/* Referral Program Link - with extra spacing */}
       <div className="mt-12 text-center">
         <button

@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Database } from '../../../src/types/database';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '../../../src/types/database';
+import { createClient } from '@/lib/supabase/client';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -28,7 +28,7 @@ export function CalendarTodayView({
   const [savingNotes, setSavingNotes] = useState(false);
   const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
 
-  const supabase = createClientComponentClient();
+  const supabase = createClient<Database>();
 
   const [sessionsState, setSessionsState] = useState(sessions);
 

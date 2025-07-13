@@ -7,7 +7,7 @@ import { validatePassword } from "../../../lib/utils/password-validation";
 import { PasswordRequirements } from "../../components/auth/password-requirements";
 import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
 import { PasswordInput } from "../../components/auth/password-input";
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 
 interface SignupFormProps {
@@ -172,7 +172,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       setSuccess(true);
 
       // Automatically sign in the user after successful signup
-      const supabase = createClientComponentClient();
+      const supabase = createClient();
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CheckoutForm } from '@/app/components/payment/checkout-form';
 
@@ -9,7 +9,7 @@ export default function SubscribePage() {
   const [loading, setLoading] = useState(true);
   const [hasSubscription, setHasSubscription] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     checkSubscription();

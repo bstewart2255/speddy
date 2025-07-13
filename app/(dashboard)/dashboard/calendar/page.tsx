@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
 import { CalendarWeekView } from "../../../components/calendar/calendar-week-view";
 import { CalendarMonthView } from "../../../components/calendar/calendar-month-view";
 import { useSchool } from "../../../components/providers/school-context";
-import { Database } from "../../../../src/types/database";
+import type { Database } from "../../../../src/types/database";
 
 type ViewType = 'today' | 'week' | 'month';
 
@@ -39,7 +39,7 @@ export default function CalendarPage() {
   const [holidayName, setHolidayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClientComponentClient();
+  const supabase = createClient<Database>();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);

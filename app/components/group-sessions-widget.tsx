@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { AIContentModal } from "./ai-content-modal";
 
 const TIME_SLOTS = [
@@ -66,7 +66,7 @@ export function GroupSessionsWidget() {
   }, [sessions]); // This will run when sessions change
 
   const fetchUpcomingSessions = async () => {
-    const supabase = createClientComponentClient();
+    const supabase = createClient();
 
     try {
       const {

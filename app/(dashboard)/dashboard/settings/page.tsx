@@ -3,14 +3,14 @@
 import { WorkScheduleSettings } from '../../../components/settings/work-schedule';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { TeamWidget } from '../../../components/team-widget';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     loadUserProfile();

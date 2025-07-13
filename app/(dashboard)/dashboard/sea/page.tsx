@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { StatCard } from "../../../components/ui/stats";
 import { SessionCompletion } from "../../../components/sea/session-completion";
@@ -23,7 +23,7 @@ export default function SEADashboard() {
   const [assignedSessions, setAssignedSessions] = useState<AssignedSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [todaysSessions, setTodaysSessions] = useState<AssignedSession[]>([]);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     fetchSEAData();

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { StatCard } from '../../components/ui/stats';
 import { StatsGrid, StudentStats, SessionStats, CompletionStats } from '../../components/ui/stats';
 import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card';
@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>("");
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     const checkUserRole = async () => {

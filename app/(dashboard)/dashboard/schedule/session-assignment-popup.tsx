@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from '@/lib/supabase/client';
 
 interface SessionAssignmentPopupProps {
   session: any;
@@ -24,7 +24,7 @@ export function SessionAssignmentPopup({
   const [selectedSeaId, setSelectedSeaId] = useState<string>(
     session.assigned_to_sea_id || "",
   );
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Format time for display (12-hour format)
   const formatTime = (time: string): string => {

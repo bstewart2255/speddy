@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { Button } from '../ui/button';
 
 interface UndoScheduleProps {
@@ -16,7 +16,7 @@ interface ScheduleSnapshot {
 export function UndoSchedule({ onComplete }: UndoScheduleProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSnapshot, setLastSnapshot] = useState<ScheduleSnapshot | null>(null);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Load the last snapshot from localStorage on component mount
   useEffect(() => {
@@ -146,7 +146,7 @@ Continue?`;
 
 // Helper function to save current schedule snapshot
 export async function saveScheduleSnapshot(providerId: string) {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   try {
     // Get all current sessions

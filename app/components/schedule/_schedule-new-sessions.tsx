@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
 import { saveScheduleSnapshot } from './undo-schedule';
@@ -17,7 +17,7 @@ interface ScheduleNewSessionsProps {
   export function ScheduleNewSessions({ onComplete, currentSchool }: ScheduleNewSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { scheduleBatchStudents } = useAutoSchedule();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const handleScheduleNew = async () => {
     const confirmMessage = `This will schedule only new/unscheduled sessions while keeping existing sessions intact.
