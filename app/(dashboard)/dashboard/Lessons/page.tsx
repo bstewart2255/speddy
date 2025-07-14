@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useCallback } from "react";
 import { X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Calendar, Clock, Users, Search, ChevronLeft, ChevronRight } from "lucide-react";
@@ -28,11 +28,7 @@ export default function LessonsPage() {
 
   const supabase = createClient();
 
-  React.useEffect(() => {
-    fetchLessons();
-  }, [currentPage]);
-
-  const fetchLessons = async () => {
+  const fetchLessons = useCallback(async () => {
     setLoading(true);
     try {
       const offset = (currentPage - 1) * lessonsPerPage;
@@ -48,7 +44,11 @@ export default function LessonsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage]);
+
+  React.useEffect(() => {
+    fetchLessons();
+  }, [fetchLessons]);
 
   const filteredLessons = lessons.filter(lesson => {
     const searchLower = searchTerm.toLowerCase();
