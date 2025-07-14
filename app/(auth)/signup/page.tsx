@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SignupForm } from './signup-form';
 import { PaymentStep } from './payment-step';
@@ -8,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { ReferralProgramModal } from '../../components/referral-program-modal';
 import Link from 'next/link';
 
-export default function SignupPage() {
+function SignupContent() {
   const [currentStep, setCurrentStep] = useState<'signup' | 'payment' | 'complete'>('signup');
   const [userRole, setUserRole] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
@@ -81,5 +82,13 @@ export default function SignupPage() {
       {/* Add the referral modal */}
       <ReferralProgramModal />
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }
