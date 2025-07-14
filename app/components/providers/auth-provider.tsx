@@ -1,14 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "../../../lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { validatePassword } from "../../../lib/utils/password-validation";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  initialized: boolean;
+  checkSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (
     email: string,
@@ -25,36 +27,60 @@ interface SignUpMetadata {
   school_district: string;
   school_site: string;
   works_at_multiple_schools?: boolean;
-  additional_schools?: string[]; // Add this
+  additional_schools?: string[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Define public routes that don't need auth
+const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Check session only when needed
+  const checkSession = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setInitialized(true);
+    } catch (error) {
+      console.error('Session check error:', error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Only check session if we're not on a public route
+    const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
 
-    // Listen for changes on auth state (sign in, sign out, etc.)
+    if (!isPublicRoute && !initialized) {
+      checkSession();
+    }
+
+    // Listen for auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setLoading(false);
+      if (session) {
+        setInitialized(true);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [pathname, initialized, checkSession]);
 
   const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true);
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -62,10 +88,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
 
+      // The onAuthStateChange will handle setting the user
       router.push("/dashboard");
       return { error: null };
     } catch (error) {
       return { error: error as Error };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -75,11 +104,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     metadata: SignUpMetadata & { works_at_multiple_schools?: boolean },
   ) => {
     try {
+      setLoading(true);
+
       // Validate password requirements
       const passwordValidation = validatePassword(password);
       if (!passwordValidation.isValid) {
         throw new Error(passwordValidation.errors[0]);
       }
+
       // Role mapping from form values to database values
       const roleMap: { [key: string]: string } = {
         resource_specialist: "resource",
@@ -88,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         counselor: "counseling",
         program_specialist: "specialist",
         sea: "sea",
-        other: "resource", // Default to resource for "other"
+        other: "resource",
       };
 
       const dbRole = roleMap[metadata.role] || metadata.role;
@@ -123,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             school_site: metadata.school_site,
             role: dbRole,
             works_at_multiple_schools: metadata.works_at_multiple_schools || false,
-            additional_schools: metadata.additional_schools || [] // Add this
+            additional_schools: metadata.additional_schools || []
           },
         },
       });
@@ -133,17 +165,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: null };
     } catch (error) {
       return { error: error as Error };
+    } finally {
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setUser(null);
+    setInitialized(false);
     router.push("/login");
   };
 
   const value = {
     user,
     loading,
+    initialized,
+    checkSession,
     signIn,
     signUp,
     signOut,

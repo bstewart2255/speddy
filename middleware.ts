@@ -7,6 +7,24 @@ export async function middleware(request: NextRequest) {
     request,
   })
 
+  const { pathname } = request.nextUrl
+
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/login', '/signup', '/terms', '/privacy', '/ferpa']
+  const isPublicRoute = publicRoutes.some(route => pathname === route)
+
+  // IMMEDIATELY return for public routes - no auth checks at all
+  // Also check if we're at the root and should redirect to login
+  if (isPublicRoute || pathname === '/') {
+    // If at root, redirect to login
+    if (pathname === '/') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/login'
+      return NextResponse.redirect(redirectUrl)
+    }
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -33,18 +51,7 @@ export async function middleware(request: NextRequest) {
   // IMPORTANT: Refresh the session to ensure cookies are properly set
   const { data: { user }, error } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
   console.log('Middleware check:', { pathname, userId: user?.id, error })
-
-  // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/terms', '/privacy', '/ferpa']
-  const isPublicRoute = publicRoutes.some(route => pathname === route)
-
-  // Skip all checks for public routes
-  if (isPublicRoute) {
-    return supabaseResponse;
-  }
 
   // Protected routes that require authentication
   const protectedRoutes = ['/dashboard', '/']
