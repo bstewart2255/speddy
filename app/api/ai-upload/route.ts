@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from "@anthropic-ai/sdk";
-import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 
 // Force Node.js runtime for file processing
@@ -139,37 +138,35 @@ export async function POST(request: NextRequest) {
           error: 'Failed to process PDF. Please try converting to Word format.' 
         }, { status: 500 });
       }
-    } else if (
-      file.type.includes("wordprocessing") ||
-      file.type === "application/msword"
-    ) {
-      // Process Word documents
-      extractionMethod = "Word";
-      const result = await mammoth.extractRawText({ buffer });
-      fileContent = result.value;
-      console.log(`Word document extracted. Length: ${fileContent.length}`);
     } else if (file.type.includes("sheet") || file.type.includes("excel")) {
       // Process Excel files
       extractionMethod = "Excel";
-      const workbook = XLSX.read(buffer, { type: "buffer" });
 
-      // Convert all sheets to text
-      const allText: string[] = [];
-      workbook.SheetNames.forEach((sheetName) => {
-        const worksheet = workbook.Sheets[sheetName];
-        const csvData = XLSX.utils.sheet_to_csv(worksheet);
-        allText.push(`=== Sheet: ${sheetName} ===\n${csvData}`);
-      });
+      try {
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
 
-      fileContent = allText.join("\n\n");
-      console.log(
-        `Excel extracted. Sheets: ${workbook.SheetNames.length}, Length: ${fileContent.length}`,
-      );
-    } else if (
-      file.type === "text/csv" ||
-      file.type === "text/plain" ||
-      file.type.includes("rtf")
-    ) {
+        // Convert all sheets to text
+        const allText: string[] = [];
+        workbook.eachSheet((worksheet: any, sheetId: number) => {
+          const sheetData: string[] = [];
+          worksheet.eachRow((row: any, rowNumber: number) => {
+            sheetData.push(row.values.slice(1).join(','));
+          });
+          allText.push(`=== Sheet: ${worksheet.name} ===\n${sheetData.join('\n')}`);
+        });
+
+        fileContent = allText.join("\n\n");
+        console.log(`Excel extracted. Length: ${fileContent.length}`);
+      } catch (xlsxError) {
+        console.error("Error processing Excel file:", xlsxError);
+        return NextResponse.json(
+          { error: "Failed to process Excel file. Please try converting to CSV." },
+          { status: 500 }
+        );
+      }
+    } {
       // Process text-based files
       extractionMethod = "Text";
       fileContent = new TextDecoder().decode(buffer);

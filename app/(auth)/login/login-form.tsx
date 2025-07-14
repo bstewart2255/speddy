@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PasswordInput } from "../../components/auth/password-input";
+import { log } from '@/lib/monitoring/logger';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -17,33 +18,41 @@ export default function LoginForm() {
     setError('');
     setLoading(true);
 
+    log.info('Login attempt', { email });
+
     try {
-      // Use fetch to call our API route instead of direct Supabase client
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        log.warn('Login failed', { 
+          email, 
+          error: data.error,
+          statusCode: response.status 
+        });
+
         setError(data.error || 'Login failed');
         setLoading(false);
         return;
       }
 
-      // Success - redirect based on subscription status
+      log.info('Login successful', { 
+        email,
+        needsPayment: data.needsPayment 
+      });
+
       if (data.needsPayment) {
         router.push('/signup?step=payment&subscription_required=true');
       } else {
-        // Use window.location for a full page refresh to ensure cookies are set
         window.location.href = '/dashboard';
       }
     } catch (err) {
-      console.error('Login error:', err);
+      log.error('Login error', err, { email });
       setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }
