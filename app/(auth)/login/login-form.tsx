@@ -15,6 +15,14 @@ export default function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+
+    // Double-check we're not accidentally in a GET scenario
+    if (window.location.search.includes('password=')) {
+      // Clear the URL if password was accidentally exposed
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
     setError('');
     setLoading(true);
 

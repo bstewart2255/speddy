@@ -133,7 +133,7 @@ export function CheckoutForm({ onSuccess, referralCode: initialCode }: CheckoutF
         )}
         {!referralCode && (
           <p className="mt-1 text-sm text-gray-500">
-            Have a referral code? Enter it to get 60 days free!
+            Have another teacher's referral code? Enter it to get 60 days free!
           </p>
         )}
       </div>

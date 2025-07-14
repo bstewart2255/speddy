@@ -65,13 +65,6 @@ export default function SignupPage() {
 
           {currentStep === 'payment' && (
             <>
-              {searchParams.get('subscription_required') === 'true' && (
-                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    Please complete your subscription to access Speddy.
-                  </p>
-                </div>
-              )}
               <PaymentStep 
                 userEmail={userEmail} 
                 showSubscriptionRequired={searchParams.get('subscription_required') === 'true'}
