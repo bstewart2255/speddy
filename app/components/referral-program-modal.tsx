@@ -1,10 +1,10 @@
                     'use client';
 
-                    import { useState, useEffect } from 'react';
+                    import { useState, useEffect, Suspense } from 'react';
                     import { X } from 'lucide-react';
                     import { useSearchParams } from 'next/navigation';
 
-                    export function ReferralProgramModal() {
+                    function ReferralProgramModalContent() {
                       const [isOpen, setIsOpen] = useState(false);
                       const searchParams = useSearchParams();
 
@@ -125,5 +125,13 @@
                             </div>
                           </div>
                         </div>
+                      );
+                    }
+
+                    export function ReferralProgramModal() {
+                      return (
+                        <Suspense fallback={null}>
+                          <ReferralProgramModalContent />
+                        </Suspense>
                       );
                     }

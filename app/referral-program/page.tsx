@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { ReferralProgramModal } from '../components/referral-program-modal';
 
-export default function ReferralProgramPage() {
+function ReferralProgramContent() {
   const router = useRouter();
 
   useEffect(() => {
@@ -17,5 +17,13 @@ export default function ReferralProgramPage() {
       <p>Redirecting...</p>
       <ReferralProgramModal />
     </div>
+  );
+}
+
+export default function ReferralProgramPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>}>
+      <ReferralProgramContent />
+    </Suspense>
   );
 }
