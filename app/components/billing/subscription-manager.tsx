@@ -147,7 +147,7 @@ export function SubscriptionManager() {
         </div>
         <p className="text-sm text-blue-700">
           Your trial ends on {format(trialEndDate, 'MMMM d, yyyy')}. 
-          You'll be charged {formatPrice(SUBSCRIPTION_CONFIG.monthlyPrice)} on this date.
+          You&apos;ll be charged {formatPrice(SUBSCRIPTION_CONFIG.monthlyPrice)} on this date.
         </p>
       </div>
     );

@@ -135,7 +135,7 @@ export default function SEADashboard() {
       {/* Today's Sessions */}
       <Card>
         <CardBody>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Today's Sessions</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Today&apos;s Sessions</h2>
           {todaysSessions.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No sessions scheduled for today</p>
           ) : (

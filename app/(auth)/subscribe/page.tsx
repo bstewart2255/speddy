@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CheckoutForm } from '@/app/components/payment/checkout-form';
@@ -11,11 +11,7 @@ export default function SubscribePage() {
   const router = useRouter();
   const supabase = createClient();
 
-  useEffect(() => {
-    checkSubscription();
-  }, []);
-
-  const checkSubscription = async () => {
+  const checkSubscription = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -37,7 +33,11 @@ export default function SubscribePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, supabase]); // Add dependencies
+
+  useEffect(() => {
+    checkSubscription();
+  }, [checkSubscription]); // Add checkSubscription as dependency
 
   if (loading) {
     return (

@@ -920,7 +920,7 @@ export default function SchedulePage() {
                     {unscheduledCount === 1 ? "s" : ""} to be scheduled
                   </p>
                   <p className="text-sm text-amber-700">
-                    Click "Schedule Sessions" above to add these sessions to your calendar
+                    Click &quot;Schedule Sessions&quot; above to add these sessions to your calendar
                   </p>
                 </div>
               </div>

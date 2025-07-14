@@ -206,7 +206,7 @@ export default function SpecialActivitiesPage() {
               </div>
             ) : specialActivities.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                No special activities yet. Click "Add Activity" to get started.
+                No special activities yet. Click &quot;Add Activity&quot; to get started.
               </div>
             ) : (
               <Table>

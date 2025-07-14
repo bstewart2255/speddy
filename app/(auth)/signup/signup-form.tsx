@@ -472,7 +472,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
           ))}
           <p className="text-xs text-gray-500">
-            You'll be able to set your schedule for each school after signup
+            You&apos;ll be able to set your schedule for each school after signup
           </p>
         </div>
       )}
@@ -537,7 +537,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <label className="flex items-start">
             <input type="checkbox" required className="mr-2 mt-1" />
             <span className="text-sm text-gray-700">
-              I will follow my district's data retention policies
+              I will follow my district&apos;s data retention policies
             </span>
           </label>
         </div>

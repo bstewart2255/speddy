@@ -135,11 +135,11 @@ Ms. Johnson:
           <div className="bg-blue-50 p-4 rounded-lg">
             <h4 className="font-medium text-blue-900 mb-2">Tips for Best Results:</h4>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• The AI can handle various formats - don't worry about perfect structure</li>
+              <li>• The AI can handle various formats - don&apos;t worry about perfect structure</li>
               <li>• Include clear headers or labels when possible</li>
               <li>• For privacy, the system will automatically convert names to initials</li>
               <li>• Review the parsed data before confirming the import</li>
-              <li>• You can uncheck any items you don't want to import</li>
+              <li>• You can uncheck any items you don&apos;t want to import</li>
             </ul>
           </div>
         </div>

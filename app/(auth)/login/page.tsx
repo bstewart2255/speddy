@@ -12,7 +12,7 @@ export default function LoginPage() {
               <span className="text-5xl font-logo text-gray-900">Speddy</span>
             </div>
 
-            <h2 className="mt-6 text-center text-2xl font-semibold text-gray-900">
+            <h2 className="mt-6 text-center text-xl font-semibold text-gray-900">
               The friendly elementary SpEd platform :)
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">

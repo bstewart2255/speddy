@@ -217,7 +217,7 @@ export default function BellSchedulesPage() {
               </div>
             ) : bellSchedules.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                No bell schedules yet. Click "Add Schedule" to get started.
+                No bell schedules yet. Click &quot;Add Schedule&quot; to get started.
               </div>
             ) : (
               <Table>
