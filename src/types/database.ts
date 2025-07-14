@@ -308,6 +308,7 @@ export interface Database {
           created_at: string
           completed_at: string | null
           completed_by: string | null
+          session_date: string | null
           session_notes: string | null
         }
         Insert: {
@@ -323,6 +324,7 @@ export interface Database {
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
+          session_date?: string | null
           session_notes?: string | null
         }
         Update: {
@@ -338,6 +340,7 @@ export interface Database {
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
+          session_date?: string | null
           session_notes?: string | null
         }
       },

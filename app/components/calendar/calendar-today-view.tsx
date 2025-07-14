@@ -1,41 +1,60 @@
-"use client";
+  "use client";
 
-import React, { useState } from 'react';
-import type { Database } from '../../../src/types/database';
-import { createClient } from '@/lib/supabase/client';
+  import React, { useState } from 'react';
+  import type { Database } from '../../../src/types/database';
+  import { createClient } from '@/lib/supabase/client';
+  import { SessionGenerator } from '@/lib/services/session-generator';
 
-type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+  type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
-interface CalendarTodayViewProps {
-  sessions: ScheduleSession[];
-  students: Map<string, { initials: string }>;
-  onSessionClick?: (session: ScheduleSession) => void;
-  currentDate?: Date;  
-  holidays?: Array<{ date: string; name?: string }>;  // Add holidays prop
-}
+  interface CalendarTodayViewProps {
+    sessions: ScheduleSession[];
+    students: Map<string, { initials: string }>;
+    onSessionClick?: (session: ScheduleSession) => void;
+    currentDate?: Date;  
+    holidays?: Array<{ date: string; name?: string }>;
+  }
 
-export function CalendarTodayView({ 
-  sessions, 
-  students,
-  onSessionClick,
-  currentDate = new Date(),
-  holidays = []  // Add holiday feature
-}: CalendarTodayViewProps) {
-  
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
-  const [notesValue, setNotesValue] = useState('');
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
+  export function CalendarTodayView({ 
+    sessions, 
+    students,
+    onSessionClick,
+    currentDate = new Date(),
+    holidays = []
+  }: CalendarTodayViewProps) {
 
-  const supabase = createClient<Database>();
+    const [notesModalOpen, setNotesModalOpen] = useState(false);
+    const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+    const [notesValue, setNotesValue] = useState('');
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
+    const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
 
-  const [sessionsState, setSessionsState] = useState(sessions);
+    const supabase = createClient<Database>();
+    const sessionGenerator = new SessionGenerator();
 
-  // Update sessions when props change
-  React.useEffect(() => {
-    setSessionsState(sessions);
-  }, [sessions]);
+    // Load sessions for the current date
+    React.useEffect(() => {
+      const loadSessions = async () => {
+        if (!currentDate) return;
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get sessions for just this day
+        const sessions = await sessionGenerator.getSessionsForDateRange(
+          user.id,
+          currentDate,
+          currentDate
+        );
+
+        setSessionsState(sessions);
+      };
+
+      loadSessions();
+    }, [currentDate]);
+
+    // Just make sure the handler functions use sessionsState instead of the sessions prop
 
   // Check if current date is a holiday
   const isHoliday = () => {
@@ -79,43 +98,62 @@ export function CalendarTodayView({
   };
 
   // Handler for completing/uncompleting a session
-  const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
-    setUpdatingCompletion(sessionId);
+    const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
+      setUpdatingCompletion(sessionId);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+        const session = sessionsState.find(s => s.id === sessionId);
+        if (!session) return;
 
-      const updateData: any = completed 
-        ? { 
-            completed_at: new Date().toISOString(),
-            completed_by: user.id
+        const updateData: any = completed 
+          ? { 
+              completed_at: new Date().toISOString(),
+              completed_by: user.id
+            }
+          : {
+              completed_at: null,
+              completed_by: null
+            };
+
+        // Check if this is a temporary session
+        if (session.id.startsWith('temp-')) {
+          // Create a new instance in the database
+          const sessionGenerator = new SessionGenerator();
+          const savedSession = await sessionGenerator.saveSessionInstance({
+            ...session,
+            ...updateData
+          });
+
+          if (savedSession) {
+            setSessionsState(prev => prev.map(s => 
+              s.id === sessionId ? savedSession : s
+            ));
           }
-        : {
-            completed_at: null,
-            completed_by: null
-          };
+        } else {
+          // Update existing session
+          const { error } = await supabase
+            .from('schedule_sessions')
+            .update(updateData)
+            .eq('id', sessionId);
 
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update(updateData)
-        .eq('id', sessionId);
+          if (error) throw error;
 
-      if (error) throw error;
-
-      // Update local session data
-      setSessionsState(prev => prev.map(s => 
-        s.id === sessionId 
-          ? { ...s, ...updateData }
-          : s
-      ));
-    } catch (error) {
-      console.error('Error updating completion status:', error);
-      alert('Failed to update completion status');
-    } finally {
-      setUpdatingCompletion(null);
-    }
-  };
+          // Update local session data
+          setSessionsState(prev => prev.map(s => 
+            s.id === sessionId 
+              ? { ...s, ...updateData }
+              : s
+          ));
+        }
+      } catch (error) {
+        console.error('Error updating completion status:', error);
+        alert('Failed to update completion status');
+      } finally {
+        setUpdatingCompletion(null);
+      }
+    };
 
   // Handler for notes button click
   const handleNotesClick = (session: ScheduleSession) => {
@@ -125,34 +163,52 @@ export function CalendarTodayView({
   };
 
   // Handler for saving notes
-  const handleSaveNotes = async () => {
-    if (!selectedSession) return;
+    // In calendar-today-view.tsx
+    const handleSaveNotes = async () => {
+      if (!selectedSession) return;
 
-    setSavingNotes(true);
+      setSavingNotes(true);
 
-    try {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update({ session_notes: notesValue.trim() || null })
-        .eq('id', selectedSession.id);
+      try {
+        // Check if this is a temporary session
+        if (selectedSession.id.startsWith('temp-')) {
+          // Create a new instance with notes
+          const sessionGenerator = new SessionGenerator();
+          const savedSession = await sessionGenerator.saveSessionInstance({
+            ...selectedSession,
+            session_notes: notesValue.trim() || null
+          });
 
-      if (error) throw error;
+          if (savedSession) {
+            setSessionsState(prev => prev.map(s => 
+              s.id === selectedSession.id ? savedSession : s
+            ));
+          }
+        } else {
+          // Update existing session
+          const { error } = await supabase
+            .from('schedule_sessions')
+            .update({ session_notes: notesValue.trim() || null })
+            .eq('id', selectedSession.id);
 
-      // Update local session data
-      setSessionsState(prev => prev.map(s => 
-        s.id === selectedSession.id 
-          ? { ...s, session_notes: notesValue.trim() || null }
-          : s
-      ));
+          if (error) throw error;
 
-      setNotesModalOpen(false);
-    } catch (error) {
-      console.error('Error saving notes:', error);
-      alert('Failed to save notes');
-    } finally {
-      setSavingNotes(false);
-    }
-  };
+          // Update local session data
+          setSessionsState(prev => prev.map(s => 
+            s.id === selectedSession.id 
+              ? { ...s, session_notes: notesValue.trim() || null }
+              : s
+          ));
+        }
+
+        setNotesModalOpen(false);
+      } catch (error) {
+        console.error('Error saving notes:', error);
+        alert('Failed to save notes');
+      } finally {
+        setSavingNotes(false);
+      }
+    };
 
   return (
     <div>

@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from "../../src/types/database";
-import { getSchoolHours } from '../supabase/queries/school-hours';
 
 type Student = Database["public"]["Tables"]["students"]["Row"];
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
@@ -358,12 +357,12 @@ export class OptimizedScheduler {
         start_time: slot.startTime,
         end_time: slot.endTime,
         service_type: this.providerRole,
-        assigned_to_sea_id:
-          this.providerRole === "sea" ? this.providerId : null,
+        assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
         delivered_by: this.providerRole === "sea" ? "sea" : "provider",
         completed_at: null,
         completed_by: null,
         session_notes: null,
+        session_date: null
       });
     }
 
@@ -785,6 +784,7 @@ export class OptimizedScheduler {
         completed_at: session.completed_at,
         completed_by: session.completed_by,
         session_notes: session.session_notes,
+        session_date: session.session_date,
         created_at: new Date().toISOString(),
       });
     }

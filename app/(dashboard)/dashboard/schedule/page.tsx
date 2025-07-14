@@ -672,7 +672,8 @@ export default function SchedulePage() {
         .from("schedule_sessions")
         .select("*")
         .eq("provider_id", user.id)
-        .in("student_id", studentIds);
+        .in("student_id", studentIds)
+        .is("session_date", null);
 
       console.log("Fetched data:", {
         students: studentsData.data?.length || 0,

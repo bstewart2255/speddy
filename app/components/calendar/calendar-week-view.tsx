@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
+import { SessionGenerator } from '@/lib/services/session-generator';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 
@@ -79,17 +80,41 @@ export function CalendarWeekView({
   const [sessionsState, setSessionsState] = useState(sessions);
 
   const supabase = createClient<Database>();
+  const sessionGenerator = new SessionGenerator();
 
-  // Update sessions when props change
+  // Replace the useEffect that loads sessions
   React.useEffect(() => {
-    setSessionsState(sessions);
-  }, [sessions]);
+    const loadSessions = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get the Monday of the current week
+      const weekStart = new Date();
+      const currentDay = weekStart.getDay();
+      const diff = currentDay === 0 ? -6 : 1 - currentDay;
+      weekStart.setDate(weekStart.getDate() + diff + (weekOffset * 7));
+
+      // Get the Sunday (end of week)
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+
+      const weekSessions = await sessionGenerator.getSessionsForDateRange(user.id, weekStart, weekEnd);
+
+      setSessionsState(weekSessions);
+    };
+
+    loadSessions();
+  }, [weekOffset]);
 
   // Handler for completing/uncompleting a session
+  // In calendar-week-view.tsx
   const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      const session = sessionsState.find(s => s.id === sessionId);
+      if (!session) return;
 
       const updateData: any = completed 
         ? { 
@@ -101,19 +126,36 @@ export function CalendarWeekView({
             completed_by: null
           };
 
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update(updateData)
-        .eq('id', sessionId);
+      // Check if this is a temporary session
+      if (session.id.startsWith('temp-')) {
+        // Create a new instance in the database
+        const sessionGenerator = new SessionGenerator();
+        const savedSession = await sessionGenerator.saveSessionInstance({
+          ...session,
+          ...updateData
+        });
 
-      if (error) throw error;
+        if (savedSession) {
+          setSessionsState(prev => prev.map(s => 
+            s.id === sessionId ? savedSession : s
+          ));
+        }
+      } else {
+        // Update existing session
+        const { error } = await supabase
+          .from('schedule_sessions')
+          .update(updateData)
+          .eq('id', sessionId);
 
-      // Update local state
-      setSessionsState(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { ...session, ...updateData }
-          : session
-      ));
+        if (error) throw error;
+
+        // Update local state
+        setSessionsState(prev => prev.map(session => 
+          session.id === sessionId 
+            ? { ...session, ...updateData }
+            : session
+        ));
+      }
     } catch (error) {
       console.error('Error updating completion status:', error);
       alert('Failed to update completion status');
@@ -134,19 +176,36 @@ export function CalendarWeekView({
     setSavingNotes(true);
 
     try {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update({ session_notes: notesValue.trim() || null })
-        .eq('id', selectedSession.id);
+      // Check if this is a temporary session
+      if (selectedSession.id.startsWith('temp-')) {
+        // Create a new instance with notes
+        const sessionGenerator = new SessionGenerator();
+        const savedSession = await sessionGenerator.saveSessionInstance({
+          ...selectedSession,
+          session_notes: notesValue.trim() || null
+        });
 
-      if (error) throw error;
+        if (savedSession) {
+          setSessionsState(prev => prev.map(s => 
+            s.id === selectedSession.id ? savedSession : s
+          ));
+        }
+      } else {
+        // Update existing session
+        const { error } = await supabase
+          .from('schedule_sessions')
+          .update({ session_notes: notesValue.trim() || null })
+          .eq('id', selectedSession.id);
 
-      // Update local state
-      setSessionsState(prev => prev.map(session => 
-        session.id === selectedSession.id 
-          ? { ...session, session_notes: notesValue.trim() || null }
-          : session
-      ));
+        if (error) throw error;
+
+        // Update local state
+        setSessionsState(prev => prev.map(session => 
+          session.id === selectedSession.id 
+            ? { ...session, session_notes: notesValue.trim() || null }
+            : session
+        ));
+      }
 
       setNotesModalOpen(false);
     } catch (error) {

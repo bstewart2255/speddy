@@ -124,8 +124,12 @@ export class AutoScheduler {
             start_time: slot.startTime,
             end_time: slot.endTime,
             service_type: this.providerRole,
-            assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
-            delivered_by: this.providerRole === 'sea' ? 'sea' : 'provider'
+            assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
+            delivered_by: this.providerRole === "sea" ? "sea" : "provider",
+            completed_at: null,
+            completed_by: null,
+            session_notes: null,
+            session_date: null
           });
         }
 
