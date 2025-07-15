@@ -26,7 +26,7 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   // Get all students and their requirements for the current school
   const studentsPerf = measurePerformanceWithAlerts('fetch_students_for_unscheduled_count', 'database');
   const studentsResult = await safeQuery(
-    () => {
+    async () => {
       let studentsQuery = supabase
         .from('students')
         .select('id, sessions_per_week')
@@ -37,7 +37,9 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
         studentsQuery = studentsQuery.eq('school_site', schoolSite);
       }
 
-      return studentsQuery;
+      const { data, error } = await studentsQuery;
+      if (error) throw error;
+      return data;
     },
     { 
       operation: 'fetch_students_for_unscheduled_count', 

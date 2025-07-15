@@ -239,6 +239,8 @@ export interface Database {
           start_time: string
           end_time: string
           period_name: string
+          school_site: string | null
+          school_district: string | null
           created_at: string
         }
         Insert: {
@@ -249,6 +251,8 @@ export interface Database {
           start_time: string
           end_time: string
           period_name: string
+          school_site?: string | null
+          school_district?: string | null
           created_at?: string
         }
         Update: {
@@ -259,10 +263,12 @@ export interface Database {
           start_time?: string
           end_time?: string
           period_name?: string
+          school_site?: string | null
+          school_district?: string | null
           created_at?: string
         }
       },
-      special_activities: {
+      special_activities: { // TODO: investigate why this doesn't have school_site and school_district
         Row: {
           id: string
           provider_id: string

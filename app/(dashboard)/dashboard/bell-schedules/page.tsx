@@ -23,24 +23,50 @@ export default function BellSchedulesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
   const supabase = createClient();
-  const { currentSchool } = useSchool();
+  const { currentSchool, loading: schoolLoading } = useSchool();
 
   // Fetch bell schedules from database
   const fetchSchedules = async () => {
     try {
+      console.log('Fetching bell schedules for:', currentSchool?.school_site);
+
       const data = await getBellSchedules(currentSchool?.school_site);
-      setBellSchedules(data || []); // Ensure we always set an array
+
+      // Debug: Log the exact structure of what's returned
+      console.log('Bell schedules received (raw):', data);
+      console.log('Type of data:', typeof data);
+      console.log('Is array?:', Array.isArray(data));
+
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        console.log('Data keys:', Object.keys(data));
+        // Check if data is wrapped in an object
+        if ('data' in data) {
+          console.log('Found data property:', data.data);
+          setBellSchedules(Array.isArray(data.data) ? data.data : []);
+          return;
+        }
+      }
+
+      setBellSchedules(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching schedules:', error);
-      setBellSchedules([]); // Set empty array on error
+      setBellSchedules([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSchedules();
-  }, [currentSchool]); // Add currentSchool as a dependency
+    // Clear existing schedules when school changes
+    setBellSchedules([]);
+    setLoading(true);
+
+    if (currentSchool) {
+      fetchSchedules();
+    } else {
+      setLoading(false);
+    }
+  }, [currentSchool]); // This dependency should trigger re-fetch when school changes
 
   // Handle delete
   const handleDelete = async (id: string, periodName: string) => {
@@ -61,8 +87,13 @@ export default function BellSchedulesPage() {
   };
 
   // Format time for display
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':');
+  const formatTime = (time: string | null | undefined) => {
+    if (!time) return '';
+
+    const timeParts = time.split(':');
+    if (timeParts.length < 2) return time; // Return original if not in expected format
+
+    const [hours, minutes] = timeParts;
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
@@ -74,6 +105,20 @@ export default function BellSchedulesPage() {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     return days[day - 1] || 'Unknown';
   };
+
+  if (loading || schoolLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading bell schedules...</p>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('Bell schedules state before render:', bellSchedules);
+  console.log('Bell schedules length:', bellSchedules.length);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -212,11 +257,7 @@ export default function BellSchedulesPage() {
             <CardTitle>Current Bell Schedules ({bellSchedules.length})</CardTitle>
           </CardHeader>
           <CardBody>
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              </div>
-            ) : bellSchedules.length === 0 ? (
+            {bellSchedules.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 No bell schedules yet. Click &quot;Add Schedule&quot; to get started.
               </div>
@@ -238,8 +279,8 @@ export default function BellSchedulesPage() {
 
                       // Helper function to extract grade number
                       const getGradeValue = (grade: string) => {
+                        if (!grade) return 999; // Add null check
                         if (grade === 'K') return 0;
-                        // Handle formats like "1", "1st", "2nd", etc.
                         const num = parseInt(grade);
                         return isNaN(num) ? 999 : num;
                       };
@@ -250,27 +291,27 @@ export default function BellSchedulesPage() {
                       return aValue - bValue;
                     })
                     .map((schedule) => (
-                    <TableRow key={schedule.id}>
-                      <TableCell>
-                        <GradeTag grade={schedule.grade_level} />
-                      </TableCell>
-                      <TableCell>{schedule.period_name}</TableCell>
-                      <TableCell>{dayNumberToName(schedule.day_of_week)}</TableCell>
-                      <TableCell>
-                        {formatTime(schedule.start_time)} - {formatTime(schedule.end_time)}
-                      </TableCell>
-                      <TableActionCell>
-                        <Button 
-                          variant="danger" 
-                          size="sm"
-                          onClick={() => handleDelete(schedule.id, schedule.period_name)}
-                          disabled={deletingId === schedule.id}
-                        >
-                          {deletingId === schedule.id ? 'Deleting...' : 'Delete'}
-                        </Button>
-                      </TableActionCell>
-                    </TableRow>
-                  ))}
+                      <TableRow key={schedule.id}>
+                        <TableCell>
+                          <GradeTag grade={schedule.grade_level || ''} />
+                        </TableCell>
+                        <TableCell>{schedule.period_name || ''}</TableCell>
+                        <TableCell>{dayNumberToName(schedule.day_of_week)}</TableCell>
+                        <TableCell>
+                          {schedule.start_time ? formatTime(schedule.start_time) : ''} - {schedule.end_time ? formatTime(schedule.end_time) : ''}
+                        </TableCell>
+                        <TableActionCell>
+                          <Button 
+                            variant="danger" 
+                            size="sm"
+                            onClick={() => handleDelete(schedule.id, schedule.period_name || 'this schedule')}
+                            disabled={deletingId === schedule.id}
+                          >
+                            {deletingId === schedule.id ? 'Deleting...' : 'Delete'}
+                          </Button>
+                        </TableActionCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             )}

@@ -50,7 +50,7 @@ export default function StudentsPage() {
   const [showImportSection, setShowImportSection] = useState(false);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = createClient();
-  const { currentSchool } = useSchool();
+  const { currentSchool, loading: schoolLoading } = useSchool();
   const router = useRouter();
 
   // Check if user works at multiple schools
@@ -75,6 +75,10 @@ export default function StudentsPage() {
 
   // Fetch students
   useEffect(() => {
+    console.log('Students page useEffect triggered');
+    console.log('currentSchool in useEffect:', currentSchool);
+    console.log('schoolLoading:', schoolLoading);
+    
     if (currentSchool) {
       fetchStudents();
       checkUnscheduledSessions();
@@ -82,13 +86,32 @@ export default function StudentsPage() {
   }, [currentSchool]);
 
   const fetchStudents = async () => {
+    console.log('fetchStudents called');
+    console.log('currentSchool:', currentSchool);
+
     try {
-      const data = await getStudents(currentSchool?.school_site);
-      setStudents(data || []); // Ensure we always set an array
+      if (!currentSchool) {
+        console.log('No currentSchool, returning early');
+        setStudents([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Fetching students for school_site:', currentSchool.school_site);
+      const data = await getStudents(currentSchool.school_site);
+
+      if (!Array.isArray(data)) {
+        console.error('Data fetched is not an array!', data);
+        setStudents([]);
+      } else {
+        console.log('Students data received:', data);
+        setStudents(data);
+      }
+
       checkUnscheduledSessions();
     } catch (error) {
       console.error('Error fetching students:', error);
-      setStudents([]); // Set empty array on error
+      setStudents([]);
     } finally {
       setLoading(false);
     }
@@ -96,7 +119,8 @@ export default function StudentsPage() {
 
   const checkUnscheduledSessions = async () => {
     try {
-      const count = await getUnscheduledSessionsCount(currentSchool?.school_site);
+      if (!currentSchool) return;
+      const count = await getUnscheduledSessionsCount(currentSchool.school_site);
       setUnscheduledCount(count);
     } catch (error) {
       console.error('Error checking unscheduled sessions:', error);
@@ -185,7 +209,7 @@ export default function StudentsPage() {
     });
   };
 
-  if (loading) {
+  if (loading || schoolLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p>Loading students...</p>

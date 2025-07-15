@@ -36,9 +36,14 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   }, [currentSchool, loading]);
 
   const fetchProviderSchools = async () => {
+    console.log('[SchoolContext] Fetching provider schools...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log('[SchoolContext] No user found');
+        return;
+      }
+      console.log('[SchoolContext] User ID:', user.id);
 
       // First, check if user works at multiple schools
       const { data: profile } = await supabase
@@ -47,7 +52,12 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         .eq('id', user.id)
         .single();
 
-      if (!profile) return;
+      if (!profile) {
+        console.log('[SchoolContext] No profile found');
+        return;
+      }
+
+      console.log('[SchoolContext] Profile:', profile);
 
       // If user only works at one school, use their profile school
       if (!profile.works_at_multiple_schools) {
@@ -56,6 +66,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           school_district: profile.school_district,
           is_primary: true
         };
+        console.log('[SchoolContext] Single school mode, setting:', singleSchool);
         setAvailableSchools([singleSchool]);
         setCurrentSchool(singleSchool);
       } else {
