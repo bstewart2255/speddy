@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
+import { safeQuery } from '@/lib/supabase/safe-query';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
 
 export interface StudentDetails {
@@ -15,19 +17,31 @@ export interface StudentDetails {
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
   const supabase = createClient<Database>();
 
-  const { data, error } = await supabase
-    .from('student_details')
-    .select('*')
-    .eq('student_id', studentId)
-    .single();
+  const fetchPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
+  const fetchResult = await safeQuery(
+    () => supabase
+      .from('student_details')
+      .select('*')
+      .eq('student_id', studentId)
+      .single(),
+    { 
+      operation: 'fetch_student_details', 
+      studentId 
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
 
-  if (error) {
-    if (error.code === 'PGRST116') { // No rows returned
+  if (fetchResult.error) {
+    // Check if it's a no rows error
+    if ((fetchResult.error as any).code === 'PGRST116') { // No rows returned
       return null;
     }
-    console.error('Error fetching student details:', error);
-    throw error;
+    console.error('Error fetching student details:', fetchResult.error);
+    throw fetchResult.error;
   }
+
+  const data = fetchResult.data;
+  if (!data) return null;
 
   return {
     first_name: data.first_name || '',
@@ -47,26 +61,41 @@ export async function upsertStudentDetails(
 ): Promise<void> {
   const supabase = createClient<Database>();
 
-  const { error } = await supabase
-    .from('student_details')
-    .upsert({
-      student_id: studentId,
-      first_name: details.first_name,
-      last_name: details.last_name,
-      date_of_birth: details.date_of_birth || null,
-      district_id: details.district_id,
-      upcoming_iep_date: details.upcoming_iep_date || null,
-      upcoming_triennial_date: details.upcoming_triennial_date || null,
-      iep_goals: details.iep_goals,
-      working_skills: details.working_skills,
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'student_id'  // Add this to specify the conflict column
-    });
+  const upsertPerf = measurePerformanceWithAlerts('upsert_student_details', 'database');
+  const upsertResult = await safeQuery(
+    () => supabase
+      .from('student_details')
+      .upsert({
+        student_id: studentId,
+        first_name: details.first_name,
+        last_name: details.last_name,
+        date_of_birth: details.date_of_birth || null,
+        district_id: details.district_id,
+        upcoming_iep_date: details.upcoming_iep_date || null,
+        upcoming_triennial_date: details.upcoming_triennial_date || null,
+        iep_goals: details.iep_goals,
+        working_skills: details.working_skills,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'student_id'  // Add this to specify the conflict column
+      }),
+    { 
+      operation: 'upsert_student_details', 
+      studentId,
+      hasFirstName: !!details.first_name,
+      hasLastName: !!details.last_name,
+      hasDateOfBirth: !!details.date_of_birth,
+      hasIepDate: !!details.upcoming_iep_date,
+      hasTriennialDate: !!details.upcoming_triennial_date,
+      iepGoalsCount: details.iep_goals.length,
+      workingSkillsCount: details.working_skills.length
+    }
+  );
+  upsertPerf.end({ success: !upsertResult.error });
 
-  if (error) {
-    console.error('Error saving student details:', error);
-    console.error('Error details:', error.message, error.details, error.hint);
-    throw error;
+  if (upsertResult.error) {
+    console.error('Error saving student details:', upsertResult.error);
+    console.error('Error details:', upsertResult.error.message, (upsertResult.error as any).details, (upsertResult.error as any).hint);
+    throw upsertResult.error;
   }
 }

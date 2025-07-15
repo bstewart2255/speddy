@@ -4,7 +4,12 @@ import Script from 'next/script';
 import "./globals.css";
 import { AuthProvider } from "./components/providers/auth-provider";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ 
+  subsets: ["latin"],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
 const pacifico = Pacifico({ 
   subsets: ["latin"],
   weight: "400",
@@ -23,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={pacifico.variable}>
-      <body className={inter.className}>
+    <html lang="en" className={`${inter.variable} ${pacifico.variable}`}>
+      <body className={`${inter.className || 'font-sans'}`}>
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
+import { safeQuery } from '@/lib/supabase/safe-query';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
@@ -12,36 +14,59 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
   const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to set provider_id
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_add_bell_schedule' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
+  }
+
+  const user = authResult.data.data.user;
 
   // Get user's school if not provided
   let finalSchoolSite = schedule.school_site;
 
   if (!finalSchoolSite) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('school_site')
-      .eq('id', user.id)
-      .single();
+    const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_bell_schedule', 'database');
+    const profileResult = await safeQuery(
+      () => supabase
+        .from('profiles')
+        .select('school_site')
+        .eq('id', user.id)
+        .single(),
+      { operation: 'fetch_profile_for_bell_schedule', userId: user.id }
+    );
+    profilePerf.end({ success: !profileResult.error });
 
-    if (profile) {
-      finalSchoolSite = profile.school_site;
+    if (profileResult.data) {
+      finalSchoolSite = profileResult.data.school_site;
     }
   }
 
-  const { data, error } = await supabase
-    .from('bell_schedules')
-    .insert([{
-      ...schedule,
-      provider_id: user.id,
-      school_site: finalSchoolSite
-    }])
-    .select()
-    .single();
+  const insertPerf = measurePerformanceWithAlerts('add_bell_schedule', 'database');
+  const insertResult = await safeQuery(
+    () => supabase
+      .from('bell_schedules')
+      .insert([{
+        ...schedule,
+        provider_id: user.id,
+        school_site: finalSchoolSite
+      }])
+      .select()
+      .single(),
+    { 
+      operation: 'add_bell_schedule', 
+      userId: user.id,
+      gradeLevel: schedule.grade_level,
+      dayOfWeek: schedule.day_of_week
+    }
+  );
+  insertPerf.end({ success: !insertResult.error });
 
-  if (error) throw error;
-  return data;
+  if (insertResult.error) throw insertResult.error;
+  return insertResult.data;
 }
 
 /**
@@ -51,16 +76,33 @@ export async function deleteBellSchedule(id: string) {
   const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to verify ownership
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_delete_bell_schedule' }
+  );
 
-  const { error } = await supabase
-    .from('bell_schedules')
-    .delete()
-    .eq('id', id)
-    .eq('provider_id', user.id); // CRITICAL: Only delete if user owns this schedule
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
+  }
 
-  if (error) throw error;
+  const user = authResult.data.data.user;
+
+  const deletePerf = measurePerformanceWithAlerts('delete_bell_schedule', 'database');
+  const deleteResult = await safeQuery(
+    () => supabase
+      .from('bell_schedules')
+      .delete()
+      .eq('id', id)
+      .eq('provider_id', user.id), // CRITICAL: Only delete if user owns this schedule
+    { 
+      operation: 'delete_bell_schedule', 
+      userId: user.id,
+      scheduleId: id 
+    }
+  );
+  deletePerf.end({ success: !deleteResult.error });
+
+  if (deleteResult.error) throw deleteResult.error;
 }
 
 /**
@@ -69,16 +111,33 @@ export async function deleteBellSchedule(id: string) {
 export async function deleteGradeSchedules(gradeLevel: string) {
   const supabase = createClient<Database>();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_delete_grade_schedules' }
+  );
 
-  const { error } = await supabase
-    .from('bell_schedules')
-    .delete()
-    .eq('grade_level', gradeLevel)
-    .eq('provider_id', user.id);
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
+  }
 
-  if (error) throw error;
+  const user = authResult.data.data.user;
+
+  const deletePerf = measurePerformanceWithAlerts('delete_grade_schedules', 'database');
+  const deleteResult = await safeQuery(
+    () => supabase
+      .from('bell_schedules')
+      .delete()
+      .eq('grade_level', gradeLevel)
+      .eq('provider_id', user.id),
+    { 
+      operation: 'delete_grade_schedules', 
+      userId: user.id,
+      gradeLevel 
+    }
+  );
+  deletePerf.end({ success: !deleteResult.error });
+
+  if (deleteResult.error) throw deleteResult.error;
 }
 
 /**
@@ -87,24 +146,43 @@ export async function deleteGradeSchedules(gradeLevel: string) {
 export async function getBellSchedules(schoolSite?: string) {
   const supabase = createClient<Database>();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_fetch_bell_schedules' }
+  );
 
-  let query = supabase
-    .from('bell_schedules')
-    .select('*')
-    .eq('provider_id', user.id);
-
-  // Add school filter if provided
-  if (schoolSite) {
-    query = query.eq('school_site', schoolSite);
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
   }
 
-  const { data, error } = await query
-    .order('grade_level', { ascending: true })
-    .order('day_of_week', { ascending: true })
-    .order('start_time', { ascending: true });
+  const user = authResult.data.data.user;
 
-  if (error) throw error;
-  return data || [];
+  const fetchPerf = measurePerformanceWithAlerts('fetch_bell_schedules', 'database');
+  const fetchResult = await safeQuery(
+    () => {
+      let query = supabase
+        .from('bell_schedules')
+        .select('*')
+        .eq('provider_id', user.id);
+
+      // Add school filter if provided
+      if (schoolSite) {
+        query = query.eq('school_site', schoolSite);
+      }
+
+      return query
+        .order('grade_level', { ascending: true })
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+    },
+    { 
+      operation: 'fetch_bell_schedules', 
+      userId: user.id,
+      schoolSite 
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) throw fetchResult.error;
+  return fetchResult.data || [];
 }

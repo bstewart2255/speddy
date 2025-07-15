@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
+import { safeQuery } from '@/lib/supabase/safe-query';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
 
 /**
@@ -10,29 +12,63 @@ import type { Database } from '../../../src/types/database';
 export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   const supabase = createClient<Database>();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_unscheduled_count' }
+  );
 
-  // Get all students and their requirements for the current school
-  let studentsQuery = supabase
-    .from('students')
-    .select('id, sessions_per_week')
-    .eq('provider_id', user.id);
-
-  // Filter by school if provided
-  if (schoolSite) {
-    studentsQuery = studentsQuery.eq('school_site', schoolSite);
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
   }
 
-  const { data: students } = await studentsQuery;
+  const user = authResult.data.data.user;
 
+  // Get all students and their requirements for the current school
+  const studentsPerf = measurePerformanceWithAlerts('fetch_students_for_unscheduled_count', 'database');
+  const studentsResult = await safeQuery(
+    () => {
+      let studentsQuery = supabase
+        .from('students')
+        .select('id, sessions_per_week')
+        .eq('provider_id', user.id);
+
+      // Filter by school if provided
+      if (schoolSite) {
+        studentsQuery = studentsQuery.eq('school_site', schoolSite);
+      }
+
+      return studentsQuery;
+    },
+    { 
+      operation: 'fetch_students_for_unscheduled_count', 
+      userId: user.id,
+      schoolSite 
+    }
+  );
+  studentsPerf.end({ success: !studentsResult.error });
+
+  if (studentsResult.error) throw studentsResult.error;
+  
+  const students = studentsResult.data;
   if (!students || students.length === 0) return 0;
 
   // Get current scheduled sessions count per student
-  const { data: sessions } = await supabase
-    .from('schedule_sessions')
-    .select('student_id')
-    .eq('provider_id', user.id);
+  const sessionsPerf = measurePerformanceWithAlerts('fetch_sessions_for_unscheduled_count', 'database');
+  const sessionsResult = await safeQuery(
+    () => supabase
+      .from('schedule_sessions')
+      .select('student_id')
+      .eq('provider_id', user.id),
+    { 
+      operation: 'fetch_sessions_for_unscheduled_count', 
+      userId: user.id 
+    }
+  );
+  sessionsPerf.end({ success: !sessionsResult.error });
+
+  if (sessionsResult.error) throw sessionsResult.error;
+  
+  const sessions = sessionsResult.data;
 
   // Count sessions per student
   const sessionCounts = new Map<string, number>();

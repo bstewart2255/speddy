@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
+import { log } from '@/lib/monitoring/logger';
+import { track } from '@/lib/monitoring/analytics';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withAuth } from '@/lib/api/with-auth';
 
 // Force Node.js runtime for file processing
 export const runtime = "nodejs";
@@ -20,33 +24,27 @@ const SUPPORTED_TYPES = [
   "text/rtf",
 ];
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, userId: string) => {
+  const perf = measurePerformanceWithAlerts('ai_upload', 'api');
+  
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     // Get form data
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const uploadType = formData.get("type") as string;
 
-    console.log(
-      "Processing file:",
-      file?.name,
-      "Type:",
-      file?.type,
-      "Size:",
-      file?.size,
-    );
+    log.info('Processing file upload', {
+      userId,
+      fileName: file?.name,
+      fileType: file?.type,
+      fileSize: file?.size,
+      uploadType
+    });
 
     if (!file) {
+      log.warn('No file provided in upload request', { userId });
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
@@ -55,7 +53,17 @@ export async function POST(request: NextRequest) {
       !SUPPORTED_TYPES.includes(file.type) &&
       !file.type.includes("wordprocessing")
     ) {
-      console.log("Unsupported file type:", file.type);
+      log.warn('Unsupported file type uploaded', {
+        userId,
+        fileType: file.type,
+        fileName: file.name
+      });
+      
+      track.event('file_upload_unsupported_type', {
+        userId,
+        fileType: file.type
+      });
+      
       return NextResponse.json(
         {
           error:
@@ -77,17 +85,18 @@ export async function POST(request: NextRequest) {
       extractionMethod = 'PDF';
 
       try {
-        console.log('Processing PDF via PDF.co API...');
+        log.info('Processing PDF via PDF.co API', { userId, fileName: file.name });
 
         const API_KEY = process.env.PDF_API_KEY;
         if (!API_KEY) {
+          log.error('PDF API key not configured', null, { userId });
           return NextResponse.json({ 
             error: 'PDF processing not configured. Please add PDF_API_KEY to environment variables.' 
           }, { status: 500 });
         }
 
         // Step 1: Upload the file to PDF.co
-        console.log('Uploading file to PDF.co...');
+        const uploadPerf = measurePerformanceWithAlerts('pdf_upload', 'api');
         const formData = new FormData();
         const blob = new Blob([bytes], { type: 'application/pdf' });
         formData.append('file', blob, file.name);
@@ -101,14 +110,20 @@ export async function POST(request: NextRequest) {
         });
 
         const uploadResult = await uploadResponse.json();
-        console.log('Upload result:', uploadResult);
+        uploadPerf.end({ success: !uploadResult.error });
+        
+        log.info('PDF upload result', {
+          userId,
+          success: !uploadResult.error,
+          fileUrl: uploadResult.url ? 'URL generated' : 'No URL'
+        });
 
         if (uploadResult.error || !uploadResult.url) {
           throw new Error(uploadResult.message || 'Failed to upload file');
         }
 
         // Step 2: Convert the uploaded file to text
-        console.log('Converting PDF to text...');
+        const convertPerf = measurePerformanceWithAlerts('pdf_convert', 'api');
         const convertResponse = await fetch('https://api.pdf.co/v1/pdf/convert/to/text', {
           method: 'POST',
           headers: {
@@ -123,17 +138,35 @@ export async function POST(request: NextRequest) {
         });
 
         const convertResult = await convertResponse.json();
-        console.log('Convert result:', convertResult);
+        convertPerf.end({ success: convertResult.error === false });
+        
+        log.info('PDF conversion result', {
+          userId,
+          success: convertResult.error === false,
+          textLength: convertResult.body?.length || 0
+        });
 
         if (convertResult.error === false && convertResult.body) {
           fileContent = convertResult.body;
-          console.log(`PDF extracted successfully. Length: ${fileContent.length}`);
+          log.info('PDF text extracted successfully', {
+            userId,
+            contentLength: fileContent.length
+          });
         } else {
           throw new Error(convertResult.message || 'Failed to extract text');
         }
 
       } catch (error: any) {
-        console.error('PDF API error:', error);
+        log.error('PDF API error', error, {
+          userId,
+          fileName: file.name
+        });
+        
+        track.event('pdf_processing_failed', {
+          userId,
+          error: error.message
+        });
+        
         return NextResponse.json({ 
           error: 'Failed to process PDF. Please try converting to Word format.' 
         }, { status: 500 });
@@ -158,9 +191,16 @@ export async function POST(request: NextRequest) {
         });
 
         fileContent = allText.join("\n\n");
-        console.log(`Excel extracted. Length: ${fileContent.length}`);
+        log.info('Excel file extracted', {
+          userId,
+          contentLength: fileContent.length,
+          sheetCount: workbook.worksheets.length
+        });
       } catch (xlsxError) {
-        console.error("Error processing Excel file:", xlsxError);
+        log.error('Error processing Excel file', xlsxError, {
+          userId,
+          fileName: file.name
+        });
         return NextResponse.json(
           { error: "Failed to process Excel file. Please try converting to CSV." },
           { status: 500 }
@@ -170,10 +210,24 @@ export async function POST(request: NextRequest) {
       // Process text-based files
       extractionMethod = "Text";
       fileContent = new TextDecoder().decode(buffer);
-      console.log(`Text file extracted. Length: ${fileContent.length}`);
+      log.info('Text file extracted', {
+        userId,
+        contentLength: fileContent.length
+      });
     }
   } catch (error: any) {
-    console.error("File extraction error:", error);
+    log.error('File extraction error', error, {
+      userId,
+      extractionMethod,
+      fileName: file.name
+    });
+    
+    track.event('file_extraction_failed', {
+      userId,
+      extractionMethod,
+      error: error.message
+    });
+    
     return NextResponse.json(
       {
         error: `Failed to extract content from ${extractionMethod} file: ${error.message}. Please ensure the file is not corrupted or password-protected.`,
@@ -241,11 +295,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's school information
+    const profilePerf = measurePerformanceWithAlerts('fetch_user_profile', 'database');
     const { data: profile } = await supabase
       .from("profiles")
       .select("school_site, school_district")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
+    profilePerf.end({ hasProfile: !!profile });
 
     // Get existing data for validation
     let existingData: any = {};
@@ -254,19 +310,19 @@ export async function POST(request: NextRequest) {
       const { data: students } = await supabase
         .from("students")
         .select("initials, teacher_name")
-        .eq("provider_id", user.id);
+        .eq("provider_id", userId);
       existingData.students = students || [];
     } else if (uploadType === "bell_schedule") {
       const { data: schedules } = await supabase
         .from("bell_schedules")
         .select("grade_level, period_name")
-        .eq("provider_id", user.id);
+        .eq("provider_id", userId);
       existingData.schedules = schedules || [];
     } else if (uploadType === "special_activities") {
       const { data: activities } = await supabase
         .from("special_activities")
         .select("teacher_name, activity_name")
-        .eq("provider_id", user.id);
+        .eq("provider_id", userId);
       existingData.activities = activities || [];
     }
 
@@ -293,8 +349,13 @@ export async function POST(request: NextRequest) {
       profile,
     );
 
-    console.log("Sending to Claude for intelligent parsing...");
+    log.info('Sending to Claude for intelligent parsing', {
+      userId,
+      uploadType,
+      contentLength: fileContent.length
+    });
 
+    const aiPerf = measurePerformanceWithAlerts('anthropic_parse_file', 'api');
     const message = await anthropic.messages.create({
       model: "claude-3-haiku-20240307",
       max_tokens: 4000,
@@ -304,6 +365,7 @@ export async function POST(request: NextRequest) {
         { role: "user", content: userPrompt },
       ],
     });
+    const aiDuration = aiPerf.end({ uploadType });
 
     // Parse Claude's response
     const responseText =
@@ -334,13 +396,28 @@ export async function POST(request: NextRequest) {
         if (!parsedData.ambiguous) parsedData.ambiguous = [];
         if (!parsedData.errors) parsedData.errors = [];
 
-        console.log("Successfully parsed AI response");
-        console.log(
-          `Results: ${parsedData.confirmed?.length || 0} confirmed, ${parsedData.ambiguous?.length || 0} ambiguous, ${parsedData.errors?.length || 0} errors`,
-        );
+        log.info('Successfully parsed AI response', {
+          userId,
+          uploadType,
+          confirmedCount: parsedData.confirmed?.length || 0,
+          ambiguousCount: parsedData.ambiguous?.length || 0,
+          errorCount: parsedData.errors?.length || 0
+        });
+        
+        track.event('file_parsed_successfully', {
+          userId,
+          uploadType,
+          confirmedCount: parsedData.confirmed?.length || 0,
+          ambiguousCount: parsedData.ambiguous?.length || 0,
+          errorCount: parsedData.errors?.length || 0,
+          aiDuration: Math.round(aiDuration)
+        });
     } catch (e) {
-      console.error('Failed to parse AI response:', e);
-      console.error('Raw response:', responseText.substring(0, 500));
+      log.error('Failed to parse AI response', e, {
+        userId,
+        uploadType,
+        responsePreview: responseText.substring(0, 500)
+      });
 
       // Try to salvage partial data if possible
       try {
@@ -391,6 +468,8 @@ export async function POST(request: NextRequest) {
     }
 
       // Return parsed data for user review
+      perf.end({ success: true });
+      
       return NextResponse.json({
         success: true,
         data: parsedData,
@@ -400,13 +479,21 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (error: any) {
-      console.error("AI Upload error:", error);
+      log.error('AI Upload error', error, { userId });
+      
+      track.event('ai_upload_error', {
+        userId,
+        error: error.message
+      });
+      
+      perf.end({ success: false });
+      
       return NextResponse.json(
         { error: "An unexpected error occurred. Please try again." },
         { status: 500 },
       );
     }
-  }        
+  });        
 
 function createIntelligentSystemPrompt(
   uploadType: string,

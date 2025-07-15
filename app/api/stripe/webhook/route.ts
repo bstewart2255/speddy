@@ -5,7 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
-import { measurePerformance } from '@/lib/monitoring/performance';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withErrorHandling } from '@/lib/api/with-error-handling';
 
 // Initialize Supabase admin client
 const supabaseAdmin = createClient(
@@ -19,9 +20,9 @@ const supabaseAdmin = createClient(
   }
 );
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   // Start overall performance tracking
-  const perf = measurePerformance('stripe_webhook');
+  const perf = measurePerformanceWithAlerts('stripe_webhook', 'api');
 
   const body = await request.text();
   const headersList = await headers();
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Track performance for each event type
-    const eventPerf = measurePerformance(`stripe_webhook_${event.type}`);
+    const eventPerf = measurePerformanceWithAlerts(`stripe_webhook_${event.type}`, 'api');
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -186,10 +187,10 @@ export async function POST(request: NextRequest) {
       error: 'Handler error logged' 
     });
   }
-}
+});
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  const perf = measurePerformance('handle_checkout_completed');
+  const perf = measurePerformanceWithAlerts('handle_checkout_completed', 'api');
 
   const userId = session.metadata?.user_id;
   const referrerId = session.metadata?.referrer_id;
@@ -283,7 +284,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  const perf = measurePerformance('handle_subscription_updated');
+  const perf = measurePerformanceWithAlerts('handle_subscription_updated', 'api');
 
   try {
     log.info('Updating subscription', {
@@ -333,7 +334,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  const perf = measurePerformance('handle_subscription_deleted');
+  const perf = measurePerformanceWithAlerts('handle_subscription_deleted', 'api');
 
   try {
     log.info('Canceling subscription', {
@@ -369,7 +370,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   if (!invoice.subscription) return;
 
-  const perf = measurePerformance('handle_payment_succeeded');
+  const perf = measurePerformanceWithAlerts('handle_payment_succeeded', 'api');
 
   try {
     log.info('Processing successful payment', {
@@ -409,7 +410,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   if (!invoice.subscription) return;
 
-  const perf = measurePerformance('handle_payment_failed');
+  const perf = measurePerformanceWithAlerts('handle_payment_failed', 'api');
 
   try {
     log.warn('Processing failed payment', {
@@ -444,7 +445,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 }
 
 async function calculateMonthlyReferralCredits(userId: string, month: Date) {
-  const perf = measurePerformance('calculate_referral_credits');
+  const perf = measurePerformanceWithAlerts('calculate_referral_credits', 'api');
 
   try {
     log.info('Calculating referral credits', {

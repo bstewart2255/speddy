@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getStudentDetails } from '../../../lib/supabase/queries/student-details';
 import { GRADE_SKILLS_CONFIG } from '../../../lib/grade-skills-config';
+import { log } from '@/lib/monitoring/logger';
+import { track } from '@/lib/monitoring/analytics';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withAuth } from '@/lib/api/with-auth';
 
 // Curriculum mapping
 const CURRICULUM_DETAILS: Record<string, string> = {
@@ -105,35 +109,54 @@ const ROLE_SPECIFIC_PROMPTS: Record<string, string> = {
 - Self-determination and independence skills`
 };
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, userId: string) => {
+  const perf = measurePerformanceWithAlerts('generate_lesson', 'api');
+  
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { students, timeSlot, duration = 30 } = await request.json();
+    
+    log.info('Lesson generation requested', {
+      userId,
+      studentCount: students.length,
+      duration,
+      timeSlot
+    });
 
-    /// Get user profile for curriculum information and role
-    const { data: profile } = await supabase
+    // Get user profile for curriculum information and role
+    const profilePerf = measurePerformanceWithAlerts('fetch_user_profile', 'database');
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('selected_curriculums, role')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
+    profilePerf.end({ hasProfile: !!profile });
+    
+    if (profileError) {
+      log.error('Failed to fetch user profile', profileError, { userId });
+    }
 
     // Get recent session logs for enhanced personalization
     const studentIds = students.map((s: any) => s.id);
-    const { data: recentLogs } = await supabase
+    const logsPerf = measurePerformanceWithAlerts('fetch_session_logs', 'database');
+    const { data: recentLogs, error: logsError } = await supabase
       .from('session_logs')
       .select('*')
       .in('student_id', studentIds)
       .order('date', { ascending: false })
       .limit(10);
+    logsPerf.end({ logsCount: recentLogs?.length || 0 });
+    
+    if (logsError) {
+      log.warn('Failed to fetch recent session logs', { 
+        error: logsError.message,
+        studentIds 
+      });
+    }
 
     // Create enhanced prompt with role information
+    const promptPerf = measurePerformanceWithAlerts('create_prompt', 'api');
     const promptContent = await createEnhancedPrompt(
       students, 
       duration, 
@@ -141,6 +164,7 @@ export async function POST(request: NextRequest) {
       profile,
       profile?.role || 'resource' // Pass the role, default to resource
     );
+    promptPerf.end();
     
 
     let content: string;
@@ -150,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     if (apiKey) {
       try {
-        console.log('Using Anthropic API for lesson generation...');
+        log.info('Using Anthropic API for lesson generation', { userId });
 
         const anthropic = new Anthropic({
           apiKey: apiKey,
@@ -170,6 +194,7 @@ export async function POST(request: NextRequest) {
         'lesson plans'
       }. You have deep knowledge of evidence-based practices, developmental milestones, and therapeutic interventions specific to your field. Always create practical, engaging activities appropriate for the school setting.`;
 
+      const aiPerf = measurePerformanceWithAlerts('anthropic_api_call', 'api');
       const message = await anthropic.messages.create({
         model: "claude-3-haiku-20240307", // Cheapest and fastest model
         max_tokens: 2000,
@@ -184,6 +209,10 @@ export async function POST(request: NextRequest) {
             content: promptContent
           }
         ]
+      });
+      const aiDuration = aiPerf.end({ 
+        tokensUsed: message.usage.input_tokens + message.usage.output_tokens,
+        role: userRole 
       });
 
         // Extract the text content from Claude's response
@@ -200,11 +229,35 @@ export async function POST(request: NextRequest) {
           );
         });
 
-        // Log usage for monitoring (visible in Replit console)
-        console.log(`✅ Anthropic API Success - Tokens used: ${message.usage.input_tokens + message.usage.output_tokens}`);
+        // Log API usage
+        log.info('Anthropic API success', {
+          userId,
+          inputTokens: message.usage.input_tokens,
+          outputTokens: message.usage.output_tokens,
+          totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+          duration: Math.round(aiDuration)
+        });
+        
+        track.event('lesson_generated', {
+          userId,
+          studentCount: students.length,
+          duration,
+          role: userRole,
+          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+        });
 
       } catch (apiError: any) {
-        console.error('❌ Anthropic API error:', apiError.message);
+        log.error('Anthropic API error', apiError, { 
+          userId,
+          errorCode: apiError.status 
+        });
+        
+        track.event('lesson_generation_failed', {
+          userId,
+          error: apiError.message,
+          errorCode: apiError.status
+        });
+        
         // Fall back to mock response if API fails
         content = `<div class="error-message">
           <p><strong>Error:</strong> Failed to generate lesson. Please try again.</p>
@@ -213,7 +266,12 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // No API key configured, use mock response
-      console.log('⚠️ No Anthropic API key found in Secrets. Using mock response.');
+      log.warn('No Anthropic API key configured', { userId });
+      
+      track.event('lesson_generation_no_api_key', {
+        userId
+      });
+      
       content = `<div class="error-message">
         <p><strong>Note:</strong> No API key configured. Please add your Anthropic API key to generate lessons.</p>
         <p>Contact your administrator for assistance.</p>
@@ -231,15 +289,25 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    perf.end({ success: true });
+    
     return NextResponse.json({ content });
   } catch (error) {
-    console.error('Error generating lesson:', error);
+    log.error('Error generating lesson', error, { userId });
+    
+    track.event('lesson_generation_error', {
+      userId,
+      error: (error as Error).message
+    });
+    
+    perf.end({ success: false });
+    
     return NextResponse.json(
       { error: 'Failed to generate lesson content' },
       { status: 500 }
     );
   }
-}
+});
 
 async function createEnhancedPrompt(
   students: any[], 
@@ -253,7 +321,9 @@ async function createEnhancedPrompt(
     const studentLogs = recentLogs.filter(log => log.student_id === student.id);
     
     // Fetch student details to get working skills
+    const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
     const details = await getStudentDetails(student.id);
+    detailsPerf.end({ studentId: student.id });
     
     // Get skill labels for the selected skills
     let workingSkillsText = 'General curriculum';

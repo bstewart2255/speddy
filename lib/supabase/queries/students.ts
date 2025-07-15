@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
+import { safeQuery } from '@/lib/supabase/safe-query';
+import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 
 /**
  * Create a student record for the logged in provider.
@@ -14,55 +16,68 @@ export async function createStudent(studentData: {
 }) {
   const supabase = createClient();
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_create_student' }
+  );
 
-  if (userError || !user) {
+  if (authResult.error || !authResult.data?.data.user) {
     throw new Error('You must be logged in to add students');
   }
+
+  const user = authResult.data.data.user;
 
   // If school_site and school_district are not provided, get them from user profile
   let finalSchoolSite = studentData.school_site;
   let finalSchoolDistrict = studentData.school_district;
 
   if (!finalSchoolSite || !finalSchoolDistrict) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('school_site, school_district')
-      .eq('id', user.id)
-      .single();
+    const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_student', 'database');
+    const profileResult = await safeQuery(
+      () => supabase
+        .from('profiles')
+        .select('school_site, school_district')
+        .eq('id', user.id)
+        .single(),
+      { operation: 'fetch_profile_for_student', userId: user.id }
+    );
+    profilePerf.end({ success: !profileResult.error });
 
-    if (profile) {
-      finalSchoolSite = finalSchoolSite || profile.school_site;
-      finalSchoolDistrict = finalSchoolDistrict || profile.school_district;
+    if (profileResult.data) {
+      finalSchoolSite = finalSchoolSite || profileResult.data.school_site;
+      finalSchoolDistrict = finalSchoolDistrict || profileResult.data.school_district;
     }
   }
 
-  const { data, error } = await supabase
-    .from('students')
-    .insert([{
-      initials: studentData.initials,
-      grade_level: studentData.grade_level.trim(),
-      teacher_name: studentData.teacher_name,
-      sessions_per_week: studentData.sessions_per_week,
-      minutes_per_session: studentData.minutes_per_session,
-      provider_id: user.id,
-      school_site: finalSchoolSite,
-      school_district: finalSchoolDistrict
-    }])
-    .select()
-    .single();
+  const insertPerf = measurePerformanceWithAlerts('create_student', 'database');
+  const insertResult = await safeQuery(
+    () => supabase
+      .from('students')
+      .insert([{
+        initials: studentData.initials,
+        grade_level: studentData.grade_level.trim(),
+        teacher_name: studentData.teacher_name,
+        sessions_per_week: studentData.sessions_per_week,
+        minutes_per_session: studentData.minutes_per_session,
+        provider_id: user.id,
+        school_site: finalSchoolSite,
+        school_district: finalSchoolDistrict
+      }])
+      .select()
+      .single(),
+    { 
+      operation: 'create_student', 
+      userId: user.id,
+      studentInitials: studentData.initials 
+    }
+  );
+  insertPerf.end({ success: !insertResult.error });
 
-  if (error) {
-    console.error('Detailed Supabase error:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code
-    });
-    throw new Error(error.message || 'Failed to add student');
+  if (insertResult.error) {
+    throw new Error(insertResult.error.message || 'Failed to add student');
   }
 
-  return data;
+  return insertResult.data;
 }
 
 /**
@@ -71,23 +86,42 @@ export async function createStudent(studentData: {
 export async function getStudents(schoolSite?: string) {
   const supabase = createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No user found');
-
-  let query = supabase
-    .from('students')
-    .select('*')
-    .eq('provider_id', user.id);
-
-  // Add school filter if provided
-  if (schoolSite) {
-    query = query.eq('school_site', schoolSite);
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_fetch_students' }
+  );
+  
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
   }
+  
+  const user = authResult.data.data.user;
 
-  const { data, error } = await query.order('created_at', { ascending: false });
+  const fetchPerf = measurePerformanceWithAlerts('fetch_students', 'database');
+  const fetchResult = await safeQuery(
+    () => {
+      let query = supabase
+        .from('students')
+        .select('*')
+        .eq('provider_id', user.id);
 
-  if (error) throw error;
-  return data || [];
+      // Add school filter if provided
+      if (schoolSite) {
+        query = query.eq('school_site', schoolSite);
+      }
+
+      return query.order('created_at', { ascending: false });
+    },
+    { 
+      operation: 'fetch_students', 
+      userId: user.id,
+      schoolSite 
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) throw fetchResult.error;
+  return fetchResult.data || [];
 }
 
 /**
@@ -97,36 +131,71 @@ export async function deleteStudent(studentId: string) {
   const supabase = createClient();
   
   // CRITICAL: Get current user to verify ownership
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No user found');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_delete_student' }
+  );
+  
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+  
+  const user = authResult.data.data.user;
 
   // CRITICAL: First verify the user owns this student
-  const { data: student, error: checkError } = await supabase
-    .from('students')
-    .select('id')
-    .eq('id', studentId)
-    .eq('provider_id', user.id)
-    .single();
+  const verifyPerf = measurePerformanceWithAlerts('verify_student_ownership', 'database');
+  const verifyResult = await safeQuery(
+    () => supabase
+      .from('students')
+      .select('id')
+      .eq('id', studentId)
+      .eq('provider_id', user.id)
+      .single(),
+    { 
+      operation: 'verify_student_ownership', 
+      userId: user.id,
+      studentId 
+    }
+  );
+  verifyPerf.end({ success: !verifyResult.error });
 
-  if (checkError || !student) {
+  if (verifyResult.error || !verifyResult.data) {
     throw new Error('Student not found or access denied');
   }
 
   // Delete schedule_sessions for this student (with provider_id check)
-  await supabase
-    .from('schedule_sessions')
-    .delete()
-    .eq('student_id', studentId)
-    .eq('provider_id', user.id); // CRITICAL: Only delete sessions owned by this provider
+  const deleteSessionsPerf = measurePerformanceWithAlerts('delete_student_sessions', 'database');
+  await safeQuery(
+    () => supabase
+      .from('schedule_sessions')
+      .delete()
+      .eq('student_id', studentId)
+      .eq('provider_id', user.id), // CRITICAL: Only delete sessions owned by this provider
+    { 
+      operation: 'delete_student_sessions', 
+      userId: user.id,
+      studentId 
+    }
+  );
+  deleteSessionsPerf.end();
 
   // Then delete the student (with provider_id check)
-  const { error } = await supabase
-    .from('students')
-    .delete()
-    .eq('id', studentId)
-    .eq('provider_id', user.id); // CRITICAL: Only delete if user owns this student
+  const deleteStudentPerf = measurePerformanceWithAlerts('delete_student', 'database');
+  const deleteResult = await safeQuery(
+    () => supabase
+      .from('students')
+      .delete()
+      .eq('id', studentId)
+      .eq('provider_id', user.id), // CRITICAL: Only delete if user owns this student
+    { 
+      operation: 'delete_student', 
+      userId: user.id,
+      studentId 
+    }
+  );
+  deleteStudentPerf.end({ success: !deleteResult.error });
 
-  if (error) throw error;
+  if (deleteResult.error) throw deleteResult.error;
 }
 
 /**
@@ -141,8 +210,16 @@ export async function updateStudent(studentId: string, updates: {
   const supabase = createClient();
 
   // CRITICAL: Get current user to verify ownership
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No user found');
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_update_student' }
+  );
+  
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+  
+  const user = authResult.data.data.user;
 
   // Build update object with only provided fields
   const updateData: any = {};
@@ -151,22 +228,32 @@ export async function updateStudent(studentId: string, updates: {
   if (updates.sessions_per_week !== undefined) updateData.sessions_per_week = updates.sessions_per_week;
   if (updates.minutes_per_session !== undefined) updateData.minutes_per_session = updates.minutes_per_session;
 
-  const { data, error } = await supabase
-    .from('students')
-    .update(updateData)
-    .eq('id', studentId)
-    .eq('provider_id', user.id) // CRITICAL: Only update if user owns this student
-    .select()
-    .single();
+  const updatePerf = measurePerformanceWithAlerts('update_student', 'database');
+  const updateResult = await safeQuery(
+    () => supabase
+      .from('students')
+      .update(updateData)
+      .eq('id', studentId)
+      .eq('provider_id', user.id) // CRITICAL: Only update if user owns this student
+      .select()
+      .single(),
+    { 
+      operation: 'update_student', 
+      userId: user.id,
+      studentId,
+      updates: Object.keys(updateData)
+    }
+  );
+  updatePerf.end({ success: !updateResult.error });
 
-  if (error) {
-    if (error.code === 'PGRST116') {
+  if (updateResult.error) {
+    if (updateResult.error.message?.includes('PGRST116')) {
       throw new Error('Student not found or access denied');
     }
-    throw error;
+    throw updateResult.error;
   }
 
-  return data;
+  return updateResult.data;
 }
 
 /**
