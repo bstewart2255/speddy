@@ -20,7 +20,8 @@ interface Student {
   sessions_per_week: number;
   minutes_per_session: number;
   school_site: string | null;  // ADD THIS
-  school_district: string | null;  // ADD THIS
+  school_district: string | null;
+  provider_id: string;// ADD THIS
 }
 
 interface ScheduleSession {
@@ -250,7 +251,7 @@ export default function SchedulePage() {
           school_site
         )
       `)
-      .eq("user_id", session.provider_id)
+      .eq("user_id", session.student.provider_id)
       .eq("provider_schools.school_site", session.student.school_site);
 
     const workDaysAtSchool = workSchedule?.map(s => s.day_of_week) || [];

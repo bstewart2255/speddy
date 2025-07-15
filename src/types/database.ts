@@ -200,6 +200,7 @@ export interface Database {
           upcoming_iep_date: string | null
           upcoming_triennial_date: string | null
           iep_goals: string[] | null
+          working_skills: string[] | null
           created_at: string
           updated_at: string
         }
@@ -213,6 +214,7 @@ export interface Database {
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           iep_goals?: string[] | null
+          working_skills?: string[] | null
           created_at?: string
           updated_at?: string
         }
@@ -226,6 +228,7 @@ export interface Database {
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           iep_goals?: string[] | null
+          working_skills?: string[] | null
           created_at?: string
           updated_at?: string
         }

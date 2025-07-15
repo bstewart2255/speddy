@@ -1,0 +1,122 @@
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  // Try to avoid the eval error by not destructuring request in the response
+  let supabaseResponse = NextResponse.next()
+
+  const { pathname } = request.nextUrl
+
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/login', '/signup', '/terms', '/privacy', '/ferpa']
+  const isPublicRoute = publicRoutes.some(route => pathname === route)
+
+  // IMMEDIATELY return for public routes - no auth checks at all
+  // Also check if we're at the root and should redirect to login
+  if (isPublicRoute || pathname === '/') {
+    // If at root, redirect to login
+    if (pathname === '/') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/login'
+      return NextResponse.redirect(redirectUrl)
+    }
+    return supabaseResponse;
+  }
+
+  let supabase;
+  try {
+    supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              supabaseResponse.cookies.set({
+                name,
+                value,
+                ...options,
+                sameSite: 'lax',
+                path: '/',
+              })
+            })
+          },
+        },
+      }
+    )
+  } catch (error) {
+    console.error('Middleware: Failed to create Supabase client:', error)
+    // If we can't create the client, redirect to login for safety
+    if (pathname !== '/login' && pathname !== '/signup') {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/login'
+      return NextResponse.redirect(redirectUrl)
+    }
+    return supabaseResponse
+  }
+
+  // IMPORTANT: Refresh the session to ensure cookies are properly set
+  const { data: { user }, error } = await supabase.auth.getUser()
+
+  console.log('Middleware check:', { pathname, userId: user?.id, error })
+
+  // Protected routes that require authentication
+  const protectedRoutes = ['/dashboard', '/']
+  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route)) && !isPublicRoute
+
+  // If no user and trying to access protected route, redirect to login
+  if (!user && isProtectedRoute) {
+    console.log('No user, redirecting to login')
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/login'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // For authenticated users accessing protected routes, check subscription
+  if (user && isProtectedRoute) {
+    console.log('Checking subscription for user:', user.id)
+
+    // Check if they're a SEA user (free access)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'sea') {
+      console.log('SEA user, allowing access')
+      return supabaseResponse
+    }
+
+    // Check subscription
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('status')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    console.log('Subscription:', subscription)
+
+    // If no subscription or not active/trialing, redirect to payment
+    if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
+      console.log('No valid subscription, redirecting to payment')
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/signup'
+      redirectUrl.searchParams.set('step', 'payment')
+      redirectUrl.searchParams.set('subscription_required', 'true')
+      return NextResponse.redirect(redirectUrl)
+    }
+  }
+
+  return supabaseResponse
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}

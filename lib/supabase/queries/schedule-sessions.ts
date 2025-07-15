@@ -13,7 +13,7 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
-    () => supabase.auth.getUser(),
+    async () => supabase.auth.getUser(),
     { operation: 'get_user_for_unscheduled_count' }
   );
 
@@ -57,10 +57,14 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   // Get current scheduled sessions count per student
   const sessionsPerf = measurePerformanceWithAlerts('fetch_sessions_for_unscheduled_count', 'database');
   const sessionsResult = await safeQuery(
-    () => supabase
-      .from('schedule_sessions')
-      .select('student_id')
-      .eq('provider_id', user.id),
+    async () => {
+      const { data, error } = await supabase
+        .from('schedule_sessions')
+        .select('student_id')
+        .eq('provider_id', user.id);
+      if (error) throw error;
+      return data;
+    },
     { 
       operation: 'fetch_sessions_for_unscheduled_count', 
       userId: user.id 

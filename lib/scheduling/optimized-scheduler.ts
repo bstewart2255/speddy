@@ -259,7 +259,7 @@ export class OptimizedScheduler {
 
     // Populate student grade map for grade grouping optimization
     students.forEach(student => {
-      this.context.studentGradeMap.set(student.id, student.grade_level.trim());
+      this.context!.studentGradeMap.set(student.id, student.grade_level.trim());
     });
 
     // Sort students by total minutes needed (descending) to handle harder cases first

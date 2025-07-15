@@ -37,16 +37,6 @@ export default function BellSchedulesPage() {
       console.log('Type of data:', typeof data);
       console.log('Is array?:', Array.isArray(data));
 
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
-        console.log('Data keys:', Object.keys(data));
-        // Check if data is wrapped in an object
-        if ('data' in data) {
-          console.log('Found data property:', data.data);
-          setBellSchedules(Array.isArray(data.data) ? data.data : []);
-          return;
-        }
-      }
-
       setBellSchedules(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching schedules:', error);

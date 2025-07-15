@@ -19,11 +19,15 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
   const fetchResult = await safeQuery(
-    () => supabase
-      .from('student_details')
-      .select('*')
-      .eq('student_id', studentId)
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('student_details')
+        .select('*')
+        .eq('student_id', studentId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
     { 
       operation: 'fetch_student_details', 
       studentId 
@@ -63,22 +67,26 @@ export async function upsertStudentDetails(
 
   const upsertPerf = measurePerformanceWithAlerts('upsert_student_details', 'database');
   const upsertResult = await safeQuery(
-    () => supabase
-      .from('student_details')
-      .upsert({
-        student_id: studentId,
-        first_name: details.first_name,
-        last_name: details.last_name,
-        date_of_birth: details.date_of_birth || null,
-        district_id: details.district_id,
-        upcoming_iep_date: details.upcoming_iep_date || null,
-        upcoming_triennial_date: details.upcoming_triennial_date || null,
-        iep_goals: details.iep_goals,
-        working_skills: details.working_skills,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'student_id'  // Add this to specify the conflict column
-      }),
+    async () => {
+      const { error } = await supabase
+        .from('student_details')
+        .upsert({
+          student_id: studentId,
+          first_name: details.first_name,
+          last_name: details.last_name,
+          date_of_birth: details.date_of_birth || null,
+          district_id: details.district_id,
+          upcoming_iep_date: details.upcoming_iep_date || null,
+          upcoming_triennial_date: details.upcoming_triennial_date || null,
+          iep_goals: details.iep_goals,
+          working_skills: details.working_skills,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'student_id'  // Add this to specify the conflict column
+        });
+      if (error) throw error;
+      return null;
+    },
     { 
       operation: 'upsert_student_details', 
       studentId,

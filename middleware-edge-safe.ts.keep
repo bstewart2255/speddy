@@ -21,13 +21,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check for Supabase auth cookies (basic check without using Supabase client)
-  // Supabase uses chunked cookies with names like:
-  // - sb-<project-ref>-auth-token
-  // - sb-<project-ref>-auth-token.0, sb-<project-ref>-auth-token.1, etc.
-  const cookies = request.cookies.getAll()
-  const hasAuthCookie = cookies.some(cookie => 
-    cookie.name.includes('sb-') && cookie.name.includes('-auth-token')
-  )
+  const hasAuthCookie = request.cookies.has('sb-auth-token') || 
+                       request.cookies.has('supabase-auth-token') ||
+                       // Check for the new cookie format
+                       Array.from(request.cookies.getAll()).some(cookie => 
+                         cookie.name.includes('supabase') && cookie.name.includes('auth-token')
+                       )
 
   // If no auth cookie and trying to access protected route, redirect to login
   if (!hasAuthCookie) {

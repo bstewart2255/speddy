@@ -90,7 +90,7 @@ export async function deleteBellSchedule(id: string) {
 
   // CRITICAL: Get current user to verify ownership
   const authResult = await safeQuery(
-    () => supabase.auth.getUser(),
+    async () => supabase.auth.getUser(),
     { operation: 'get_user_for_delete_bell_schedule' }
   );
 
@@ -129,7 +129,7 @@ export async function deleteGradeSchedules(gradeLevel: string, schoolSite?: stri
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
-    () => supabase.auth.getUser(),
+    async () => supabase.auth.getUser(),
     { operation: 'get_user_for_delete_grade_schedules' }
   );
 
@@ -178,7 +178,7 @@ export async function getBellSchedules(schoolSite?: string) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
-    () => supabase.auth.getUser(),
+    async () => supabase.auth.getUser(),
     { operation: 'get_user_for_fetch_bell_schedules' }
   );
 
