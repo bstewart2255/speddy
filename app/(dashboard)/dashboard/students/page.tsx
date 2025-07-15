@@ -84,10 +84,11 @@ export default function StudentsPage() {
   const fetchStudents = async () => {
     try {
       const data = await getStudents(currentSchool?.school_site);
-      setStudents(data);
+      setStudents(data || []); // Ensure we always set an array
       checkUnscheduledSessions();
     } catch (error) {
       console.error('Error fetching students:', error);
+      setStudents([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -422,7 +423,7 @@ export default function StudentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...students]
+                {(Array.isArray(students) ? [...students] : [])
                   .sort((a, b) => {
                     if (!sortByGrade) return 0;
 

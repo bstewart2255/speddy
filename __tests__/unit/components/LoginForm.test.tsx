@@ -11,29 +11,12 @@ jest.mock('next/navigation', () => ({
 }))
 
 describe('LoginForm', () => {
-  let originalLocation: Location
-  
-  beforeAll(() => {
-    originalLocation = window.location
-  })
-  
   beforeEach(() => {
     jest.clearAllMocks()
-    // Mock window.location
-    delete (window as any).location
-    window.location = {
-      ...originalLocation,
-      href: 'http://localhost/',
-      pathname: '/',
-      search: '',
-      assign: jest.fn(),
-      reload: jest.fn(),
-      replace: jest.fn(),
-    } as any
-  })
-  
-  afterAll(() => {
-    window.location = originalLocation
+    // Reset location to default state
+    ;(window.location as any)._href = 'http://localhost/'
+    ;(window.location as any).pathname = '/'
+    ;(window.location as any).search = ''
   })
 
   it('renders login form with all fields', () => {
@@ -160,9 +143,9 @@ describe('LoginForm', () => {
 
   it('clears password from URL if accidentally exposed', async () => {
     // Mock URL with password parameter
-    window.location.search = '?password=exposed'
-    window.location.pathname = '/login'
-    window.location.href = 'http://localhost/login?password=exposed'
+    ;(window.location as any).search = '?password=exposed'
+    ;(window.location as any).pathname = '/login'
+    ;(window.location as any)._href = 'http://localhost/login?password=exposed'
     
     const replaceStateSpy = jest.spyOn(window.history, 'replaceState').mockImplementation(() => {})
     

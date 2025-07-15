@@ -25,6 +25,10 @@ describe('Authentication Flow Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    // Reset location to default state
+    ;(window.location as any)._href = 'http://localhost/'
+    ;(window.location as any).pathname = '/'
+    ;(window.location as any).search = ''
   })
   
   afterEach(() => {

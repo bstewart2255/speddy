@@ -9,7 +9,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Start performance monitoring
   const perf = measurePerformance('login_attempt');
 
-  const { email, password } = await request.json();
+  let email, password;
+  try {
+    const body = await request.json();
+    email = body.email;
+    password = body.password;
+  } catch (error) {
+    log.warn('Invalid JSON in login request', { error: (error as Error).message });
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 }
+    );
+  }
 
   // Input validation with logging
   if (!email || !password) {

@@ -80,32 +80,34 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
-// Mock window.location only if not already mocked
-if (!window.location || !window.location.assign || typeof window.location.assign !== 'function') {
-  const location = {
-    ...window.location,
-    href: 'http://localhost/',
-    pathname: '/',
-    search: '',
-    hash: '',
-    origin: 'http://localhost',
-    protocol: 'http:',
-    host: 'localhost',
-    hostname: 'localhost',
-    port: '',
-    assign: jest.fn(),
-    reload: jest.fn(),
-    replace: jest.fn(),
-  }
-  
-  try {
-    Object.defineProperty(window, 'location', {
-      value: location,
-      writable: true,
-      configurable: true,
-    })
-  } catch (e) {
-    // If defineProperty fails, try direct assignment
-    window.location = location
+// Mock window.location with working href setter
+const mockLocation = {
+  _href: 'http://localhost/',
+  pathname: '/',
+  search: '',
+  hash: '',
+  origin: 'http://localhost',
+  protocol: 'http:',
+  host: 'localhost',
+  hostname: 'localhost',
+  port: '',
+  assign: jest.fn((url) => {
+    mockLocation._href = url
+  }),
+  reload: jest.fn(),
+  replace: jest.fn(),
+  toString: jest.fn(() => mockLocation._href),
+  get href() {
+    return this._href
+  },
+  set href(url) {
+    this._href = url
+    // Simulate navigation by calling assign
+    this.assign(url)
   }
 }
+
+// @ts-ignore
+delete window.location
+// @ts-ignore
+window.location = mockLocation

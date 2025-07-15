@@ -78,6 +78,7 @@ export default function SchedulePage() {
   const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(
     null,
   );
+  const [dragOffset, setDragOffset] = useState<number>(0); // Store the offset from the top of the session block
   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(
     new Set(["K", "1", "2", "3", "4", "5"]),
@@ -106,7 +107,7 @@ export default function SchedulePage() {
   const { currentSchool } = useSchool();
   const supabase = createClient();
   const studentMap = useMemo(
-    () => new Map(students.map((s) => [s.id, s])),
+    () => new Map(Array.isArray(students) ? students.map((s) => [s.id, s]) : []),
     [students],
   );
   
@@ -226,9 +227,35 @@ export default function SchedulePage() {
     );
     const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
-    // Quick checks first - no async operations
-    if (endTime.getHours() >= 15) {
-      return { hasConflict: true, reason: "Session extends beyond school hours (3:00 PM)" };
+    const conflicts: string[] = [];
+
+    // Check school hours
+    const studentGrade = session.student.grade_level.trim();
+    const schoolHoursForGrade = getSchoolHoursForDay(targetDay, studentGrade, targetTime);
+    const schoolStartMinutes = timeToMinutes(schoolHoursForGrade.start);
+    const schoolEndMinutes = timeToMinutes(schoolHoursForGrade.end);
+    const sessionStart = parseInt(hours) * 60 + parseInt(minutes);
+    const sessionEnd = endTime.getHours() * 60 + endTime.getMinutes();
+
+    if (sessionStart < schoolStartMinutes || sessionEnd > schoolEndMinutes) {
+      conflicts.push(`• Session outside school hours (${schoolHoursForGrade.start} - ${schoolHoursForGrade.end})`);
+    }
+
+    // Check provider work schedule
+    const { data: workSchedule } = await supabase
+      .from("user_site_schedules")
+      .select(`
+        day_of_week,
+        provider_schools!inner(
+          school_site
+        )
+      `)
+      .eq("user_id", session.provider_id)
+      .eq("provider_schools.school_site", session.student.school_site);
+
+    const workDaysAtSchool = workSchedule?.map(s => s.day_of_week) || [];
+    if (workDaysAtSchool.length > 0 && !workDaysAtSchool.includes(targetDay)) {
+      conflicts.push("• Provider not scheduled to work at this time");
     }
 
     // Check bell schedule conflicts
@@ -243,7 +270,7 @@ export default function SchedulePage() {
     });
 
     if (bellConflict) {
-      return { hasConflict: true, reason: `Conflicts with ${bellConflict.period_name}` };
+      conflicts.push(`• Conflicts with bell schedule: ${bellConflict.period_name}`);
     }
 
     // Check special activity conflicts
@@ -256,7 +283,7 @@ export default function SchedulePage() {
     );
 
     if (activityConflict) {
-      return { hasConflict: true, reason: `Teacher has ${activityConflict.activity_name}` };
+      conflicts.push(`• Conflicts with special activity: ${activityConflict.activity_name}`);
     }
 
     // Check if the same student already has a session at this time
@@ -269,7 +296,7 @@ export default function SchedulePage() {
     );
 
     if (studentConflict) {
-      return { hasConflict: true, reason: "Student already has a session at this time" };
+      conflicts.push("• Overlaps with another session");
     }
 
     // Check slot capacity
@@ -281,10 +308,13 @@ export default function SchedulePage() {
     ).length;
 
     if (slotOccupancy >= 6) {
-      return { hasConflict: true, reason: "Time slot is full (max 6 sessions)" };
+      conflicts.push("• Time slot is at capacity (6 sessions maximum)");
     }
 
-    return { hasConflict: false };
+    return { 
+      hasConflict: conflicts.length > 0, 
+      reason: conflicts.join('\n') 
+    };
   };
 
   // Helper function to check time overlap
@@ -343,6 +373,11 @@ export default function SchedulePage() {
   const handleDragStart = (e: React.DragEvent, session: ScheduleSession) => {
     setDraggedSession(session);
     e.dataTransfer.effectAllowed = "move";
+    
+    // Calculate the offset from the top of the session block to where the user clicked
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    setDragOffset(offsetY);
   };
 
   // Handle drag end
@@ -357,6 +392,7 @@ export default function SchedulePage() {
     setConflictSlots(new Set());
     setDragPosition(null);
     latestDragPositionRef.current = null;
+    setDragOffset(0);
   };
 
   // Track the current drag position
@@ -374,7 +410,8 @@ export default function SchedulePage() {
 
     // Update position immediately for visual feedback
     const rect = e.currentTarget.getBoundingClientRect();
-    const relativeY = e.clientY - rect.top;
+    // Adjust for the drag offset to align with the ghost preview
+    const relativeY = e.clientY - rect.top - dragOffset;
     const snapInterval = SNAP_INTERVAL;
     const minutesFromStart = Math.round(((relativeY / PIXELS_PER_HOUR) * 60) / snapInterval) * snapInterval;
     const time = pixelsToTime((minutesFromStart * PIXELS_PER_HOUR) / 60);
@@ -510,13 +547,18 @@ export default function SchedulePage() {
     const newEndTime = `${endDate.getHours().toString().padStart(2, "0")}:${endDate.getMinutes().toString().padStart(2, "0")}:00`;
     const newStartTimeWithSeconds = `${newStartTime}:00`;
 
-    // Quick conflict check
+    // Check for conflicts and gather warning messages
     const sessionWithStudent = { ...sessionToMove, student };
     const conflictResult = await checkSlotConflicts(sessionWithStudent, day, newStartTime);
 
     if (conflictResult.hasConflict) {
-      alert(`Cannot move session here: ${conflictResult.reason}`);
-      return;
+      // Show confirmation dialog with specific conflict warnings
+      const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictResult.reason}\n\nDo you want to proceed anyway?`;
+      
+      if (!confirm(confirmMessage)) {
+        return; // User cancelled, don't move the session
+      }
+      // User confirmed, proceed with the move despite conflicts
     }
 
     // Update UI immediately - optimistic update
@@ -684,8 +726,8 @@ export default function SchedulePage() {
       });
 
 
-      if (studentsData.data) setStudents(studentsData.data);
-      if (bellData.data) setBellSchedules(bellData.data);
+      setStudents(studentsData.data || []);
+      setBellSchedules(bellData.data || []);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
 
       // Fetch school hours

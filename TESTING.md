@@ -1,253 +1,107 @@
-# Testing Infrastructure
+# Schedule Feature Updates - Testing Checklist
 
-This project uses Jest and React Testing Library for comprehensive testing of the Next.js application.
+## Changes Implemented
 
-## Overview
+### 1. Two-Pass Session Distribution Strategy
+- **File Modified**: `/lib/scheduling/optimized-scheduler.ts`
+- **Changes**: 
+  - Modified `findStudentSlots` to use two-pass distribution
+  - First pass: Limits sessions to 3 per time slot for even distribution
+  - Second pass: Allows up to 6 sessions per slot if needed
+  - Added `findSlotsWithCapacityLimit` helper method
 
-- **Jest**: JavaScript testing framework
-- **React Testing Library**: Testing utilities for React components
-- **TypeScript**: Full TypeScript support in tests
-- **Supabase Mocks**: Complete mocking utilities for Supabase operations
+### 2. Grade Level Grouping Optimization
+- **Files Modified**: `/lib/scheduling/optimized-scheduler.ts`
+- **Changes**:
+  - Added `studentGradeMap` to `SchedulingContext` interface
+  - Populated grade map in `scheduleBatch` method
+  - Added `sortSlotsWithGradePreference` method
+  - Prioritizes slots with same grade level (secondary to even distribution)
 
-## Folder Structure
+### 3. Manual Drag-and-Drop Conflict Warnings
+- **File Modified**: `/app/(dashboard)/dashboard/schedule/page.tsx`
+- **Changes**:
+  - Modified `checkSlotConflicts` to collect all conflicts
+  - Changed `handleDrop` to show confirmation dialog with detailed conflicts
+  - Users can now override conflicts after confirmation
+  - Specific warning messages for each type of conflict
 
-```
-├── __tests__/
-│   ├── unit/              # Unit tests for individual components/functions
-│   ├── integration/       # Integration tests for complete flows
-│   └── e2e/              # End-to-end tests (placeholder for future)
-├── __mocks__/            # Mock implementations
-│   └── @supabase/        # Supabase client mocks
-├── test-utils/           # Testing utilities and helpers
-├── jest.config.js        # Jest configuration
-└── jest.setup.js         # Jest setup file
-```
+### 4. Fixed Drag-and-Drop Positioning
+- **File Modified**: `/app/(dashboard)/dashboard/schedule/page.tsx`
+- **Changes**:
+  - Added `dragOffset` state to track click position within session block
+  - Modified `handleDragStart` to capture offset
+  - Modified `handleDragOver` to adjust position using offset
+  - Session now drops exactly where the ghost preview shows
 
-## Running Tests
+## Testing Checklist
 
-```bash
-# Run all tests
-npm test
+### Two-Pass Distribution Testing
+- [ ] Schedule multiple students with varying session requirements
+- [ ] Verify first pass distributes sessions evenly (max 3 per slot)
+- [ ] Verify second pass fills remaining slots (up to 6 per slot)
+- [ ] Check console logs for "FIRST PASS" and "SECOND PASS" messages
+- [ ] Confirm no sessions scheduled in morning hours unnecessarily
+- [ ] Test with students requiring many sessions (e.g., 5 sessions/week)
 
-# Run tests in watch mode
-npm run test:watch
+### Grade Level Grouping Testing
+- [ ] Schedule students from same grade level
+- [ ] Verify they tend to be grouped in same time slots when possible
+- [ ] Confirm even distribution takes priority over grade grouping
+- [ ] Test with mixed grade levels
+- [ ] Verify constraints are never violated for grade grouping
 
-# Run tests with coverage
-npm run test:coverage
+### Drag-and-Drop Conflict Warning Testing
+- [ ] Drag session to time outside school hours
+  - Should see: "Session outside school hours" warning
+- [ ] Drag session to bell schedule conflict
+  - Should see: "Conflicts with bell schedule: [period name]" warning
+- [ ] Drag session to special activity conflict
+  - Should see: "Conflicts with special activity: [activity name]" warning
+- [ ] Drag session where student already has session
+  - Should see: "Overlaps with another session" warning
+- [ ] Drag session to full slot (6 sessions)
+  - Should see: "Time slot is at capacity" warning
+- [ ] Test multiple conflicts at once
+  - Should see all applicable warnings listed
+- [ ] Test confirming and canceling conflict placement
+- [ ] Verify session moves only when confirmed
 
-# Run only unit tests
-npm run test:unit
+### Drag-and-Drop Positioning Testing
+- [ ] Drag session by grabbing from top - verify drops at cursor position
+- [ ] Drag session by grabbing from middle - verify drops at cursor position
+- [ ] Drag session by grabbing from bottom - verify drops at cursor position
+- [ ] Verify ghost preview and actual drop position match exactly
+- [ ] Test with different session durations (30min, 60min, etc.)
+- [ ] Test dragging between different days
+- [ ] Test snap-to-grid functionality (5-minute intervals)
 
-# Run only integration tests
-npm run test:integration
+### Regression Testing
+- [ ] Existing scheduling features still work
+- [ ] Bell schedule constraints respected
+- [ ] Special activity constraints respected
+- [ ] Provider work schedule constraints respected
+- [ ] School hours constraints respected
+- [ ] Consecutive session rules (max 60 min) enforced
+- [ ] Break requirements (30 min) enforced
+- [ ] Session capacity limits enforced
+- [ ] No performance degradation
 
-# Run tests in CI mode
-npm run test:ci
-```
+### Edge Cases
+- [ ] Schedule with no available slots
+- [ ] Schedule with very limited availability
+- [ ] Drag session to same position (no-op)
+- [ ] Multiple users scheduling simultaneously
+- [ ] Browser refresh during scheduling
+- [ ] Network errors during drag-and-drop
 
-## Writing Tests
+## Performance Considerations
+- Monitor console for excessive logging
+- Check for smooth drag-and-drop operations
+- Verify no lag when scheduling many students
+- Ensure UI updates are immediate (optimistic updates)
 
-### Unit Tests
-
-Unit tests focus on individual components or functions in isolation:
-
-```typescript
-import { render, screen, userEvent } from '@/test-utils'
-import MyComponent from '@/app/components/MyComponent'
-
-describe('MyComponent', () => {
-  it('renders correctly', () => {
-    render(<MyComponent />)
-    expect(screen.getByText('Hello')).toBeInTheDocument()
-  })
-
-  it('handles user interaction', async () => {
-    const user = userEvent.setup()
-    render(<MyComponent />)
-    
-    await user.click(screen.getByRole('button'))
-    expect(screen.getByText('Clicked!')).toBeInTheDocument()
-  })
-})
-```
-
-### Integration Tests
-
-Integration tests verify complete user flows:
-
-```typescript
-import { render, screen, waitFor } from '@/test-utils'
-import { setupSupabaseScenario } from '@/test-utils/supabase-test-helpers'
-
-describe('User Authentication Flow', () => {
-  it('completes login and redirects to dashboard', async () => {
-    // Setup authenticated Supabase client
-    const mockSupabase = setupSupabaseScenario.authenticated()
-    
-    // Test the complete flow
-    // ...
-  })
-})
-```
-
-### Testing with Supabase
-
-The project includes comprehensive Supabase mocking utilities:
-
-```typescript
-import { createMockSupabaseClient, mockSupabaseResponse } from '@/test-utils/supabase-test-helpers'
-
-// Create a mock client
-const supabase = createMockSupabaseClient()
-
-// Mock specific responses
-supabase.auth.getSession.mockResolvedValue(
-  mockSupabaseResponse.session({ email: 'test@example.com' })
-)
-
-// Mock database queries
-supabase.from.mockReturnValue({
-  select: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  single: jest.fn().mockResolvedValue(
-    mockSupabaseResponse.dbSuccess({ id: 1, name: 'Test' })
-  ),
-})
-```
-
-## Test Utilities
-
-### Custom Render Function
-
-The custom render function includes all necessary providers:
-
-```typescript
-import { render } from '@/test-utils'
-
-// Automatically wrapped with providers
-render(<MyComponent />)
-```
-
-### Mock Data Generators
-
-```typescript
-import { createMockSupabaseData } from '@/test-utils'
-
-const mockUser = createMockSupabaseData.user({
-  email: 'custom@example.com'
-})
-
-const mockSchool = createMockSupabaseData.school({
-  name: 'Custom School'
-})
-```
-
-### API Mocking
-
-```typescript
-import { mockFetch, mockFetchError } from '@/test-utils'
-
-// Mock successful response
-mockFetch({ success: true, data: [] })
-
-// Mock error response
-mockFetchError(401, 'Unauthorized')
-```
-
-## Coverage Requirements
-
-The project has the following coverage thresholds:
-
-- Branches: 70%
-- Functions: 70%
-- Lines: 70%
-- Statements: 70%
-
-Run `npm run test:coverage` to see the current coverage report.
-
-## Best Practices
-
-1. **Test Behavior, Not Implementation**: Focus on what the component does, not how it does it
-2. **Use Testing Library Queries**: Prefer queries that reflect how users interact with your app
-3. **Avoid Testing Implementation Details**: Don't test state, methods, or component instances
-4. **Write Descriptive Test Names**: Use clear, descriptive names that explain what is being tested
-5. **Keep Tests Independent**: Each test should be able to run in isolation
-6. **Use beforeEach for Setup**: Reset mocks and state before each test
-7. **Test Error States**: Always test error handling and edge cases
-
-## Common Testing Patterns
-
-### Testing Forms
-
-```typescript
-it('submits form with user data', async () => {
-  const user = userEvent.setup()
-  render(<FormComponent />)
-  
-  await user.type(screen.getByLabelText('Email'), 'test@example.com')
-  await user.click(screen.getByRole('button', { name: 'Submit' }))
-  
-  await waitFor(() => {
-    expect(fetch).toHaveBeenCalledWith('/api/submit', {
-      method: 'POST',
-      body: JSON.stringify({ email: 'test@example.com' })
-    })
-  })
-})
-```
-
-### Testing Async Operations
-
-```typescript
-it('loads data on mount', async () => {
-  mockFetch({ data: ['item1', 'item2'] })
-  render(<DataList />)
-  
-  expect(screen.getByText('Loading...')).toBeInTheDocument()
-  
-  await waitFor(() => {
-    expect(screen.getByText('item1')).toBeInTheDocument()
-    expect(screen.getByText('item2')).toBeInTheDocument()
-  })
-})
-```
-
-### Testing Error Boundaries
-
-```typescript
-it('displays error message when component fails', () => {
-  const ThrowError = () => {
-    throw new Error('Test error')
-  }
-  
-  render(
-    <ErrorBoundary>
-      <ThrowError />
-    </ErrorBoundary>
-  )
-  
-  expect(screen.getByText(/something went wrong/i)).toBeInTheDocument()
-})
-```
-
-## Debugging Tests
-
-1. **Use screen.debug()**: Print the current DOM state
-2. **Use screen.logTestingPlaygroundURL()**: Get a Testing Playground link
-3. **Run single test**: Use `it.only()` or `describe.only()`
-4. **Increase timeout**: For slow async operations, increase Jest timeout
-5. **Check mock calls**: Use `expect(mockFn).toHaveBeenCalledWith()`
-
-## CI/CD Integration
-
-Tests run automatically on CI with:
-
-```bash
-npm run test:ci
-```
-
-This command:
-- Runs in non-interactive mode
-- Generates coverage reports
-- Limits workers to prevent memory issues
-- Fails if coverage thresholds aren't met
+## Known Limitations
+- Grade grouping is "best effort" - will not override constraints
+- Maximum 6 sessions per time slot (hard limit)
+- Drag-and-drop requires manual confirmation for conflicts

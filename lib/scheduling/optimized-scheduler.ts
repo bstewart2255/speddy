@@ -38,6 +38,7 @@ interface SchedulingContext {
     start_time: string;
     end_time: string;
   }>;
+  studentGradeMap: Map<string, string>; // Map student ID to grade level
 }
 
 interface SchedulingResult {
@@ -136,6 +137,7 @@ export class OptimizedScheduler {
       existingSessions: sessionsData.data || [],
       validSlots: new Map(),
       schoolHours: hoursData.data || [],
+      studentGradeMap: new Map(),
     };
 
     // 3. Pre-compute all valid time slots
@@ -254,6 +256,11 @@ export class OptimizedScheduler {
       totalFailed: 0,
       errors: [] as string[],
     };
+
+    // Populate student grade map for grade grouping optimization
+    students.forEach(student => {
+      this.context.studentGradeMap.set(student.id, student.grade_level.trim());
+    });
 
     // Sort students by total minutes needed (descending) to handle harder cases first
     const sortedStudents = [...students].sort((a, b) => {
@@ -375,7 +382,7 @@ export class OptimizedScheduler {
   }
 
   /**
-   * Find available slots for a specific student
+   * Find available slots for a specific student using two-pass distribution
    */
   private findStudentSlots(
     student: Student,
@@ -405,20 +412,60 @@ export class OptimizedScheduler {
     console.log(`Valid work days: ${validWorkDays.join(', ')}`);
     console.log(`Sorted days for distribution: ${sortedDays.join(', ')}`);
 
+    // TWO-PASS DISTRIBUTION STRATEGY
+    // First pass: Try to distribute with max 3 sessions per slot
+    console.log("\n=== FIRST PASS: Distribute with max 3 sessions per slot ===");
+    foundSlots.push(...this.findSlotsWithCapacityLimit(student, duration, slotsNeeded, sortedDays, 3));
+
+    // Second pass: If we need more slots, allow up to 6 sessions per slot
+    if (foundSlots.length < slotsNeeded) {
+      console.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 6 per slot ===`);
+      const additionalSlots = this.findSlotsWithCapacityLimit(
+        student, 
+        duration, 
+        slotsNeeded - foundSlots.length, 
+        sortedDays, 
+        6,
+        foundSlots // Pass existing slots to avoid duplicates
+      );
+      foundSlots.push(...additionalSlots);
+    }
+
+    console.log(`\n=== RESULT: Found ${foundSlots.length}/${slotsNeeded} slots for ${student.initials} ===`);
+    return foundSlots;
+  }
+
+  /**
+   * Helper method to find slots with a specific capacity limit
+   */
+  private findSlotsWithCapacityLimit(
+    student: Student,
+    duration: number,
+    slotsNeeded: number,
+    sortedDays: number[],
+    maxCapacity: number,
+    existingFoundSlots: TimeSlot[] = []
+  ): TimeSlot[] {
+    const foundSlots: TimeSlot[] = [];
+
     // Try to find slots
     for (const day of sortedDays) {
+      if (foundSlots.length >= slotsNeeded) break;
+
       console.log(`\nChecking day ${day}, foundSlots.length: ${foundSlots.length}, slotsNeeded: ${slotsNeeded}`);
 
       // Get all valid slots for this day
       const daySlots = Array.from(this.context!.validSlots.entries())
         .filter(([key, slot]) => slot.dayOfWeek === day && slot.capacity > 0)
-        .map(([key, slot]) => ({ key, ...slot }))
-        .sort((a, b) => this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime)); // Sort by time
+        .map(([key, slot]) => ({ key, ...slot }));
 
-      console.log(`Day ${day}: Found ${daySlots.length} potential slots`);
+      // Sort slots with grade-level grouping preference
+      const sortedDaySlots = this.sortSlotsWithGradePreference(daySlots, day, student.grade_level.trim());
+
+      console.log(`Day ${day}: Found ${sortedDaySlots.length} potential slots`);
 
       // Check how many sessions we already have scheduled for this student on this day
-      const sessionsOnThisDay = foundSlots.filter(s => s.dayOfWeek === day).length;
+      const sessionsOnThisDay = [...existingFoundSlots, ...foundSlots].filter(s => s.dayOfWeek === day).length;
 
       // If we already have 2 sessions on this day, try to distribute to other days
       // (unless this is our last available day or we're close to having all needed slots)
@@ -433,7 +480,7 @@ export class OptimizedScheduler {
       }
 
       // Check each slot for student-specific constraints
-      for (const slotInfo of daySlots) {
+      for (const slotInfo of sortedDaySlots) {
         if (foundSlots.length >= slotsNeeded) {
           console.log(`Found enough slots, breaking from slot loop`);
           break;  // This breaks from the slot loop, not the day loop
@@ -488,31 +535,37 @@ export class OptimizedScheduler {
         if (hasActivityConflict) continue;
 
         // Check for overlapping sessions FIRST
-        if (!this.validateNoOverlap(student, day, slot.startTime, endTime, foundSlots)) {
+        if (!this.validateNoOverlap(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           console.log(`    ❌ Session overlap detected`);
           continue;
         }
 
-        // Then check consecutive session rules...
-        if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime, foundSlots)) {
-          console.log(`    ❌ Consecutive session rule violation`);
-          continue;
-        }
-
-        // Check consecutive session rules (max 60 minutes without break) - PASSING foundSlots
-        if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime, foundSlots)) {
+        // Check consecutive session rules (max 60 minutes without break)
+        if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           console.log(`    ❌ Consecutive session rule violation`);
           continue;
         }
 
         // Check break requirements (30-minute break between non-consecutive sessions) - PASSING foundSlots
-        if (!this.validateBreakRequirements(student, day, slot.startTime, endTime, foundSlots)) {
+        if (!this.validateBreakRequirements(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           console.log(`    ❌ Break requirement violation`);
           continue;
         }
 
+        // Check capacity limit for this pass
+        const overlappingSessions = this.context!.existingSessions.filter(
+          (session) =>
+            session.day_of_week === day &&
+            this.hasTimeOverlap(slot.startTime, endTime, session.start_time, session.end_time),
+        );
+        
+        if (overlappingSessions.length >= maxCapacity) {
+          console.log(`    ❌ Slot at capacity (${overlappingSessions.length}/${maxCapacity} sessions)`);
+          continue;
+        }
+
         // Valid slot found!
-        console.log(`    ✅ Valid slot found!`);
+        console.log(`    ✅ Valid slot found! Current capacity: ${overlappingSessions.length}/${maxCapacity}`);
         foundSlots.push({
           ...slot,
           endTime
@@ -840,5 +893,66 @@ export class OptimizedScheduler {
     const startMin = this.timeToMinutes(sessionStart);
     const endMin = this.timeToMinutes(sessionEnd);
     return timeMin >= startMin && timeMin < endMin;
+  }
+
+  /**
+   * Sort slots with preference for grade-level grouping
+   * Prioritizes slots that already have sessions with the same grade level
+   */
+  private sortSlotsWithGradePreference(
+    slots: Array<any>,
+    day: number,
+    targetGrade: string
+  ): Array<any> {
+    // For each slot, count how many sessions of the same grade are already there
+    const slotsWithGradeCounts = slots.map(slot => {
+      const overlappingSessions = this.context!.existingSessions.filter(
+        (session) =>
+          session.day_of_week === day &&
+          this.hasTimeOverlap(slot.startTime, this.addMinutesToTime(slot.startTime, 30), session.start_time, session.end_time)
+      );
+
+      // Count sessions with matching grade
+      let sameGradeCount = 0;
+      let otherGradeCount = 0;
+      
+      for (const session of overlappingSessions) {
+        const sessionGrade = this.context!.studentGradeMap.get(session.student_id);
+        if (sessionGrade) {
+          if (sessionGrade === targetGrade) {
+            sameGradeCount++;
+          } else {
+            otherGradeCount++;
+          }
+        }
+      }
+
+      return {
+        ...slot,
+        sameGradeCount,
+        otherGradeCount,
+        totalSessions: overlappingSessions.length
+      };
+    });
+
+    // Sort by:
+    // 1. Prefer slots with same grade (but only as secondary criteria)
+    // 2. Primary criteria is even distribution (fewer total sessions)
+    // 3. Then by time for chronological ordering
+    return slotsWithGradeCounts.sort((a, b) => {
+      // First priority: Even distribution (prefer slots with fewer total sessions)
+      if (a.totalSessions !== b.totalSessions) {
+        return a.totalSessions - b.totalSessions;
+      }
+      
+      // Second priority: Grade grouping (prefer slots with more same-grade sessions)
+      // Only apply if both slots have the same total capacity usage
+      if (a.sameGradeCount !== b.sameGradeCount) {
+        return b.sameGradeCount - a.sameGradeCount; // Descending (more same-grade is better)
+      }
+      
+      // Third priority: Time order
+      return this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime);
+    });
   }
 }

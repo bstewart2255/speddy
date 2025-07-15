@@ -29,9 +29,10 @@ export default function BellSchedulesPage() {
   const fetchSchedules = async () => {
     try {
       const data = await getBellSchedules(currentSchool?.school_site);
-      setBellSchedules(data);
+      setBellSchedules(data || []); // Ensure we always set an array
     } catch (error) {
       console.error('Error fetching schedules:', error);
+      setBellSchedules([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -231,7 +232,7 @@ export default function BellSchedulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...bellSchedules]
+                  {(Array.isArray(bellSchedules) ? [...bellSchedules] : [])
                     .sort((a, b) => {
                       if (!sortByGrade) return 0;
 

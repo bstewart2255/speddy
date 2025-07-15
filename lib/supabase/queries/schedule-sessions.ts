@@ -49,8 +49,8 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
 
   if (studentsResult.error) throw studentsResult.error;
   
-  const students = studentsResult.data;
-  if (!students || students.length === 0) return 0;
+  const students = studentsResult.data || [];
+  if (!Array.isArray(students) || students.length === 0) return 0;
 
   // Get current scheduled sessions count per student
   const sessionsPerf = measurePerformanceWithAlerts('fetch_sessions_for_unscheduled_count', 'database');
@@ -68,22 +68,26 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
 
   if (sessionsResult.error) throw sessionsResult.error;
   
-  const sessions = sessionsResult.data;
+  const sessions = sessionsResult.data || [];
 
   // Count sessions per student
   const sessionCounts = new Map<string, number>();
-  sessions?.forEach(session => {
-    const count = sessionCounts.get(session.student_id) || 0;
-    sessionCounts.set(session.student_id, count + 1);
-  });
+  if (Array.isArray(sessions)) {
+    sessions.forEach(session => {
+      const count = sessionCounts.get(session.student_id) || 0;
+      sessionCounts.set(session.student_id, count + 1);
+    });
+  }
 
   // Calculate total unscheduled sessions
   let unscheduledCount = 0;
-  students.forEach(student => {
-    const currentSessions = sessionCounts.get(student.id) || 0;
-    const needed = student.sessions_per_week - currentSessions;
-    if (needed > 0) unscheduledCount += needed;
-  });
+  if (Array.isArray(students)) {
+    students.forEach(student => {
+      const currentSessions = sessionCounts.get(student.id) || 0;
+      const needed = student.sessions_per_week - currentSessions;
+      if (needed > 0) unscheduledCount += needed;
+    });
+  }
 
   return unscheduledCount;
 }
