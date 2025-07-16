@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Upload, Send, Loader2 } from 'lucide-react';
+import { Upload, Send, Loader2, Camera, Info } from 'lucide-react';
 
 export default function UploadWorksheetPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -82,6 +82,59 @@ export default function UploadWorksheetPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto px-4">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Upload Completed Worksheet</h1>
+
+        {/* New QR Scan Tip */}
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <Camera className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                <strong>Tip:</strong> For faster uploads, teachers can scan the QR code on the worksheet with their phone camera!
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Upload Methods Explanation */}
+        <div className="bg-gray-50 rounded-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Info className="w-5 h-5" />
+            Two Ways to Upload Worksheets
+          </h2>
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <h3 className="font-medium text-gray-900 mb-1">
+                <Camera className="w-4 h-4 inline mr-2 text-blue-600" />
+                QR Scan Upload (Recommended)
+              </h3>
+              <p className="text-sm text-gray-600">
+                Simply scan the QR code on the worksheet with your phone camera. No login required!
+              </p>
+              <ul className="mt-2 text-sm text-gray-500 list-disc list-inside">
+                <li>Faster and easier</li>
+                <li>Works on any phone</li>
+                <li>No app download needed</li>
+              </ul>
+            </div>
+            
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <h3 className="font-medium text-gray-900 mb-1">
+                <Upload className="w-4 h-4 inline mr-2 text-gray-600" />
+                Direct Upload (You're here)
+              </h3>
+              <p className="text-sm text-gray-600">
+                Upload worksheet photos directly from your device. Requires login.
+              </p>
+              <ul className="mt-2 text-sm text-gray-500 list-disc list-inside">
+                <li>Upload multiple worksheets at once</li>
+                <li>Access upload history</li>
+                <li>Best for desktop use</li>
+              </ul>
+            </div>
+          </div>
+        </div>
 
         <div className="bg-white rounded-lg shadow p-6">
           <div className="space-y-6">
@@ -176,13 +229,20 @@ export default function UploadWorksheetPage() {
 
         {/* Instructions */}
         <div className="mt-8 bg-blue-50 rounded-lg p-6">
-          <h2 className="font-semibold text-blue-900 mb-2">Instructions</h2>
+          <h2 className="font-semibold text-blue-900 mb-2">Instructions for Direct Upload</h2>
           <ol className="list-decimal list-inside space-y-1 text-blue-800">
             <li>Take a clear photo of the completed worksheet</li>
             <li>Make sure the QR code is visible in the image</li>
             <li>Upload the image using the form above</li>
             <li>The system will automatically process and grade the worksheet</li>
           </ol>
+          
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <p className="text-sm text-blue-700">
+              <strong>Alternative:</strong> For a quicker option, simply scan the QR code on the worksheet with your phone camera. 
+              It will open a page where you can instantly upload the worksheet photo without logging in!
+            </p>
+          </div>
         </div>
       </div>
     </div>

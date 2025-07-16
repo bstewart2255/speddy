@@ -2,10 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
-
-// For QR code reading
-const Jimp = require('jimp');
-const QrCode = require('qrcode-reader');
+import { checkRateLimit, recordUpload } from '@/lib/rate-limit';
+import { extractQRCodeForSubmission, verifyQRCodeMatch } from '@/lib/qr-verification';
+import { validateImageBuffer } from '@/lib/image-utils';
+import { trackEvent } from '@/lib/analytics';
 
 // Interface for analysis result
 interface AnalysisResult {
@@ -21,54 +21,159 @@ interface AnalysisResult {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  let imageSize = 0;
+  let source: string | undefined;
+  let qrCode: string | undefined;
+  let ip: string | null = null;
+  
   try {
     const supabase = await createClient();
     const contentType = request.headers.get('content-type');
 
     let imageBuffer: Buffer;
-    let qrCode: string;
     let submitterEmail: string | undefined;
+
+    // Extract IP address for rate limiting
+    const forwarded = request.headers.get('x-forwarded-for');
+    ip = forwarded ? forwarded.split(',')[0].trim() : request.headers.get('x-real-ip') || null;
 
     // Handle direct upload from the upload page
     if (contentType?.includes('application/json')) {
-      // Check authentication for direct uploads
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+      const { image, filename, mimetype, source: uploadSource } = await request.json();
+      source = uploadSource;
 
-      const { image, filename, mimetype } = await request.json();
+      // Check authentication for direct uploads (skip for QR scan uploads)
+      if (source !== 'qr_scan_upload') {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+      }
 
       // Extract base64 data
       const base64Data = image.split(',')[1];
       imageBuffer = Buffer.from(base64Data, 'base64');
+      imageSize = imageBuffer.length;
+      
+      // Validate image buffer
+      const validation = validateImageBuffer(imageBuffer, filename || 'image.jpg', imageBuffer.length);
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.error || 'Invalid image file' },
+          { status: 400 }
+        );
+      }
 
       // Extract QR code
-      const extractedQR = await extractQRCode(imageBuffer);
-      if (!extractedQR) {
+      const qrResult = await extractQRCodeForSubmission(imageBuffer);
+      if (!qrResult.code) {
         return NextResponse.json(
           { error: 'Could not read QR code. Please ensure the QR code is clearly visible.' },
           { status: 400 }
         );
       }
-      qrCode = extractedQR;
+      qrCode = qrResult.code;
+
+      // For QR scan uploads, perform rate limiting check
+      if (source === 'qr_scan_upload') {
+        const rateLimitResult = await checkRateLimit(ip, qrCode);
+        if (!rateLimitResult.allowed) {
+          return new NextResponse(
+            JSON.stringify({ 
+              error: rateLimitResult.reason || 'Too many uploads. Please try again later.',
+              remainingUploads: rateLimitResult.remainingUploads || 0
+            }),
+            { 
+              status: 429,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-RateLimit-Limit': '20',
+                'X-RateLimit-Remaining': String(rateLimitResult.remainingUploads || 0),
+                'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600)
+              }
+            }
+          );
+        }
+      }
     } 
-    // Handle email webhook format
+    // Handle email webhook format or FormData from QR scan
     else {
       const formData = await request.formData();
       const imageFile = formData.get('image') as File;
       qrCode = formData.get('qr_code') as string;
       submitterEmail = formData.get('from_email') as string;
+      source = formData.get('source') as string;
 
-      if (!imageFile || !qrCode) {
+      if (!imageFile) {
         return NextResponse.json(
-          { error: 'Missing required data' },
+          { error: 'Missing required image data' },
           { status: 400 }
         );
       }
 
       const arrayBuffer = await imageFile.arrayBuffer();
       imageBuffer = Buffer.from(arrayBuffer);
+      imageSize = imageBuffer.length;
+      
+      // Validate image buffer
+      const validation = validateImageBuffer(imageBuffer, imageFile.name, imageFile.size);
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.error || 'Invalid image file' },
+          { status: 400 }
+        );
+      }
+
+      // For QR scan uploads via FormData, extract QR code from image if not provided
+      if (source === 'qr_scan_upload' && !qrCode) {
+        const qrResult = await extractQRCodeForSubmission(imageBuffer);
+        if (!qrResult.code) {
+          return NextResponse.json(
+            { error: 'Could not read QR code. Please ensure the QR code is clearly visible.' },
+            { status: 400 }
+          );
+        }
+        qrCode = qrResult.code;
+      }
+
+      // Check rate limiting for QR scan uploads
+      if (source === 'qr_scan_upload') {
+        const rateLimitResult = await checkRateLimit(ip, qrCode);
+        if (!rateLimitResult.allowed) {
+          return new NextResponse(
+            JSON.stringify({ 
+              error: rateLimitResult.reason || 'Too many uploads. Please try again later.',
+              remainingUploads: rateLimitResult.remainingUploads || 0
+            }),
+            { 
+              status: 429,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-RateLimit-Limit': '20',
+                'X-RateLimit-Remaining': String(rateLimitResult.remainingUploads || 0),
+                'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600)
+              }
+            }
+          );
+        }
+      }
+
+      // Require qr_code for email webhook
+      if (!qrCode) {
+        return NextResponse.json(
+          { error: 'Missing QR code data' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Ensure we have a QR code at this point
+    if (!qrCode) {
+      return NextResponse.json(
+        { error: 'Unable to extract QR code from the image' },
+        { status: 400 }
+      );
     }
 
     // Look up worksheet by QR code
@@ -90,6 +195,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Worksheet not found. This QR code may be invalid or expired.' },
         { status: 404 }
+      );
+    }
+
+    // Verify QR code in image matches the worksheet being submitted
+    // Apply verification for all sources to ensure data integrity
+    const isValidQR = await verifyQRCodeMatch(imageBuffer, qrCode);
+    if (!isValidQR) {
+      return NextResponse.json(
+        { error: 'The QR code in this image doesn\'t match the worksheet you\'re trying to submit.' },
+        { status: 400 }
       );
     }
 
@@ -222,17 +337,85 @@ export async function POST(request: NextRequest) {
     // Update IEP goal progress if applicable
     await updateIEPProgress(worksheet, analysisResult, supabase);
 
-    return NextResponse.json({
+    // Record upload for rate limiting (only for QR scan uploads)
+    if (source === 'qr_scan_upload') {
+      await recordUpload(ip, qrCode);
+    }
+
+    // Track analytics for all uploads
+    const processingTime = Date.now() - startTime;
+    const eventType = source === 'qr_scan_upload' ? 'qr_upload_completed' : 'standard_upload_completed';
+    
+    await trackEvent({
+      event: eventType,
+      worksheetCode: qrCode,
+      fileSize: imageSize,
+      processingTime: processingTime,
+      uploadSource: source || 'unknown',
+      userId: worksheet.students.provider_id,
+      ipAddress: ip,
+      userAgent: request.headers.get('user-agent') || undefined,
+      metadata: {
+        worksheetType: worksheet.worksheet_type,
+        accuracy: analysisResult?.accuracy,
+        submissionId: submission.id,
+        storageSize: imageBuffer.length,
+        hasAIAnalysis: !!analysisResult?.responses?.length
+      }
+    });
+
+    // Prepare response with rate limit headers for QR scan uploads
+    const responseData = {
       success: true,
       submission: submission,
       studentInitials: worksheet.students.initials,
       accuracy: analysisResult?.accuracy ? parseFloat((analysisResult.accuracy * 100).toFixed(1)) : '0',
       worksheetType: worksheet.worksheet_type,
       message: 'Worksheet processed successfully!'
-    });
+    };
 
-  } catch (error) {
+    if (source === 'qr_scan_upload') {
+      // Get updated rate limit info
+      const postUploadLimit = await checkRateLimit(ip, qrCode);
+      return new NextResponse(
+        JSON.stringify(responseData),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Limit': '20',
+            'X-RateLimit-Remaining': String(postUploadLimit.remainingUploads || 0),
+            'X-RateLimit-Reset': String(Math.floor(Date.now() / 1000) + 3600)
+          }
+        }
+      );
+    }
+
+    return NextResponse.json(responseData);
+
+  } catch (error: any) {
     console.error('Error processing worksheet submission:', error);
+    
+    // Track failed upload
+    const processingTime = Date.now() - startTime;
+    const eventType = source === 'qr_scan_upload' ? 'qr_upload_failed' : 'standard_upload_failed';
+    
+    await trackEvent({
+      event: eventType,
+      worksheetCode: qrCode,
+      fileSize: imageSize,
+      processingTime: processingTime,
+      uploadSource: source || 'unknown',
+      errorCode: error.code || 'server_error',
+      errorMessage: error.message || 'Unknown error',
+      ipAddress: ip,
+      userAgent: request.headers.get('user-agent') || undefined,
+      metadata: {
+        errorStack: error.stack,
+        statusCode: 500
+      }
+    });
+    
     return NextResponse.json(
       { error: 'Failed to process worksheet' },
       { status: 500 }
@@ -240,28 +423,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Helper function to extract QR code from image
-async function extractQRCode(imageBuffer: Buffer): Promise<string | null> {
-  try {
-    const image = await Jimp.read(imageBuffer);
-    const qr = new QrCode();
-
-    return new Promise((resolve) => {
-      qr.callback = (err: any, value: any) => {
-        if (err || !value) {
-          console.error('QR decode error:', err);
-          resolve(null);
-        } else {
-          resolve(value.result);
-        }
-      };
-      qr.decode(image.bitmap);
-    });
-  } catch (error) {
-    console.error('QR extraction error:', error);
-    return null;
-  }
-}
 
 function extractSkillsAssessed(worksheet: any, analysis: any): any {
   const skillsMap: Record<string, string> = {

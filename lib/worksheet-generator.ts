@@ -23,19 +23,14 @@ export class WorksheetGenerator {
   async generateWorksheet(config: WorksheetConfig): Promise<string> {
     this.doc = new jsPDF(); // Reset for new worksheet
 
-    // Generate QR code with worksheet metadata
-    const qrData = JSON.stringify({
-      ws: `WS-${Date.now()}`, // Worksheet ID
-      student: config.studentName,
-      grade: config.gradeLevel,
-      subject: config.subject,
-      date: config.sessionDate?.toISOString() || new Date().toISOString(),
-      session: config.sessionTime || null, // Add session time
-      lessonId: config.lessonId || null
-    });
+    // Generate unique worksheet code
+    const worksheetCode = `WS-${Date.now()}`;
+    
+    // Generate QR code with URL format
+    const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
 
     try {
-      const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
+      const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {
         width: 60,
         margin: 1,
         errorCorrectionLevel: 'M',

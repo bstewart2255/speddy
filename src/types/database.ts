@@ -429,6 +429,8 @@ export interface Database {
           content: Json
           answer_key: Json | null
           qr_code: string
+          uploaded_file_path: string | null
+          uploaded_at: string | null
           created_at: string
         }
         Insert: {
@@ -439,6 +441,8 @@ export interface Database {
           content: Json
           answer_key?: Json | null
           qr_code: string
+          uploaded_file_path?: string | null
+          uploaded_at?: string | null
           created_at?: string
         }
         Update: {
@@ -449,7 +453,29 @@ export interface Database {
           content?: Json
           answer_key?: Json | null
           qr_code?: string
+          uploaded_file_path?: string | null
+          uploaded_at?: string | null
           created_at?: string
+        }
+      },
+      upload_rate_limits: {
+        Row: {
+          id: string
+          ip_address: string
+          worksheet_code: string
+          uploaded_at: string
+        }
+        Insert: {
+          id?: string
+          ip_address: string
+          worksheet_code: string
+          uploaded_at?: string
+        }
+        Update: {
+          id?: string
+          ip_address?: string
+          worksheet_code?: string
+          uploaded_at?: string
         }
       },
       worksheet_submissions: {

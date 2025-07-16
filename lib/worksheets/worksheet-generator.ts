@@ -26,10 +26,10 @@ export async function generateWorksheetWithQR(
 ): Promise<{ worksheetId: string; qrCodeDataUrl: string }> {
   const supabase = createClient<Database>();
 
-  // Generate unique QR code identifier
-  const qrCode = `WS-${lessonId.slice(0, 8)}-${studentId.slice(0, 8)}-${Date.now()}`;
+  // Generate unique worksheet code (not the full URL)
+  const worksheetCode = `WS-${lessonId.slice(0, 8)}-${studentId.slice(0, 8)}-${Date.now()}`;
 
-  // Save worksheet to database
+  // Save worksheet to database with just the code
   const { data: worksheet, error } = await supabase
     .from('worksheets')
     .insert({
@@ -44,15 +44,16 @@ export async function generateWorksheetWithQR(
           points: q.points || 1
         }))
       },
-      qr_code: qrCode
+      qr_code: worksheetCode
     })
     .select()
     .single();
 
   if (error) throw error;
 
-  // Generate QR code as data URL
-  const qrCodeDataUrl = await QRCode.toDataURL(qrCode, {
+  // Generate QR code with URL format
+  const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
+  const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {
     width: 150,
     margin: 2,
     errorCorrectionLevel: 'M'
