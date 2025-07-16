@@ -11,7 +11,8 @@
     "test:e2e:ci": "node tests/e2e/deployment/replit-deploy-check.js",
     "build": "next build",
     "dev": "next dev",
-    "start": "next start"
+    "start": "next start",
+    "test:integration": "node scripts/run-integration-tests.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
@@ -42,6 +43,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.9.0",
     "@jest/globals": "^30.0.4",
     "@playwright/test": "^1.54.1",
     "@testing-library/jest-dom": "^6.6.3",
@@ -55,6 +57,7 @@
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
     "autoprefixer": "^10.4.21",
+    "dotenv": "^17.2.0",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.3",
     "jest": "^30.0.4",
