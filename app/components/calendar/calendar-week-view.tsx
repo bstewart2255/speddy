@@ -1,12 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
 import { SessionGenerator } from '@/lib/services/session-generator';
+import { LessonTypeModal } from "../modals/lesson-type-modal";
+import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
+import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
+import { useToast } from "../../contexts/toast-context";
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
+type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
 
 interface CalendarWeekViewProps {
   sessions: ScheduleSession[];
@@ -78,9 +83,20 @@ export function CalendarWeekView({
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [sessionsState, setSessionsState] = useState(sessions);
+  
+  // State for manual lesson creation
+  const [showLessonTypeModal, setShowLessonTypeModal] = useState(false);
+  const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
+  const [showManualLessonForm, setShowManualLessonForm] = useState(false);
+  const [manualLessons, setManualLessons] = useState<Map<string, ManualLesson[]>>(new Map());
+  const [selectedManualLesson, setSelectedManualLesson] = useState<ManualLesson | null>(null);
+  const [loadingManualLessons, setLoadingManualLessons] = useState(false);
+  const [showManualLessonView, setShowManualLessonView] = useState(false);
+  const [viewingManualLesson, setViewingManualLesson] = useState<ManualLesson | null>(null);
 
   const supabase = createClient<Database>();
   const sessionGenerator = new SessionGenerator();
+  const { showToast } = useToast();
 
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
@@ -105,6 +121,62 @@ export function CalendarWeekView({
 
     loadSessions();
   }, [weekOffset]);
+
+  // Load manual lessons for the week
+  React.useEffect(() => {
+    const loadManualLessons = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setLoadingManualLessons(true);
+      try {
+        // Get the Monday of the current week
+        const weekStart = new Date();
+        const currentDay = weekStart.getDay();
+        const diff = currentDay === 0 ? -6 : 1 - currentDay;
+        weekStart.setDate(weekStart.getDate() + diff + (weekOffset * 7));
+
+        // Get the Sunday (end of week)
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        // Format dates for API
+        const startDate = weekStart.toISOString().split('T')[0];
+        const endDate = weekEnd.toISOString().split('T')[0];
+
+        const response = await fetch(`/api/manual-lessons?start_date=${startDate}&end_date=${endDate}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Fetched manual lessons:', data.lessons);
+          
+          // Group lessons by date
+          const lessonsByDate = new Map<string, ManualLesson[]>();
+          data.lessons.forEach((lesson: ManualLesson) => {
+            const dateKey = lesson.lesson_date;
+            console.log('Processing lesson for date:', dateKey, lesson);
+            if (!lessonsByDate.has(dateKey)) {
+              lessonsByDate.set(dateKey, []);
+            }
+            lessonsByDate.get(dateKey)!.push(lesson);
+          });
+          
+          console.log('Manual lessons by date:', Array.from(lessonsByDate.entries()));
+          setManualLessons(lessonsByDate);
+        } else {
+          console.error('Failed to fetch manual lessons:', response.status, response.statusText);
+          showToast('Failed to load manual lessons', 'error');
+        }
+      } catch (error) {
+        console.error('Error loading manual lessons:', error);
+        showToast('Error loading manual lessons', 'error');
+      } finally {
+        setLoadingManualLessons(false);
+      }
+    };
+
+    loadManualLessons();
+  }, [weekOffset, showToast]);
 
   // Handler for completing/uncompleting a session
   // In calendar-week-view.tsx
@@ -457,9 +529,248 @@ export function CalendarWeekView({
     );
   });
 
+  // Handler for manual lesson creation
+  const handleAddLesson = (date: Date) => {
+    setSelectedLessonDate(date);
+    setShowLessonTypeModal(true);
+  };
+
+  // Handler for selecting AI lesson type
+  const handleSelectAI = () => {
+    if (selectedLessonDate) {
+      const dayOfWeek = selectedLessonDate.getDay() === 0 ? 7 : selectedLessonDate.getDay();
+      const daySessions = sessionsByDay[dayOfWeek] || [];
+      handleGenerateDailyAILesson(selectedLessonDate, daySessions);
+    }
+  };
+
+  // Handler for selecting manual lesson type
+  const handleSelectManual = () => {
+    setShowManualLessonForm(true);
+  };
+
+  // Handler for saving manual lesson
+  const handleSaveManualLesson = async (lessonData: any) => {
+    const dateKey = selectedLessonDate?.toISOString().split('T')[0];
+    if (!dateKey) return;
+
+    // Optimistic update - create temporary lesson
+    const tempLesson: ManualLesson = {
+      id: selectedManualLesson?.id || `temp-${Date.now()}`,
+      provider_id: '', // Will be set by server
+      lesson_date: dateKey,
+      title: lessonData.title,
+      subject: lessonData.subject || null,
+      grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map((g: string) => g.trim()) : null,
+      duration_minutes: lessonData.duration || null,
+      objectives: lessonData.learningObjectives || null,
+      materials: lessonData.materialsNeeded || null,
+      activities: lessonData.activities || null,
+      assessment: lessonData.assessmentMethods || null,
+      notes: lessonData.notes || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Optimistically update UI - ensure we create new arrays/maps for React to detect changes
+    const updatedLessons = new Map(manualLessons);
+    const existingLessons = updatedLessons.get(dateKey) || [];
+    const dateLessons = [...existingLessons];
+    
+    if (selectedManualLesson) {
+      // Update existing lesson
+      const index = dateLessons.findIndex(l => l.id === selectedManualLesson.id);
+      if (index !== -1) {
+        dateLessons[index] = tempLesson;
+      }
+    } else {
+      // Add new lesson
+      dateLessons.push(tempLesson);
+    }
+    
+    updatedLessons.set(dateKey, dateLessons);
+    console.log('Setting manual lessons optimistically:', dateKey, dateLessons);
+    setManualLessons(updatedLessons);
+    
+    // Show optimistic success
+    showToast(selectedManualLesson ? 'Updating lesson...' : 'Creating lesson...', 'info');
+    
+    // Close form after state update
+    setShowManualLessonForm(false);
+
+    try {
+      const url = selectedManualLesson 
+        ? `/api/manual-lessons/${selectedManualLesson.id}`
+        : '/api/manual-lessons';
+      
+      const method = selectedManualLesson ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: lessonData.title,
+          subject: lessonData.subject,
+          grade_levels: lessonData.gradeLevels,
+          duration_minutes: lessonData.duration,
+          objectives: lessonData.learningObjectives,
+          materials: lessonData.materialsNeeded,
+          activities: lessonData.activities,
+          assessment: lessonData.assessmentMethods,
+          notes: lessonData.notes,
+          lesson_date: dateKey,
+        }),
+      });
+
+      if (response.ok) {
+        const { lesson } = await response.json();
+        
+        // Replace temp lesson with real one
+        const finalLessons = new Map(manualLessons);
+        const finalDateLessons = [...(finalLessons.get(dateKey) || [])];
+        
+        if (selectedManualLesson) {
+          const index = finalDateLessons.findIndex(l => l.id === selectedManualLesson.id);
+          if (index !== -1) {
+            finalDateLessons[index] = lesson;
+          }
+        } else {
+          // Remove temp and add real
+          const tempIndex = finalDateLessons.findIndex(l => l.id === tempLesson.id);
+          if (tempIndex !== -1) {
+            finalDateLessons[tempIndex] = lesson;
+          } else {
+            // If temp lesson wasn't found, just add the new lesson
+            finalDateLessons.push(lesson);
+          }
+        }
+        
+        finalLessons.set(dateKey, finalDateLessons);
+        console.log('Setting final manual lessons:', dateKey, finalDateLessons);
+        console.log('All lessons in map:', Array.from(finalLessons.entries()));
+        setManualLessons(finalLessons);
+        
+        showToast(
+          selectedManualLesson ? 'Lesson updated successfully' : 'Lesson created successfully',
+          'success'
+        );
+        setSelectedManualLesson(null);
+      } else {
+        // Revert optimistic update
+        const revertedLessons = new Map(manualLessons);
+        if (selectedManualLesson) {
+          // Revert to original
+          const revertDateLessons = [...(revertedLessons.get(dateKey) || [])];
+          const index = revertDateLessons.findIndex(l => l.id === selectedManualLesson.id);
+          if (index !== -1) {
+            revertDateLessons[index] = selectedManualLesson;
+          }
+          revertedLessons.set(dateKey, revertDateLessons);
+        } else {
+          // Remove temp lesson
+          const revertDateLessons = (revertedLessons.get(dateKey) || [])
+            .filter(l => l.id !== tempLesson.id);
+          if (revertDateLessons.length === 0) {
+            revertedLessons.delete(dateKey);
+          } else {
+            revertedLessons.set(dateKey, revertDateLessons);
+          }
+        }
+        setManualLessons(revertedLessons);
+        
+        showToast('Failed to save lesson. Please try again.', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving manual lesson:', error);
+      
+      // Revert optimistic update on error
+      if (!selectedManualLesson) {
+        const revertedLessons = new Map(manualLessons);
+        const revertDateLessons = (revertedLessons.get(dateKey) || [])
+          .filter(l => l.id !== tempLesson.id);
+        if (revertDateLessons.length === 0) {
+          revertedLessons.delete(dateKey);
+        } else {
+          revertedLessons.set(dateKey, revertDateLessons);
+        }
+        setManualLessons(revertedLessons);
+      }
+      
+      showToast('Error saving lesson. Please try again.', 'error');
+    }
+  };
+
+  // Handler for editing manual lesson
+  const handleEditManualLesson = (lesson: ManualLesson) => {
+    setSelectedManualLesson(lesson);
+    setSelectedLessonDate(new Date(lesson.lesson_date));
+    setShowManualLessonForm(true);
+  };
+
+  // Handler for deleting manual lesson
+  const handleDeleteManualLesson = async (lessonId: string, dateStr: string) => {
+    if (!confirm('Are you sure you want to delete this manual lesson?')) {
+      return;
+    }
+
+    // Optimistic update - remove lesson immediately
+    const originalLessons = manualLessons.get(dateStr) || [];
+    const lessonToDelete = originalLessons.find(l => l.id === lessonId);
+    
+    const updatedLessons = new Map(manualLessons);
+    const filteredLessons = originalLessons.filter(l => l.id !== lessonId);
+    
+    if (filteredLessons.length === 0) {
+      updatedLessons.delete(dateStr);
+    } else {
+      updatedLessons.set(dateStr, filteredLessons);
+    }
+    
+    setManualLessons(updatedLessons);
+    showToast('Deleting lesson...', 'info');
+
+    try {
+      const response = await fetch(`/api/manual-lessons/${lessonId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        showToast('Lesson deleted successfully', 'success');
+        // Close view modal if it's open
+        if (viewingManualLesson?.id === lessonId) {
+          setShowManualLessonView(false);
+          setViewingManualLesson(null);
+        }
+      } else {
+        // Revert optimistic update
+        if (lessonToDelete) {
+          const revertedLessons = new Map(updatedLessons);
+          const currentDateLessons = revertedLessons.get(dateStr) || [];
+          currentDateLessons.push(lessonToDelete);
+          revertedLessons.set(dateStr, currentDateLessons);
+          setManualLessons(revertedLessons);
+        }
+        showToast('Failed to delete lesson', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting manual lesson:', error);
+      // Revert optimistic update
+      if (lessonToDelete) {
+        const revertedLessons = new Map(updatedLessons);
+        const currentDateLessons = revertedLessons.get(dateStr) || [];
+        currentDateLessons.push(lessonToDelete);
+        revertedLessons.set(dateStr, currentDateLessons);
+        setManualLessons(revertedLessons);
+      }
+      showToast('Error deleting lesson', 'error');
+    }
+  };
+
   return (
     <div>
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
         {weekDates.map((date, index) => {
           const dayOfWeek = index + 1; // 1 = Monday, 2 = Tuesday, etc.
           const daySessions = sessionsByDay[dayOfWeek] || [];
@@ -471,7 +782,7 @@ export function CalendarWeekView({
               className={`border rounded-lg ${isToday ? "border-blue-400 bg-blue-50" : isHoliday(date) ? "border-red-200 bg-red-50" : "border-gray-200"}`}
             >
               <div
-                className={`p-2 text-center font-medium text-sm ${
+                className={`p-2 text-center font-medium text-sm relative ${
                   isToday ? "bg-blue-100" : isHoliday(date) ? "bg-red-100" : "bg-gray-50"
                 }`}
               >
@@ -484,6 +795,31 @@ export function CalendarWeekView({
                     {getHolidayName(date)}
                   </div>
                 )}
+                
+                {/* Plus button for manual lesson creation */}
+                <button
+                  onClick={() => handleAddLesson(date)}
+                  className="absolute flex items-center justify-center bg-white rounded-full transition-all duration-200 hover:scale-110 touch-manipulation"
+                  style={{
+                    top: '4px',
+                    right: '4px',
+                    width: '32px',
+                    height: '32px',
+                    border: '2px dashed #9ca3af',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#3b82f6';
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#9ca3af';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  title="Add manual lesson"
+                  aria-label="Add manual lesson"
+                >
+                  <span className="text-gray-600 text-lg leading-none" aria-hidden="true">+</span>
+                </button>
               </div>
 
               {/* AI Lesson Buttons - only show if there are sessions */}
@@ -576,6 +912,54 @@ export function CalendarWeekView({
                   )}
                 </div>
               )}
+
+              {/* Manual Lessons */}
+              {loadingManualLessons ? (
+                <div className="px-2 pb-2">
+                  <div className="flex items-center justify-center py-2">
+                    <svg className="animate-spin h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                </div>
+              ) : (() => {
+                const dateStr = date.toISOString().split('T')[0];
+                const dayManualLessons = manualLessons.get(dateStr) || [];
+                console.log('Checking manual lessons for date:', dateStr, 'Found:', dayManualLessons.length);
+                
+                return dayManualLessons.length > 0 ? (
+                  <div className="px-2 pb-2 space-y-1">
+                    {dayManualLessons.map((lesson) => (
+                      <div key={lesson.id} className="relative group">
+                        <button
+                          onClick={() => {
+                            setViewingManualLesson(lesson);
+                            setShowManualLessonView(true);
+                          }}
+                          className="w-full px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1.5 text-left"
+                          title={lesson.title}
+                        >
+                          <span>📝</span>
+                          <span className="truncate">Manual Lesson: {lesson.title}</span>
+                        </button>
+                        
+                        {/* Delete button (X) - only visible on hover */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteManualLesson(lesson.id, dateStr);
+                          }}
+                          className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                          title="Delete manual lesson"
+                        >
+                          <span className="text-xs leading-none">×</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
 
               <div className="p-2 space-y-1 min-h-[200px]">
                 {daySessions.length === 0 ? (
@@ -790,6 +1174,59 @@ export function CalendarWeekView({
             </div>
           </div>
         )}
+
+      {/* Lesson Type Selection Modal */}
+      <LessonTypeModal
+        isOpen={showLessonTypeModal}
+        onClose={() => setShowLessonTypeModal(false)}
+        onSelectAI={handleSelectAI}
+        onSelectManual={handleSelectManual}
+      />
+
+      {/* Manual Lesson Form Modal */}
+      <ManualLessonFormModal
+        isOpen={showManualLessonForm}
+        onClose={() => {
+          setShowManualLessonForm(false);
+          setSelectedManualLesson(null);
+        }}
+        onSave={handleSaveManualLesson}
+        initialData={selectedManualLesson ? {
+          id: selectedManualLesson.id,
+          title: selectedManualLesson.title,
+          subject: selectedManualLesson.subject ?? undefined,
+          gradeLevels: selectedManualLesson.grade_levels?.join(', ') ?? undefined,
+          duration: selectedManualLesson.duration_minutes ?? undefined,
+          learningObjectives: selectedManualLesson.objectives ?? undefined,
+          materialsNeeded: selectedManualLesson.materials ?? undefined,
+          activities: typeof selectedManualLesson.activities === 'string' 
+            ? selectedManualLesson.activities 
+            : JSON.stringify(selectedManualLesson.activities, null, 2),
+          assessmentMethods: selectedManualLesson.assessment ?? undefined,
+          notes: selectedManualLesson.notes ?? undefined,
+        } : undefined}
+        lessonDate={selectedLessonDate || new Date()}
+      />
+
+      {/* Manual Lesson View Modal */}
+      {viewingManualLesson && (
+        <ManualLessonViewModal
+          isOpen={showManualLessonView}
+          onClose={() => {
+            setShowManualLessonView(false);
+            setViewingManualLesson(null);
+          }}
+          lesson={viewingManualLesson}
+          onEdit={(lesson) => {
+            setShowManualLessonView(false);
+            handleEditManualLesson(lesson);
+          }}
+          onDelete={(lessonId) => {
+            const dateStr = viewingManualLesson.lesson_date;
+            handleDeleteManualLesson(lessonId, dateStr);
+          }}
+        />
+      )}
       </div>
     );
   }

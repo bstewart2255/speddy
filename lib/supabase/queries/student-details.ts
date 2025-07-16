@@ -37,7 +37,8 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
 
   if (fetchResult.error) {
     // Check if it's a no rows error
-    if ((fetchResult.error as any).code === 'PGRST116') { // No rows returned
+    if ((fetchResult.error as any).code === 'PGRST116' || 
+        fetchResult.error.message?.includes('No rows returned')) { // No rows returned
       return null;
     }
     console.error('Error fetching student details:', fetchResult.error);

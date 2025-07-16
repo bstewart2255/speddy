@@ -9,7 +9,7 @@ packages = ["nano", "supabase-cli"]
 
 [env]
 NEXT_TELEMETRY_DISABLED = "1"
-NODE_ENV = "development"
+# NODE_ENV = "development"  # Commented out for build - Next.js sets this automatically
 
 [deployment]
 build = ["npm", "run", "build"]

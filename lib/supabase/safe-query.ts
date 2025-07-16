@@ -21,9 +21,24 @@ export async function safeQuery<T>(
     return { data, error: null };
   } catch (error) {
     log.error(`Database operation failed: ${context.operation}`, error, context);
+    
+    // Ensure we always return a proper Error object
+    let errorObj: Error;
+    if (error instanceof Error) {
+      errorObj = error;
+    } else if (typeof error === 'string') {
+      errorObj = new Error(error);
+    } else if (error && typeof error === 'object' && 'message' in error) {
+      errorObj = new Error(error.message);
+      // Preserve any additional properties
+      Object.assign(errorObj, error);
+    } else {
+      errorObj = new Error('Unknown database error');
+    }
+    
     return { 
       data: null, 
-      error: error instanceof Error ? error : new Error(String(error)) 
+      error: errorObj
     };
   }
 }

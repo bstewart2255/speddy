@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { getStudentDetails } from '../../../lib/supabase/queries/student-details';
+import { getStudentDetails, type StudentDetails } from '../../../lib/supabase/queries/student-details';
 import { GRADE_SKILLS_CONFIG } from '../../../lib/grade-skills-config';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
@@ -249,7 +249,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       } catch (apiError: any) {
         log.error('Anthropic API error', apiError, { 
           userId,
-          errorCode: apiError.status 
+          errorCode: apiError.status,
+          errorMessage: apiError.message,
+          errorDetails: apiError.response?.data || apiError.toString()
         });
         
         track.event('lesson_generation_failed', {
@@ -258,10 +260,27 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           errorCode: apiError.status
         });
         
+        // Provide more detailed error information
+        const errorMessage = apiError.status === 401 
+          ? 'Invalid API key. Please check your Anthropic API key configuration.'
+          : apiError.status === 429
+          ? 'Rate limit exceeded. Please try again in a few moments.'
+          : apiError.status === 400
+          ? 'Invalid request. Please check your input and try again.'
+          : `Failed to generate lesson: ${apiError.message || 'Unknown error'}`;
+        
         // Fall back to mock response if API fails
         content = `<div class="error-message">
-          <p><strong>Error:</strong> Failed to generate lesson. Please try again.</p>
-          <p>If this persists, check your API configuration.</p>
+          <p><strong>Error:</strong> ${errorMessage}</p>
+          <p>If this persists, please contact support.</p>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-sm text-gray-600">Technical details</summary>
+            <pre class="mt-1 text-xs bg-gray-100 p-2 rounded">${JSON.stringify({
+              status: apiError.status,
+              message: apiError.message,
+              type: apiError.type
+            }, null, 2)}</pre>
+          </details>
         </div>`;
       }
     } else {
@@ -292,18 +311,33 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     perf.end({ success: true });
     
     return NextResponse.json({ content });
-  } catch (error) {
-    log.error('Error generating lesson', error, { userId });
+  } catch (error: any) {
+    log.error('Error generating lesson', error, { 
+      userId,
+      errorMessage: error?.message,
+      errorStack: error?.stack,
+      errorType: error?.constructor?.name
+    });
     
     track.event('lesson_generation_error', {
       userId,
-      error: (error as Error).message
+      error: error?.message || 'Unknown error',
+      errorType: error?.constructor?.name
     });
     
     perf.end({ success: false });
     
+    // Return more detailed error information
     return NextResponse.json(
-      { error: 'Failed to generate lesson content' },
+      { 
+        error: 'Failed to generate lesson content',
+        details: {
+          message: error?.message || 'Unknown error occurred',
+          type: error?.constructor?.name || 'Error',
+          // Only include stack in development
+          ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
+        }
+      },
       { status: 500 }
     );
   }
@@ -322,8 +356,15 @@ async function createEnhancedPrompt(
     
     // Fetch student details to get working skills
     const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
-    const details = await getStudentDetails(student.id);
-    detailsPerf.end({ studentId: student.id });
+    let details: StudentDetails | null = null;
+    try {
+      details = await getStudentDetails(student.id);
+      detailsPerf.end({ studentId: student.id, success: true });
+    } catch (error) {
+      log.error('Failed to fetch student details', error, { studentId: student.id });
+      detailsPerf.end({ studentId: student.id, success: false });
+      // Continue with null details - will use default values
+    }
     
     // Get skill labels for the selected skills
     let workingSkillsText = 'General curriculum';
@@ -366,7 +407,14 @@ async function createEnhancedPrompt(
 
     // Check what data we have across all students
     const studentDetailsArray = await Promise.all(
-      students.map(student => getStudentDetails(student.id))
+      students.map(async (student) => {
+        try {
+          return await getStudentDetails(student.id);
+        } catch (error) {
+          log.error('Failed to fetch student details for prompt', error, { studentId: student.id });
+          return null;
+        }
+      })
     );
 
     const hasIEPGoals = studentDetailsArray.some(details => 

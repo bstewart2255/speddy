@@ -719,6 +719,65 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+      },
+      manual_lesson_plans: {
+        Row: {
+          id: string
+          provider_id: string
+          lesson_date: string
+          title: string
+          subject: string | null
+          grade_levels: string[] | null
+          duration_minutes: number | null
+          objectives: string | null
+          materials: string | null
+          activities: Json | null
+          assessment: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          lesson_date: string
+          title: string
+          subject?: string | null
+          grade_levels?: string[] | null
+          duration_minutes?: number | null
+          objectives?: string | null
+          materials?: string | null
+          activities?: Json | null
+          assessment?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          lesson_date?: string
+          title?: string
+          subject?: string | null
+          grade_levels?: string[] | null
+          duration_minutes?: number | null
+          objectives?: string | null
+          materials?: string | null
+          activities?: Json | null
+          assessment?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_lesson_plans_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
   }
@@ -736,5 +795,6 @@ export type IEPGoalProgress = Tables<'iep_goal_progress'>;
 export type Subscription = Tables<'subscriptions'>;
 export type ReferralCode = Tables<'referral_codes'>;
 export type ReferralRelationship = Tables<'referral_relationships'>;
+export type ManualLessonPlan = Tables<'manual_lesson_plans'>;
 export type SubscriptionPause = Tables<'subscription_pauses'>;
 export type ReferralCredit = Tables<'referral_credits'>;

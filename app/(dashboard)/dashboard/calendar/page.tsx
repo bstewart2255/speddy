@@ -7,6 +7,7 @@ import { CalendarTodayView } from "../../../components/calendar/calendar-today-v
 import { CalendarWeekView } from "../../../components/calendar/calendar-week-view";
 import { CalendarMonthView } from "../../../components/calendar/calendar-month-view";
 import { useSchool } from "../../../components/providers/school-context";
+import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
 
 type ViewType = 'today' | 'week' | 'month';
@@ -388,13 +389,15 @@ export default function CalendarPage() {
               />
             )}
             {currentView === 'week' && (
-              <CalendarWeekView 
-                sessions={sessions} 
-                students={students}
-                onSessionClick={handleSessionClick}
-                weekOffset={weekOffset}
-                holidays={holidays}  // Add this line
-              />
+              <ToastProvider>
+                <CalendarWeekView 
+                  sessions={sessions} 
+                  students={students}
+                  onSessionClick={handleSessionClick}
+                  weekOffset={weekOffset}
+                  holidays={holidays}  // Add this line
+                />
+              </ToastProvider>
             )}
             {currentView === 'month' && (
               <CalendarMonthView 

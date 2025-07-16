@@ -63,14 +63,14 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
+        { name: 'Calendar', href: '/dashboard/calendar' },
         { 
           name: 'Schedule', 
           href: '/dashboard/schedule',
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
             { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-            { name: 'Special Activities', href: '/dashboard/special-activities' },
-            { name: 'Calendar', href: '/dashboard/calendar' }
+            { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
       ];
@@ -79,14 +79,14 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
+        { name: 'Calendar', href: '/dashboard/calendar' },
         { 
           name: 'Schedule', 
           href: '/dashboard/schedule',
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
             { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
-            { name: 'Special Activities', href: '/dashboard/special-activities' },
-            { name: 'Calendar', href: '/dashboard/calendar' }
+            { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
       ];
