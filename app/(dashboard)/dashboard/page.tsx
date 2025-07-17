@@ -11,7 +11,6 @@ import { TodoWidget } from '../../components/todo-widget';
 import { WeeklyView } from '../../components/weekly-view';
 import { GroupSessionsWidget } from "../../../app/components/group-sessions-widget";
 import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
-import Link from 'next/link';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -76,6 +75,7 @@ export default function DashboardPage() {
         
         {/* Onboarding Notifications */}
         <OnboardingNotifications />
+
         
         {/* Main Content Area */}
         <div className="space-y-4">

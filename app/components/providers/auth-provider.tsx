@@ -144,11 +144,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
+      // Use our API route to handle signup with profile creation
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          metadata: {
             full_name: metadata.full_name,
             state: metadata.state,
             school_district: metadata.school_district,
@@ -157,10 +162,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             works_at_multiple_schools: metadata.works_at_multiple_schools || false,
             additional_schools: metadata.additional_schools || []
           },
-        },
+        }),
       });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Signup failed');
+      }
 
       return { error: null };
     } catch (error) {

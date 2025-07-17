@@ -236,26 +236,6 @@ export function SubscriptionManager() {
         </dl>
       </div>
 
-      {/* Referral Code */}
-      {subscription.referral_code && (
-        <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Your Referral Code</h3>
-          <div className="bg-blue-50 rounded-lg p-4">
-            <p className="text-3xl font-mono font-bold text-blue-900 text-center mb-2">
-              {subscription.referral_code.code}
-            </p>
-            <p className="text-sm text-blue-700 text-center">
-              Share this code to give colleagues 60 days free and earn $1/month off your subscription!
-            </p>
-          </div>
-          <div className="mt-4 text-sm text-gray-600">
-            <p>Total referrals: {subscription.referral_code.uses_count}</p>
-            {subscription.current_credits && (
-              <p>Active referral credits: ${subscription.current_credits.total_credits}/month</p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Actions */}
       <div className="bg-white shadow rounded-lg p-6">
