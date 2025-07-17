@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -20,26 +21,59 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check for Supabase auth cookies (basic check without using Supabase client)
-  // Supabase uses chunked cookies with names like:
-  // - sb-<project-ref>-auth-token
-  // - sb-<project-ref>-auth-token.0, sb-<project-ref>-auth-token.1, etc.
-  const cookies = request.cookies.getAll()
-  const hasAuthCookie = cookies.some(cookie => 
-    cookie.name.includes('sb-') && cookie.name.includes('-auth-token')
+  // Create a Supabase client to verify the session
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set({
+              name,
+              value,
+              ...options,
+            })
+          })
+        },
+      },
+    }
   )
 
-  // If no auth cookie and trying to access protected route, redirect to login
-  if (!hasAuthCookie) {
-    console.log('No auth cookie, redirecting to login')
+  // Verify the session
+  const { data: { session }, error } = await supabase.auth.getSession()
+
+  // If no valid session and trying to access protected route, redirect to login
+  if (!session || error) {
+    console.log('No valid session, redirecting to login', { error: error?.message })
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/login'
     return NextResponse.redirect(redirectUrl)
   }
 
-  // For authenticated users, the SEA and subscription checks will happen
-  // in the server components to avoid Edge Runtime issues
-  return NextResponse.next()
+  // Optionally verify the JWT token is not expired
+  const user = session.user
+  if (!user) {
+    console.log('No user in session, redirecting to login')
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/login'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // For authenticated users, pass the session info in headers
+  response.headers.set('x-user-id', user.id)
+  response.headers.set('x-user-email', user.email || '')
+
+  return response
 }
 
 export const config = {

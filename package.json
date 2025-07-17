@@ -12,12 +12,14 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "test:integration": "node scripts/run-integration-tests.js"
+    "test:integration": "node scripts/run-integration-tests.js",
+    "prepare": "husky"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
     "@headlessui/react": "^2.1.2",
     "@heroicons/react": "^2.2.0",
+    "@sentry/nextjs": "^9.40.0",
     "@stripe/stripe-js": "^4.1.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
@@ -43,6 +45,8 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.31.0",
     "@faker-js/faker": "^9.9.0",
     "@jest/globals": "^30.0.4",
     "@playwright/test": "^1.54.1",
@@ -60,15 +64,26 @@
     "dotenv": "^17.2.0",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.3",
+    "husky": "^9.1.7",
     "jest": "^30.0.4",
     "jest-environment-jsdom": "^30.0.4",
+    "lint-staged": "^16.1.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "playwright": "^1.54.1",
     "postcss": "^8.5.4",
+    "prettier": "^3.6.2",
     "puppeteer": "^24.13.0",
     "tailwindcss": "^3.4.17",
     "ts-jest": "^29.4.0",
     "typescript": "5.8.3"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   }
 }

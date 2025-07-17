@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
 import { compressImage, validateImageFile, extractImageMetadata } from '@/lib/image-utils';
-import { trackEvent, getDeviceType } from '@/lib/analytics';
+import { trackEvent, getDeviceType } from '@/lib/analytics-client';
 
 type Worksheet = Database['public']['Tables']['worksheets']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];

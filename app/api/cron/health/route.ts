@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       .limit(1);
     
     // Get analytics stats if enabled
-    let analyticsStats = null;
+    let analyticsStats: { lastEvent: string | null } | null = null;
     if (process.env.CLEANUP_ANALYTICS === 'true') {
       const { data, error } = await supabase
         .from('analytics_events')

@@ -1,22 +1,30 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { Database } from '@/types/database';
+import { Database } from '@/src/types/database';
+import { asyncHandler, ErrorFactory } from '@/lib/error-handler';
+import { logger } from '@/lib/logger';
 
 // Teacher roles that should receive referral codes
 const TEACHER_ROLES = ['resource', 'speech', 'ot', 'counseling', 'specialist'] as const;
 
-export async function POST(request: NextRequest) {
-  try {
-    const { email, password, metadata } = await request.json();
+export const POST = asyncHandler(async (request: NextRequest) => {
+  const requestLogger = logger.child({ 
+    endpoint: '/api/auth/signup',
+    method: 'POST' 
+  });
+  
+  const { email, password, metadata } = await request.json();
+  requestLogger.info('Signup attempt started', { email });
 
-    // Validate required fields
-    if (!email || !password || !metadata) {
-      return NextResponse.json(
-        { error: 'Email, password, and metadata are required' },
-        { status: 400 }
-      );
-    }
+  // Validate required fields
+  if (!email || !password || !metadata) {
+    throw ErrorFactory.validationError('Email, password, and metadata are required', {
+      email: !email,
+      password: !password,
+      metadata: !metadata
+    });
+  }
 
     // Validate email domain
     const emailDomain = email.split('@')[1];
@@ -67,28 +75,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
     }
 
-    // Create profile record
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: signUpData.user.id,
-        email: signUpData.user.email!,
+    // Create profile record using the database function
+    const { error: profileError } = await supabase.rpc('create_profile_for_new_user', {
+      user_id: signUpData.user.id,
+      user_email: signUpData.user.email!,
+      user_metadata: {
         full_name: metadata.full_name,
         role: metadata.role,
         school_district: metadata.school_district,
         school_site: metadata.school_site,
         works_at_multiple_schools: metadata.works_at_multiple_schools || false,
-        district_domain: emailDomain,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+      }
+    });
 
     if (profileError) {
-      // If profile creation fails, we should clean up the auth user
-      // But for now, we'll just log the error
-      console.error('Failed to create profile:', profileError);
+      requestLogger.error('Failed to create profile', profileError);
+      
+      // Clean up the auth user since profile creation failed
+      try {
+        // We need to use a service role client for admin operations
+        const serviceRoleClient = createRouteHandlerClient<Database>(
+          { cookies: () => cookieStore },
+          {
+            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          }
+        );
+        
+        const { error: deleteError } = await serviceRoleClient.auth.admin.deleteUser(
+          signUpData.user.id
+        );
+        
+        if (deleteError) {
+          requestLogger.error('Failed to clean up auth user after profile creation failure', deleteError);
+        }
+      } catch (cleanupError) {
+        requestLogger.error('Error during auth user cleanup', cleanupError);
+      }
+      
       return NextResponse.json(
-        { error: 'Failed to create user profile' },
+        { error: 'Failed to complete registration. Please try again.' },
         { status: 500 }
       );
     }
@@ -146,20 +172,19 @@ export async function POST(request: NextRequest) {
         }
 
         if (!codeGenerated) {
-          console.error('Failed to generate referral code after 100 attempts');
+          requestLogger.error('Failed to generate referral code after 100 attempts', null, { userId: signUpData.user.id });
         }
       }
     }
+
+    requestLogger.info('Signup completed successfully', { 
+      userId: signUpData.user.id,
+      email: signUpData.user.email,
+      role: metadata.role
+    });
 
     return NextResponse.json({
       user: signUpData.user,
       session: signUpData.session,
     });
-  } catch (error) {
-    console.error('Signup error:', error);
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
-      { status: 500 }
-    );
-  }
-}
+});

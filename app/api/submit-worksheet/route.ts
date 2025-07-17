@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
       processingTime: processingTime,
       uploadSource: source || 'unknown',
       userId: worksheet.students.provider_id,
-      ipAddress: ip,
+      ipAddress: ip || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
       metadata: {
         worksheetType: worksheet.worksheet_type,
@@ -408,7 +408,7 @@ export async function POST(request: NextRequest) {
       uploadSource: source || 'unknown',
       errorCode: error.code || 'server_error',
       errorMessage: error.message || 'Unknown error',
-      ipAddress: ip,
+      ipAddress: ip || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
       metadata: {
         errorStack: error.stack,

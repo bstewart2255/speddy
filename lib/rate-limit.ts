@@ -22,7 +22,7 @@ export async function checkRateLimit(
   worksheetCode: string
 ): Promise<RateLimitResult> {
   try {
-    const supabase = createClient<Database>();
+    const supabase = await createClient();
     
     // If no IP address is available, we'll be more lenient but still check worksheet limits
     if (!ip) {
@@ -126,7 +126,7 @@ export async function recordUpload(
   worksheetCode: string
 ): Promise<void> {
   try {
-    const supabase = createClient<Database>();
+    const supabase = await createClient();
     
     // If no IP, use a placeholder to still track worksheet uploads
     const ipAddress = ip || 'unknown';
@@ -154,7 +154,7 @@ export async function recordUpload(
  */
 export async function cleanOldRecords(): Promise<number> {
   try {
-    const supabase = createClient<Database>();
+    const supabase = await createClient();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     
     const { data, error } = await supabase
@@ -188,7 +188,7 @@ export async function getRateLimitStats(): Promise<{
   topWorksheets: Array<{ code: string; count: number }>;
 }> {
   try {
-    const supabase = createClient<Database>();
+    const supabase = await createClient();
     
     // Get all records from last 24 hours for stats
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
