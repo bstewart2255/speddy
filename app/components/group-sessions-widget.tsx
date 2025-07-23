@@ -1,8 +1,21 @@
 "use client";
 
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { AIContentModal } from "./ai-content-modal";
+import { useSessionSync } from '@/lib/hooks/use-session-sync';
+import { cn } from '@/src/utils/cn';
+import type { Database } from '../../src/types/database';
+
+type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+
+// Add custom styles for the highlight animation
+const highlightAnimation = `
+  @keyframes highlight-fade {
+    0% { background-color: rgb(219 234 254); }
+    100% { background-color: rgb(239 246 255); }
+  }
+`;
 
 const TIME_SLOTS = [
   "8:00",
@@ -23,10 +36,12 @@ const TIME_SLOTS = [
 ];
 
 export function GroupSessionsWidget() {
-  const [sessions, setSessions] = React.useState<any[]>([]);
+  const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
   const [loading, setLoading] = React.useState(true);
   const [currentTime, setCurrentTime] = React.useState(new Date());
+  const [providerId, setProviderId] = React.useState<string | null>(null);
+  const [updatedSessionIds, setUpdatedSessionIds] = React.useState<Set<string>>(new Set());
 
   // Modal state
   const [modalOpen, setModalOpen] = React.useState(false);
@@ -35,6 +50,38 @@ export function GroupSessionsWidget() {
   const [aiContent, setAiContent] = React.useState<string | null>(null);
   const [generatingContent, setGeneratingContent] = React.useState(false);
   const [currentSchool, setCurrentSchool] = React.useState<string>("");
+
+  // Callback for session updates
+  const handleSessionsUpdate = useCallback((newSessions: ScheduleSession[]) => {
+    setSessions((prevSessions) => {
+      const updatedIds = new Set<string>();
+      newSessions.forEach((newSession) => {
+        const oldSession = prevSessions.find(s => s.id === newSession.id);
+        if (oldSession && (
+          oldSession.start_time !== newSession.start_time ||
+          oldSession.day_of_week !== newSession.day_of_week ||
+          oldSession.completed_at !== newSession.completed_at
+        )) {
+          updatedIds.add(newSession.id);
+        }
+      });
+      
+      // Add animation for updated sessions
+      if (updatedIds.size > 0) {
+        setUpdatedSessionIds(new Set(updatedIds));
+        setTimeout(() => setUpdatedSessionIds(new Set()), 2000);
+      }
+      
+      return newSessions;
+    });
+  }, []);
+
+  // Use session sync hook for real-time updates
+  const { isConnected, lastSync } = useSessionSync({
+    sessions,
+    setSessions: handleSessionsUpdate,
+    providerId: providerId || undefined,
+  });
 
   // Update current time every minute
   React.useEffect(() => {
@@ -48,22 +95,6 @@ export function GroupSessionsWidget() {
     fetchUpcomingSessions();
   }, []);
 
-  React.useEffect(() => {
-    fetchUpcomingSessions();
-  }, []);
-
-  // Add this new useEffect for debugging
-  React.useEffect(() => {
-    if (sessions.length > 0) {
-      console.log("Raw sessions from DB:", sessions);
-      console.log("Current time slots being shown:", getNextFiveHours());
-      sessions.forEach((session) => {
-        console.log(
-          `Session ${session.students?.initials} at ${session.start_time}`,
-        );
-      });
-    }
-  }, [sessions]); // This will run when sessions change
 
   const fetchUpcomingSessions = async () => {
     const supabase = createClient();
@@ -73,6 +104,8 @@ export function GroupSessionsWidget() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
+      
+      setProviderId(user.id);
 
       // Get user's current school
       const { data: profile } = await supabase
@@ -116,7 +149,7 @@ export function GroupSessionsWidget() {
     }
   };
 
-  const getNextFiveHours = () => {
+  const getNextFiveHours = useCallback(() => {
     const now = currentTime;
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
@@ -139,7 +172,7 @@ export function GroupSessionsWidget() {
 
     // Return 10 slots (5 hours) or whatever remains
     return TIME_SLOTS.slice(startIndex, startIndex + 10);
-  };
+  }, [currentTime]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":");
@@ -148,6 +181,33 @@ export function GroupSessionsWidget() {
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes || "00"} ${period}`;
   };
+
+  // Get relative time display (e.g., "in 30 minutes")
+  const getRelativeTime = useCallback((timeSlot: string) => {
+    const now = currentTime;
+    const [slotHour, slotMin] = timeSlot.split(":").map(Number);
+    
+    const slotDate = new Date();
+    slotDate.setHours(slotHour, slotMin, 0, 0);
+    
+    const diffMs = slotDate.getTime() - now.getTime();
+    const diffMinutes = Math.round(diffMs / 60000);
+    
+    if (diffMinutes < 0) {
+      return "now";
+    } else if (diffMinutes === 0) {
+      return "starting now";
+    } else if (diffMinutes < 60) {
+      return `in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+    } else {
+      const hours = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      if (mins === 0) {
+        return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+      }
+      return `in ${hours}h ${mins}m`;
+    }
+  }, [currentTime]);
 
   const getSessionsForSlot = (timeSlot: string) => {
     const [slotHour, slotMin] = timeSlot.split(":").map(Number);
@@ -221,34 +281,54 @@ export function GroupSessionsWidget() {
     await generateAIContent(studentData, timeSlot);
   };
 
+  // Memoize visible slots to prevent unnecessary recalculations
+  const visibleSlots = useMemo(() => getNextFiveHours(), [getNextFiveHours]);
+
+  // Memoize sessions by slot to optimize rendering
+  const sessionsBySlot = useMemo(() => {
+    const slotMap = new Map<string, ScheduleSession[]>();
+    
+    visibleSlots.forEach(timeSlot => {
+      const slotSessions = getSessionsForSlot(timeSlot);
+      if (slotSessions.length > 0) {
+        slotMap.set(timeSlot, slotSessions);
+      }
+    });
+    
+    return slotMap;
+  }, [sessions, visibleSlots, getSessionsForSlot]);
+
   if (loading) {
     return <div className="animate-pulse bg-gray-100 rounded-lg h-64"></div>;
   }
 
-  const visibleSlots = getNextFiveHours();
-
-  // Add debugging here
-  console.log("Rendering with visible slots:", visibleSlots);
-
   return (
     <>
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-base font-semibold mb-4 flex items-center">
-          <svg
-            className="w-5 h-5 mr-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-            />
-          </svg>
-          Upcoming Sessions
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold flex items-center">
+            <svg
+              className="w-5 h-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+              />
+            </svg>
+            Upcoming Sessions
+          </h3>
+          {isConnected && (
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-xs text-gray-500">Live</span>
+            </div>
+          )}
+        </div>
 
         <div className="space-y-2">
           {visibleSlots.length === 0 ? (
@@ -274,36 +354,52 @@ export function GroupSessionsWidget() {
           ) : (
             <>
               {visibleSlots.map((timeSlot) => {
-                const slotSessions = getSessionsForSlot(timeSlot);
+                const slotSessions = sessionsBySlot.get(timeSlot) || [];
 
-                // Debug each slot
-                if (slotSessions.length > 0 || timeSlot === "13:30") {
-                  console.log(
-                    `Time slot ${timeSlot}: found ${slotSessions.length} sessions`,
-                  );
-                }
+                // Debug logging removed to prevent console spam
 
+                const hasUpdatedSession = slotSessions.some(s => updatedSessionIds.has(s.id));
+                const relativeTime = getRelativeTime(timeSlot);
+                
                 return (
                   <div
                     key={timeSlot}
-                    className={`flex items-center justify-between px-3 py-2 rounded-md text-sm ${
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300",
                       slotSessions.length > 0
                         ? "bg-blue-50 border border-blue-200"
-                        : "text-gray-500"
-                    }`}
+                        : "text-gray-500",
+                      hasUpdatedSession && "animate-pulse bg-blue-100 border-blue-300"
+                    )}
                   >
                     <div className="flex-1">
-                      <span
-                        className={slotSessions.length > 0 ? "font-medium" : ""}
-                      >
-                        {formatTime(timeSlot)}
-                      </span>
-                      {slotSessions.length > 0 && (
-                        <span className="ml-2 text-xs text-gray-600">
-                          {slotSessions
-                            .map((s) => students[s.student_id]?.initials)
-                            .join(", ")}
+                      <div className="flex items-baseline gap-2">
+                        <span
+                          className={slotSessions.length > 0 ? "font-medium" : ""}
+                        >
+                          {formatTime(timeSlot)}
                         </span>
+                        <span className="text-xs text-gray-500">
+                          {relativeTime}
+                        </span>
+                      </div>
+                      {slotSessions.length > 0 && (
+                        <div className="mt-0.5">
+                          {slotSessions.map((session, idx) => (
+                            <span
+                              key={session.id}
+                              className={cn(
+                                "inline-block text-xs",
+                                updatedSessionIds.has(session.id) 
+                                  ? "text-blue-700 font-semibold" 
+                                  : "text-gray-600"
+                              )}
+                            >
+                              {students[session.student_id]?.initials}
+                              {idx < slotSessions.length - 1 && ", "}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
 

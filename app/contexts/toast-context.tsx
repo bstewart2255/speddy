@@ -18,11 +18,14 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+// Counter to ensure unique IDs
+let toastCounter = 0;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = useCallback((message: string, type: ToastType = 'info', duration = 5000) => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${toastCounter++}-${Math.random().toString(36).substr(2, 9)}`;
     const newToast: Toast = { id, message, type, duration };
     
     setToasts(prev => [...prev, newToast]);

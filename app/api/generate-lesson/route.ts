@@ -115,7 +115,116 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
   try {
     const supabase = await createClient();
 
-    const { students, timeSlot, duration = 30 } = await request.json();
+    const body = await request.json();
+    
+    // Check if this is a generic lesson request (from the Lesson Builder)
+    if (body.grade && body.subject && body.topic && body.timeDuration) {
+      // This is a generic lesson request from the Lesson Builder
+      const { grade, subject, topic, timeDuration } = body;
+      
+      log.info('Generic lesson generation requested', {
+        userId,
+        grade,
+        subject,
+        topic,
+        timeDuration
+      });
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      
+      if (!apiKey) {
+        log.warn('No Anthropic API key configured for generic lesson', { userId });
+        return NextResponse.json({ 
+          content: '<p>API key not configured. Please contact your administrator.</p>' 
+        });
+      }
+
+      try {
+        const anthropic = new Anthropic({ apiKey });
+        
+        const systemContent = `You are an expert educator creating engaging, curriculum-aligned worksheets for students. Create practical, age-appropriate educational materials that teachers can use immediately.`;
+        
+        const promptContent = `Create a ${timeDuration} worksheet for ${grade} ${subject} on the topic: ${topic}
+
+Requirements:
+1. The worksheet should be engaging and appropriate for ${grade} students
+2. Include clear instructions at the top
+3. Provide a variety of activity types (not just questions)
+4. Make it visually organized with clear sections
+5. Include approximately ${
+  timeDuration === '5 minutes' ? '3-5' :
+  timeDuration === '10 minutes' ? '5-8' :
+  timeDuration === '15 minutes' ? '8-10' :
+  timeDuration === '20 minutes' ? '10-12' :
+  timeDuration === '30 minutes' ? '12-15' :
+  timeDuration === '45 minutes' ? '15-20' :
+  '20-25'
+} problems or activities
+6. For younger grades (K-2), include visual elements descriptions
+7. For older grades (3-12), include critical thinking elements
+
+Format as clean HTML with:
+- <h2> for the worksheet title
+- <h3> for section headers
+- <p> for instructions
+- <ol> or <ul> for numbered/bulleted exercises
+- <div class="worksheet-section"> for different parts
+- Include answer spaces or lines where students would write
+
+Make it print-friendly and ready to use.`;
+
+        const aiPerf = measurePerformanceWithAlerts('anthropic_api_call', 'api');
+        const message = await anthropic.messages.create({
+          model: "claude-3-haiku-20240307",
+          max_tokens: 2000,
+          temperature: 0.7,
+          messages: [
+            {
+              role: "user",
+              content: `${systemContent}\n\n${promptContent}`
+            }
+          ]
+        });
+        const aiDuration = aiPerf.end({ 
+          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+        });
+
+        const content = message.content[0].type === 'text' ? message.content[0].text : '';
+        
+        log.info('Generic lesson generated successfully', {
+          userId,
+          inputTokens: message.usage.input_tokens,
+          outputTokens: message.usage.output_tokens,
+          duration: Math.round(aiDuration)
+        });
+        
+        track.event('generic_lesson_generated', {
+          userId,
+          grade,
+          subject,
+          topic,
+          timeDuration,
+          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+        });
+
+        return NextResponse.json({ content });
+        
+      } catch (apiError: any) {
+        log.error('Anthropic API error for generic lesson', apiError, { 
+          userId,
+          errorCode: apiError.status,
+          errorMessage: apiError.message
+        });
+        
+        return NextResponse.json(
+          { error: 'Failed to generate lesson', details: apiError.message },
+          { status: 500 }
+        );
+      }
+    }
+    
+    // Otherwise, this is a student-specific lesson request (original functionality)
+    const { students, timeSlot, duration = 30 } = body;
     
     log.info('Lesson generation requested', {
       userId,

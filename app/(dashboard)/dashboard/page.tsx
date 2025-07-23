@@ -11,6 +11,7 @@ import { TodoWidget } from '../../components/todo-widget';
 import { WeeklyView } from '../../components/weekly-view';
 import { GroupSessionsWidget } from "../../../app/components/group-sessions-widget";
 import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
+import { ToastProvider } from '../../contexts/toast-context';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -66,36 +67,38 @@ export default function DashboardPage() {
 
   // This will only render for non-SEA roles
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        </div>
-        
-        {/* Onboarding Notifications */}
-        <OnboardingNotifications />
+    <ToastProvider>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Page Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
+          </div>
+          
+          {/* Onboarding Notifications */}
+          <OnboardingNotifications />
 
-        
-        {/* Main Content Area */}
-        <div className="space-y-4">
-          <WeeklyView viewMode="provider" />
+          
+          {/* Main Content Area */}
+          <div className="space-y-4">
+            <WeeklyView viewMode="provider" />
 
-          {/* Two column layout with different behavior */}
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Left column - Todo widget can expand */}
-            <div>
-              <TodoWidget />
-            </div>
-            
+            {/* Two column layout with different behavior */}
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Left column - Todo widget can expand */}
+              <div>
+                <TodoWidget />
+              </div>
+              
 
-            {/* Right column - Fixed height widgets */}
-            <div className="space-y-4">
-              <GroupSessionsWidget />
+              {/* Right column - Fixed height widgets */}
+              <div className="space-y-4">
+                <GroupSessionsWidget />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

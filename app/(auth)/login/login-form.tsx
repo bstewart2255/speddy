@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PasswordInput } from "../../components/auth/password-input";
-import { log } from '@/lib/monitoring/logger';
+import { logger } from '@/lib/logger';
+import { handleClientError } from '@/lib/error-handler';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -26,7 +27,7 @@ export default function LoginForm() {
     setError('');
     setLoading(true);
 
-    log.info('Login attempt', { email });
+    logger.info('Login attempt', { email });
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -38,7 +39,7 @@ export default function LoginForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        log.warn('Login failed', { 
+        logger.warn('Login failed', { 
           email, 
           error: data.error,
           statusCode: response.status 
@@ -49,7 +50,7 @@ export default function LoginForm() {
         return;
       }
 
-      log.info('Login successful', { 
+      logger.info('Login successful', { 
         email,
         needsPayment: data.needsPayment 
       });
@@ -60,7 +61,8 @@ export default function LoginForm() {
         window.location.href = '/dashboard';
       }
     } catch (err) {
-      log.error('Login error', err, { email });
+      handleClientError(err, 'login-form');
+      logger.error('Login error', err, { email });
       setError('An unexpected error occurred. Please try again.');
       setLoading(false);
     }

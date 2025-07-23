@@ -380,13 +380,15 @@ export default function CalendarPage() {
             </div>
 
             {currentView === 'today' && (
-              <CalendarTodayView 
-                sessions={sessions} 
-                students={students}
-                onSessionClick={handleSessionClick}
-                currentDate={currentDate}
-                holidays={holidays}  // Add this line
-              />
+              <ToastProvider>
+                <CalendarTodayView 
+                  sessions={sessions} 
+                  students={students}
+                  onSessionClick={handleSessionClick}
+                  currentDate={currentDate}
+                  holidays={holidays}
+                />
+              </ToastProvider>
             )}
             {currentView === 'week' && (
               <ToastProvider>

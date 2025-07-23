@@ -8,16 +8,24 @@ interface LogContext {
 export const log = {
   error: (message: string, error: unknown, context?: LogContext) => {
     const errorObj = error as Error;
-    console.error({
-      timestamp: new Date().toISOString(),
-      level: 'error',
-      message,
-      error: errorObj?.message || String(error),
-      stack: errorObj?.stack,
-      context,
-      userId: context?.userId,
-      school: context?.school
-    });
+    const errorMessage = `${message}: ${errorObj?.message || String(error)}`;
+    
+    // Log the error message first (for Next.js console interceptor)
+    console.error(errorMessage);
+    
+    // Then log the detailed object
+    if (process.env.NODE_ENV === 'development') {
+      console.error({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message,
+        error: errorObj?.message || String(error),
+        stack: errorObj?.stack,
+        context,
+        userId: context?.userId,
+        school: context?.school
+      });
+    }
   },
 
   info: (message: string, data?: any) => {

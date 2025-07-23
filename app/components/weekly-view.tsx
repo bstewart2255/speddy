@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClient } from '@/lib/supabase/client';
+import { DraggableSessionBox } from '@/app/components/session/draggable-session-box';
+import { sessionUpdateService } from '@/lib/services/session-update-service';
+import { useSessionSync } from '@/lib/hooks/use-session-sync';
+import { useToast } from '../contexts/toast-context';
+import { cn } from '@/src/utils/cn';
 
 interface Holiday {
   date: string;
@@ -22,6 +27,7 @@ interface WeeklyViewProps {
 }
 
 export function WeeklyView({ viewMode }: WeeklyViewProps) {
+  const { showToast } = useToast();
   const today = new Date();
   const weekStart = isWeekend(today)
     ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
@@ -32,6 +38,12 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  
+  // Drag and drop state
+  const [draggedSession, setDraggedSession] = useState<any>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
     let isMounted = true;
@@ -47,6 +59,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           setLoading(false);
           return;
         }
+        
+        setCurrentUser(user);
 
         // Check if user is a Resource Specialist and has SEAs
         const { data: profile } = await supabase
@@ -55,9 +69,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .eq('id', user.id)
           .single();
 
-        console.log('User profile:', profile); // ADD THIS
-
-
         if (profile?.role === 'resource' && profile.school_site) {
           // Check if there are any SEAs at the same school
           const { data: seas, count: seaCount } = await supabase
@@ -65,18 +76,16 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             .select('id', { count: 'exact', head: true })
             .eq('role', 'sea')
             .eq('school_site', profile.school_site);
-          
-          console.log('SEA count at school:', seaCount); 
+           
           setShowToggle((seaCount || 0) > 0);
         } else {
-          console.log('Not showing toggle - role:', profile?.role); // ADD THIS
           setShowToggle(false);
         }
 
         // Fetch schedule sessions based on view mode
         let sessionQuery = supabase
           .from("schedule_sessions")
-          .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id")
+          .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
           .gte("day_of_week", 1)
           .lte("day_of_week", 5)
           .order("day_of_week")
@@ -122,7 +131,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             // Fetch all students in one query
             const { data: studentData, error: studentError } = await supabase
             .from("students")
-            .select("id, initials")
+            .select("id, initials, grade_level")
             .in("id", studentIds);
 
             if (studentData && !studentError && isMounted) {
@@ -165,6 +174,14 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     };
   }, [viewMode]); // Re-run when viewMode changes
 
+  // Use session sync hook for real-time updates
+  const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
+    sessions: sessions,
+    setSessions: setSessions,
+    providerId: currentUser?.id || undefined,
+    showToast
+  });
+
   // Helper functions
   const getDayIndex = (session: any): number => {
     // The session already has day_of_week from database (1 = Monday, 5 = Friday)
@@ -200,6 +217,124 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     const dateStr = date.toISOString().split('T')[0];
     const holiday = holidays.find(h => h.date === dateStr);
     return { isHoliday: !!holiday, name: holiday?.name };
+  };
+
+  // Drag and drop handlers
+  const canEditSession = useCallback((session: any) => {
+    if (!currentUser) return false;
+    
+    // Provider can edit their own sessions
+    if (session.provider_id === currentUser.id) {
+      // If it's an SEA session, only the supervising provider can drag it
+      if (session.delivered_by === 'sea') {
+        return true; // Provider supervises SEA sessions
+      }
+      // Regular provider sessions
+      return session.delivered_by === 'provider';
+    }
+    
+    return false;
+  }, [currentUser]);
+
+  // Check for conflicts after a session is moved
+  const checkSessionConflicts = useCallback(async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const validation = await sessionUpdateService.validateSessionMove({
+      session,
+      targetDay: session.day_of_week,
+      targetStartTime: session.start_time,
+      targetEndTime: session.end_time,
+      studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
+    });
+
+    setSessionConflicts(prev => ({
+      ...prev,
+      [sessionId]: !validation.valid
+    }));
+  }, [sessions]);
+
+  const handleDragStart = useCallback((session: any, event: DragEvent) => {
+    setDraggedSession(session);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedSession(null);
+    setDropTarget(null);
+  }, []);
+
+  const handleDragOver = useCallback((event: React.DragEvent, slotKey: string) => {
+    if (!draggedSession) return;
+    
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTarget(slotKey);
+  }, [draggedSession]);
+
+  const handleDragLeave = useCallback(() => {
+    setDropTarget(null);
+  }, []);
+
+  const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
+    event.preventDefault();
+
+    if (!draggedSession) return;
+
+    // Calculate new times
+    const duration = timeToMinutes(draggedSession.end_time) - timeToMinutes(draggedSession.start_time);
+    const hour = parseInt(targetTime.split(':')[0]);
+    const isPM = targetTime.includes('PM');
+    const adjustedHour = isPM && hour !== 12 ? hour + 12 : (hour === 12 && !isPM ? 0 : hour);
+    const formattedStartTime = `${adjustedHour.toString().padStart(2, '0')}:${targetTime.split(':')[1].split(' ')[0]}:00`;
+    const newEndTime = addMinutesToTime(formattedStartTime, duration);
+
+    // Check if this is actually a move (not dropping on the same slot)
+    if (draggedSession.start_time === formattedStartTime) {
+      handleDragEnd();
+      return;
+    }
+
+    // Apply optimistic update immediately for smooth UX
+    optimisticUpdate(draggedSession.id, {
+      start_time: formattedStartTime,
+      end_time: newEndTime
+    });
+
+    try {
+      // Perform the update without validation blocking
+      const result = await sessionUpdateService.updateSessionTime(
+        draggedSession.id,
+        draggedSession.day_of_week,
+        formattedStartTime,
+        newEndTime
+      );
+
+      if (!result.success) {
+        console.error('Failed to move session:', result.error);
+      }
+
+      // Check conflicts ONLY for the moved session
+      await checkSessionConflicts(draggedSession.id);
+
+    } catch (error) {
+      console.error('Error during session move:', error);
+    } finally {
+      handleDragEnd();
+    }
+  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts]);
+
+  // Helper function for time conversion
+  const timeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
+    const totalMinutes = timeToMinutes(time) + minutesToAdd;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
   };
 
   // Group sessions by day and time
@@ -318,24 +453,56 @@ return (
                     const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
 
                     return (
-                      <div key={time} className="text-xs mb-1">
-                        <span className="text-gray-500">{time}:</span>
-                        <span className="ml-1 text-blue-700">
+                      <div
+                        key={time}
+                        className={cn(
+                          "text-xs mb-1 p-1 rounded transition-colors",
+                          dropTarget === sessionKey && "ring-2 ring-blue-400 bg-blue-50"
+                        )}
+                        onDragOver={(e) => handleDragOver(e, sessionKey)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, sessionKey, time)}
+                      >
+                        <div className="flex items-center min-h-[24px]">
+                          <span className="text-gray-500 flex-shrink-0">{time}:</span>
+                          <span className="ml-1 flex items-center flex-wrap">
                           {(() => {
                             const holidayCheck = isHoliday(currentDate);
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            return sessionsInSlot.length > 0 
-                              ? sessionsInSlot.map((session, i) => (
-                                  <span key={session.id}>
-                                    {students[session.student_id]?.initials || 'S'}
-                                    {i < sessionsInSlot.length - 1 && ', '}
+                            if (sessionsInSlot.length === 0) {
+                              // Show preview if this is the drop target
+                              if (dropTarget === sessionKey && draggedSession) {
+                                return (
+                                  <span className="text-blue-600 text-xs italic">
+                                    Moving {students[draggedSession.student_id]?.initials || 'session'} here
                                   </span>
-                                ))
-                              : <span className="text-gray-400">-</span>;
+                                );
+                              }
+                              return <span className="text-gray-400">-</span>;
+                            }
+                            return sessionsInSlot.map((session) => (
+                              <DraggableSessionBox
+                                key={session.id}
+                                session={session}
+                                student={{
+                                  initials: students[session.student_id]?.initials || 'S',
+                                  grade_level: students[session.student_id]?.grade_level || '',
+                                  id: session.student_id
+                                }}
+                                isSeaSession={session.delivered_by === 'sea'}
+                                canEdit={canEditSession(session)}
+                                onDragStart={handleDragStart}
+                                onDragEnd={handleDragEnd}
+                                size="small"
+                                variant="pill"
+                                hasConflict={sessionConflicts[session.id] || false}
+                              />
+                            ));
                           })()}
                         </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -350,24 +517,56 @@ return (
                     const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
 
                     return (
-                      <div key={time} className="text-xs mb-1">
-                        <span className="text-gray-500">{time}:</span>
-                        <span className="ml-1 text-blue-700">
+                      <div
+                        key={time}
+                        className={cn(
+                          "text-xs mb-1 p-1 rounded transition-colors",
+                          dropTarget === sessionKey && "ring-2 ring-blue-400 bg-blue-50"
+                        )}
+                        onDragOver={(e) => handleDragOver(e, sessionKey)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, sessionKey, time)}
+                      >
+                        <div className="flex items-center min-h-[24px]">
+                          <span className="text-gray-500 flex-shrink-0">{time}:</span>
+                          <span className="ml-1 flex items-center flex-wrap">
                           {(() => {
                             const holidayCheck = isHoliday(currentDate);
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            return sessionsInSlot.length > 0 
-                              ? sessionsInSlot.map((session, i) => (
-                                  <span key={session.id}>
-                                    {students[session.student_id]?.initials || 'S'}
-                                    {i < sessionsInSlot.length - 1 && ', '}
+                            if (sessionsInSlot.length === 0) {
+                              // Show preview if this is the drop target
+                              if (dropTarget === sessionKey && draggedSession) {
+                                return (
+                                  <span className="text-blue-600 text-xs italic">
+                                    Moving {students[draggedSession.student_id]?.initials || 'session'} here
                                   </span>
-                                ))
-                              : <span className="text-gray-400">-</span>;
+                                );
+                              }
+                              return <span className="text-gray-400">-</span>;
+                            }
+                            return sessionsInSlot.map((session) => (
+                              <DraggableSessionBox
+                                key={session.id}
+                                session={session}
+                                student={{
+                                  initials: students[session.student_id]?.initials || 'S',
+                                  grade_level: students[session.student_id]?.grade_level || '',
+                                  id: session.student_id
+                                }}
+                                isSeaSession={session.delivered_by === 'sea'}
+                                canEdit={canEditSession(session)}
+                                onDragStart={handleDragStart}
+                                onDragEnd={handleDragEnd}
+                                size="small"
+                                variant="pill"
+                                hasConflict={sessionConflicts[session.id] || false}
+                              />
+                            ));
                           })()}
                         </span>
+                        </div>
                       </div>
                     );
                   })}
