@@ -160,8 +160,16 @@ Requirements:
   timeDuration === '45 minutes' ? '15-20' :
   '20-25'
 } problems or activities
-6. For younger grades (K-2), include visual elements descriptions
+6. For younger grades (K-2), describe visual elements using text only
 7. For older grades (3-12), include critical thinking elements
+
+IMPORTANT FORMATTING RULES:
+- DO NOT include any <img> tags or image references
+- Use text-based visual representations instead of images
+- For fractions, use text like "1/2", "2/3", "3/4"
+- For shapes, describe them in text: "Draw a circle divided into 4 equal parts"
+- Use ASCII art, Unicode symbols (•, ○, ■, □, ▲, ▼), or text descriptions
+- Use tables and text formatting for visual organization
 
 Format as clean HTML with:
 - <h2> for the worksheet title

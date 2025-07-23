@@ -5,6 +5,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, PrinterIcon, BookmarkIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
 import { createClient } from '@/lib/supabase/client';
+import { getSanitizedHTML } from '@/lib/sanitize-html';
 
 interface LessonPreviewModalProps {
   lesson: {
@@ -24,6 +25,7 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
   const { showToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const supabase = createClient();
+  const sanitizedContent = getSanitizedHTML(lesson.content);
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
@@ -77,7 +79,7 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
             </div>
           </div>
           <div class="content">
-            ${lesson.content}
+            ${sanitizedContent.__html}
           </div>
         </body>
       </html>
@@ -183,7 +185,7 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
                     <div className="prose max-w-none">
                       <h2 className="text-xl font-semibold mb-4">{lesson.title}</h2>
                       <div 
-                        dangerouslySetInnerHTML={{ __html: lesson.content }}
+                        dangerouslySetInnerHTML={sanitizedContent}
                         className="lesson-content"
                       />
                     </div>

@@ -70,7 +70,12 @@ export default function LessonBank() {
     setIsLoading(true);
     try {
       const response = await fetch('/api/lessons');
-      if (!response.ok) throw new Error('Failed to fetch lessons');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to fetch lessons: ${response.status} ${errorData.error || response.statusText}`);
+      }
       
       const data = await response.json();
       setLessons(data);

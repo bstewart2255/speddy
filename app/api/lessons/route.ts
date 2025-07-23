@@ -3,28 +3,31 @@ import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { log } from '@/lib/monitoring/logger';
 
-// GET: Fetch user's lessons
+// GET: Fetch user's saved worksheets
 export const GET = withAuth(async (request: NextRequest, userId: string) => {
   try {
     const supabase = await createClient();
     
+    log.info('Fetching saved worksheets for user', { userId });
+    
     const { data: lessons, error } = await supabase
-      .from('lessons')
+      .from('saved_worksheets')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {
-      log.error('Failed to fetch lessons', error, { userId });
+      log.error('Failed to fetch saved worksheets from Supabase', error, { userId, errorMessage: error.message });
       return NextResponse.json(
-        { error: 'Failed to fetch lessons' },
+        { error: 'Failed to fetch saved worksheets', details: error.message },
         { status: 500 }
       );
     }
 
+    log.info('Successfully fetched saved worksheets', { userId, count: lessons?.length || 0 });
     return NextResponse.json(lessons || []);
   } catch (error) {
-    log.error('Error in GET /api/lessons', error, { userId });
+    log.error('Error in GET /api/saved_worksheets', error, { userId });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -32,7 +35,7 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
   }
 });
 
-// POST: Save new lesson
+// POST: Save new worksheet
 export const POST = withAuth(async (request: NextRequest, userId: string) => {
   try {
     const supabase = await createClient();
@@ -49,7 +52,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     }
 
     const { data: lesson, error } = await supabase
-      .from('lessons')
+      .from('saved_worksheets')
       .insert({
         user_id: userId,
         title,
@@ -62,14 +65,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       .single();
 
     if (error) {
-      log.error('Failed to save lesson', error, { userId });
+      log.error('Failed to save worksheet', error, { userId });
       return NextResponse.json(
-        { error: 'Failed to save lesson' },
+        { error: 'Failed to save worksheet' },
         { status: 500 }
       );
     }
 
-    log.info('Lesson saved successfully', { 
+    log.info('Worksheet saved successfully', { 
       userId, 
       lessonId: lesson.id,
       subject,
@@ -78,7 +81,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     return NextResponse.json(lesson);
   } catch (error) {
-    log.error('Error in POST /api/lessons', error, { userId });
+    log.error('Error in POST /api/saved_worksheets', error, { userId });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

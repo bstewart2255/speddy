@@ -3,6 +3,7 @@
 import React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
+import { getSanitizedHTML } from '@/lib/sanitize-html';
 
 interface Student {
   id: string;
@@ -41,6 +42,7 @@ export function AIContentModal({
   const [saved, setSaved] = React.useState(false);
   const [notes, setNotes] = React.useState("");
   const [showNotes, setShowNotes] = React.useState(false);
+  const sanitizedContent = content ? getSanitizedHTML(content) : null;
 
   // Reset saved state when modal opens with new content
   React.useEffect(() => {
@@ -150,7 +152,7 @@ export function AIContentModal({
             <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${notes}</p>` : ''}
           </div>
-          ${content}
+          ${sanitizedContent ? sanitizedContent.__html : ''}
         </body>
       </html>
     `);
@@ -279,7 +281,7 @@ export function AIContentModal({
           ) : content ? (
       <>
         <div className="prose max-w-none">
-          <div dangerouslySetInnerHTML={{ __html: content }} />
+          <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
         </div>
         {/* Add worksheet buttons for each student */}
         <div className="mt-6 border-t pt-4">

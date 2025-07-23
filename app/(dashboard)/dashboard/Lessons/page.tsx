@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Calendar, Clock, Users, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { getSanitizedHTML } from '@/lib/sanitize-html';
 
 interface Lesson {
   id: string;
@@ -149,7 +150,7 @@ export default function LessonsPage() {
             </div>
 
             <div className="prose max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: selectedLesson.content }} />
+              <div dangerouslySetInnerHTML={getSanitizedHTML(selectedLesson.content)} />
             </div>
           </div>
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 
-// DELETE: Remove lesson
+// DELETE: Remove saved worksheet
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -22,16 +22,16 @@ export async function DELETE(
     const userId = user.id;
     const lessonId = params.id;
     
-    // First verify the lesson belongs to the user
+    // First verify the saved worksheet belongs to the user
     const { data: lesson, error: fetchError } = await supabase
-      .from('lessons')
+      .from('saved_worksheets')
       .select('user_id')
       .eq('id', lessonId)
       .single();
 
     if (fetchError || !lesson) {
       return NextResponse.json(
-        { error: 'Lesson not found' },
+        { error: 'Saved worksheet not found' },
         { status: 404 }
       );
     }
@@ -43,25 +43,25 @@ export async function DELETE(
       );
     }
 
-    // Delete the lesson
+    // Delete the saved worksheet
     const { error: deleteError } = await supabase
-      .from('lessons')
+      .from('saved_worksheets')
       .delete()
       .eq('id', lessonId);
 
     if (deleteError) {
-      log.error('Failed to delete lesson', deleteError, { userId, lessonId });
+      log.error('Failed to delete saved worksheet', deleteError, { userId, lessonId });
       return NextResponse.json(
-        { error: 'Failed to delete lesson' },
+        { error: 'Failed to delete saved worksheet' },
         { status: 500 }
       );
     }
 
-    log.info('Lesson deleted successfully', { userId, lessonId });
+    log.info('Saved worksheet deleted successfully', { userId, lessonId });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    log.error('Error in DELETE /api/lessons/[id]', error, { userId });
+    log.error('Error in DELETE /api/saved_worksheets/[id]', error, { userId });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
