@@ -5,8 +5,10 @@ import { log } from '@/lib/monitoring/logger';
 // DELETE: Remove saved worksheet
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  let userId: string | undefined;
+  
   try {
     const supabase = await createClient();
     
@@ -19,8 +21,8 @@ export async function DELETE(
       );
     }
     
-    const userId = user.id;
-    const lessonId = params.id;
+    userId = user.id;
+    const { id: lessonId } = await params;
     
     // First verify the saved worksheet belongs to the user
     const { data: lesson, error: fetchError } = await supabase

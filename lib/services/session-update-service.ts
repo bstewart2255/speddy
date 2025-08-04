@@ -241,7 +241,7 @@ export class SessionUpdateService {
     day: number,
     startTime: string,
     endTime: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     // Get student information to determine grade level
     const { data: student } = await this.supabase
       .from('students')
@@ -284,7 +284,7 @@ export class SessionUpdateService {
     day: number,
     startTime: string,
     endTime: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     const { data: activities } = await this.supabase
       .from('special_activities')
       .select('*')
@@ -315,7 +315,7 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string,
     excludeSessionId: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     const { data: sessions } = await this.supabase
       .from('schedule_sessions')
       .select('*')
@@ -367,7 +367,7 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string,
     excludeSessionId: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     const { data: sessions } = await this.supabase
       .from('schedule_sessions')
       .select('*')
@@ -417,7 +417,7 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string,
     excludeSessionId: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     const { data: sessions } = await this.supabase
       .from('schedule_sessions')
       .select('*')
@@ -469,7 +469,7 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string,
     excludeSessionId: string
-  ): Promise<ValidationResult['conflicts'][0] | null> {
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
     const { data: sessions } = await this.supabase
       .from('schedule_sessions')
       .select('*')

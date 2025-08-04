@@ -12,7 +12,7 @@ import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { useRouter } from 'next/navigation';
-// import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 type Student = {
   id: string;
@@ -234,10 +234,10 @@ export default function StudentsPage() {
             >
               Import CSV
             </Button>
-            {/*<AIUploadButton 
+            <AIUploadButton 
               uploadType="students" 
               onSuccess={fetchStudents} 
-            /> */}
+            />
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(true)}

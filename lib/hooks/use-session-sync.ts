@@ -147,13 +147,15 @@ export function useSessionSync({
     const { eventType, new: newRecord, old: oldRecord } = payload;
 
     console.log('Realtime event received:', eventType, {
-      newId: newRecord?.id,
-      oldId: oldRecord?.id,
-      providerId: newRecord?.provider_id || oldRecord?.provider_id
+      newId: newRecord && 'id' in newRecord ? newRecord.id : undefined,
+      oldId: oldRecord && 'id' in oldRecord ? oldRecord.id : undefined,
+      providerId: (newRecord && 'provider_id' in newRecord ? newRecord.provider_id : undefined) || 
+                  (oldRecord && 'provider_id' in oldRecord ? oldRecord.provider_id : undefined)
     });
 
     // Check if this is an update to a session we have an optimistic update for
-    const sessionId = newRecord?.id || oldRecord?.id || '';
+    const sessionId = (newRecord && 'id' in newRecord ? newRecord.id : undefined) || 
+                     (oldRecord && 'id' in oldRecord ? oldRecord.id : undefined) || '';
     
     // Skip if this is our own update (within a short time window)
     if (localUpdateIdsRef.current.has(sessionId)) {
@@ -162,7 +164,9 @@ export function useSessionSync({
     }
 
     // Only process sessions for the current provider if specified
-    if (providerId && newRecord?.provider_id !== providerId && oldRecord?.provider_id !== providerId) {
+    if (providerId && 
+        (!newRecord || !('provider_id' in newRecord) || newRecord.provider_id !== providerId) && 
+        (!oldRecord || !('provider_id' in oldRecord) || oldRecord.provider_id !== providerId)) {
       return;
     }
 

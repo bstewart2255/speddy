@@ -10,7 +10,7 @@ import SpecialActivitiesCSVImport from '../../../components/special-activities/c
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
-// import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
 interface SpecialActivity {
   id: string;
@@ -122,13 +122,13 @@ export default function SpecialActivitiesPage() {
             >
               Import CSV
             </Button>
-            {/*<AIUploadButton 
+            <AIUploadButton 
               uploadType="special_activities" 
               onSuccess={() => {
                 // Refresh special activities
                 window.location.reload();
               }} 
-            /> */}
+            />
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}

@@ -100,6 +100,17 @@ export function CalendarWeekView({
   const [loadingManualLessons, setLoadingManualLessons] = useState(false);
   const [showManualLessonView, setShowManualLessonView] = useState(false);
   const [viewingManualLesson, setViewingManualLesson] = useState<ManualLesson | null>(null);
+  
+  // Drag and drop state
+  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ day: number } | null>(null);
+  const [validDropDays, setValidDropDays] = useState<Set<number>>(new Set());
+  const [invalidDropDays, setInvalidDropDays] = useState<Set<number>>(new Set());
+  const [isValidating, setIsValidating] = useState(false);
+  
+  // Real-time sync state
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastSync, setLastSync] = useState<number | null>(null);
 
   const supabase = createClient<Database>();
   const sessionGenerator = new SessionGenerator();
@@ -527,6 +538,13 @@ export function CalendarWeekView({
     today.setHours(0, 0, 0, 0);
     return date < today;
   };
+
+  // Optimistically update session in state
+  const optimisticUpdate = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {
+    setSessionsState(prev => prev.map(session => 
+      session.id === sessionId ? { ...session, ...updates } : session
+    ));
+  }, []);
 
   const validateAllDropTargets = useCallback(async (session: ScheduleSession) => {
     if (!session) return;

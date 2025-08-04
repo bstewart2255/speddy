@@ -10,7 +10,7 @@ import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
-// import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 
@@ -127,13 +127,13 @@ export default function BellSchedulesPage() {
             >
               Import CSV
             </Button>
-            {/* <AIUploadButton 
+            <AIUploadButton 
               uploadType="bell_schedule" 
               onSuccess={() => {
                 // Refresh bell schedules
                 window.location.reload();
               }} 
-            /> */}
+            />
             <Button 
               variant="primary" 
               onClick={() => setShowAddForm(!showAddForm)}
@@ -201,7 +201,7 @@ export default function BellSchedulesPage() {
                     Select Grade Level
                   </label>
                   <div className="flex gap-2">
-                    {['K', '1', '2', '3', '4', '5'].map((grade) => (
+                    {['TK', 'K', '1', '2', '3', '4', '5'].map((grade) => (
                       <button
                         key={grade}
                         onClick={() => setSelectedGrade(grade)}

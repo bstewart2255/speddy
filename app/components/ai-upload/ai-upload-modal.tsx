@@ -31,6 +31,7 @@ export default function AIUploadModal({
   const [confirming, setConfirming] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [showExamples, setShowExamples] = useState(false);
+  const [editedItems, setEditedItems] = useState<{[key: number]: any}>({});
 
   if (!isOpen) return null;
 
@@ -46,6 +47,7 @@ export default function AIUploadModal({
       setFile(selectedFile);
       setParsedData(null);
       setUploadResult(null);
+      setEditedItems({}); // Reset edited items when new file is selected
     }
   };
 
@@ -55,6 +57,7 @@ export default function AIUploadModal({
     setUploading(true);
     setParsedData(null);
     setUploadResult(null);
+    setEditedItems({}); // Reset edited items when processing new upload
 
     try {
       const formData = new FormData();
@@ -85,7 +88,10 @@ export default function AIUploadModal({
   const handleConfirm = async () => {
     if (!parsedData) return;
 
-    const confirmedData = parsedData.confirmed.filter((_, index) => selectedItems.has(index));
+    // Use edited data if available, otherwise use original data
+    const confirmedData = parsedData.confirmed
+      .map((item, index) => selectedItems.has(index) ? getCurrentItemData(item, index) : null)
+      .filter(item => item !== null);
 
     if (confirmedData.length === 0) {
       alert('Please select at least one item to import');
@@ -128,6 +134,7 @@ export default function AIUploadModal({
     setFile(null);
     setParsedData(null);
     setSelectedItems(new Set());
+    setEditedItems({}); // Reset edited items
     setUploadResult(null);
     onClose();
   };
@@ -142,63 +149,270 @@ export default function AIUploadModal({
     setSelectedItems(newSelected);
   };
 
+  // Helper function to get current item data (original or edited)
+  const getCurrentItemData = (item: any, index: number) => {
+    return editedItems[index] ? { ...item, ...editedItems[index] } : item;
+  };
+
+  // Helper function to update an edited item
+  const updateEditedItem = (index: number, field: string, value: any) => {
+    setEditedItems(prev => ({
+      ...prev,
+      [index]: {
+        ...getCurrentItemData(parsedData!.confirmed[index], index),
+        [field]: value
+      }
+    }));
+  };
+
   const renderParsedItem = (item: any, index: number) => {
+    const currentData = getCurrentItemData(item, index);
+    const isEdited = editedItems[index] !== undefined;
+
     if (uploadType === 'students') {
       return (
-        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-          <div className="flex-1">
-            <span className="font-medium">{item.initials}</span>
-            <span className="ml-2 text-gray-600">Grade {item.grade_level}</span>
-            <span className="ml-2 text-gray-600">Teacher: {item.teacher_name}</span>
-            <span className="ml-2 text-gray-500 text-sm">
-              {item.sessions_per_week}x{item.minutes_per_session}min
-            </span>
+        <div key={index} className={`p-3 rounded ${isEdited ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+          {isEdited && (
+            <div className="text-xs text-blue-600 mb-2 flex items-center">
+              <span className="mr-1">✏️</span> Edited
+            </div>
+          )}
+          <div className="grid grid-cols-6 gap-2 items-center">
+            <div>
+              <label className="text-xs text-gray-600">Initials</label>
+              <input
+                type="text"
+                value={currentData.initials || ''}
+                onChange={(e) => updateEditedItem(index, 'initials', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+                maxLength={4}
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Grade</label>
+              <select
+                value={currentData.grade_level || ''}
+                onChange={(e) => updateEditedItem(index, 'grade_level', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              >
+                <option value="TK">TK</option>
+                <option value="K">K</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Teacher</label>
+              <input
+                type="text"
+                value={currentData.teacher_name || ''}
+                onChange={(e) => updateEditedItem(index, 'teacher_name', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Sessions/Week</label>
+              <input
+                type="number"
+                min="1"
+                max="5"
+                value={currentData.sessions_per_week || ''}
+                onChange={(e) => updateEditedItem(index, 'sessions_per_week', parseInt(e.target.value))}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Minutes</label>
+              <select
+                value={currentData.minutes_per_session || ''}
+                onChange={(e) => updateEditedItem(index, 'minutes_per_session', parseInt(e.target.value))}
+                className="w-full text-sm border rounded px-2 py-1"
+              >
+                <option value="15">15</option>
+                <option value="20">20</option>
+                <option value="25">25</option>
+                <option value="30">30</option>
+                <option value="35">35</option>
+                <option value="40">40</option>
+                <option value="45">45</option>
+                <option value="50">50</option>
+                <option value="55">55</option>
+                <option value="60">60</option>
+              </select>
+            </div>
+            
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={selectedItems.has(index)}
+                onChange={() => toggleItem(index)}
+                className="h-4 w-4 text-blue-600 rounded"
+              />
+            </div>
           </div>
-          <input
-            type="checkbox"
-            checked={selectedItems.has(index)}
-            onChange={() => toggleItem(index)}
-            className="ml-4 h-4 w-4 text-blue-600 rounded"
-          />
         </div>
       );
     } else if (uploadType === 'bell_schedule') {
       return (
-        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-          <div className="flex-1">
-            <span className="font-medium">Grade {item.grade_level}</span>
-            <span className="ml-2">{item.period_name}</span>
-            <span className="ml-2 text-gray-600">
-              {item.start_time} - {item.end_time}
-            </span>
-            <span className="ml-2 text-gray-500 text-sm">
-              Days: {item.days?.join(', ') || 'All weekdays'}
-            </span>
+        <div key={index} className={`p-3 rounded ${isEdited ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+          {isEdited && (
+            <div className="text-xs text-blue-600 mb-2 flex items-center">
+              <span className="mr-1">✏️</span> Edited
+            </div>
+          )}
+          <div className="grid grid-cols-6 gap-2 items-center">
+            <div>
+              <label className="text-xs text-gray-600">Grade</label>
+              <select
+                value={currentData.grade_level || ''}
+                onChange={(e) => updateEditedItem(index, 'grade_level', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              >
+                <option value="TK">TK</option>
+                <option value="K">K</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="1,2">1,2</option>
+                <option value="3,4,5">3,4,5</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Activity</label>
+              <input
+                type="text"
+                value={currentData.period_name || ''}
+                onChange={(e) => updateEditedItem(index, 'period_name', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Start Time</label>
+              <input
+                type="time"
+                value={currentData.start_time || ''}
+                onChange={(e) => updateEditedItem(index, 'start_time', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">End Time</label>
+              <input
+                type="time"
+                value={currentData.end_time || ''}
+                onChange={(e) => updateEditedItem(index, 'end_time', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Days</label>
+              <input
+                type="text"
+                value={currentData.days?.join(',') || ''}
+                onChange={(e) => updateEditedItem(index, 'days', e.target.value.split(',').map(d => parseInt(d.trim())))}
+                className="w-full text-sm border rounded px-2 py-1"
+                placeholder="1,2,3,4,5"
+              />
+            </div>
+            
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={selectedItems.has(index)}
+                onChange={() => toggleItem(index)}
+                className="h-4 w-4 text-blue-600 rounded"
+              />
+            </div>
           </div>
-          <input
-            type="checkbox"
-            checked={selectedItems.has(index)}
-            onChange={() => toggleItem(index)}
-            className="ml-4 h-4 w-4 text-blue-600 rounded"
-          />
         </div>
       );
     } else {
       return (
-        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-          <div className="flex-1">
-            <span className="font-medium">{item.teacher_name}</span>
-            <span className="ml-2">{item.activity_name}</span>
-            <span className="ml-2 text-gray-600">
-              Day {item.day_of_week}: {item.start_time} - {item.end_time}
-            </span>
+        <div key={index} className={`p-3 rounded ${isEdited ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+          {isEdited && (
+            <div className="text-xs text-blue-600 mb-2 flex items-center">
+              <span className="mr-1">✏️</span> Edited
+            </div>
+          )}
+          <div className="grid grid-cols-5 gap-2 items-center">
+            <div>
+              <label className="text-xs text-gray-600">Teacher</label>
+              <input
+                type="text"
+                value={currentData.teacher_name || ''}
+                onChange={(e) => updateEditedItem(index, 'teacher_name', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Activity</label>
+              <input
+                type="text"
+                value={currentData.activity_name || ''}
+                onChange={(e) => updateEditedItem(index, 'activity_name', e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Day</label>
+              <select
+                value={currentData.day_of_week || ''}
+                onChange={(e) => updateEditedItem(index, 'day_of_week', parseInt(e.target.value))}
+                className="w-full text-sm border rounded px-2 py-1"
+              >
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+                <option value="5">Friday</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="text-xs text-gray-600">Start-End</label>
+              <div className="flex gap-1">
+                <input
+                  type="time"
+                  value={currentData.start_time || ''}
+                  onChange={(e) => updateEditedItem(index, 'start_time', e.target.value)}
+                  className="w-full text-xs border rounded px-1 py-1"
+                />
+                <input
+                  type="time"
+                  value={currentData.end_time || ''}
+                  onChange={(e) => updateEditedItem(index, 'end_time', e.target.value)}
+                  className="w-full text-xs border rounded px-1 py-1"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                checked={selectedItems.has(index)}
+                onChange={() => toggleItem(index)}
+                className="h-4 w-4 text-blue-600 rounded"
+              />
+            </div>
           </div>
-          <input
-            type="checkbox"
-            checked={selectedItems.has(index)}
-            onChange={() => toggleItem(index)}
-            className="ml-4 h-4 w-4 text-blue-600 rounded"
-          />
         </div>
       );
     }

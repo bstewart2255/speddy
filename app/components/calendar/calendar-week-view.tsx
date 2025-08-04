@@ -681,7 +681,7 @@ export function CalendarWeekView({
             >
               <div
                 className={`p-2 text-center font-medium text-sm relative ${
-                  isToday ? "bg-blue-100" : isHoliday(date) ? "bg-red-100" : "bg-gray-100"
+                  isToday(date) ? "bg-blue-100" : isHolidayDay ? "bg-red-100" : "bg-gray-100"
                 } rounded-t-lg border-b border-gray-200`}
               >
                 <span className="font-semibold">{getDayName(date)}</span>
@@ -857,18 +857,19 @@ export function CalendarWeekView({
           setAiContent(null);
           setViewingSavedLesson(false);
         }}
-        onGenerate={generateAIContent}
+        timeSlot={selectedDate ? formatDate(selectedDate) : ''}
+        students={Array.from(students.entries()).map(([id, student]) => ({
+          id,
+          student_number: '',
+          first_name: '',
+          last_name: '',
+          initials: student.initials,
+          grade_level: student.grade_level || '',
+          teacher_name: ''
+        }))}
         content={aiContent}
-        isGenerating={generatingContent}
-        isViewMode={viewingSavedLesson}
-        sessionInfo={{
-          date: selectedDate || new Date(),
-          sessions: selectedDaySessions,
-          students: Array.from(students.entries()).map(([id, student]) => ({
-            id,
-            ...student,
-          })),
-        }}
+        isLoading={generatingContent}
+        isViewingSaved={viewingSavedLesson}
       />
 
       {/* Lesson Type Modal */}
@@ -878,7 +879,8 @@ export function CalendarWeekView({
           setShowLessonTypeModal(false);
           setSelectedLessonDate(null);
         }}
-        onSelectType={handleLessonTypeSelect}
+        onSelectAI={() => handleLessonTypeSelect('ai')}
+        onSelectManual={() => handleLessonTypeSelect('manual')}
       />
 
       {/* Manual Lesson Form Modal */}
@@ -890,13 +892,18 @@ export function CalendarWeekView({
         }}
         onSave={selectedManualLesson ? handleUpdateManualLesson : handleSaveManualLesson}
         initialData={selectedManualLesson ? {
+          id: selectedManualLesson.id,
           title: selectedManualLesson.title,
-          content: selectedManualLesson.content,
-          objectives: selectedManualLesson.objectives || [],
-          materials: selectedManualLesson.materials || [],
+          subject: selectedManualLesson.subject || '',
+          gradeLevels: selectedManualLesson.grade_levels?.join(', ') || '',
+          duration: selectedManualLesson.duration_minutes || undefined,
+          learningObjectives: selectedManualLesson.objectives || '',
+          materialsNeeded: selectedManualLesson.materials || '',
+          activities: selectedManualLesson.activities ? JSON.stringify(selectedManualLesson.activities) : '',
+          assessmentMethods: selectedManualLesson.assessment || '',
           notes: selectedManualLesson.notes || ''
         } : undefined}
-        isEditing={!!selectedManualLesson}
+        lessonDate={selectedLessonDate || new Date()}
       />
 
       {/* Manual Lesson View Modal */}
@@ -908,6 +915,14 @@ export function CalendarWeekView({
             setViewingManualLesson(null);
           }}
           lesson={viewingManualLesson}
+          onEdit={(lesson) => {
+            setShowManualLessonView(false);
+            handleEditManualLesson(lesson);
+          }}
+          onDelete={(lessonId) => {
+            setShowManualLessonView(false);
+            handleDeleteManualLesson(lessonId);
+          }}
         />
       )}
     </div>

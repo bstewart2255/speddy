@@ -152,6 +152,22 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             userId,
             contentLength: fileContent.length
           });
+          
+          // Additional validation for PDF content
+          if (!fileContent || fileContent.length === 0) {
+            throw new Error('PDF conversion returned empty content');
+          }
+          
+          // Check if the PDF might be scanned/image-based
+          const words = fileContent.trim().split(/\s+/);
+          if (words.length < 10) {
+            log.warn('PDF appears to contain very little text', {
+              userId,
+              wordCount: words.length,
+              contentPreview: fileContent.substring(0, 200)
+            });
+            throw new Error('PDF appears to be image-based or contains very little text. Please use a text-based PDF or convert to Word format.');
+          }
         } else {
           throw new Error(convertResult.message || 'Failed to extract text');
         }
@@ -206,14 +222,42 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           { status: 500 }
         );
       }
-    } {
-      // Process text-based files
-      extractionMethod = "Text";
-      fileContent = new TextDecoder().decode(buffer);
-      log.info('Text file extracted', {
-        userId,
-        contentLength: fileContent.length
-      });
+    } else if (
+      file.type.includes("wordprocessing") ||
+      file.type.includes("msword") ||
+      file.type.includes("text") ||
+      file.type.includes("csv") ||
+      file.type.includes("rtf")
+    ) {
+      // Process Word documents
+      if (file.type.includes("wordprocessing") || file.type.includes("msword")) {
+        extractionMethod = "Word";
+        try {
+          const result = await mammoth.extractRawText({ buffer });
+          fileContent = result.value;
+          log.info('Word document extracted', {
+            userId,
+            contentLength: fileContent.length
+          });
+        } catch (mammothError) {
+          log.error('Error processing Word document', mammothError, {
+            userId,
+            fileName: file.name
+          });
+          return NextResponse.json(
+            { error: "Failed to process Word document. Please try converting to PDF or text." },
+            { status: 500 }
+          );
+        }
+      } else {
+        // Process text-based files
+        extractionMethod = "Text";
+        fileContent = new TextDecoder().decode(buffer);
+        log.info('Text file extracted', {
+          userId,
+          contentLength: fileContent.length
+        });
+      }
     }
   } catch (error: any) {
     log.error('File extraction error', error, {
@@ -236,6 +280,52 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     );
   }
 
+    // Check if the extracted content is binary or corrupted
+    const isBinaryContent = (content: string): boolean => {
+      if (!content || content.length === 0) return true;
+      
+      // Check for null bytes or excessive non-printable characters
+      let nonPrintableCount = 0;
+      const sampleSize = Math.min(content.length, 1000);
+      
+      for (let i = 0; i < sampleSize; i++) {
+        const charCode = content.charCodeAt(i);
+        // Count non-printable characters (excluding common whitespace)
+        if (charCode < 32 && charCode !== 9 && charCode !== 10 && charCode !== 13) {
+          nonPrintableCount++;
+        }
+      }
+      
+      // If more than 10% of the sample is non-printable, it's likely binary
+      return (nonPrintableCount / sampleSize) > 0.1;
+    };
+
+    // Validate extracted content
+    if (!fileContent || fileContent.trim().length === 0) {
+      log.error('No content extracted from file', null, {
+        userId,
+        fileName: file.name,
+        extractionMethod
+      });
+      return NextResponse.json(
+        { error: `No readable content found in the ${extractionMethod} file. Please ensure the file contains text and is not empty or corrupted.` },
+        { status: 400 }
+      );
+    }
+
+    if (isBinaryContent(fileContent)) {
+      log.error('Binary content detected in extracted text', null, {
+        userId,
+        fileName: file.name,
+        extractionMethod,
+        contentPreview: fileContent.substring(0, 100)
+      });
+      return NextResponse.json(
+        { error: `The file appears to be corrupted or in an unreadable binary format. The content contains non-text characters and appears to be damaged or encoded in a way that prevents extraction of ${uploadType.replace('_', ' ')} information.` },
+        { status: 400 }
+      );
+    }
+
     // Truncate if too long for Claude
     const maxLength = 50000; // Conservative limit
     if (fileContent.length > maxLength) {
@@ -250,47 +340,35 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       `File content ready. Method: ${extractionMethod}, Final length: ${fileContent.length}`,
     );
 
-    // For bell schedules, limit the content to prevent token overflow
+    // For bell schedules, apply lighter filtering to avoid missing entries
     if (uploadType === 'bell_schedule') {
-      // FIRST, pre-filter content to focus on blocking periods
-      console.log('Pre-filtering bell schedule content...');
-
-      // Extract only lines that likely contain schedule information we want
+      console.log('Processing bell schedule content...');
+      
+      // Only remove clearly irrelevant lines (empty lines, headers, etc.)
       const lines = fileContent.split('\n');
       const relevantLines = lines.filter(line => {
-        const lowerLine = line.toLowerCase();
-        const isRelevant = (
-          (lowerLine.includes('recess') || 
-           lowerLine.includes('lunch') || 
-           lowerLine.includes('pe') || 
-           lowerLine.includes('music') || 
-           lowerLine.includes('library') || 
-           lowerLine.includes('art') ||
-           lowerLine.includes('special') ||
-           lowerLine.includes('break') ||
-           lowerLine.includes('snack') ||
-           lowerLine.includes('nutrition')) &&
-          (lowerLine.includes(':') || lowerLine.includes('-')) // Likely has time info
-        ) || 
-        lowerLine.includes('grade') ||
-        lowerLine.includes('class');
-
-        // Debug log for lines containing grade 3, 4, or 5
-        if (lowerLine.includes('grade 3') || lowerLine.includes('grade 4') || lowerLine.includes('grade 5')) {
-          console.log(`Grade 3/4/5 line - kept: ${isRelevant} - "${line}"`);
+        const trimmedLine = line.trim();
+        
+        // Skip empty lines and common headers
+        if (!trimmedLine || 
+            trimmedLine.length < 3 ||
+            trimmedLine.toLowerCase().includes('page ') ||
+            trimmedLine.toLowerCase().includes('printed on') ||
+            trimmedLine.toLowerCase().includes('generated')) {
+          return false;
         }
-
-        return isRelevant;
+        
+        return true;
       });
 
       fileContent = relevantLines.join('\n');
-      console.log(`Filtered from ${lines.length} to ${relevantLines.length} relevant lines`);
-      console.log('Sample of filtered content:', fileContent.substring(0, 500));
-
-      // THEN, truncate if still too long after filtering
-      if (fileContent.length > 8000) {
-        console.log('Filtered content still too long, truncating...');
-        fileContent = fileContent.substring(0, 8000) + '\n... [remaining content truncated for processing]';
+      console.log(`Cleaned from ${lines.length} to ${relevantLines.length} lines`);
+      
+      // Increase the limit significantly to capture all bell schedules
+      const bellScheduleMaxLength = 30000; // Much higher limit for bell schedules
+      if (fileContent.length > bellScheduleMaxLength) {
+        console.log(`Bell schedule content too long (${fileContent.length}), truncating to ${bellScheduleMaxLength}`);
+        fileContent = fileContent.substring(0, bellScheduleMaxLength) + '\n... [remaining content truncated for processing]';
       }
     }
 
@@ -357,8 +435,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const aiPerf = measurePerformanceWithAlerts('anthropic_parse_file', 'api');
     const message = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 4000,
+      model: "claude-opus-4-20250514",
+      max_tokens: 8000, // Increased to handle more bell schedules
       temperature: 0.2, // Lower temperature for more consistent parsing
       messages: [
         { role: "user", content: systemPrompt },
@@ -559,12 +637,29 @@ function createIntelligentSystemPrompt(
       - Grade might be written as "3rd grade" or "Grade 3" or just "3"`,
 
     bell_schedule: `
-    For BELL SCHEDULE data, look for:
-    - Time blocks (recess, lunch, class periods)
-    - Grade levels or classrooms
-    - Days of the week
-    - Special schedules (early release, conferences)
-    - Any mention of when students are unavailable
+    For BELL SCHEDULE data, ONLY extract GRADE-WIDE blocking periods:
+    
+    PRIMARY TARGETS (almost always grade-wide):
+    - Recess (morning recess, afternoon recess, snack time)
+    - Lunch/Nutrition breaks
+    
+    ONLY INCLUDE IF EXPLICITLY GRADE-WIDE:
+    - PE (only if it says "all Grade 3" or "entire 2nd grade" etc.)
+    - Other activities ONLY if they clearly state the entire grade participates
+    
+    DO NOT INCLUDE:
+    - Music, Art, Library, Computer (these are typically class-based, not grade-wide)
+    - Any class-specific activities (e.g., "Mrs. Smith's class has music")
+    - Regular class periods or instruction time
+    - School start/dismissal times
+    - One-off events or assemblies
+    - Field trips or special events
+    
+    CRITICAL FILTERING RULES:
+    1. Must be a RECURRING weekly event (not one-time)
+    2. Must apply to an ENTIRE GRADE LEVEL (not individual classes)
+    3. Primarily looking for RECESS and LUNCH
+    4. Other activities only if explicitly stated as grade-wide
 
     Output format for each schedule item:
     {
@@ -576,12 +671,14 @@ function createIntelligentSystemPrompt(
     }
 
     Smart parsing tips:
-    - Convert all times to 24-hour format
+    - Convert all times to 24-hour format (e.g., "13:30" for 1:30 PM, "09:00" for 9:00 AM)
+    - Always use 24-hour format without seconds (HH:MM format only)
     - "MWF" = [1,3,5], "M-F" = [1,2,3,4,5], "Daily" = [1,2,3,4,5]
+    - "Transitional Kindergarten" or "TK" = "TK"
     - "Kindergarten" = "K", "First Grade" = "1"
     - Multiple grades like "1st-3rd" = "1,2,3"
-    - Common periods: Recess, Lunch, PE, Music, Library, Art
-    - If a schedule applies to all weekdays, use days: [1,2,3,4,5]
+    - Focus on finding patterns like "Grade 2 Lunch", "3rd Grade Recess", "TK Recess"
+    - Look for both AM and PM schedules for TK/Kindergarten
 
     CRITICAL: Return ONLY valid JSON with NO trailing commas. Example:
     {
