@@ -200,7 +200,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
           // Check for saved school preference with migration awareness
           const savedSchool = localStorage.getItem('selectedSchool');
-          let schoolToSet = null;
+          let schoolToSet: SchoolInfo | undefined = undefined;
 
           if (savedSchool) {
             try {
@@ -228,7 +228,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             schoolToSet = enrichedSchools.find(s => s.is_primary) || enrichedSchools[0];
           }
 
-          setCurrentSchoolState(schoolToSet);
+          setCurrentSchoolState(schoolToSet || null);
         }
       }
       

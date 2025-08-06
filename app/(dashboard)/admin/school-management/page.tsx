@@ -72,14 +72,38 @@ export default function SchoolManagementPage() {
         setSchools(schoolStats);
       }
 
-      // Load performance metrics
+      // Load performance metrics - fetch raw data and aggregate in memory
       const { data: perfData } = await supabase
         .from('query_performance_log')
-        .select('query_type, avg(execution_time_ms) as avg_time, count(*) as query_count')
-        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        .group('query_type');
+        .select('query_type, execution_time_ms')
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
-      setPerformanceMetrics(perfData);
+      // Aggregate the data in memory
+      if (perfData) {
+        const aggregated = perfData.reduce((acc: any, curr) => {
+          if (!acc[curr.query_type]) {
+            acc[curr.query_type] = {
+              query_type: curr.query_type,
+              total_time: 0,
+              query_count: 0,
+              avg_time: 0
+            };
+          }
+          acc[curr.query_type].total_time += curr.execution_time_ms || 0;
+          acc[curr.query_type].query_count += 1;
+          return acc;
+        }, {});
+
+        // Calculate averages
+        const metrics = Object.values(aggregated).map((item: any) => ({
+          ...item,
+          avg_time: item.query_count > 0 ? item.total_time / item.query_count : 0
+        }));
+
+        setPerformanceMetrics(metrics);
+      } else {
+        setPerformanceMetrics([]);
+      }
 
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -113,7 +137,7 @@ export default function SchoolManagementPage() {
 
   const runDataQualityCheck = async () => {
     try {
-      const checks = [];
+      const checks: Array<{check: string; status: string; details: string}> = [];
       
       // Check for orphaned school IDs
       const { data: orphaned } = await supabase
