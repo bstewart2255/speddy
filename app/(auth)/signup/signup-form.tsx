@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../components/providers/auth-provider";
 import Link from "next/link";
 import { validatePassword } from "../../../lib/utils/password-validation";
@@ -12,6 +12,25 @@ import { createClient } from '@/lib/supabase/client';
 
 interface SignupFormProps {
   onComplete?: (role: string, email: string) => void;
+}
+
+interface State {
+  id: string;
+  name: string;
+  full_name: string;
+}
+
+interface District {
+  id: string;
+  name: string;
+  state_id: string;
+}
+
+interface School {
+  id: string;
+  name: string;
+  district_id: string;
+  school_type?: string;
 }
 
 const PROVIDER_ROLES = [
@@ -89,7 +108,11 @@ export function SignupForm({ onComplete }: SignupFormProps) {
     schoolSite: "",
     supervisingProviderEmail: "",
     multipleSchools: 'no', // default to single school
-    additionalSchools: ["", "", ""] // for storing multiple school names
+    additionalSchools: ["", "", ""], // for storing multiple school names
+    // New fields for structured data
+    state_id: "CA",
+    district_id: "",
+    school_id: ""
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,6 +121,109 @@ export function SignupForm({ onComplete }: SignupFormProps) {
   const [isSEARole, setIsSEARole] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  
+  // New state for dropdown data
+  const [states, setStates] = useState<State[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [schools, setSchools] = useState<School[]>([]);
+  const [loadingStates, setLoadingStates] = useState(true);
+  const [loadingDistricts, setLoadingDistricts] = useState(false);
+  const [loadingSchools, setLoadingSchools] = useState(false);
+  const [districtSearch, setDistrictSearch] = useState("");
+  const [schoolSearch, setSchoolSearch] = useState("");
+  const [showDistrictDropdown, setShowDistrictDropdown] = useState(false);
+  const [showSchoolDropdown, setShowSchoolDropdown] = useState(false);
+  
+  // Load states on component mount
+  useEffect(() => {
+    const loadStates = async () => {
+      try {
+        const response = await fetch('/api/schools/states');
+        if (response.ok) {
+          const data = await response.json();
+          setStates(data);
+          // Set California as default if it exists
+          const california = data.find((s: State) => s.id === 'CA');
+          if (california) {
+            setFormData(prev => ({
+              ...prev,
+              state_id: california.id,
+              state: california.id
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load states:', err);
+      } finally {
+        setLoadingStates(false);
+      }
+    };
+    loadStates();
+  }, []);
+  
+  // Load districts when state changes
+  const loadDistricts = useCallback(async (stateId: string, search?: string) => {
+    if (!stateId) return;
+    
+    setLoadingDistricts(true);
+    try {
+      let url = `/api/schools/districts?state_id=${stateId}`;
+      if (search) {
+        url += `&search=${encodeURIComponent(search)}`;
+      }
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setDistricts(data);
+      }
+    } catch (err) {
+      console.error('Failed to load districts:', err);
+    } finally {
+      setLoadingDistricts(false);
+    }
+  }, []);
+  
+  // Load schools when district changes
+  const loadSchools = useCallback(async (districtId: string, search?: string) => {
+    if (!districtId) return;
+    
+    setLoadingSchools(true);
+    try {
+      let url = `/api/schools?district_id=${districtId}`;
+      if (search) {
+        url += `&search=${encodeURIComponent(search)}`;
+      }
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setSchools(data);
+      }
+    } catch (err) {
+      console.error('Failed to load schools:', err);
+    } finally {
+      setLoadingSchools(false);
+    }
+  }, []);
+  
+  // Debounced search for districts
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.state_id && showDistrictDropdown) {
+        loadDistricts(formData.state_id, districtSearch);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [districtSearch, formData.state_id, showDistrictDropdown, loadDistricts]);
+  
+  // Debounced search for schools
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (formData.district_id && showSchoolDropdown) {
+        loadSchools(formData.district_id, schoolSearch);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [schoolSearch, formData.district_id, showSchoolDropdown, loadSchools]);
 
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -115,6 +241,13 @@ const handleSubmit = async (e: React.FormEvent) => {
   const passwordValidation = validatePassword(formData.password);
   if (!passwordValidation.isValid) {
     setError(passwordValidation.errors[0]);
+    setLoading(false);
+    return;
+  }
+
+  // Validate that school selection is complete
+  if (!formData.schoolDistrict || !formData.schoolSite) {
+    setError("Please select your school district and school");
     setLoading(false);
     return;
   }
@@ -157,7 +290,11 @@ const handleSubmit = async (e: React.FormEvent) => {
       school_district: formData.schoolDistrict.trim(),
       school_site: formData.schoolSite.trim(),
       works_at_multiple_schools: formData.multipleSchools === 'yes',
-      additional_schools: additionalSchoolsArray
+      additional_schools: additionalSchoolsArray,
+      // Include new structured IDs for future use
+      state_id: formData.state_id,
+      district_id: formData.district_id,
+      school_id: formData.school_id
     };
 
     console.log('Signup metadata:', metadata);
@@ -330,28 +467,6 @@ const handleSubmit = async (e: React.FormEvent) => {
 
       <div>
         <label
-          htmlFor="schoolDistrict"
-          className="block text-sm font-medium text-gray-700"
-        >
-          School District
-        </label>
-        <input
-          id="schoolDistrict"
-          name="schoolDistrict"
-          type="text"
-          required
-          value={formData.schoolDistrict}
-          onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          placeholder="e.g., San Francisco Unified School District"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Enter your full school district name (spell correctly!)
-        </p>
-      </div>
-
-      <div>
-        <label
           htmlFor="state"
           className="block text-sm font-medium text-gray-700"
         >
@@ -361,38 +476,225 @@ const handleSubmit = async (e: React.FormEvent) => {
           id="state"
           name="state"
           required
-          value={formData.state}
-          onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          value={formData.state_id}
+          onChange={(e) => {
+            const selectedState = states.find(s => s.id === e.target.value);
+            if (selectedState) {
+              setFormData(prev => ({
+                ...prev,
+                state: selectedState.id,
+                state_id: selectedState.id,
+                // Clear dependent fields
+                district_id: '',
+                school_id: '',
+                schoolDistrict: '',
+                schoolSite: ''
+              }));
+              setDistricts([]);
+              setSchools([]);
+              setDistrictSearch('');
+              setSchoolSearch('');
+            }
+          }}
+          disabled={loadingStates}
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
         >
-          {US_STATES.map((state) => (
-            <option key={state.value} value={state.value}>
-              {state.label}
-            </option>
-          ))}
+          {loadingStates ? (
+            <option value="">Loading states...</option>
+          ) : (
+            states.map((state) => (
+              <option key={state.id} value={state.id}>
+                {state.full_name}
+              </option>
+            ))
+          )}
         </select>
       </div>
 
-      <div>
+      <div className="relative">
         <label
-          htmlFor="schoolSite"
+          htmlFor="district"
           className="block text-sm font-medium text-gray-700"
         >
-          School Site Name
+          School District
         </label>
-        <input
-          id="schoolSite"
-          name="schoolSite"
-          type="text"
-          required
-          value={formData.schoolSite}
-          onChange={handleChange}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          placeholder="Lincoln Elementary School"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Enter full school name (no abbreviations - and spell correctly!)
-        </p>
+        <div className="mt-1">
+          <input
+            id="district"
+            type="text"
+            required
+            value={formData.district_id ? formData.schoolDistrict : districtSearch}
+            onChange={(e) => {
+              setDistrictSearch(e.target.value);
+              if (formData.district_id) {
+                // Clear selection if user starts typing
+                setFormData(prev => ({
+                  ...prev,
+                  district_id: '',
+                  school_id: '',
+                  schoolDistrict: '',
+                  schoolSite: ''
+                }));
+                setSchools([]);
+                setSchoolSearch('');
+              }
+            }}
+            onFocus={() => {
+              setShowDistrictDropdown(true);
+              if (formData.state_id && !districts.length) {
+                loadDistricts(formData.state_id);
+              }
+            }}
+            onBlur={(e) => {
+              // Delay to allow click on dropdown items
+              setTimeout(() => {
+                setShowDistrictDropdown(false);
+              }, 200);
+            }}
+            disabled={!formData.state_id || loadingStates}
+            placeholder={!formData.state_id ? "Select a state first" : "Search for your district..."}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          />
+          {loadingDistricts && (
+            <div className="absolute right-2 top-2">
+              <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          )}
+          {showDistrictDropdown && districts.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+              {districts.map((district) => (
+                <div
+                  key={district.id}
+                  className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-blue-50"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      district_id: district.id,
+                      schoolDistrict: district.name,
+                      // Clear school selection
+                      school_id: '',
+                      schoolSite: ''
+                    }));
+                    setDistrictSearch('');
+                    setSchools([]);
+                    setSchoolSearch('');
+                    setShowDistrictDropdown(false);
+                  }}
+                >
+                  {district.name}
+                </div>
+              ))}
+              {districts.length === 200 && (
+                <div className="py-2 px-3 text-xs text-gray-500">
+                  Showing first 200 results. Type to search for more.
+                </div>
+              )}
+            </div>
+          )}
+          {showDistrictDropdown && districts.length === 0 && !loadingDistricts && districtSearch && (
+            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-2 px-3 text-sm text-gray-500">
+              No districts found
+            </div>
+          )}
+        </div>
+        {formData.district_id && (
+          <p className="mt-1 text-xs text-green-600">
+            ✓ {formData.schoolDistrict} selected
+          </p>
+        )}
+      </div>
+
+      <div className="relative">
+        <label
+          htmlFor="school"
+          className="block text-sm font-medium text-gray-700"
+        >
+          School Site
+        </label>
+        <div className="mt-1">
+          <input
+            id="school"
+            type="text"
+            required
+            value={formData.school_id ? formData.schoolSite : schoolSearch}
+            onChange={(e) => {
+              setSchoolSearch(e.target.value);
+              if (formData.school_id) {
+                // Clear selection if user starts typing
+                setFormData(prev => ({
+                  ...prev,
+                  school_id: '',
+                  schoolSite: ''
+                }));
+              }
+            }}
+            onFocus={() => {
+              setShowSchoolDropdown(true);
+              if (formData.district_id && !schools.length) {
+                loadSchools(formData.district_id);
+              }
+            }}
+            onBlur={(e) => {
+              // Delay to allow click on dropdown items
+              setTimeout(() => {
+                setShowSchoolDropdown(false);
+              }, 200);
+            }}
+            disabled={!formData.district_id || loadingDistricts}
+            placeholder={!formData.district_id ? "Select a district first" : "Search for your school..."}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          />
+          {loadingSchools && (
+            <div className="absolute right-2 top-2">
+              <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          )}
+          {showSchoolDropdown && schools.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+              {schools.map((school) => (
+                <div
+                  key={school.id}
+                  className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-blue-50"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      school_id: school.id,
+                      schoolSite: school.name
+                    }));
+                    setSchoolSearch('');
+                    setShowSchoolDropdown(false);
+                  }}
+                >
+                  <div>{school.name}</div>
+                  {school.school_type && (
+                    <div className="text-xs text-gray-500">{school.school_type}</div>
+                  )}
+                </div>
+              ))}
+              {schools.length === 500 && (
+                <div className="py-2 px-3 text-xs text-gray-500">
+                  Showing first 500 results. Type to search for more.
+                </div>
+              )}
+            </div>
+          )}
+          {showSchoolDropdown && schools.length === 0 && !loadingSchools && schoolSearch && (
+            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-2 px-3 text-sm text-gray-500">
+              No schools found
+            </div>
+          )}
+        </div>
+        {formData.school_id && (
+          <p className="mt-1 text-xs text-green-600">
+            ✓ {formData.schoolSite} selected
+          </p>
+        )}
       </div>
 
       <div>
