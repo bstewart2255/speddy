@@ -92,6 +92,19 @@ export function CardBody({ children, className = "" }: CardBodyProps) {
   return <div className={`text-gray-700 ${className}`}>{children}</div>;
 }
 
+// Alias for CardBody to match shadcn/ui convention
+export const CardContent = CardBody;
+
+// CardDescription component
+interface CardDescriptionProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function CardDescription({ children, className = "" }: CardDescriptionProps) {
+  return <p className={`text-sm text-gray-500 ${className}`}>{children}</p>;
+}
+
 interface CardFooterProps {
   children: React.ReactNode;
   className?: string;
