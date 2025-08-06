@@ -13,7 +13,7 @@ type Props = {
 };
 
 export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }: Props) {
-  const [dayOfWeek, setDayOfWeek] = useState('monday');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [subject, setSubject] = useState('');
@@ -23,15 +23,20 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
 
   const { currentSchool } = useSchool();
 
-  const dayToNumber = (day: string): number => {
-    const days: { [key: string]: number } = {
-      'monday': 1,
-      'tuesday': 2,
-      'wednesday': 3,
-      'thursday': 4,
-      'friday': 5
-    };
-    return days[day] || 1;
+  const daysOfWeek = [
+    { id: 1, name: 'Monday', shortName: 'Mon' },
+    { id: 2, name: 'Tuesday', shortName: 'Tue' },
+    { id: 3, name: 'Wednesday', shortName: 'Wed' },
+    { id: 4, name: 'Thursday', shortName: 'Thu' },
+    { id: 5, name: 'Friday', shortName: 'Fri' }
+  ];
+
+  const handleDayToggle = (dayId: number) => {
+    setSelectedDays(prev => 
+      prev.includes(dayId) 
+        ? prev.filter(id => id !== dayId)
+        : [...prev, dayId]
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,6 +48,13 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Validate at least one day is selected
+      if (selectedDays.length === 0) {
+        setError('Please select at least one day');
+        setSubmitting(false);
+        return;
+      }
+
       // Validate times
       if (startTime >= endTime) {
         setError('End time must be after start time');
@@ -50,44 +62,73 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
         return;
       }
 
-      const { error: insertError } = await supabase
-      .from('bell_schedules')
-      .insert([{
-        provider_id: user.id,
-        grade_level: gradeLevel,
-        day_of_week: dayToNumber(dayOfWeek),
-        start_time: startTime,
-        end_time: endTime,
-        period_name: subject.trim(),
-        school_site: currentSchool?.school_site
-      }]);
+      let totalResolved = 0;
+      let totalFailed = 0;
+      const errors: string[] = [];
 
-      if (insertError) throw insertError;
+      // Create a bell schedule entry for each selected day
+      for (const dayId of selectedDays) {
+        try {
+          const { error: insertError } = await supabase
+            .from('bell_schedules')
+            .insert([{
+              provider_id: user.id,
+              grade_level: gradeLevel,
+              day_of_week: dayId,
+              start_time: startTime,
+              end_time: endTime,
+              period_name: subject.trim(),
+              school_site: currentSchool?.school_site
+            }]);
 
-      // Check for conflicts after successful insert
-      const resolver = new ConflictResolver(user.id);
-      const insertedSchedule = {
-        grade_level: gradeLevel.trim(),
-        day_of_week: dayToNumber(dayOfWeek),
-        start_time: startTime,
-        end_time: endTime,
-        period_name: subject.trim()
-      };
+          if (insertError) {
+            const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
+            errors.push(`${dayName}: ${insertError.message}`);
+            continue;
+          }
 
-      const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
+          // Check for conflicts after successful insert
+          const resolver = new ConflictResolver(user.id);
+          const insertedSchedule = {
+            grade_level: gradeLevel.trim(),
+            day_of_week: dayId,
+            start_time: startTime,
+            end_time: endTime,
+            period_name: subject.trim()
+          };
 
-      if (result.resolved > 0 || result.failed > 0) {
-        alert(`Bell schedule added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+          const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
+          totalResolved += result.resolved;
+          totalFailed += result.failed;
+        } catch (err) {
+          const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
+          errors.push(`${dayName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
       }
 
-      // Reset form
-      setStartTime('');
-      setEndTime('');
-      setSubject('');
-      onSuccess();
+      // Show results
+      if (errors.length > 0) {
+        setError(`Some schedules could not be added:\n${errors.join('\n')}`);
+      } else {
+        const scheduleCount = selectedDays.length;
+        const message = scheduleCount === 1 
+          ? 'Bell schedule added successfully.'
+          : `${scheduleCount} bell schedules added successfully.`;
+        
+        if (totalResolved > 0 || totalFailed > 0) {
+          alert(`${message} ${totalResolved} sessions rescheduled, ${totalFailed} could not be rescheduled.`);
+        }
+        
+        // Reset form
+        setStartTime('');
+        setEndTime('');
+        setSubject('');
+        setSelectedDays([]);
+        onSuccess();
+      }
     } catch (err) {
       console.error('Add schedule error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add schedule');
+      setError(err instanceof Error ? err.message : 'Failed to add schedules');
     } finally {
       setSubmitting(false);
     }
@@ -114,21 +155,37 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Day of Week
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Select Days
         </label>
-        <select
-          value={dayOfWeek}
-          onChange={(e) => setDayOfWeek(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
-        >
-          <option value="monday">Monday</option>
-          <option value="tuesday">Tuesday</option>
-          <option value="wednesday">Wednesday</option>
-          <option value="thursday">Thursday</option>
-          <option value="friday">Friday</option>
-        </select>
+        <div className="grid grid-cols-5 gap-2">
+          {daysOfWeek.map((day) => (
+            <label
+              key={day.id}
+              className={`
+                flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all
+                ${selectedDays.includes(day.id) 
+                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+                }
+              `}
+            >
+              <input
+                type="checkbox"
+                checked={selectedDays.includes(day.id)}
+                onChange={() => handleDayToggle(day.id)}
+                className="sr-only"
+              />
+              <div className="text-xs font-semibold">{day.shortName}</div>
+              <div className="text-xs mt-1 opacity-75">{day.name.slice(0, 3)}</div>
+            </label>
+          ))}
+        </div>
+        {selectedDays.length > 0 && (
+          <div className="mt-2 text-sm text-gray-600">
+            {selectedDays.length} {selectedDays.length === 1 ? 'day' : 'days'} selected
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -195,10 +252,15 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
         </button>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || selectedDays.length === 0}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
         >
-          {submitting ? 'Adding...' : 'Add Time Block'}
+          {submitting 
+            ? `Adding ${selectedDays.length} ${selectedDays.length === 1 ? 'Time Block' : 'Time Blocks'}...` 
+            : selectedDays.length === 0
+            ? 'Select Days'
+            : `Add ${selectedDays.length} ${selectedDays.length === 1 ? 'Time Block' : 'Time Blocks'}`
+          }
         </button>
       </div>
     </form>

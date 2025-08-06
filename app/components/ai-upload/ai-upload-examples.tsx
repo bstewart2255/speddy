@@ -27,7 +27,7 @@ Mike Wilson,5,Davis,1,45`
         {
           icon: <FileText className="h-5 w-5 text-blue-500" />,
           name: 'Word/PDF Format',
-          example: `Class Roster - Ms. Smith - Grade 3
+          example: `Class Roster - Smith - Grade 3
 Students:
 - John Doe (2 sessions/week, 30 min each)
 - Sarah Johnson (3 sessions/week, 30 min)
@@ -38,9 +38,9 @@ Students:
           name: 'Unstructured Text',
           example: `IEP Meeting Notes:
 Student John D. will receive speech services 2x per week for 30 minutes. 
-He is in Ms. Smith's 3rd grade class.
+He is in Smith's 3rd grade class.
 
-Sarah J. (Kindergarten, Ms. Johnson) needs 3 weekly sessions...`
+Sarah J. (Kindergarten, Johnson) needs 3 weekly sessions...`
         }
       ]
     },
@@ -88,11 +88,11 @@ Davis,Music,Wednesday,1:00,2:00`
           name: 'Teacher Schedule Document',
           example: `Special Activities Schedule
 
-Mr. Smith:
+Smith:
 - PE: Mondays 10:00-11:00 AM
 - PE: Wednesdays 10:00-11:00 AM
 
-Ms. Johnson:
+Johnson:
 - Library: Tuesdays 9:00-9:45 AM
 - Computer Lab: Thursdays 2:00-2:45 PM`
         }

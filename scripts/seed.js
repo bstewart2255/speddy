@@ -21,11 +21,11 @@ async function resetTables() {
 
 async function seedStudents() {
   const students = [
-    { initials: 'AB', grade_level: 'K', teacher_name: 'Ms. Smith', sessions_per_week: 2, minutes_per_session: 30 },
-    { initials: 'CD', grade_level: '1', teacher_name: 'Mr. Jones', sessions_per_week: 3, minutes_per_session: 30 },
-    { initials: 'EF', grade_level: '2', teacher_name: 'Ms. Lee', sessions_per_week: 2, minutes_per_session: 45 },
-    { initials: 'GH', grade_level: '3', teacher_name: 'Mr. Brown', sessions_per_week: 1, minutes_per_session: 30 },
-    { initials: 'IJ', grade_level: '4', teacher_name: 'Ms. Davis', sessions_per_week: 2, minutes_per_session: 30 }
+    { initials: 'AB', grade_level: 'K', teacher_name: 'Smith', sessions_per_week: 2, minutes_per_session: 30 },
+    { initials: 'CD', grade_level: '1', teacher_name: 'Jones', sessions_per_week: 3, minutes_per_session: 30 },
+    { initials: 'EF', grade_level: '2', teacher_name: 'Lee', sessions_per_week: 2, minutes_per_session: 45 },
+    { initials: 'GH', grade_level: '3', teacher_name: 'Brown', sessions_per_week: 1, minutes_per_session: 30 },
+    { initials: 'IJ', grade_level: '4', teacher_name: 'Davis', sessions_per_week: 2, minutes_per_session: 30 }
   ];
 
   for (const student of students) {
@@ -61,9 +61,9 @@ async function seedBellSchedules() {
 
 async function seedSpecialActivities() {
   const activities = [
-    { teacher_name: 'Ms. Smith', day_of_week: 2, start_time: '13:15', end_time: '14:00', activity_name: 'PE' },
-    { teacher_name: 'Mr. Jones', day_of_week: 4, start_time: '10:15', end_time: '11:00', activity_name: 'Music' },
-    { teacher_name: 'Ms. Lee', day_of_week: 1, start_time: '09:15', end_time: '10:00', activity_name: 'Art' }
+    { teacher_name: 'Smith', day_of_week: 2, start_time: '13:15', end_time: '14:00', activity_name: 'PE' },
+    { teacher_name: 'Jones', day_of_week: 4, start_time: '10:15', end_time: '11:00', activity_name: 'Music' },
+    { teacher_name: 'Lee', day_of_week: 1, start_time: '09:15', end_time: '10:00', activity_name: 'Art' }
   ];
 
   for (const activity of activities) {

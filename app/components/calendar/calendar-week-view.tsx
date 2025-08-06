@@ -542,9 +542,13 @@ export function CalendarWeekView({
 
   const handleSaveManualLesson = async (lessonData: {
     title: string;
-    content: string;
-    objectives: string[];
-    materials: string[];
+    subject?: string;
+    gradeLevels?: string;
+    duration?: number;
+    learningObjectives?: string;
+    materialsNeeded?: string;
+    activities?: string;
+    assessmentMethods?: string;
     notes?: string;
   }) => {
     if (!selectedLessonDate || !currentUser) return;
@@ -558,9 +562,13 @@ export function CalendarWeekView({
           provider_id: currentUser.id,
           lesson_date: lessonDate,
           title: lessonData.title,
-          content: lessonData.content,
-          objectives: lessonData.objectives,
-          materials: lessonData.materials,
+          subject: lessonData.subject,
+          grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
+          duration_minutes: lessonData.duration,
+          objectives: lessonData.learningObjectives,
+          materials: lessonData.materialsNeeded,
+          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+          assessment: lessonData.assessmentMethods,
           notes: lessonData.notes,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -620,9 +628,13 @@ export function CalendarWeekView({
 
   const handleUpdateManualLesson = async (lessonData: {
     title: string;
-    content: string;
-    objectives: string[];
-    materials: string[];
+    subject?: string;
+    gradeLevels?: string;
+    duration?: number;
+    learningObjectives?: string;
+    materialsNeeded?: string;
+    activities?: string;
+    assessmentMethods?: string;
     notes?: string;
   }) => {
     if (!selectedManualLesson) return;
@@ -632,9 +644,13 @@ export function CalendarWeekView({
         .from('manual_lesson_plans')
         .update({
           title: lessonData.title,
-          content: lessonData.content,
-          objectives: lessonData.objectives,
-          materials: lessonData.materials,
+          subject: lessonData.subject,
+          grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
+          duration_minutes: lessonData.duration,
+          objectives: lessonData.learningObjectives,
+          materials: lessonData.materialsNeeded,
+          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+          assessment: lessonData.assessmentMethods,
           notes: lessonData.notes,
           updated_at: new Date().toISOString()
         })

@@ -435,7 +435,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const aiPerf = measurePerformanceWithAlerts('anthropic_parse_file', 'api');
     const message = await anthropic.messages.create({
-      model: "claude-opus-4-20250514",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 8000, // Increased to handle more bell schedules
       temperature: 0.2, // Lower temperature for more consistent parsing
       messages: [
@@ -632,7 +632,7 @@ function createIntelligentSystemPrompt(
 
       Smart parsing tips:
       - "2x30" or "2 x 30 min" = 2 sessions, 30 minutes each
-      - "Mrs. S" or "Smith" or "S. Smith" = all refer to teacher Smith
+      - "S" or "Smith" or "S. Smith" = all refer to teacher Smith
       - If only a list of names, assume standard 2x30 sessions
       - Grade might be written as "3rd grade" or "Grade 3" or just "3"`,
 

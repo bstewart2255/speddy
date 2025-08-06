@@ -9,9 +9,12 @@
     "test:e2e:debug": "HEADLESS=false jest --config=jest.e2e.config.js --runInBand",
     "deploy:replit": "./deploy.sh",
     "test:e2e:ci": "node tests/e2e/deployment/replit-deploy-check.js",
+    "prebuild": "npm run lint",
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
     "test:integration": "node scripts/run-integration-tests.js",
     "prepare": "husky"
   },

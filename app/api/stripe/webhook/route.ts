@@ -263,10 +263,8 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
         });
       } else {
         // Increment referral code usage
-        await supabaseAdmin.rpc('increment', {
-          table_name: 'referral_codes',
-          column_name: 'uses_count',
-          row_id: referrerId,
+        await supabaseAdmin.rpc('increment_referral_uses', {
+          referrer_user_id: referrerId,
         });
 
         track.event('referral_created', {

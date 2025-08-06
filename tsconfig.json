@@ -3,7 +3,7 @@
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": false,
+    "strict": true,
     "noEmit": true,
     "incremental": true,
     "esModuleInterop": true,
@@ -19,6 +19,9 @@
       }
     ],
     "strictNullChecks": true,
+    // Temporarily disable some strict checks to allow gradual migration
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]

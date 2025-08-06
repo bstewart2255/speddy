@@ -51,35 +51,11 @@ export function GroupSessionsWidget() {
   const [generatingContent, setGeneratingContent] = React.useState(false);
   const [currentSchool, setCurrentSchool] = React.useState<string>("");
 
-  // Callback for session updates
-  const handleSessionsUpdate = useCallback((newSessions: ScheduleSession[]) => {
-    setSessions((prevSessions) => {
-      const updatedIds = new Set<string>();
-      newSessions.forEach((newSession) => {
-        const oldSession = prevSessions.find(s => s.id === newSession.id);
-        if (oldSession && (
-          oldSession.start_time !== newSession.start_time ||
-          oldSession.day_of_week !== newSession.day_of_week ||
-          oldSession.completed_at !== newSession.completed_at
-        )) {
-          updatedIds.add(newSession.id);
-        }
-      });
-      
-      // Add animation for updated sessions
-      if (updatedIds.size > 0) {
-        setUpdatedSessionIds(new Set(updatedIds));
-        setTimeout(() => setUpdatedSessionIds(new Set()), 2000);
-      }
-      
-      return newSessions;
-    });
-  }, []);
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync } = useSessionSync({
     sessions,
-    setSessions: handleSessionsUpdate,
+    setSessions,
     providerId: providerId || undefined,
   });
 
