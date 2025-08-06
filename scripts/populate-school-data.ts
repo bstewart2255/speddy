@@ -6,8 +6,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as csv from 'csv-parse';
 import { promisify } from 'util';
-import pLimit from 'p-limit';
-import dotenv from 'dotenv';
+const pLimit = require('p-limit');
+const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -341,7 +341,7 @@ const importDistrictsForState = async (
   console.log(`  Found ${districts.length} districts`);
   
   let processedCount = 0;
-  const batches = [];
+  const batches: District[][] = [];
   
   for (let i = 0; i < districts.length; i += CONFIG.BATCH_SIZE) {
     const batch = districts.slice(i, i + CONFIG.BATCH_SIZE);
