@@ -15,21 +15,32 @@ export interface Database {
           email: string
           full_name: string
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
-          school_district: string
-          school_site: string
+          school_id: string
+          district_id: string
+          state_id: string
+          school_district: string // Display only
+          school_site: string // Display only
           works_at_multiple_schools: boolean
           district_domain: string
           supervising_provider_id: string | null
           created_at: string
           updated_at: string
+          display_name?: string
+          grade_level?: string
+          subject?: string
+          bio?: string
+          avatar_url?: string
         }
         Insert: {
           id: string
           email: string
           full_name: string
           role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
-          school_district: string
-          school_site: string
+          school_id: string
+          district_id: string
+          state_id: string
+          school_district?: string
+          school_site?: string
           works_at_multiple_schools?: boolean
           district_domain: string
           supervising_provider_id: string | null
@@ -41,6 +52,9 @@ export interface Database {
           email?: string
           full_name?: string
           role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'| 'sea'
+          school_id?: string
+          district_id?: string
+          state_id?: string
           school_district?: string
           school_site?: string
           works_at_multiple_schools?: boolean
@@ -48,32 +62,6 @@ export interface Database {
           supervising_provider_id?: string | null
           created_at?: string
           updated_at?: string
-        }
-      },
-      provider_schools: {
-        Row: {
-          id: string
-          provider_id: string
-          school_district: string
-          school_site: string
-          is_primary: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          provider_id: string
-          school_district: string
-          school_site: string
-          is_primary?: boolean
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          provider_id?: string
-          school_district?: string
-          school_site?: string
-          is_primary?: boolean
-          created_at?: string
         }
       },
       user_site_schedules: {
@@ -157,8 +145,9 @@ export interface Database {
           teacher_name: string
           sessions_per_week: number
           minutes_per_session: number
-          school_site: string | null
-          school_district: string | null
+          school_id: string
+          school_site: string | null // Display only
+          school_district: string | null // Display only
           created_at: string
           updated_at: string
         }
@@ -170,6 +159,7 @@ export interface Database {
           teacher_name: string
           sessions_per_week: number
           minutes_per_session: number
+          school_id: string
           school_site?: string | null
           school_district?: string | null
           created_at?: string
@@ -183,6 +173,7 @@ export interface Database {
           teacher_name?: string
           sessions_per_week?: number
           minutes_per_session?: number
+          school_id?: string
           school_site?: string | null  
           school_district?: string | null  
           created_at?: string
