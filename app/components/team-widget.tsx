@@ -30,8 +30,10 @@
     };
 
     type School = {
-      school_site: string;
-      school_district: string;
+      school_id: string;
+      school_name: string;
+      district_name: string;
+      is_primary: boolean;
     };
 
     export function TeamWidget() {
@@ -67,57 +69,49 @@
 
             setCurrentUser(userProfile);
 
-            // Get all schools for this provider
-            const { data: providerSchools } = await supabase
-              .from("provider_schools")
-              .select("school_site, school_district")
-              .eq("provider_id", user.id);
+            // Get all schools for this provider using the new multi-school function
+            const { data: userSchoolsData } = await supabase
+              .rpc('get_user_schools', {
+                user_id: user.id
+              });
 
             let schoolsToCheck: School[] = [];
             
-            if (!providerSchools || providerSchools.length === 0) {
-              // Fallback to profile school if no provider_schools entries
-              if (userProfile.school_site) {
-                schoolsToCheck = [{
-                  school_site: userProfile.school_site,
-                  school_district: userProfile.school_district || ""
-                }];
-              }
-            } else {
-              schoolsToCheck = providerSchools;
+            if (userSchoolsData && userSchoolsData.length > 0) {
+              // Map the database response to our School type
+              schoolsToCheck = userSchoolsData.map((school: any) => ({
+                school_id: school.school_id,
+                school_name: school.school_name,
+                district_name: school.district_name || '',
+                is_primary: school.is_primary || false
+              }));
+            } else if (userProfile.school_site) {
+              // Fallback to profile school if no schools found
+              schoolsToCheck = [{
+                school_id: userProfile.school_id || '',
+                school_name: userProfile.school_site,
+                district_name: userProfile.school_district || '',
+                is_primary: true
+              }];
             }
             
             setUserSchools(schoolsToCheck);
 
-            // Fetch teammates for each school using the new comprehensive function
+            // Fetch teammates for each school using the multi-school function
             const teamsMap = new Map<string, Profile[]>();
 
             for (const school of schoolsToCheck) {
-              // Try using the new v2 function if user has school_id, otherwise fallback
-              let allTeammates;
-              
-              if (userProfile.school_id) {
-                // Use new hybrid matching function
-                const { data } = await supabase
-                  .rpc('find_all_team_members_v2', {
-                    current_user_id: user.id
-                  });
-                allTeammates = data;
-              } else {
-                // Fallback to original function for unmigrated users
-                const { data } = await supabase
-                  .rpc('find_all_team_members', {
-                    p_school_site: school.school_site,
-                    p_school_district: school.school_district,
-                    p_exclude_user_id: user.id
-                  });
-                allTeammates = data;
-              }
+              // Use the multi-school aware function for each school
+              const { data: allTeammates } = await supabase
+                .rpc('find_all_team_members_multi_school', {
+                  current_user_id: user.id,
+                  target_school_id: school.school_id
+                });
 
               if (allTeammates) {
                 // Sort teammates by role and name
                 const sortedTeammates = allTeammates
-                  .sort((a, b) => {
+                  .sort((a: any, b: any) => {
                     // Sort by role first, then by name
                     const roleOrder = ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'];
                     const aRoleIndex = roleOrder.indexOf(a.role || '');
@@ -130,7 +124,7 @@
                     return (a.full_name || '').localeCompare(b.full_name || '');
                   });
 
-                const schoolKey = `${school.school_district}-${school.school_site}`;
+                const schoolKey = school.school_id || `${school.district_name}-${school.school_name}`;
                 teamsMap.set(schoolKey, sortedTeammates);
               }
             }
@@ -174,7 +168,7 @@
       // If only one school, show the original single card
       if (userSchools.length === 1) {
         const school = userSchools[0];
-        const schoolKey = `${school.school_district}-${school.school_site}`;
+        const schoolKey = school.school_id || `${school.district_name}-${school.school_name}`;
         const teammates = teamsBySchool.get(schoolKey) || [];
 
         return (
@@ -198,9 +192,9 @@
               </CardTitle>
             </CardHeader>
             <CardBody>
-              <h3 className="font-semibold text-lg mb-3">{school.school_site}</h3>
-              {school.school_district && (
-                <p className="text-sm text-gray-500 mb-3">{school.school_district}</p>
+              <h3 className="font-semibold text-lg mb-3">{school.school_name}</h3>
+              {school.district_name && (
+                <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
               )}
               <TeamMembersList 
                 currentUser={currentUser} 
@@ -215,7 +209,7 @@
       return (
         <>
           {userSchools.map((school) => {
-            const schoolKey = `${school.school_district}-${school.school_site}`;
+            const schoolKey = school.school_id || `${school.district_name}-${school.school_name}`;
             const teammates = teamsBySchool.get(schoolKey) || [];
 
             return (
@@ -235,11 +229,16 @@
                         d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                       />
                     </svg>
-                    Team: {school.school_site}
+                    Team: {school.school_name}
+                    {school.is_primary && (
+                      <span className="text-xs ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                        Primary
+                      </span>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardBody>
-                  <p className="text-sm text-gray-500 mb-3">{school.school_district}</p>
+                  <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
                   <TeamMembersList 
                     currentUser={currentUser} 
                     teammates={teammates} 
