@@ -176,8 +176,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
                 onChange={() => handleDayToggle(day.id)}
                 className="sr-only"
               />
-              <div className="text-xs font-semibold">{day.shortName}</div>
-              <div className="text-xs mt-1 opacity-75">{day.name.slice(0, 3)}</div>
+              <div className="text-sm font-semibold">{day.shortName}</div>
             </label>
           ))}
         </div>
