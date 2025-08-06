@@ -105,7 +105,7 @@
           type="text"
           value={formData.teacher_name}
           onChange={(e) => setFormData({ ...formData, teacher_name: e.target.value })}
-          placeholder="e.g., Ms. Smith"
+          placeholder="e.g., Smith"
           required
         />
       </FormGroup>
@@ -123,7 +123,7 @@
             value={formData.sessions_per_week}
             onChange={(e) => setFormData({ ...formData, sessions_per_week: parseInt(e.target.value) })}
             min={1}
-            max={5}
+            max={10}
             required
           />
         </FormGroup>

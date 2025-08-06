@@ -345,7 +345,7 @@ export default function StudentsPage() {
                       value={formData.teacher_name}
                       onChange={(e) => setFormData({...formData, teacher_name: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., Ms. Smith"
+                      placeholder="e.g., Smith"
                     />
                   </div>
 
@@ -357,7 +357,7 @@ export default function StudentsPage() {
                       type="number"
                       required
                       min="1"
-                      max="5"
+                      max="10"
                       value={formData.sessions_per_week}
                       onChange={(e) => setFormData({...formData, sessions_per_week: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -482,7 +482,7 @@ export default function StudentsPage() {
                           <input
                             type="number"
                             min="1"
-                            max="5"
+                            max="10"
                             value={editFormData.sessions_per_week}
                             onChange={(e) => setEditFormData({...editFormData, sessions_per_week: e.target.value})}
                             className="w-16 px-2 py-1 border border-gray-300 rounded"
