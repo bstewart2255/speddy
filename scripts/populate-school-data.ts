@@ -10,11 +10,11 @@ import pLimit from 'p-limit';
 import dotenv from 'dotenv';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 // Configuration
 const CONFIG = {
-  SUPABASE_URL: process.env.SUPABASE_URL || '',
+  SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   BATCH_SIZE: parseInt(process.env.BATCH_SIZE || '100'),
   RATE_LIMIT_DELAY: parseInt(process.env.RATE_LIMIT_DELAY || '1000'), // ms between batches
@@ -327,15 +327,15 @@ const importDistrictsForState = async (
   state: State,
   progress: ImportProgress
 ): Promise<number> => {
-  console.log(`\n📚 Processing districts for ${state.name} (${state.abbreviation})...`);
+  console.log(`\n📚 Processing districts for ${state.name} (${state.id})...`);
   
   let districts: NCESDistrictData[];
   
   if (CONFIG.USE_CSV_FALLBACK) {
     districts = await parseDistrictsCSV(CONFIG.DISTRICTS_CSV_PATH);
-    districts = districts.filter(d => d.state_location === state.abbreviation);
+    districts = districts.filter(d => d.state_location === state.id);
   } else {
-    districts = await fetchDistrictsFromAPI(state.abbreviation);
+    districts = await fetchDistrictsFromAPI(state.id);
   }
   
   console.log(`  Found ${districts.length} districts`);
@@ -489,10 +489,10 @@ const main = async () => {
     const { data: states, error } = await supabase
       .from('states')
       .select('*')
-      .order('abbreviation');
+      .order('id');
     
     if (error || !states) {
-      throw new Error('Failed to fetch states from database');
+      throw new Error(`Failed to fetch states from database: ${error?.message || 'No data returned'}`);
     }
     
     console.log(`📍 Found ${states.length} states/territories to process\n`);
@@ -553,6 +553,7 @@ const main = async () => {
     }
     
   } catch (error) {
+    console.error('❌ Fatal error during import:', error);
     writeErrorLog('Fatal error during import', error);
     progress.lastUpdateTime = new Date().toISOString();
     saveProgress(progress);

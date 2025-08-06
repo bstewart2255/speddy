@@ -7,6 +7,10 @@ interface School {
   school_site: string;
   school_district: string;
   is_primary: boolean;
+  // New structured school IDs
+  school_id?: string | null;
+  district_id?: string | null;
+  state_id?: string | null;
 }
 
 interface SchoolContextType {
@@ -48,7 +52,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       // First, check if user works at multiple schools
       const { data: profile } = await supabase
         .from('profiles')
-        .select('works_at_multiple_schools, school_site, school_district')
+        .select('works_at_multiple_schools, school_site, school_district, school_id, district_id, state_id')
         .eq('id', user.id)
         .single();
 
@@ -64,7 +68,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         const singleSchool = {
           school_site: profile.school_site,
           school_district: profile.school_district,
-          is_primary: true
+          is_primary: true,
+          school_id: profile.school_id,
+          district_id: profile.district_id,
+          state_id: profile.state_id
         };
         console.log('[SchoolContext] Single school mode, setting:', singleSchool);
         setAvailableSchools([singleSchool]);

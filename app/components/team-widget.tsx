@@ -23,6 +23,10 @@
       role: string | null;
       school_site: string | null;
       school_district: string | null;
+      school_id?: string | null;
+      district_id?: string | null;
+      state_id?: string | null;
+      matching_method?: string;
     };
 
     type School = {
@@ -50,10 +54,10 @@
               return;
             }
 
-            // Get current user's profile
+            // Get current user's profile including new school IDs
             const { data: userProfile } = await supabase
               .from("profiles")
-              .select("id, full_name, role, school_site, school_district")
+              .select("id, full_name, role, school_site, school_district, school_id, district_id, state_id")
               .eq("id", user.id)
               .single();
 
@@ -89,13 +93,26 @@
             const teamsMap = new Map<string, Profile[]>();
 
             for (const school of schoolsToCheck) {
-              // Use the new comprehensive function that finds ALL team members
-              const { data: allTeammates } = await supabase
-                .rpc('find_all_team_members', {
-                  p_school_site: school.school_site,
-                  p_school_district: school.school_district,
-                  p_exclude_user_id: user.id
-                });
+              // Try using the new v2 function if user has school_id, otherwise fallback
+              let allTeammates;
+              
+              if (userProfile.school_id) {
+                // Use new hybrid matching function
+                const { data } = await supabase
+                  .rpc('find_all_team_members_v2', {
+                    current_user_id: user.id
+                  });
+                allTeammates = data;
+              } else {
+                // Fallback to original function for unmigrated users
+                const { data } = await supabase
+                  .rpc('find_all_team_members', {
+                    p_school_site: school.school_site,
+                    p_school_district: school.school_district,
+                    p_exclude_user_id: user.id
+                  });
+                allTeammates = data;
+              }
 
               if (allTeammates) {
                 // Sort teammates by role and name
@@ -266,6 +283,11 @@
                 <span className="text-muted-foreground">
                   {" "}
                   - {getRoleDisplayName(teammate.role)}
+                  {teammate.matching_method && teammate.matching_method !== 'exact_id' && (
+                    <span className="text-xs ml-1 text-orange-500" title="Matched using text-based fuzzy matching">
+                      (pending migration)
+                    </span>
+                  )}
                 </span>
               </li>
             ))
