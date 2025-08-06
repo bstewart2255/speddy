@@ -804,6 +804,180 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      },
+      states: {
+        Row: {
+          id: string
+          name: string
+          abbreviation: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          name: string
+          abbreviation: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          abbreviation?: string
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      districts: {
+        Row: {
+          id: string
+          state_id: string
+          name: string
+          nces_id: string | null
+          city: string | null
+          zip_code: string | null
+          county: string | null
+          phone: string | null
+          website: string | null
+          superintendent_name: string | null
+          enrollment_total: number | null
+          schools_count: number | null
+          grade_span_low: string | null
+          grade_span_high: string | null
+          urban_centric_locale: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          state_id: string
+          name: string
+          nces_id?: string | null
+          city?: string | null
+          zip_code?: string | null
+          county?: string | null
+          phone?: string | null
+          website?: string | null
+          superintendent_name?: string | null
+          enrollment_total?: number | null
+          schools_count?: number | null
+          grade_span_low?: string | null
+          grade_span_high?: string | null
+          urban_centric_locale?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          state_id?: string
+          name?: string
+          nces_id?: string | null
+          city?: string | null
+          zip_code?: string | null
+          county?: string | null
+          phone?: string | null
+          website?: string | null
+          superintendent_name?: string | null
+          enrollment_total?: number | null
+          schools_count?: number | null
+          grade_span_low?: string | null
+          grade_span_high?: string | null
+          urban_centric_locale?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      schools: {
+        Row: {
+          id: string
+          district_id: string
+          state_id: string
+          name: string
+          nces_id: string | null
+          school_type: string | null
+          grade_span_low: string | null
+          grade_span_high: string | null
+          street_address: string | null
+          city: string | null
+          zip_code: string | null
+          phone: string | null
+          website: string | null
+          principal_name: string | null
+          enrollment_total: number | null
+          teachers_fte: number | null
+          student_teacher_ratio: number | null
+          free_reduced_lunch_eligible: number | null
+          charter_school: boolean
+          magnet_school: boolean
+          title_i_school: boolean
+          urban_centric_locale: string | null
+          latitude: number | null
+          longitude: number | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          district_id: string
+          state_id: string
+          name: string
+          nces_id?: string | null
+          school_type?: string | null
+          grade_span_low?: string | null
+          grade_span_high?: string | null
+          street_address?: string | null
+          city?: string | null
+          zip_code?: string | null
+          phone?: string | null
+          website?: string | null
+          principal_name?: string | null
+          enrollment_total?: number | null
+          teachers_fte?: number | null
+          student_teacher_ratio?: number | null
+          free_reduced_lunch_eligible?: number | null
+          charter_school?: boolean
+          magnet_school?: boolean
+          title_i_school?: boolean
+          urban_centric_locale?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          district_id?: string
+          state_id?: string
+          name?: string
+          nces_id?: string | null
+          school_type?: string | null
+          grade_span_low?: string | null
+          grade_span_high?: string | null
+          street_address?: string | null
+          city?: string | null
+          zip_code?: string | null
+          phone?: string | null
+          website?: string | null
+          principal_name?: string | null
+          enrollment_total?: number | null
+          teachers_fte?: number | null
+          student_teacher_ratio?: number | null
+          free_reduced_lunch_eligible?: number | null
+          charter_school?: boolean
+          magnet_school?: boolean
+          title_i_school?: boolean
+          urban_centric_locale?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
       }
     }
   }
@@ -817,6 +991,9 @@ export type SpecialActivity = Tables<'special_activities'>;
 export type ScheduleSession = Tables<'schedule_sessions'>;
 export type Worksheet = Tables<'worksheets'>;
 export type WorksheetSubmission = Tables<'worksheet_submissions'>;
+export type State = Tables<'states'>;
+export type District = Tables<'districts'>;
+export type School = Tables<'schools'>;
 export type IEPGoalProgress = Tables<'iep_goal_progress'>;
 export type Subscription = Tables<'subscriptions'>;
 export type ReferralCode = Tables<'referral_codes'>;
