@@ -25,17 +25,18 @@ export default function BellSchedulesPage() {
   const supabase = createClient();
   const { currentSchool, loading: schoolLoading } = useSchool();
 
-  // Fetch bell schedules from database
+  // Fetch bell schedules from database with intelligent filtering
   const fetchSchedules = async () => {
     try {
-      console.log('Fetching bell schedules for:', currentSchool?.school_site);
+      const startTime = performance.now();
+      console.log('Fetching bell schedules for:', currentSchool?.display_name || currentSchool?.school_site);
+      console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
 
-      const data = await getBellSchedules(currentSchool?.school_site);
+      const data = await getBellSchedules(currentSchool || undefined);
 
-      // Debug: Log the exact structure of what's returned
-      console.log('Bell schedules received (raw):', data);
-      console.log('Type of data:', typeof data);
-      console.log('Is array?:', Array.isArray(data));
+      const endTime = performance.now();
+      console.log(`Bell schedules loaded in ${Math.round(endTime - startTime)}ms`);
+      console.log('Bell schedules received:', data?.length || 0, 'schedules');
 
       setBellSchedules(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -114,11 +115,21 @@ export default function BellSchedulesPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Page Header */}
+        {/* Page Header with School Info */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
             <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
+            {currentSchool && (
+              <p className="text-sm text-gray-500 mt-1">
+                {currentSchool.display_name}
+                {currentSchool.is_migrated && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    Optimized
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Button 

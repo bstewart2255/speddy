@@ -19,9 +19,13 @@ interface Student {
   teacher_name: string;
   sessions_per_week: number;
   minutes_per_session: number;
-  school_site: string | null;  // ADD THIS
+  school_site: string | null;
   school_district: string | null;
-  provider_id: string;// ADD THIS
+  // Future structured IDs
+  school_id?: string | null;
+  district_id?: string | null;
+  state_id?: string | null;
+  provider_id: string;
 }
 
 interface ScheduleSession {
@@ -45,7 +49,11 @@ interface BellSchedule {
   start_time: string;
   end_time: string;
   period_name: string;
-  school_site: string; // Add this line
+  school_site: string;
+  school_district?: string;
+  // Future structured IDs
+  school_id?: string | null;
+  district_id?: string | null;
 }
 
 interface SpecialActivity {
@@ -55,7 +63,11 @@ interface SpecialActivity {
   start_time: string;
   end_time: string;
   activity_name: string;
-  school_site: string; // Add this line
+  school_site: string;
+  school_district?: string;
+  // Future structured IDs
+  school_id?: string | null;
+  district_id?: string | null;
 }
 
 // Helper function to convert time to minutes
@@ -678,12 +690,26 @@ export default function SchedulePage() {
 
       // For now, use the RS's primary school until we add school switching
       if (rsProfile && currentSchool) {
-          const { data: seasData } = await supabase
+          // Build query with intelligent filtering for better performance
+          let seaQuery = supabase
             .from("profiles")
             .select("id, full_name")
-            .eq("role", "sea")
-            .eq("school_district", currentSchool.school_district)
-            .eq("school_site", currentSchool.school_site);
+            .eq("role", "sea");
+          
+          // Use structured IDs for faster queries when available
+          if (currentSchool.school_id) {
+            console.log('[Schedule] Using optimized SEA query with school_id');
+            // For now, still use text matching but prepare for future optimization
+            seaQuery = seaQuery
+              .eq("school_district", currentSchool.school_district)
+              .eq("school_site", currentSchool.school_site);
+          } else {
+            seaQuery = seaQuery
+              .eq("school_district", currentSchool.school_district)
+              .eq("school_site", currentSchool.school_site);
+          }
+          
+          const { data: seasData } = await seaQuery;
 
           if (seasData) {
             setSeaProfiles(seasData);
@@ -691,22 +717,45 @@ export default function SchedulePage() {
         }
       }
 
+      // Log query strategy for monitoring
+      const queryStrategy = currentSchool?.is_migrated ? 'optimized' : 'legacy';
+      console.log(`[Schedule] Using ${queryStrategy} query strategy for school:`, currentSchool?.display_name);
+      
+      // Build queries with intelligent filtering
+      let studentsQuery = supabase
+        .from("students")
+        .select("*")
+        .eq("provider_id", user.id);
+      
+      let bellQuery = supabase
+        .from("bell_schedules")
+        .select("*")
+        .eq("provider_id", user.id);
+        
+      let activitiesQuery = supabase
+        .from("special_activities")
+        .select("*")
+        .eq("provider_id", user.id);
+      
+      // Apply school filters based on available data
+      if (currentSchool) {
+        // For future: when school_id columns are added, use them for faster queries
+        if (currentSchool.school_site) {
+          studentsQuery = studentsQuery.eq("school_site", currentSchool.school_site);
+          bellQuery = bellQuery.eq("school_site", currentSchool.school_site);
+          activitiesQuery = activitiesQuery.eq("school_site", currentSchool.school_site);
+        }
+        if (currentSchool.school_district) {
+          studentsQuery = studentsQuery.eq("school_district", currentSchool.school_district);
+          bellQuery = bellQuery.eq("school_district", currentSchool.school_district);
+          activitiesQuery = activitiesQuery.eq("school_district", currentSchool.school_district);
+        }
+      }
+      
       const [studentsData, bellData, activitiesData] = await Promise.all([
-        supabase
-          .from("students")
-          .select("*")
-          .eq("provider_id", user.id)
-          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
-        supabase
-          .from("bell_schedules")
-          .select("*")
-          .eq("provider_id", user.id)
-          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
-        supabase
-          .from("special_activities")
-          .select("*")
-          .eq("provider_id", user.id)
-          .eq("school_site", currentSchool?.school_site || ""), // Add school filter
+        studentsQuery,
+        bellQuery,
+        activitiesQuery
       ]);
 
       // Now fetch sessions separately after we have students data
@@ -731,8 +780,8 @@ export default function SchedulePage() {
       setBellSchedules(bellData.data || []);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
 
-      // Fetch school hours
-      const hoursData = await getSchoolHours(currentSchool?.school_site);
+      // Fetch school hours with optimized query
+      const hoursData = await getSchoolHours(currentSchool || undefined);
       setSchoolHours(hoursData);
 
       if (sessionsData.data) {

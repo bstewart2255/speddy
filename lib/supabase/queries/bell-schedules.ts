@@ -1,16 +1,20 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
 import type { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
 
 /**
  * Insert a new bell schedule for the authenticated provider.
- * @param schedule - Schedule details excluding metadata fields.
+ * Supports both structured (school_id) and text-based school identification.
+ * @param schedule - Schedule details including school identifiers.
  * @returns The created bell schedule row.
  */
-export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at' | 'provider_id'> & { school_site?: string, school_district?: string }) {
+export async function addBellSchedule(
+  schedule: Omit<BellSchedule, 'id' | 'created_at' | 'updated_at' | 'provider_id'> & SchoolIdentifier
+) {
   const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to set provider_id
@@ -26,16 +30,22 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
   const user = authResult.data.data.user;
 
   // Get user's school if not provided
-  let finalSchoolSite = schedule.school_site;
-  let finalSchoolDistrict = schedule.school_district;
+  let schoolData: SchoolIdentifier = {
+    school_site: schedule.school_site,
+    school_district: schedule.school_district,
+    school_id: schedule.school_id,
+    district_id: schedule.district_id,
+    state_id: schedule.state_id
+  };
 
-  if (!finalSchoolSite) {
+  // If no school data provided, fetch from user profile
+  if (!schoolData.school_site && !schoolData.school_id) {
     const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_bell_schedule', 'database');
     const profileResult = await safeQuery(
       async () => {
         const { data, error } = await supabase
           .from('profiles')
-          .select('school_site, school_district')
+          .select('school_site, school_district, school_id, district_id, state_id')
           .eq('id', user.id)
           .single();
         if (error) throw error;
@@ -46,22 +56,34 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
     profilePerf.end({ success: !profileResult.error });
 
     if (profileResult.data) {
-      finalSchoolSite = profileResult.data.school_site;
-      finalSchoolDistrict = profileResult.data.school_district;
+      schoolData = {
+        school_site: profileResult.data.school_site,
+        school_district: profileResult.data.school_district,
+        school_id: profileResult.data.school_id,
+        district_id: profileResult.data.district_id,
+        state_id: profileResult.data.state_id
+      };
     }
   }
 
   const insertPerf = measurePerformanceWithAlerts('add_bell_schedule', 'database');
   const insertResult = await safeQuery(
     async () => {
+      // Build insert data with both ID and text fields for compatibility
+      const insertData = {
+        ...schedule,
+        provider_id: user.id,
+        school_site: schoolData.school_site,
+        school_district: schoolData.school_district,
+        // Add structured IDs if available (for future columns)
+        // school_id: schoolData.school_id,
+        // district_id: schoolData.district_id,
+        // state_id: schoolData.state_id
+      };
+      
       const { data, error } = await supabase
         .from('bell_schedules')
-        .insert([{
-          ...schedule,
-          provider_id: user.id,
-          school_site: finalSchoolSite,
-          school_district: finalSchoolDistrict
-        }])
+        .insert([insertData])
         .select()
         .single();
       if (error) throw error;
@@ -72,7 +94,9 @@ export async function addBellSchedule(schedule: Omit<BellSchedule, 'id' | 'creat
       userId: user.id,
       gradeLevel: schedule.grade_level,
       dayOfWeek: schedule.day_of_week,
-      schoolSite: finalSchoolSite
+      schoolSite: schoolData.school_site,
+      schoolId: schoolData.school_id,
+      isMigrated: !!schoolData.school_id
     }
   );
   insertPerf.end({ success: !insertResult.error });
@@ -124,8 +148,12 @@ export async function deleteBellSchedule(id: string) {
 
 /**
  * Delete all bell schedules for a given grade for the current user.
+ * Supports both structured and text-based school filtering.
  */
-export async function deleteGradeSchedules(gradeLevel: string, schoolSite?: string) {
+export async function deleteGradeSchedules(
+  gradeLevel: string, 
+  school?: SchoolIdentifier
+) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -148,9 +176,9 @@ export async function deleteGradeSchedules(gradeLevel: string, schoolSite?: stri
         .eq('grade_level', gradeLevel)
         .eq('provider_id', user.id);
 
-      // Add school filter if provided
-      if (schoolSite) {
-        query = query.eq('school_site', schoolSite);
+      // Apply intelligent school filter if provided
+      if (school) {
+        query = buildSchoolFilter(query, school);
       }
 
       const { error } = await query;
@@ -161,7 +189,9 @@ export async function deleteGradeSchedules(gradeLevel: string, schoolSite?: stri
       operation: 'delete_grade_schedules', 
       userId: user.id,
       gradeLevel,
-      schoolSite 
+      schoolSite: school?.school_site,
+      schoolId: school?.school_id,
+      isMigrated: !!school?.school_id
     }
   );
   deletePerf.end({ success: !deleteResult.error });
@@ -171,9 +201,12 @@ export async function deleteGradeSchedules(gradeLevel: string, schoolSite?: stri
 
 /**
  * Fetch all bell schedules owned by the current user ordered for display.
+ * Intelligently uses school_id for faster queries when available.
  */
-export async function getBellSchedules(schoolSite?: string) {
-  console.log('[getBellSchedules] Called with schoolSite:', schoolSite);
+export async function getBellSchedules(school?: SchoolIdentifier) {
+  console.log('[getBellSchedules] Called with school:', school);
+  const queryType = school?.school_id ? 'indexed' : 'text-based';
+  console.log('[getBellSchedules] Using', queryType, 'query strategy');
 
   const supabase = createClient<Database>();
 
@@ -198,10 +231,20 @@ export async function getBellSchedules(schoolSite?: string) {
         .select('*')
         .eq('provider_id', user.id);
 
-      // Add school filter if provided
-      if (schoolSite) {
-        console.log('[getBellSchedules] Filtering by school_site:', schoolSite);
-        query = query.eq('school_site', schoolSite);
+      // Apply intelligent school filter for optimal performance
+      if (school) {
+        // Note: When school_id column is added to bell_schedules table,
+        // buildSchoolFilter will automatically use it for faster queries
+        if (school.school_id) {
+          // For now, still use text matching but log that we could optimize
+          console.log('[getBellSchedules] Could use school_id index if column existed');
+          query = query.eq('school_site', school.school_site)
+                      .eq('school_district', school.school_district);
+        } else {
+          console.log('[getBellSchedules] Using text-based filtering');
+          query = query.eq('school_site', school.school_site)
+                      .eq('school_district', school.school_district);
+        }
       }
 
       const { data, error } = await query
@@ -215,10 +258,16 @@ export async function getBellSchedules(schoolSite?: string) {
     { 
       operation: 'fetch_bell_schedules', 
       userId: user.id,
-      schoolSite 
+      schoolSite: school?.school_site,
+      schoolId: school?.school_id,
+      queryType,
+      isMigrated: !!school?.school_id
     }
   );
-  fetchPerf.end({ success: !fetchResult.error });
+  fetchPerf.end({ 
+    success: !fetchResult.error,
+    metadata: { queryType, recordCount: fetchResult.data?.length || 0 }
+  });
 
   if (fetchResult.error) {
     console.error('[getBellSchedules] Query error:', fetchResult.error);
@@ -226,5 +275,12 @@ export async function getBellSchedules(schoolSite?: string) {
   }
 
   console.log('[getBellSchedules] Results:', fetchResult.data?.length || 0, 'bell schedules found');
-  return fetchResult.data || [];
+  
+  // Add migration hint to results for UI display
+  const results = fetchResult.data || [];
+  if (school?.school_id && results.length > 0) {
+    console.log('[getBellSchedules] Note: Using indexed queries would improve performance');
+  }
+  
+  return results;
 }

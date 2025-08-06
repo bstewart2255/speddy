@@ -69,17 +69,25 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       // Create a bell schedule entry for each selected day
       for (const dayId of selectedDays) {
         try {
+          // Build insert data with both structured and text school data
+          const insertData = {
+            provider_id: user.id,
+            grade_level: gradeLevel,
+            day_of_week: dayId,
+            start_time: startTime,
+            end_time: endTime,
+            period_name: subject.trim(),
+            school_site: currentSchool?.school_site,
+            school_district: currentSchool?.school_district,
+            // These will be used when columns are added to the table
+            // school_id: currentSchool?.school_id,
+            // district_id: currentSchool?.district_id,
+            // state_id: currentSchool?.state_id
+          };
+
           const { error: insertError } = await supabase
             .from('bell_schedules')
-            .insert([{
-              provider_id: user.id,
-              grade_level: gradeLevel,
-              day_of_week: dayId,
-              start_time: startTime,
-              end_time: endTime,
-              period_name: subject.trim(),
-              school_site: currentSchool?.school_site
-            }]);
+            .insert([insertData]);
 
           if (insertError) {
             const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;

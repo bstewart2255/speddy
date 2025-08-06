@@ -77,7 +77,11 @@ export class AutoScheduler {
     async scheduleStudent(student: Student): Promise<SchedulingResult> {
       // Fetch school hours if not already loaded
       if (this.schoolHours.length === 0 && student.school_site) {
-        const hours = await getSchoolHours(student.school_site);
+        const schoolIdentifier = {
+          school_site: student.school_site,
+          school_district: student.school_district
+        };
+        const hours = await getSchoolHours(schoolIdentifier);
         this.schoolHours = hours;
       }
 

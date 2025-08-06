@@ -97,8 +97,8 @@ export default function StudentsPage() {
         return;
       }
 
-      console.log('Fetching students for school_site:', currentSchool.school_site);
-      const data = await getStudents(currentSchool.school_site);
+      console.log('Fetching students for school:', currentSchool.display_name || currentSchool.school_site);
+      const data = await getStudents(currentSchool);
 
       if (!Array.isArray(data)) {
         console.error('Data fetched is not an array!', data);

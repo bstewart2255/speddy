@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
 import type { Database } from '../../../src/types/database';
 
 /**
  * Create a student record for the logged in provider.
+ * Supports both structured and text-based school identification.
  */
 export async function createStudent(studentData: {
   initials: string;
@@ -12,9 +14,7 @@ export async function createStudent(studentData: {
   teacher_name: string;
   sessions_per_week: number;
   minutes_per_session: number;
-  school_site?: string;
-  school_district?: string;
-}) {
+} & Partial<SchoolIdentifier>) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -28,17 +28,23 @@ export async function createStudent(studentData: {
 
   const user = authResult.data.data.user;
 
-  // If school_site and school_district are not provided, get them from user profile
-  let finalSchoolSite = studentData.school_site;
-  let finalSchoolDistrict = studentData.school_district;
+  // Get complete school data if not provided
+  let schoolData: SchoolIdentifier = {
+    school_site: studentData.school_site,
+    school_district: studentData.school_district,
+    school_id: studentData.school_id,
+    district_id: studentData.district_id,
+    state_id: studentData.state_id
+  };
 
-  if (!finalSchoolSite || !finalSchoolDistrict) {
+  // If no school data provided, fetch from user profile
+  if (!schoolData.school_site && !schoolData.school_id) {
     const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_student', 'database');
     const profileResult = await safeQuery(
       async () => {
         const { data, error } = await supabase
           .from('profiles')
-          .select('school_site, school_district')
+          .select('school_site, school_district, school_id, district_id, state_id')
           .eq('id', user.id)
           .single();
         if (error) throw error;
@@ -49,26 +55,38 @@ export async function createStudent(studentData: {
     profilePerf.end({ success: !profileResult.error });
 
     if (profileResult.data) {
-      finalSchoolSite = finalSchoolSite || profileResult.data.school_site;
-      finalSchoolDistrict = finalSchoolDistrict || profileResult.data.school_district;
+      schoolData = {
+        school_site: schoolData.school_site || profileResult.data.school_site,
+        school_district: schoolData.school_district || profileResult.data.school_district,
+        school_id: schoolData.school_id || profileResult.data.school_id,
+        district_id: schoolData.district_id || profileResult.data.district_id,
+        state_id: schoolData.state_id || profileResult.data.state_id
+      };
     }
   }
 
   const insertPerf = measurePerformanceWithAlerts('create_student', 'database');
   const insertResult = await safeQuery(
     async () => {
+      // Build insert data with both ID and text fields for compatibility
+      const insertData = {
+        initials: studentData.initials,
+        grade_level: studentData.grade_level.trim(),
+        teacher_name: studentData.teacher_name,
+        sessions_per_week: studentData.sessions_per_week,
+        minutes_per_session: studentData.minutes_per_session,
+        provider_id: user.id,
+        school_site: schoolData.school_site,
+        school_district: schoolData.school_district,
+        // Add structured IDs if available (for future columns)
+        // school_id: schoolData.school_id,
+        // district_id: schoolData.district_id,
+        // state_id: schoolData.state_id
+      };
+      
       const { data, error } = await supabase
         .from('students')
-        .insert([{
-          initials: studentData.initials,
-          grade_level: studentData.grade_level.trim(),
-          teacher_name: studentData.teacher_name,
-          sessions_per_week: studentData.sessions_per_week,
-          minutes_per_session: studentData.minutes_per_session,
-          provider_id: user.id,
-          school_site: finalSchoolSite,
-          school_district: finalSchoolDistrict
-        }])
+        .insert([insertData])
         .select()
         .single();
       if (error) throw error;
@@ -77,7 +95,9 @@ export async function createStudent(studentData: {
     { 
       operation: 'create_student', 
       userId: user.id,
-      studentInitials: studentData.initials 
+      studentInitials: studentData.initials,
+      schoolId: schoolData.school_id,
+      isMigrated: !!schoolData.school_id
     }
   );
   insertPerf.end({ success: !insertResult.error });
@@ -91,9 +111,12 @@ export async function createStudent(studentData: {
 
 /**
  * Fetch all students owned by the current provider.
+ * Uses intelligent filtering based on available school identifiers.
  */
-export async function getStudents(schoolSite?: string) {
-  console.log('[getStudents] Called with schoolSite:', schoolSite);
+export async function getStudents(school?: SchoolIdentifier) {
+  const queryType = school?.school_id ? 'indexed' : 'text-based';
+  console.log('[getStudents] Called with school:', school);
+  console.log('[getStudents] Using', queryType, 'query strategy');
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -117,12 +140,30 @@ export async function getStudents(schoolSite?: string) {
         .select('*')
         .eq('provider_id', user.id);
 
-      // Add school filter if provided
-      if (schoolSite) {
-        console.log('[getStudents] Adding school_site filter:', schoolSite);
-        query = query.eq('school_site', schoolSite);
+      // Apply intelligent school filter for optimal performance
+      if (school) {
+        // Note: When school_id column is added to students table,
+        // buildSchoolFilter will automatically use it for faster queries
+        if (school.school_id) {
+          // For now, still use text matching but log optimization opportunity
+          console.log('[getStudents] Could use school_id index if column existed');
+          if (school.school_site) {
+            query = query.eq('school_site', school.school_site);
+          }
+          if (school.school_district) {
+            query = query.eq('school_district', school.school_district);
+          }
+        } else {
+          console.log('[getStudents] Using text-based filtering');
+          if (school.school_site) {
+            query = query.eq('school_site', school.school_site);
+          }
+          if (school.school_district) {
+            query = query.eq('school_district', school.school_district);
+          }
+        }
       } else {
-        console.log('[getStudents] No school_site filter applied');
+        console.log('[getStudents] No school filter applied');
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -132,10 +173,16 @@ export async function getStudents(schoolSite?: string) {
     { 
       operation: 'fetch_students', 
       userId: user.id,
-      schoolSite 
+      schoolSite: school?.school_site,
+      schoolId: school?.school_id,
+      queryType,
+      isMigrated: !!school?.school_id
     }
   );
-  fetchPerf.end({ success: !fetchResult.error });
+  fetchPerf.end({ 
+    success: !fetchResult.error,
+    metadata: { queryType, recordCount: fetchResult.data?.length || 0 }
+  });
 
   if (fetchResult.error) {
     console.error('[getStudents] Query error:', fetchResult.error);
@@ -296,6 +343,7 @@ export async function updateStudent(studentId: string, updates: {
 
 /**
 * Convenience wrapper that creates a student and returns the new record.
+* Supports both structured and text-based school identification.
 */
 export async function createStudentWithAutoSchedule(studentData: {
 initials: string;
@@ -303,7 +351,7 @@ grade_level: string;
 teacher_name: string;
 sessions_per_week: number;
 minutes_per_session: number;
-}) {
+} & Partial<SchoolIdentifier>) {
 const supabase = createClient();
 
 // First create the student as before

@@ -88,11 +88,12 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     friday: { start: '12:00', end: '15:00' }
   });
 
-  // Load existing school hours
+  // Load existing school hours with intelligent filtering
   useEffect(() => {
     const loadSchoolHours = async () => {
       try {
-        const hours = await getSchoolHours(currentSchool?.school_site);
+        // Pass full school identifier for optimized queries
+        const hours = await getSchoolHours(currentSchool || undefined);
 
         // Process loaded hours into our state structure
         hours.forEach(hour => {
