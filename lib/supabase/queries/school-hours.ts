@@ -25,15 +25,12 @@ export async function getSchoolHours(school?: SchoolIdentifier) {
     .select('*')
     .eq('provider_id', user.id);
 
-  // Apply intelligent school filter
+  // Apply school filter - only use school_site since school_district was removed
   if (school) {
-    // For now, use text-based filtering until school_id column is added
     if (school.school_site) {
       query = query.eq('school_site', school.school_site);
     }
-    if (school.school_district) {
-      query = query.eq('school_district', school.school_district);
-    }
+    // Note: school_district column has been removed from the table
   }
 
   const { data, error } = await query
@@ -68,7 +65,7 @@ export async function upsertSchoolHours(
       provider_id: user.id,
       updated_at: new Date().toISOString()
     }, {
-      onConflict: 'provider_id,school_site,day_of_week,grade_level'
+      onConflict: 'provider_id,day_of_week,grade_level'
     })
     .select()
     .single();
@@ -95,14 +92,12 @@ export async function deleteSchoolHours(gradeLevel: string, school?: SchoolIdent
     .eq('provider_id', user.id)
     .eq('grade_level', gradeLevel);
 
-  // Apply intelligent school filter
+  // Apply school filter - only use school_site since school_district was removed
   if (school) {
     if (school.school_site) {
       query = query.eq('school_site', school.school_site);
     }
-    if (school.school_district) {
-      query = query.eq('school_district', school.school_district);
-    }
+    // Note: school_district column has been removed from the table
   }
 
   const { error } = await query;

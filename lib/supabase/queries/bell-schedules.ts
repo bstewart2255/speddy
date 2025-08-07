@@ -69,16 +69,11 @@ export async function addBellSchedule(
   const insertPerf = measurePerformanceWithAlerts('add_bell_schedule', 'database');
   const insertResult = await safeQuery(
     async () => {
-      // Build insert data with both ID and text fields for compatibility
+      // Build insert data with school_id (required after migration)
       const insertData = {
         ...schedule,
         provider_id: user.id,
-        school_site: schoolData.school_site,
-        school_district: schoolData.school_district,
-        // Add structured IDs if available (for future columns)
-        // school_id: schoolData.school_id,
-        // district_id: schoolData.district_id,
-        // state_id: schoolData.state_id
+        school_id: schoolData.school_id || undefined,
       };
       
       const { data, error } = await supabase
@@ -176,9 +171,9 @@ export async function deleteGradeSchedules(
         .eq('grade_level', gradeLevel)
         .eq('provider_id', user.id);
 
-      // Apply intelligent school filter if provided
-      if (school) {
-        query = buildSchoolFilter(query, school);
+      // Apply school filter using school_id only (text columns removed)
+      if (school && school.school_id) {
+        query = query.eq('school_id', school.school_id);
       }
 
       const { error } = await query;
@@ -231,20 +226,13 @@ export async function getBellSchedules(school?: SchoolIdentifier) {
         .select('*')
         .eq('provider_id', user.id);
 
-      // Apply intelligent school filter for optimal performance
-      if (school) {
-        // Note: When school_id column is added to bell_schedules table,
-        // buildSchoolFilter will automatically use it for faster queries
-        if (school.school_id) {
-          // For now, still use text matching but log that we could optimize
-          console.log('[getBellSchedules] Could use school_id index if column existed');
-          query = query.eq('school_site', school.school_site)
-                      .eq('school_district', school.school_district);
-        } else {
-          console.log('[getBellSchedules] Using text-based filtering');
-          query = query.eq('school_site', school.school_site)
-                      .eq('school_district', school.school_district);
-        }
+      // Apply school filter using school_id (now required after migration)
+      if (school && school.school_id) {
+        console.log('[getBellSchedules] Using school_id index for filtering');
+        query = query.eq('school_id', school.school_id);
+      } else if (school) {
+        // If no school_id provided, we can't filter (columns removed)
+        console.warn('[getBellSchedules] Cannot filter without school_id - text columns removed');
       }
 
       const { data, error } = await query

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
+import { FilterSelect } from '../../../components/schedule/filter-select';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -24,6 +25,11 @@ export default function BellSchedulesPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const supabase = createClient();
   const { currentSchool, loading: schoolLoading } = useSchool();
+  
+  // Filter states
+  const [gradeFilter, setGradeFilter] = useState('');
+  const [dayFilter, setDayFilter] = useState('');
+  const [activityFilter, setActivityFilter] = useState('');
 
   // Fetch bell schedules from database with intelligent filtering
   const fetchSchedules = async () => {
@@ -96,6 +102,25 @@ export default function BellSchedulesPage() {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     return days[day - 1] || 'Unknown';
   };
+  
+  // Filter bell schedules
+  const filteredBellSchedules = useMemo(() => {
+    return bellSchedules.filter(schedule => {
+      const gradeMatch = !gradeFilter || (schedule.grade_level && schedule.grade_level.includes(gradeFilter));
+      const dayMatch = !dayFilter || schedule.day_of_week.toString() === dayFilter;
+      const activityMatch = !activityFilter || schedule.period_name === activityFilter;
+      
+      return gradeMatch && dayMatch && activityMatch;
+    });
+  }, [bellSchedules, gradeFilter, dayFilter, activityFilter]);
+  
+  // Get unique activity options from bell schedules
+  const activityOptions = useMemo(() => {
+    return [...new Set(bellSchedules.map(b => b.period_name))]
+      .filter(Boolean)
+      .sort()
+      .map(name => ({ value: name, label: name }));
+  }, [bellSchedules]);
 
   if (loading || schoolLoading) {
     return (
@@ -255,12 +280,54 @@ export default function BellSchedulesPage() {
               </label>
             }
           >
-            <CardTitle>Current Bell Schedules ({bellSchedules.length})</CardTitle>
+            <CardTitle>Current Bell Schedules ({filteredBellSchedules.length})</CardTitle>
           </CardHeader>
           <CardBody>
-            {bellSchedules.length === 0 ? (
+            {/* Filter Section */}
+            <div className="mb-4">
+              <div className="flex flex-wrap gap-4">
+                <FilterSelect
+                  label="Grade:"
+                  value={gradeFilter}
+                  onChange={setGradeFilter}
+                  options={[
+                    { value: 'TK', label: 'TK' },
+                    { value: 'K', label: 'K' },
+                    { value: '1', label: '1' },
+                    { value: '2', label: '2' },
+                    { value: '3', label: '3' },
+                    { value: '4', label: '4' },
+                    { value: '5', label: '5' }
+                  ]}
+                  placeholder="All Grades"
+                />
+                <FilterSelect
+                  label="Day:"
+                  value={dayFilter}
+                  onChange={setDayFilter}
+                  options={[
+                    { value: '1', label: 'Monday' },
+                    { value: '2', label: 'Tuesday' },
+                    { value: '3', label: 'Wednesday' },
+                    { value: '4', label: 'Thursday' },
+                    { value: '5', label: 'Friday' }
+                  ]}
+                  placeholder="All Days"
+                />
+                <FilterSelect
+                  label="Activity:"
+                  value={activityFilter}
+                  onChange={setActivityFilter}
+                  options={activityOptions}
+                  placeholder="All Activities"
+                />
+              </div>
+            </div>
+            {filteredBellSchedules.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                No bell schedules yet. Click &quot;Add Schedule&quot; to get started.
+                {bellSchedules.length === 0 
+                  ? "No bell schedules yet. Click 'Add Schedule' to get started."
+                  : "No bell schedules match the selected filters"}
               </div>
             ) : (
               <Table>
@@ -274,7 +341,7 @@ export default function BellSchedulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(Array.isArray(bellSchedules) ? [...bellSchedules] : [])
+                  {(Array.isArray(filteredBellSchedules) ? [...filteredBellSchedules] : [])
                     .sort((a, b) => {
                       if (!sortByGrade) return 0;
 

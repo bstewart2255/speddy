@@ -93,7 +93,7 @@ K,Recess,10:00,10:15
                   day_of_week: dayNum,
                   start_time: row["start time"] + ":00", // Add seconds if missing
                   end_time: row["end time"] + ":00",
-                  school_site: currentSchool?.school_site, // ADD THIS LINE
+                  school_id: currentSchool?.school_id, // Use school_id instead of school_site
                 }));
               });
 

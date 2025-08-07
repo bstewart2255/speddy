@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -11,6 +11,7 @@ import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/sup
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import { FilterSelect } from '../../../components/schedule/filter-select';
 
 interface SpecialActivity {
   id: string;
@@ -30,6 +31,11 @@ export default function SpecialActivitiesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { currentSchool } = useSchool();
   const supabase = createClient();
+  
+  // Filter states
+  const [teacherFilter, setTeacherFilter] = useState('');
+  const [dayFilter, setDayFilter] = useState('');
+  const [activityFilter, setActivityFilter] = useState('');
 
   // Fetch special activities from database
   const fetchSpecialActivities = async () => {
@@ -104,6 +110,32 @@ export default function SpecialActivitiesPage() {
     if (lowerActivity.includes('computer') || lowerActivity.includes('tech')) return 'gray';
     return 'gray';
   };
+  
+  // Filter special activities
+  const filteredActivities = useMemo(() => {
+    return specialActivities.filter(activity => {
+      const teacherMatch = !teacherFilter || activity.teacher_name === teacherFilter;
+      const dayMatch = !dayFilter || activity.day_of_week.toString() === dayFilter;
+      const activityMatch = !activityFilter || activity.activity_name === activityFilter;
+      
+      return teacherMatch && dayMatch && activityMatch;
+    });
+  }, [specialActivities, teacherFilter, dayFilter, activityFilter]);
+  
+  // Get unique options for filters
+  const teacherOptions = useMemo(() => {
+    return [...new Set(specialActivities.map(a => a.teacher_name))]
+      .filter(Boolean)
+      .sort()
+      .map(name => ({ value: name, label: name }));
+  }, [specialActivities]);
+  
+  const activityOptions = useMemo(() => {
+    return [...new Set(specialActivities.map(a => a.activity_name))]
+      .filter(Boolean)
+      .sort()
+      .map(name => ({ value: name, label: name }));
+  }, [specialActivities]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -197,16 +229,50 @@ export default function SpecialActivitiesPage() {
         {/* Special Activities List */}
         <Card>
           <CardHeader>
-            <CardTitle>Current Special Activities ({specialActivities.length})</CardTitle>
+            <CardTitle>Current Special Activities ({filteredActivities.length})</CardTitle>
           </CardHeader>
           <CardBody>
+            {/* Filter Section */}
+            <div className="mb-4">
+              <div className="flex flex-wrap gap-4">
+                <FilterSelect
+                  label="Teacher:"
+                  value={teacherFilter}
+                  onChange={setTeacherFilter}
+                  options={teacherOptions}
+                  placeholder="All Teachers"
+                />
+                <FilterSelect
+                  label="Day:"
+                  value={dayFilter}
+                  onChange={setDayFilter}
+                  options={[
+                    { value: '1', label: 'Monday' },
+                    { value: '2', label: 'Tuesday' },
+                    { value: '3', label: 'Wednesday' },
+                    { value: '4', label: 'Thursday' },
+                    { value: '5', label: 'Friday' }
+                  ]}
+                  placeholder="All Days"
+                />
+                <FilterSelect
+                  label="Activity:"
+                  value={activityFilter}
+                  onChange={setActivityFilter}
+                  options={activityOptions}
+                  placeholder="All Activities"
+                />
+              </div>
+            </div>
             {loading ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
               </div>
-            ) : specialActivities.length === 0 ? (
+            ) : filteredActivities.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                No special activities yet. Click &quot;Add Activity&quot; to get started.
+                {specialActivities.length === 0 
+                  ? "No special activities yet. Click 'Add Activity' to get started."
+                  : "No special activities match the selected filters"}
               </div>
             ) : (
               <Table>
@@ -220,7 +286,7 @@ export default function SpecialActivitiesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {specialActivities
+                  {filteredActivities
                     .sort((a, b) => {
                       // Sort by teacher, then day, then time
                       if (a.teacher_name !== b.teacher_name) {

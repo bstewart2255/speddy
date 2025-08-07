@@ -11,7 +11,6 @@ import { SessionAssignmentPopup } from "./session-assignment-popup";
 import { useSchool } from '../../../components/providers/school-context';
 import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
 import { getSchoolHours } from '../../../../lib/supabase/queries/school-hours';
-import { FilterSelect } from '../../../components/schedule/filter-select';
 
 interface Student {
   id: string;
@@ -116,18 +115,6 @@ export default function SchedulePage() {
   const [schoolHours, setSchoolHours] = useState<any[]>([]);
   const [showSchoolHours, setShowSchoolHours] = useState(true);
   
-  // Bell Schedule filters
-  const [bellGradeFilter, setBellGradeFilter] = useState('');
-  const [bellDayFilter, setBellDayFilter] = useState('');  
-  const [bellActivityFilter, setBellActivityFilter] = useState('');
-  const [bellActivityOptions, setBellActivityOptions] = useState<string[]>([]);
-  
-  // Special Activity filters
-  const [activityTeacherFilter, setActivityTeacherFilter] = useState('');
-  const [activityDayFilter, setActivityDayFilter] = useState('');
-  const [activityTypeFilter, setActivityTypeFilter] = useState('');
-  const [teacherOptions, setTeacherOptions] = useState<string[]>([]);
-  const [activityTypeOptions, setActivityTypeOptions] = useState<string[]>([]);
   
   const latestDragPositionRef = useRef<string | null>(null);
   const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -794,18 +781,6 @@ export default function SchedulePage() {
       setBellSchedules(bellData.data || []);
       if (activitiesData.data) setSpecialActivities(activitiesData.data);
       
-      // Extract unique values for dropdowns
-      if (bellData.data) {
-        const uniquePeriodNames = [...new Set(bellData.data.map((b: BellSchedule) => b.period_name))].filter(Boolean).sort();
-        setBellActivityOptions(uniquePeriodNames);
-      }
-      
-      if (activitiesData.data) {
-        const uniqueTeachers = [...new Set(activitiesData.data.map((a: SpecialActivity) => a.teacher_name))].filter(Boolean).sort();
-        const uniqueActivityNames = [...new Set(activitiesData.data.map((a: SpecialActivity) => a.activity_name))].filter(Boolean).sort();
-        setTeacherOptions(uniqueTeachers);
-        setActivityTypeOptions(uniqueActivityNames);
-      }
 
       // Fetch school hours with optimized query
       const hoursData = await getSchoolHours(currentSchool || undefined);
@@ -950,27 +925,6 @@ export default function SchedulePage() {
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
   };
   
-  // Filter bell schedules
-  const filteredBellSchedules = useMemo(() => {
-    return bellSchedules.filter(schedule => {
-      const gradeMatch = !bellGradeFilter || schedule.grade_level.includes(bellGradeFilter);
-      const dayMatch = !bellDayFilter || schedule.day_of_week.toString() === bellDayFilter;
-      const activityMatch = !bellActivityFilter || schedule.period_name === bellActivityFilter;
-      
-      return gradeMatch && dayMatch && activityMatch;
-    });
-  }, [bellSchedules, bellGradeFilter, bellDayFilter, bellActivityFilter]);
-  
-  // Filter special activities
-  const filteredSpecialActivities = useMemo(() => {
-    return specialActivities.filter(activity => {
-      const teacherMatch = !activityTeacherFilter || activity.teacher_name === activityTeacherFilter;
-      const dayMatch = !activityDayFilter || activity.day_of_week.toString() === activityDayFilter;  
-      const activityMatch = !activityTypeFilter || activity.activity_name === activityTypeFilter;
-      
-      return teacherMatch && dayMatch && activityMatch;
-    });
-  }, [specialActivities, activityTeacherFilter, activityDayFilter, activityTypeFilter]);
 
   // Helper function to check if a session overlaps with a 15-minute time slot
   const sessionOverlapsTimeSlot = (
@@ -1224,194 +1178,6 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Current Bell Schedules Section */}
-        <Card className="mb-6">
-          <CardBody className="p-4">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">
-                Current Bell Schedules ({filteredBellSchedules.length})
-              </h2>
-              
-              {/* Bell Schedule Filters */}
-              <div className="flex flex-wrap gap-4">
-                <FilterSelect
-                  label="Grade:"
-                  value={bellGradeFilter}
-                  onChange={setBellGradeFilter}
-                  options={[
-                    { value: 'TK', label: 'TK' },
-                    { value: 'K', label: 'K' },
-                    { value: '1', label: '1' },
-                    { value: '2', label: '2' },
-                    { value: '3', label: '3' },
-                    { value: '4', label: '4' },
-                    { value: '5', label: '5' }
-                  ]}
-                  placeholder="All Grades"
-                />
-                <FilterSelect
-                  label="Day:"
-                  value={bellDayFilter}
-                  onChange={setBellDayFilter}
-                  options={[
-                    { value: '1', label: 'Monday' },
-                    { value: '2', label: 'Tuesday' },
-                    { value: '3', label: 'Wednesday' },
-                    { value: '4', label: 'Thursday' },
-                    { value: '5', label: 'Friday' }
-                  ]}
-                  placeholder="All Days"
-                />
-                <FilterSelect
-                  label="Activity:"
-                  value={bellActivityFilter}
-                  onChange={setBellActivityFilter}
-                  options={bellActivityOptions.map(name => ({ value: name, label: name }))}
-                  placeholder="All Activities"
-                />
-              </div>
-            </div>
-            
-            {/* Bell Schedules List */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Grade
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Day
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Period
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredBellSchedules.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
-                        No bell schedules match the selected filters
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredBellSchedules.map((schedule) => (
-                      <tr key={schedule.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {schedule.grade_level}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {days[schedule.day_of_week - 1]}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {schedule.period_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatTime(schedule.start_time.substring(0, 5))} - {formatTime(schedule.end_time.substring(0, 5))}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardBody>
-        </Card>
-        
-        {/* Current Special Activities Section */}
-        <Card className="mb-6">
-          <CardBody className="p-4">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">
-                Current Special Activities ({filteredSpecialActivities.length})
-              </h2>
-              
-              {/* Special Activities Filters */}
-              <div className="flex flex-wrap gap-4">
-                <FilterSelect
-                  label="Teacher:"
-                  value={activityTeacherFilter}
-                  onChange={setActivityTeacherFilter}
-                  options={teacherOptions.map(name => ({ value: name, label: name }))}
-                  placeholder="All Teachers"
-                />
-                <FilterSelect
-                  label="Day:"
-                  value={activityDayFilter}
-                  onChange={setActivityDayFilter}
-                  options={[
-                    { value: '1', label: 'Monday' },
-                    { value: '2', label: 'Tuesday' },
-                    { value: '3', label: 'Wednesday' },
-                    { value: '4', label: 'Thursday' },
-                    { value: '5', label: 'Friday' }
-                  ]}
-                  placeholder="All Days"
-                />
-                <FilterSelect
-                  label="Activity:"
-                  value={activityTypeFilter}
-                  onChange={setActivityTypeFilter}
-                  options={activityTypeOptions.map(name => ({ value: name, label: name }))}
-                  placeholder="All Activities"
-                />
-              </div>
-            </div>
-            
-            {/* Special Activities List */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Teacher
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Day
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Activity
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredSpecialActivities.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
-                        No special activities match the selected filters
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredSpecialActivities.map((activity) => (
-                      <tr key={activity.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {activity.teacher_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {days[activity.day_of_week - 1]}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {activity.activity_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatTime(activity.start_time.substring(0, 5))} - {formatTime(activity.end_time.substring(0, 5))}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardBody>
-        </Card>
-        
         {/* Schedule Grid */}
         <Card>
           <CardBody className="p-0">
