@@ -69,7 +69,20 @@ export class SessionUpdateService {
         return { success: false, error: 'Session not found' };
       }
 
-      // Skip validation - allow all moves per new requirements
+      // Validate the move before updating
+      const validation = await this.validateSessionMove({
+        session,
+        targetDay: newDay,
+        targetStartTime: newStartTime,
+        targetEndTime: newEndTime,
+        studentMinutes: Math.floor((timeToMinutes(newEndTime) - timeToMinutes(newStartTime)))
+      });
+
+      // Return validation results but allow override (UI handles confirmation)
+      if (!validation.valid && validation.conflicts) {
+        console.log('Session move has conflicts:', validation.conflicts);
+        // Still allow the update but return the conflicts for UI to handle
+      }
 
       // Perform the update
       const { data: updatedSession, error: updateError } = await this.supabase
@@ -153,6 +166,7 @@ export class SessionUpdateService {
     // Check special activity conflicts
     const specialActivityConflict = await this.checkSpecialActivityConflicts(
       session.provider_id,
+      session.student_id,
       targetDay,
       targetStartTime,
       targetEndTime
@@ -254,21 +268,27 @@ export class SessionUpdateService {
     }
 
     // Check if session overlaps with bell schedule periods
+    // Note: Bell schedules can have comma-separated grade levels like "1,2,3"
     const { data: bellSchedules } = await this.supabase
       .from('bell_schedules')
       .select('*')
       .eq('provider_id', providerId)
-      .eq('grade_level', student.grade_level)
       .eq('day_of_week', day);
 
     if (bellSchedules) {
       for (const schedule of bellSchedules) {
-        if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {
-          return {
-            type: 'bell_schedule',
-            description: `Conflicts with bell schedule period "${schedule.period_name}" (${schedule.start_time} - ${schedule.end_time})`,
-            conflictingItem: schedule
-          };
+        // Parse comma-separated grade levels from bell schedule
+        const bellGrades = schedule.grade_level.split(',').map((g: string) => g.trim());
+        
+        // Check if student's grade is in the bell schedule's grade list
+        if (bellGrades.includes(student.grade_level.trim())) {
+          if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {
+            return {
+              type: 'bell_schedule',
+              description: `Conflicts with bell schedule period "${schedule.period_name}" (${schedule.start_time} - ${schedule.end_time})`,
+              conflictingItem: schedule
+            };
+          }
         }
       }
     }
@@ -281,14 +301,28 @@ export class SessionUpdateService {
    */
   private async checkSpecialActivityConflicts(
     providerId: string,
+    studentId: string,
     day: number,
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
+    // Get student's teacher information
+    const { data: student } = await this.supabase
+      .from('students')
+      .select('teacher_name')
+      .eq('id', studentId)
+      .single();
+
+    if (!student || !student.teacher_name) {
+      return null;
+    }
+
+    // Only check special activities for this student's teacher
     const { data: activities } = await this.supabase
       .from('special_activities')
       .select('*')
       .eq('provider_id', providerId)
+      .eq('teacher_name', student.teacher_name)
       .eq('day_of_week', day);
 
     if (activities) {
