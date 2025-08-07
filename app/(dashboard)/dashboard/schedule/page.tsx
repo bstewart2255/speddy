@@ -683,38 +683,19 @@ export default function SchedulePage() {
 
       // Fetch SEA profiles if user is Resource Specialist
       if (profile?.role === "resource") {
-        const { data: rsProfile } = await supabase
+        // Get SEAs supervised by this Resource Specialist (matches team page logic)
+        const { data: seasData, error } = await supabase
           .from("profiles")
-          .select("school_district, school_site")
-          .eq("id", user.id)
-          .single();
+          .select("id, full_name")
+          .eq("supervising_provider_id", user.id)
+          .eq("role", "sea")
+          .order("full_name", { ascending: true });
 
-      // For now, use the RS's primary school until we add school switching
-      if (rsProfile && currentSchool) {
-          // Build query with intelligent filtering for better performance
-          let seaQuery = supabase
-            .from("profiles")
-            .select("id, full_name")
-            .eq("role", "sea");
-          
-          // Use structured IDs for faster queries when available
-          if (currentSchool.school_id) {
-            console.log('[Schedule] Using optimized SEA query with school_id');
-            // For now, still use text matching but prepare for future optimization
-            seaQuery = seaQuery
-              .eq("school_district", currentSchool.school_district)
-              .eq("school_site", currentSchool.school_site);
-          } else {
-            seaQuery = seaQuery
-              .eq("school_district", currentSchool.school_district)
-              .eq("school_site", currentSchool.school_site);
-          }
-          
-          const { data: seasData } = await seaQuery;
-
-          if (seasData) {
-            setSeaProfiles(seasData);
-          }
+        if (error) {
+          console.error("Error fetching SEA profiles:", error);
+        } else if (seasData) {
+          console.log(`[Schedule] Found ${seasData.length} SEAs supervised by this provider`);
+          setSeaProfiles(seasData);
         }
       }
 
