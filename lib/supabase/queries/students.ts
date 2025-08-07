@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
+import { getOrCreateTeacher } from './teachers';
 import type { Database } from '../../../src/types/database';
 
 /**
@@ -12,6 +13,7 @@ export async function createStudent(studentData: {
   initials: string;
   grade_level: string;
   teacher_name: string;
+  teacher_id?: string;
   sessions_per_week: number;
   minutes_per_session: number;
 } & Partial<SchoolIdentifier>) {
@@ -27,6 +29,18 @@ export async function createStudent(studentData: {
   }
 
   const user = authResult.data.data.user;
+
+  // Get or create teacher if teacher_name is provided but no teacher_id
+  let teacherId = studentData.teacher_id;
+  if (!teacherId && studentData.teacher_name) {
+    try {
+      const teacher = await getOrCreateTeacher(studentData.teacher_name);
+      teacherId = teacher.id;
+    } catch (error) {
+      console.error('Error creating teacher:', error);
+      // Continue without teacher_id if creation fails
+    }
+  }
 
   // Get complete school data if not provided
   let schoolData: SchoolIdentifier = {
@@ -69,10 +83,11 @@ export async function createStudent(studentData: {
   const insertResult = await safeQuery(
     async () => {
       // Build insert data with both ID and text fields for compatibility
-      const insertData = {
+      const insertData: any = {
         initials: studentData.initials,
         grade_level: studentData.grade_level.trim(),
         teacher_name: studentData.teacher_name,
+        teacher_id: teacherId || null,
         sessions_per_week: studentData.sessions_per_week,
         minutes_per_session: studentData.minutes_per_session,
         provider_id: user.id,
@@ -137,7 +152,14 @@ export async function getStudents(school?: SchoolIdentifier) {
     async () => {
       let query = supabase
         .from('students')
-        .select('*')
+        .select(`
+          *,
+          teacher:teacher_id(
+            id,
+            first_name,
+            last_name
+          )
+        `)
         .eq('provider_id', user.id);
 
       // Apply intelligent school filter for optimal performance
@@ -285,6 +307,7 @@ export async function deleteStudent(studentId: string) {
 export async function updateStudent(studentId: string, updates: {
   grade_level?: string;
   teacher_name?: string;
+  teacher_id?: string;
   sessions_per_week?: number;
   minutes_per_session?: number;
 }) {
@@ -302,10 +325,23 @@ export async function updateStudent(studentId: string, updates: {
   
   const user = authResult.data.data.user;
 
+  // Get or create teacher if teacher_name is provided but no teacher_id
+  let teacherId = updates.teacher_id;
+  if (!teacherId && updates.teacher_name) {
+    try {
+      const teacher = await getOrCreateTeacher(updates.teacher_name);
+      teacherId = teacher.id;
+    } catch (error) {
+      console.error('Error creating teacher:', error);
+      // Continue without teacher_id if creation fails
+    }
+  }
+
   // Build update object with only provided fields
   const updateData: any = {};
   if (updates.grade_level !== undefined) updateData.grade_level = updates.grade_level;
   if (updates.teacher_name !== undefined) updateData.teacher_name = updates.teacher_name;
+  if (teacherId !== undefined) updateData.teacher_id = teacherId;
   if (updates.sessions_per_week !== undefined) updateData.sessions_per_week = updates.sessions_per_week;
   if (updates.minutes_per_session !== undefined) updateData.minutes_per_session = updates.minutes_per_session;
 

@@ -143,6 +143,7 @@ export interface Database {
           initials: string
           grade_level: string
           teacher_name: string
+          teacher_id: string | null
           sessions_per_week: number
           minutes_per_session: number
           school_id: string
@@ -157,6 +158,7 @@ export interface Database {
           initials: string
           grade_level: string
           teacher_name: string
+          teacher_id?: string | null
           sessions_per_week: number
           minutes_per_session: number
           school_id: string
@@ -171,11 +173,47 @@ export interface Database {
           initials?: string
           grade_level?: string
           teacher_name?: string
+          teacher_id?: string | null
           sessions_per_week?: number
           minutes_per_session?: number
           school_id?: string
           school_site?: string | null  
           school_district?: string | null  
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      teachers: {
+        Row: {
+          id: string
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          classroom_number: string | null
+          phone_number: string | null
+          provider_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          classroom_number?: string | null
+          phone_number?: string | null
+          provider_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          classroom_number?: string | null
+          phone_number?: string | null
+          provider_id?: string
           created_at?: string
           updated_at?: string
         }

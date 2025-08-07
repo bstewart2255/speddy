@@ -11,6 +11,7 @@ import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
+import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { useRouter } from 'next/navigation';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 
@@ -19,6 +20,7 @@ type Student = {
   initials: string;
   grade_level: string;
   teacher_name: string;
+  teacher_id?: string | null;
   sessions_per_week: number;
   minutes_per_session: number;
   provider_id: string;
@@ -45,6 +47,7 @@ export default function StudentsPage() {
   });
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedTeacherName, setSelectedTeacherName] = useState<string | null>(null);
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
@@ -416,6 +419,26 @@ export default function StudentsPage() {
             }}
           />
         )}
+
+        {/* Teacher Details Modal */}
+        {selectedTeacherName && (
+          <TeacherDetailsModal
+            isOpen={!!selectedTeacherName}
+            onClose={() => setSelectedTeacherName(null)}
+            teacherName={selectedTeacherName}
+            onSave={async (teacher) => {
+              // Refresh students list to show updated teacher name if changed
+              await fetchStudents();
+            }}
+            onStudentClick={(student) => {
+              // Find the full student object from our list
+              const fullStudent = students.find(s => s.id === student.id);
+              if (fullStudent) {
+                setSelectedStudent(fullStudent);
+              }
+            }}
+          />
+        )}
         
         {/* Students List */}
         <Card>
@@ -475,7 +498,14 @@ export default function StudentsPage() {
                     <TableCell>
                       <GradeTag grade={student.grade_level} />
                     </TableCell>
-                    <TableCell>{student.teacher_name}</TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => setSelectedTeacherName(student.teacher_name)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                      >
+                        {student.teacher_name}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       {editingId === student.id ? (
                         <div className="flex gap-2 items-center">
