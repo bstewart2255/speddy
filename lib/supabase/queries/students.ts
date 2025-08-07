@@ -152,14 +152,7 @@ export async function getStudents(school?: SchoolIdentifier) {
     async () => {
       let query = supabase
         .from('students')
-        .select(`
-          *,
-          teacher:teacher_id(
-            id,
-            first_name,
-            last_name
-          )
-        `)
+        .select('*')
         .eq('provider_id', user.id);
 
       // Apply intelligent school filter for optimal performance

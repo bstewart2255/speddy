@@ -156,7 +156,7 @@ export function TeacherDetailsModal({
           <div className="flex items-center justify-between p-6 border-b">
             <h2 className="text-xl font-semibold text-gray-900">
               Teacher Details: {formData.first_name || formData.last_name ? 
-                `${formData.first_name} ${formData.last_name}`.trim() : 
+                `${formData.first_name || ''} ${formData.last_name || ''}`.trim() : 
                 teacherName}
             </h2>
             <button
