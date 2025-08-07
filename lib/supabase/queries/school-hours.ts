@@ -58,6 +58,17 @@ export async function upsertSchoolHours(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
+  // Validate required fields for the unique constraint
+  if (!hours.school_site) {
+    throw new Error('school_site is required for school hours');
+  }
+  if (hours.day_of_week === undefined || hours.day_of_week === null) {
+    throw new Error('day_of_week is required for school hours');
+  }
+  if (!hours.grade_level) {
+    throw new Error('grade_level is required for school hours');
+  }
+
   const { data, error } = await supabase
     .from('school_hours')
     .upsert({
@@ -65,12 +76,15 @@ export async function upsertSchoolHours(
       provider_id: user.id,
       updated_at: new Date().toISOString()
     }, {
-      onConflict: 'provider_id,day_of_week,grade_level'
+      onConflict: 'provider_id,school_site,day_of_week,grade_level'
     })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error upserting school hours:', error);
+    throw error;
+  }
   return data;
 }
 

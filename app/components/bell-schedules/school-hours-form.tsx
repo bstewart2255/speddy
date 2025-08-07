@@ -193,6 +193,13 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     e.preventDefault();
     setLoading(true);
 
+    // Validate that currentSchool exists
+    if (!currentSchool?.school_site) {
+      alert('No school selected. Please select a school before saving hours.');
+      setLoading(false);
+      return;
+    }
+
     const promises: Promise<any>[] = [];
 
     try {
@@ -323,7 +330,23 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
       onSuccess();
     } catch (error) {
       console.error('Error saving school hours:', error);
-      alert('Failed to save school hours');
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('constraint')) {
+          alert('Failed to save school hours: Duplicate entry detected. Please check your input.');
+        } else if (error.message.includes('school_site')) {
+          alert('Failed to save school hours: School information is missing. Please refresh and try again.');
+        } else if (error.message.includes('day_of_week')) {
+          alert('Failed to save school hours: Day of week is missing. Please refresh and try again.');
+        } else if (error.message.includes('grade_level')) {
+          alert('Failed to save school hours: Grade level is missing. Please refresh and try again.');
+        } else {
+          alert(`Failed to save school hours: ${error.message}`);
+        }
+      } else {
+        alert('Failed to save school hours. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
