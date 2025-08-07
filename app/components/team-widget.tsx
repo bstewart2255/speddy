@@ -3,6 +3,8 @@
     import { useEffect, useState } from "react";
     import { createClient } from '@/lib/supabase/client';
     import { Card, CardBody, CardHeader, CardTitle } from "../components/ui/card";
+    import { ShareButton } from "./schedule-sharing/share-button";
+    import { ShareRequestNotice } from "./schedule-sharing/share-request-notice";
     import type { Database } from "../../src/types/database";
 
     const getRoleDisplayName = (role: string | null): string => {
@@ -196,9 +198,22 @@
               {school.district_name && (
                 <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
               )}
+              
+              {/* Share Request Notices */}
+              <ShareRequestNotice 
+                schoolId={school.school_id}
+                schoolName={school.school_name}
+              />
+              
               <TeamMembersList 
                 currentUser={currentUser} 
                 teammates={teammates} 
+              />
+              
+              {/* Share Button */}
+              <ShareButton 
+                schoolId={school.school_id}
+                schoolName={school.school_name}
               />
             </CardBody>
           </Card>
@@ -239,9 +254,22 @@
                 </CardHeader>
                 <CardBody>
                   <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
+                  
+                  {/* Share Request Notices */}
+                  <ShareRequestNotice 
+                    schoolId={school.school_id}
+                    schoolName={school.school_name}
+                  />
+                  
                   <TeamMembersList 
                     currentUser={currentUser} 
                     teammates={teammates} 
+                  />
+                  
+                  {/* Share Button */}
+                  <ShareButton 
+                    schoolId={school.school_id}
+                    schoolName={school.school_name}
                   />
                 </CardBody>
               </Card>

@@ -273,6 +273,7 @@ export interface Database {
           period_name: string
           school_site: string | null
           school_district: string | null
+          school_id: string | null
           created_at: string
         }
         Insert: {
@@ -285,6 +286,7 @@ export interface Database {
           period_name: string
           school_site?: string | null
           school_district?: string | null
+          school_id?: string | null
           created_at?: string
         }
         Update: {
@@ -297,6 +299,7 @@ export interface Database {
           period_name?: string
           school_site?: string | null
           school_district?: string | null
+          school_id?: string | null
           created_at?: string
         }
       },
@@ -311,6 +314,7 @@ export interface Database {
           activity_name: string
           school_site: string | null
           school_district: string | null
+          school_id: string | null
           created_at: string
         }
         Insert: {
@@ -323,6 +327,7 @@ export interface Database {
           activity_name: string
           school_site?: string | null
           school_district?: string | null
+          school_id?: string | null
           created_at?: string
         }
         Update: {
@@ -335,6 +340,27 @@ export interface Database {
           activity_name?: string
           school_site?: string | null
           school_district?: string | null
+          school_id?: string | null
+          created_at?: string
+        }
+      },
+      schedule_share_requests: {
+        Row: {
+          id: string
+          sharer_id: string
+          school_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sharer_id: string
+          school_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          sharer_id?: string
+          school_id?: string
           created_at?: string
         }
       },
