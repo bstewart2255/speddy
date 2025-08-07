@@ -50,7 +50,13 @@ export class SessionUpdateService {
     newDay: number,
     newStartTime: string,
     newEndTime: string
-  ): Promise<{ success: boolean; error?: string; session?: ScheduleSession }> {
+  ): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    session?: ScheduleSession;
+    conflicts?: ValidationResult['conflicts'];
+    hasConflicts?: boolean;
+  }> {
     try {
       // Get current user
       const { data: { user }, error: authError } = await this.supabase.auth.getUser();
@@ -111,7 +117,19 @@ export class SessionUpdateService {
       // The database update will automatically trigger real-time events
       // No need to manually broadcast
 
-      return { success: true, session: updatedSession };
+      const result: { 
+        success: boolean; 
+        session?: ScheduleSession;
+        conflicts?: ValidationResult['conflicts'];
+        hasConflicts?: boolean;
+      } = { success: true, session: updatedSession };
+      
+      if (!validation.valid && validation.conflicts) {
+        result.conflicts = validation.conflicts;
+        result.hasConflicts = true;
+      }
+      
+      return result;
     } catch (error) {
       console.error('Session update error:', error);
       return { success: false, error: 'An unexpected error occurred' };

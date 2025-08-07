@@ -312,6 +312,31 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
       if (!result.success) {
         console.error('Failed to move session:', result.error);
+        // Revert optimistic update on failure
+        optimisticUpdate(draggedSession.id, {
+          start_time: draggedSession.start_time,
+          end_time: draggedSession.end_time
+        });
+      } else if (result.hasConflicts && result.conflicts) {
+        // Show warning dialog for conflicts
+        const conflictMessages = result.conflicts.map(c => `- ${c.description}`).join('\n');
+        const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`;
+        
+        if (!confirm(confirmMessage)) {
+          // User cancelled - revert the optimistic update and the database change
+          optimisticUpdate(draggedSession.id, {
+            start_time: draggedSession.start_time,
+            end_time: draggedSession.end_time
+          });
+          
+          // Revert the database change
+          await sessionUpdateService.updateSessionTime(
+            draggedSession.id,
+            draggedSession.day_of_week,
+            draggedSession.start_time,
+            draggedSession.end_time
+          );
+        }
       }
 
       // Check conflicts ONLY for the moved session
