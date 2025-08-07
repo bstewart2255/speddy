@@ -73,17 +73,83 @@ export function sanitizeHTML(dirty: string): string {
 
   // Additional processing to ensure links are safe
   if (typeof window !== 'undefined') {
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = clean;
+    // Create a template element for safer parsing
+    const template = document.createElement('template');
+    
+    // Use DOMPurify again with RETURN_DOM option to get DOM elements directly
+    const cleanDOM = DOMPurify.sanitize(dirty, {
+      ...{
+        ALLOWED_TAGS: [
+          // Text formatting
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'p', 'br', 'hr',
+          'strong', 'b', 'em', 'i', 'u',
+          'span', 'div',
+          
+          // Lists
+          'ul', 'ol', 'li',
+          
+          // Tables
+          'table', 'thead', 'tbody', 'tr', 'th', 'td',
+          
+          // Links (with restrictions)
+          'a',
+          
+          // Semantic elements
+          'section', 'article', 'aside', 'nav',
+          'header', 'footer', 'main',
+          
+          // Quotes and citations
+          'blockquote', 'q', 'cite',
+          
+          // Code
+          'pre', 'code',
+          
+          // Definition lists
+          'dl', 'dt', 'dd',
+          
+          // Other formatting
+          'sub', 'sup', 'mark', 'del', 'ins'
+        ],
+        ALLOWED_ATTR: [
+          // Global attributes
+          'class', 'id', 'style',
+          
+          // Link attributes (restricted)
+          'href', 'target', 'rel',
+          
+          // Table attributes
+          'colspan', 'rowspan',
+          
+          // Accessibility
+          'role', 'aria-label', 'aria-describedby'
+        ],
+        // Don't allow any scripts, iframes, or other potentially dangerous elements
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'img', 'video', 'audio', 'form', 'input', 'button'],
+        FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover'],
+        // Keep text content of removed elements
+        KEEP_CONTENT: true,
+        // Allow data: URLs for links (useful for print/download)
+        ALLOW_DATA_ATTR: false,
+        // Ensure links open in new window with proper security
+        ADD_ATTR: ['target', 'rel'],
+        SANITIZE_DOM: true
+      },
+      RETURN_DOM: true,
+      RETURN_DOM_FRAGMENT: true
+    }) as DocumentFragment;
     
     // Ensure all links open in new tab with proper security
-    const links = tempDiv.querySelectorAll('a');
+    const links = cleanDOM.querySelectorAll('a');
     links.forEach(link => {
       link.setAttribute('target', '_blank');
       link.setAttribute('rel', 'noopener noreferrer');
     });
     
-    return tempDiv.innerHTML;
+    // Safely serialize the DOM back to string
+    const container = document.createElement('div');
+    container.appendChild(cleanDOM);
+    return container.innerHTML;
   }
 
   return clean;
