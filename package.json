@@ -18,6 +18,8 @@
     "test:integration": "node scripts/run-integration-tests.js",
     "prepare": "husky",
     "typecheck": "tsc --noEmit",
+    "benchmark": "node scripts/performance-benchmark.js",
+    "test:performance": "node scripts/performance-benchmark.js",
     "populate:schools": "tsx scripts/populate-school-data.ts",
     "populate:schools:test": "BATCH_SIZE=10 tsx scripts/populate-school-data.ts",
     "test:schools:setup": "tsx scripts/test-school-import.ts"

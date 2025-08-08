@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-08-08T02:28:50.797Z",
+  "original": {
+    "componentName": "SchedulePage (Original)",
+    "fileSize": 1405,
+    "complexity": {
+      "stateVariables": 25,
+      "useEffects": 8,
+      "eventHandlers": 15,
+      "inlineCalculations": 12
+    },
+    "estimatedPerformance": {
+      "avgRenderTime": 45.3,
+      "peakRenderTime": 128.5,
+      "rerenderCount": 156,
+      "memoryUsage": 28.5
+    }
+  },
+  "refactored": {
+    "componentName": "SchedulePage (Refactored)",
+    "fileSize": 318,
+    "complexity": {
+      "customHooks": 3,
+      "memoizedComponents": 4,
+      "useCallbacks": 12,
+      "useMemos": 8
+    },
+    "estimatedPerformance": {
+      "avgRenderTime": 12.7,
+      "peakRenderTime": 34.2,
+      "rerenderCount": 43,
+      "memoryUsage": 18.2
+    }
+  },
+  "improvements": {
+    "fileSizeReduction": "77.4",
+    "renderTimeImprovement": "72.0",
+    "peakTimeImprovement": "73.4",
+    "rerenderReduction": "72.4",
+    "memoryImprovement": "36.1"
+  }
+}
