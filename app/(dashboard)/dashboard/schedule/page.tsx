@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
+import { fastConflictDetectionService } from '../../../../lib/services/fast-conflict-detection-service';
 import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-error-boundary';
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
@@ -19,6 +20,8 @@ export default function SchedulePage() {
   const {
     students,
     sessions,
+    bellSchedules,
+    specialActivities,
     schoolHours,
     seaProfiles,
     unscheduledCount,
@@ -71,7 +74,13 @@ export default function SchedulePage() {
     clearDragValidation,
   } = useScheduleOperations();
 
-  // Handle drag start - Pre-calculate conflicts for all slots
+  // Add ref to track current drag calculation
+  const conflictCalculationRef = useRef<AbortController | null>(null);
+  
+  // Feature flag to switch between old and new conflict detection
+  const USE_FAST_CONFLICT_DETECTION = true;
+  
+  // Handle drag start - Pre-calculate conflicts using FAST method
   const handleDragStart = useCallback((e: React.DragEvent, session: any) => {
     e.dataTransfer.effectAllowed = 'move';
     const rect = e.currentTarget.getBoundingClientRect();
@@ -84,86 +93,145 @@ export default function SchedulePage() {
     const student = students.find(s => s.id === session.student_id);
     if (!student) return;
     
-    // Pre-calculate conflicts for ALL time slots across ALL days for THIS student
-    // We'll do this asynchronously to avoid blocking the UI
-    (async () => {
-      const conflictedSlots = new Set<string>();
+    if (USE_FAST_CONFLICT_DETECTION) {
+      // NEW FAST METHOD
+      // Abort any previous calculation
+      if (conflictCalculationRef.current) {
+        conflictCalculationRef.current.abort();
+      }
+      conflictCalculationRef.current = new AbortController();
       
-      // Generate all possible time slots (15-minute intervals)
-      const snapInterval = gridConfig.snapInterval;
-      const startHour = gridConfig.startHour;
-      const endHour = gridConfig.endHour;
+      // Get current day for priority
+      const currentDay = new Date().getDay() || 7; // Convert Sunday (0) to 7
+      const weekDay = currentDay <= 5 ? currentDay : 1; // Default to Monday if weekend
       
-      // Create an array of all slots to check
-      const slotsToCheck: Array<{day: number, timeStr: string, slotKey: string}> = [];
+      // Use FAST conflict detection service
+      console.time('[DragStart] Total conflict calculation');
       
-      for (let day = 1; day <= 5; day++) {
-        for (let hour = startHour; hour < endHour; hour++) {
-          for (let minute = 0; minute < 60; minute += snapInterval) {
-            const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-            const slotKey = `${day}-${timeStr}`;
-            
-            // Skip the session's current position (it's not a conflict to stay in place)
-            const currentStartTime = session.start_time.substring(0, 5);
-            if (day === session.day_of_week && timeStr === currentStartTime) {
-              continue;
-            }
-            
-            // Skip slots that would put the session end time beyond grid bounds
-            const endMinutes = hour * 60 + minute + student.minutes_per_session;
-            if (endMinutes > endHour * 60) {
-              conflictedSlots.add(slotKey); // Mark as conflicted since it goes beyond bounds
-              continue;
-            }
-            
-            slotsToCheck.push({day, timeStr, slotKey});
+      // Prepare conflict check data
+      const conflictCheckData = {
+        bellSchedules,
+        specialActivities,
+        existingSessions: sessions,
+        studentData: {
+          id: student.id,
+          grade_level: student.grade_level,
+          teacher_name: student.teacher_name,
+          minutes_per_session: student.minutes_per_session
+        },
+        providerId: currentUserId || '',
+        schoolHours: schoolHours.map(sh => ({
+          grade_level: sh.grade_level,
+          start_time: sh.start_time,
+          end_time: sh.end_time
+        }))
+      };
+      
+      // Calculate conflicts progressively
+      fastConflictDetectionService.calculateConflictsProgressive(
+        conflictCheckData,
+        session.id,
+        weekDay,
+        (conflicts) => {
+          // Update UI progressively as conflicts are found
+          if (!conflictCalculationRef.current?.signal.aborted) {
+            updateConflictSlots(conflicts);
           }
         }
-      }
+      ).then((finalConflicts) => {
+        console.timeEnd('[DragStart] Total conflict calculation');
+        console.log('[DragStart] Final conflicts count:', finalConflicts.size);
+        if (!conflictCalculationRef.current?.signal.aborted) {
+          updateConflictSlots(finalConflicts);
+        }
+      }).catch((error) => {
+        console.error('[DragStart] Error calculating conflicts:', error);
+      });
+    } else {
+      // OLD METHOD (for comparison)
+      console.warn('Using OLD conflict detection method - this is slow!');
+      console.time('[DragStart] OLD Total conflict calculation');
       
-      // Process slots in batches to avoid overwhelming the system
-      const batchSize = 10;
-      for (let i = 0; i < slotsToCheck.length; i += batchSize) {
-        const batch = slotsToCheck.slice(i, i + batchSize);
+      (async () => {
+        const conflictedSlots = new Set<string>();
+        const snapInterval = gridConfig.snapInterval;
+        const startHour = gridConfig.startHour;
+        const endHour = gridConfig.endHour;
         
-        await Promise.all(batch.map(async ({day, timeStr, slotKey}) => {
-          // Calculate end time for this potential position
-          const [hour, minute] = timeStr.split(':').map(Number);
-          const endMinutes = hour * 60 + minute + student.minutes_per_session;
-          const endHour = Math.floor(endMinutes / 60);
-          const endMinute = endMinutes % 60;
-          const endTimeStr = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}:00`;
-          const startTimeWithSeconds = `${timeStr}:00`;
+        const slotsToCheck: Array<{day: number, timeStr: string, slotKey: string}> = [];
+        
+        for (let day = 1; day <= 5; day++) {
+          for (let hour = startHour; hour < endHour; hour++) {
+            for (let minute = 0; minute < 60; minute += snapInterval) {
+              const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+              const slotKey = `${day}-${timeStr}`;
+              
+              const currentStartTime = session.start_time.substring(0, 5);
+              if (day === session.day_of_week && timeStr === currentStartTime) {
+                continue;
+              }
+              
+              const endMinutes = hour * 60 + minute + student.minutes_per_session;
+              if (endMinutes > endHour * 60) {
+                conflictedSlots.add(slotKey);
+                continue;
+              }
+              
+              slotsToCheck.push({day, timeStr, slotKey});
+            }
+          }
+        }
+        
+        const batchSize = 10;
+        for (let i = 0; i < slotsToCheck.length; i += batchSize) {
+          const batch = slotsToCheck.slice(i, i + batchSize);
           
-          try {
-            const validation = await sessionUpdateService.validateOnly(
-              session.id,
-              day,
-              startTimeWithSeconds,
-              endTimeStr
-            );
+          await Promise.all(batch.map(async ({day, timeStr, slotKey}) => {
+            const [hour, minute] = timeStr.split(':').map(Number);
+            const endMinutes = hour * 60 + minute + student.minutes_per_session;
+            const endHour = Math.floor(endMinutes / 60);
+            const endMinute = endMinutes % 60;
+            const endTimeStr = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}:00`;
+            const startTimeWithSeconds = `${timeStr}:00`;
             
-            if (!validation.valid) {
+            try {
+              const validation = await sessionUpdateService.validateOnly(
+                session.id,
+                day,
+                startTimeWithSeconds,
+                endTimeStr
+              );
+              
+              if (!validation.valid) {
+                conflictedSlots.add(slotKey);
+              }
+            } catch (error) {
+              console.error(`Error validating slot ${slotKey}:`, error);
               conflictedSlots.add(slotKey);
             }
-          } catch (error) {
-            // If validation fails, consider it conflicted to be safe
-            console.error(`Error validating slot ${slotKey}:`, error);
-            conflictedSlots.add(slotKey);
-          }
-        }));
+          }));
+          
+          updateConflictSlots(new Set(conflictedSlots));
+        }
         
-        // Update conflicts progressively as we validate
-        updateConflictSlots(new Set(conflictedSlots));
-      }
-    })();
-  }, [startDrag, students, gridConfig, updateConflictSlots]);
+        console.timeEnd('[DragStart] OLD Total conflict calculation');
+        console.log('[DragStart] OLD Final conflicts count:', conflictedSlots.size);
+      })();
+    }
+  }, [startDrag, students, bellSchedules, specialActivities, sessions, currentUserId, schoolHours, gridConfig, updateConflictSlots, sessionUpdateService]);
 
   // Handle drag end - Clear all conflict indicators
   const handleDragEnd = useCallback(() => {
+    // Abort any ongoing conflict calculation
+    if (conflictCalculationRef.current) {
+      conflictCalculationRef.current.abort();
+      conflictCalculationRef.current = null;
+    }
+    
     clearDragValidation();
     endDrag();
     updateConflictSlots(new Set()); // Clear all conflict indicators
+    fastConflictDetectionService.clearCache(); // Clear cached data
   }, [clearDragValidation, endDrag, updateConflictSlots]);
 
   // Handle drag over - Just update position, conflicts already pre-calculated
