@@ -111,6 +111,70 @@ export default function SchedulePage() {
     }
   }, [loading, students, bellSchedules, specialActivities, sessions, schoolHours]);
 
+  // NEW: Refresh cache when data changes or cache goes stale
+  useEffect(() => {
+    if (loading) return;
+
+    // Only run after initial cache has been created
+    if (!dataCachedRef.current) return;
+
+    let status: { itemCounts?: any } | undefined;
+    try {
+      status = optimizedConflictDetectionService.getCacheStatus?.();
+    } catch (e) {
+      // If the service doesn't support getCacheStatus, skip counts check
+    }
+
+    const countsChanged =
+      !!status?.itemCounts &&
+      (
+        status.itemCounts.sessions !== sessions.length ||
+        status.itemCounts.bellSchedules !== bellSchedules.length ||
+        status.itemCounts.specialActivities !== specialActivities.length ||
+        status.itemCounts.students !== students.length
+      );
+
+    const stale =
+      typeof optimizedConflictDetectionService.isDataStale === 'function'
+        ? optimizedConflictDetectionService.isDataStale()
+        : false;
+
+    if (countsChanged || stale) {
+      setCacheReady(false);
+      optimizedConflictDetectionService
+        .loadAndCacheData({
+          bellSchedules,
+          specialActivities,
+          existingSessions: sessions,
+          schoolHours: schoolHours.map((sh) => ({
+            grade_level: sh.grade_level,
+            start_time: sh.start_time,
+            end_time: sh.end_time,
+          })),
+          students: students.map((s) => ({
+            id: s.id,
+            grade_level: s.grade_level,
+            teacher_name: s.teacher_name,
+            minutes_per_session: s.minutes_per_session,
+          })),
+        })
+        .then(() => {
+          setCacheReady(true);
+          console.log('[Schedule] Cache refreshed');
+        })
+        .catch((error) => {
+          console.error('[Schedule] Failed to refresh cache:', error);
+        });
+    }
+  }, [
+    loading,
+    sessions,
+    bellSchedules,
+    specialActivities,
+    schoolHours,
+    students,
+  ]);
+
   // Handle drag start - Pre-calculate conflicts using OPTIMIZED method
   const handleDragStart = useCallback((e: React.DragEvent, session: any) => {
     // Prevent drag if cache is not ready
