@@ -31,6 +31,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private initialized = false;
   private providerId: string | null = null;
   private schoolSite: string | null = null;
+  private schoolId: string | null = null;
   
   // Core data structures
   private data: VersionedSchedulingData = {
@@ -84,11 +85,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   /**
    * Initialize the data manager with provider and school context
    */
-  public async initialize(providerId: string, schoolSite: string): Promise<void> {
-    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite}`);
+  public async initialize(providerId: string, schoolSite: string, schoolId?: string): Promise<void> {
+    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite} (school_id: ${schoolId})`);
     
     this.providerId = providerId;
     this.schoolSite = schoolSite;
+    this.schoolId = schoolId || null;
     this.data.version.modifiedBy = providerId;
     
     await this.loadAllData();
@@ -113,7 +115,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // Try to use the batch RPC if available
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
-        p_school_site: this.schoolSite!
+        p_school_site: this.schoolSite!,
+        p_school_id: this.schoolId
       }).single();
       
       if (error) {
@@ -190,11 +193,24 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Fetch provider availability
    */
   private async fetchProviderAvailability(): Promise<any[]> {
+    // Note: user_site_schedules uses site_id which is a UUID from provider_schools table
+    // We need to get the provider_schools record first to get the UUID
+    const { data: schoolData, error: schoolError } = await this.supabase
+      .from('provider_schools')
+      .select('id')
+      .or(`school_site.eq.${this.schoolSite},school_id.eq.${this.schoolId}`)
+      .single();
+    
+    if (schoolError || !schoolData) {
+      console.log('[DataManager] Could not find provider_schools record, skipping availability fetch');
+      return [];
+    }
+    
     const { data, error } = await this.supabase
       .from('user_site_schedules')
       .select('*')
       .eq('user_id', this.providerId!)
-      .eq('site_id', this.schoolSite!);
+      .eq('site_id', schoolData.id);
     
     if (error) {
       this.cacheMetadata.fetchErrors.push(`Provider availability: ${error.message}`);
@@ -208,10 +224,18 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Fetch bell schedules
    */
   private async fetchBellSchedules(): Promise<BellSchedule[]> {
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('bell_schedules')
-      .select('*')
-      .eq('school_site', this.schoolSite!);
+      .select('*');
+    
+    // Use school_id if available, otherwise fall back to school_site
+    if (this.schoolId) {
+      query = query.eq('school_id', this.schoolId);
+    } else {
+      query = query.eq('school_site', this.schoolSite!);
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       this.cacheMetadata.fetchErrors.push(`Bell schedules: ${error.message}`);
@@ -225,10 +249,18 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Fetch special activities
    */
   private async fetchSpecialActivities(): Promise<SpecialActivity[]> {
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('special_activities')
-      .select('*')
-      .eq('school_site', this.schoolSite!);
+      .select('*');
+    
+    // Use school_id if available, otherwise fall back to school_site
+    if (this.schoolId) {
+      query = query.eq('school_id', this.schoolId);
+    } else {
+      query = query.eq('school_site', this.schoolSite!);
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       this.cacheMetadata.fetchErrors.push(`Special activities: ${error.message}`);
@@ -259,10 +291,19 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Fetch school hours
    */
   private async fetchSchoolHours(): Promise<any[]> {
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('school_hours')
-      .select('*')
-      .eq('school_site', this.schoolSite!);
+      .select('*');
+    
+    // School hours might still use school_site
+    if (this.schoolId) {
+      // Try school_id first, but this table might not be migrated yet
+      query = query.eq('school_site', this.schoolSite!);
+    } else {
+      query = query.eq('school_site', this.schoolSite!);
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       this.cacheMetadata.fetchErrors.push(`School hours: ${error.message}`);

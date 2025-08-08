@@ -43,11 +43,16 @@ export default function SpecialActivitiesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !currentSchool) return;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('special_activities')
         .select('*')
-        .eq('provider_id', user.id)
-        .eq('school_site', currentSchool.school_site)
+        .eq('provider_id', user.id);
+      
+      if (currentSchool.school_id) {
+        query = query.eq('school_id', currentSchool.school_id);
+      }
+      
+      const { data, error } = await query
         .order('teacher_name', { ascending: true })
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });

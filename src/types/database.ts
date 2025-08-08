@@ -23,6 +23,7 @@ export interface Database {
           works_at_multiple_schools: boolean
           district_domain: string
           supervising_provider_id: string | null
+          shared_at_school: boolean
           created_at: string
           updated_at: string
           display_name?: string
@@ -44,6 +45,7 @@ export interface Database {
           works_at_multiple_schools?: boolean
           district_domain: string
           supervising_provider_id: string | null
+          shared_at_school?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -60,6 +62,7 @@ export interface Database {
           works_at_multiple_schools?: boolean
           district_domain?: string
           supervising_provider_id?: string | null
+          shared_at_school?: boolean
           created_at?: string
           updated_at?: string
         }

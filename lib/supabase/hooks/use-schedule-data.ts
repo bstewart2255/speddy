@@ -20,7 +20,7 @@ interface ScheduleData {
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   schoolHours: any[];
-  seaProfiles: Array<{ id: string; full_name: string }>;
+  seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -105,21 +105,29 @@ export function useScheduleData() {
           .eq('school_site', currentSchool.school_site)
           .eq('school_district', currentSchool.school_district),
         
-        // Bell schedules query
-        supabase
-          .from('bell_schedules')
-          .select('*')
-          .eq('provider_id', user.id)
-          .eq('school_site', currentSchool.school_site)
-          .eq('school_district', currentSchool.school_district),
+        // Bell schedules query - Using school_id
+        (() => {
+          let query = supabase
+            .from('bell_schedules')
+            .select('*')
+            .eq('provider_id', user.id);
+          if (currentSchool.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          }
+          return query;
+        })(),
         
-        // Special activities query
-        supabase
-          .from('special_activities')
-          .select('*')
-          .eq('provider_id', user.id)
-          .eq('school_site', currentSchool.school_site)
-          .eq('school_district', currentSchool.school_district),
+        // Special activities query - Using school_id
+        (() => {
+          let query = supabase
+            .from('special_activities')
+            .select('*')
+            .eq('provider_id', user.id);
+          if (currentSchool.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          }
+          return query;
+        })(),
         
         // School hours
         getSchoolHours(currentSchool),
@@ -138,16 +146,53 @@ export function useScheduleData() {
         .is('session_date', null);
 
       // Fetch SEA profiles if user is Resource Specialist
-      let seaProfiles: Array<{ id: string; full_name: string }> = [];
+      // Include both supervised SEAs and school-shared SEAs
+      let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
       if (profile.role === 'resource') {
-        const { data: seasData } = await supabase
+        // Get user's school info for shared SEAs
+        const { data: userProfile } = await supabase
           .from('profiles')
-          .select('id, full_name')
-          .eq('supervising_provider_id', user.id)
-          .eq('role', 'sea')
-          .order('full_name', { ascending: true });
-        
-        seaProfiles = seasData || [];
+          .select('school_district, school_site')
+          .eq('id', user.id)
+          .single();
+
+        if (userProfile) {
+          // Fetch both supervised and shared SEAs in parallel
+          const [supervisedResult, sharedResult] = await Promise.all([
+            // Supervised SEAs (existing relationship)
+            supabase
+              .from('profiles')
+              .select('id, full_name')
+              .eq('supervising_provider_id', user.id)
+              .eq('role', 'sea')
+              .order('full_name', { ascending: true }),
+            
+            // Shared SEAs at the same school
+            supabase
+              .from('profiles')
+              .select('id, full_name, supervising_provider_id')
+              .eq('role', 'sea')
+              .eq('shared_at_school', true)
+              .eq('school_district', userProfile.school_district)
+              .eq('school_site', userProfile.school_site)
+              .neq('supervising_provider_id', user.id) // Exclude ones already supervised by this user
+              .order('full_name', { ascending: true })
+          ]);
+
+          // Combine and deduplicate SEAs
+          const supervisedSeas = (supervisedResult.data || []).map(sea => ({
+            ...sea,
+            is_shared: false
+          }));
+          
+          const sharedSeas = (sharedResult.data || []).map(sea => ({
+            ...sea,
+            is_shared: true
+          }));
+          
+          // Combine lists, supervised SEAs first
+          seaProfiles = [...supervisedSeas, ...sharedSeas];
+        }
       }
 
       setData({

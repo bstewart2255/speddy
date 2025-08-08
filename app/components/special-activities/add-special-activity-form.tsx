@@ -53,7 +53,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
         end_time: endTime,
-        school_site: currentSchool?.school_site
+        school_id: currentSchool?.school_id
       });
 
       if (insertError) throw insertError;

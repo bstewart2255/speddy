@@ -7,7 +7,7 @@ interface SessionAssignmentPopupProps {
   session: any;
   student: any;
   position: { x: number; y: number };
-  seaProfiles: Array<{ id: string; full_name: string }>;
+  seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   onClose: () => void;
   onUpdate: () => void;
 }
@@ -54,13 +54,20 @@ export function SessionAssignmentPopup({
         .update(updateData)
         .eq("id", session.id);
 
-      if (error) throw error;
+      if (error) {
+        // Check if it's a permission error
+        if (error.message?.includes('can_assign_sea_to_session') || 
+            error.message?.includes('policy')) {
+          throw new Error('You do not have permission to assign sessions to this SEA. They may need to be shared at your school first.');
+        }
+        throw error;
+      }
 
       onUpdate();
       onClose();
     } catch (error) {
       console.error("Error updating session:", error);
-      alert("Failed to update session assignment");
+      alert(error instanceof Error ? error.message : "Failed to update session assignment");
     } finally {
       setLoading(false);
     }
@@ -96,7 +103,7 @@ export function SessionAssignmentPopup({
           <option value="">Me (Resource Specialist)</option>
           {seaProfiles.map((sea) => (
             <option key={sea.id} value={sea.id}>
-              {sea.full_name} (SEA)
+              {sea.full_name} ({sea.is_shared ? 'Shared SEA' : 'My SEA'})
             </option>
           ))}
         </select>

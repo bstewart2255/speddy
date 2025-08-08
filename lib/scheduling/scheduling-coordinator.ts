@@ -82,18 +82,18 @@ export class SchedulingCoordinator {
   /**
    * Initialize the coordinator with provider and school information
    */
-  async initialize(providerId: string, providerRole: string, schoolSite: string): Promise<void> {
+  async initialize(providerId: string, providerRole: string, schoolSite: string, schoolId?: string): Promise<void> {
     const startTime = performance.now();
     
     this.providerId = providerId;
     this.providerRole = providerRole;
     this.schoolSite = schoolSite;
     
-    console.log(`[Coordinator] Initializing for provider ${providerId} at ${schoolSite}`);
+    console.log(`[Coordinator] Initializing for provider ${providerId} at ${schoolSite} (school_id: ${schoolId})`);
     
     // Initialize data manager if not already initialized
     if (!this.dataManager.isInitialized()) {
-      await this.dataManager.initialize(providerId, schoolSite);
+      await this.dataManager.initialize(providerId, schoolSite, schoolId);
     }
     
     // Build context

@@ -88,7 +88,7 @@ export function useSchedulingData(config?: DataManagerConfig): UseSchedulingData
         
         // Initialize data manager if not already initialized or if school changed
         if (!dataManager.isInitialized() || refreshTrigger > 0) {
-          await dataManager.initialize(user.id, currentSchool.school_site);
+          await dataManager.initialize(user.id, currentSchool.school_site, currentSchool.school_id || undefined);
           setIsInitialized(true);
           setLastRefresh(new Date());
         }

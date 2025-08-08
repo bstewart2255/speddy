@@ -107,7 +107,7 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
                 day_of_week: dayNameToNumber(row.day),
                 start_time: row['start time'] + ':00',
                 end_time: row['end time'] + ':00',
-                school_site: currentSchool?.school_site
+                school_id: currentSchool?.school_id
               }));
 
             console.log("Activities to insert:", activities);

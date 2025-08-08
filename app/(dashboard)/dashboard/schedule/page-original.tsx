@@ -588,16 +588,21 @@ export default function SchedulePage() {
       
       // Apply school filters based on available data
       if (currentSchool) {
-        // For future: when school_id columns are added, use them for faster queries
+        // Use school_id for bell_schedules and special_activities (migrated tables)
+        const schoolId = currentSchool.school_id;
+        
+        // Students table still uses school_site/school_district
         if (currentSchool.school_site) {
           studentsQuery = studentsQuery.eq("school_site", currentSchool.school_site);
-          bellQuery = bellQuery.eq("school_site", currentSchool.school_site);
-          activitiesQuery = activitiesQuery.eq("school_site", currentSchool.school_site);
         }
         if (currentSchool.school_district) {
           studentsQuery = studentsQuery.eq("school_district", currentSchool.school_district);
-          bellQuery = bellQuery.eq("school_district", currentSchool.school_district);
-          activitiesQuery = activitiesQuery.eq("school_district", currentSchool.school_district);
+        }
+        
+        // Bell schedules and special activities now use school_id
+        if (schoolId) {
+          bellQuery = bellQuery.eq("school_id", schoolId);
+          activitiesQuery = activitiesQuery.eq("school_id", schoolId);
         }
       }
       

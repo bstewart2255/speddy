@@ -75,7 +75,7 @@ export interface SchedulingConflict {
 
 export interface SchedulingDataManagerInterface {
   // Initialization
-  initialize(providerId: string, schoolSite: string): Promise<void>;
+  initialize(providerId: string, schoolSite: string, schoolId?: string): Promise<void>;
   isInitialized(): boolean;
   
   // Provider availability  
