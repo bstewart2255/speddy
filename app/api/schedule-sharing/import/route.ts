@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import type { Database } from '@/src/types/database';
 
 type ImportMode = 'skip_duplicates' | 'replace_existing' | 'import_all';
@@ -31,18 +31,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch sharer's schedules for this school
-    const { data: sharerBellSchedules, error: bellError } = await supabase
+    // Use service client to fetch sharer's schedules (bypass RLS)
+    const serviceClient = createServiceClient();
+    
+    console.log('Fetching schedules for sharer_id:', sharer_id, 'school_id:', school_id);
+    
+    const { data: sharerBellSchedules, error: bellError } = await serviceClient
       .from('bell_schedules')
       .select('*')
       .eq('provider_id', sharer_id)
       .eq('school_id', school_id);
 
-    const { data: sharerSpecialActivities, error: specialError } = await supabase
+    const { data: sharerSpecialActivities, error: specialError } = await serviceClient
       .from('special_activities')
       .select('*')
       .eq('provider_id', sharer_id)
       .eq('school_id', school_id);
+
+    console.log('Sharer bell schedules found:', sharerBellSchedules?.length || 0);
+    console.log('Sharer special activities found:', sharerSpecialActivities?.length || 0);
 
     if (bellError || specialError) {
       console.error('Error fetching sharer schedules:', bellError || specialError);
@@ -64,6 +71,9 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('provider_id', user.id)
       .eq('school_id', school_id);
+
+    console.log('Recipient bell schedules found:', recipientBellSchedules?.length || 0);
+    console.log('Recipient special activities found:', recipientSpecialActivities?.length || 0);
 
     if (recipientBellError || recipientSpecialError) {
       console.error('Error fetching recipient schedules:', recipientBellError || recipientSpecialError);
@@ -110,32 +120,40 @@ export async function POST(request: NextRequest) {
       itemsReplaced = (recipientBellSchedules?.length || 0) + (recipientSpecialActivities?.length || 0);
 
       // Import all sharer's schedules
-      bellSchedulesToImport = sharerBellSchedules?.map(schedule => ({
-        ...schedule,
-        id: undefined,
-        provider_id: user.id,
-        created_at: undefined,
-      })) || [];
+      bellSchedulesToImport = sharerBellSchedules?.map(schedule => {
+        const { id, created_at, ...rest } = schedule;
+        return {
+          ...rest,
+          provider_id: user.id,
+          school_id: school_id, // Explicitly set school_id
+        };
+      }) || [];
 
-      specialActivitiesToImport = sharerSpecialActivities?.map(activity => ({
-        ...activity,
-        id: undefined,
-        provider_id: user.id,
-        created_at: undefined,
-      })) || [];
+      specialActivitiesToImport = sharerSpecialActivities?.map(activity => {
+        const { id, created_at, ...rest } = activity;
+        return {
+          ...rest,
+          provider_id: user.id,
+          school_id: school_id, // Explicitly set school_id
+        };
+      }) || [];
 
     } else if (mode === 'skip_duplicates') {
       // Import only non-duplicates
+      console.log('Processing skip_duplicates mode');
+      
       sharerBellSchedules?.forEach(sharerSchedule => {
         const isDuplicate = recipientBellSchedules?.some(recipientSchedule => 
           isBellScheduleDuplicate(recipientSchedule, sharerSchedule)
         );
+        console.log(`Bell schedule ${sharerSchedule.period_name} (${sharerSchedule.grade_level}): isDuplicate=${isDuplicate}`);
+        
         if (!isDuplicate) {
+          const { id, created_at, ...rest } = sharerSchedule;
           bellSchedulesToImport.push({
-            ...sharerSchedule,
-            id: undefined,
+            ...rest,
             provider_id: user.id,
-            created_at: undefined,
+            school_id: school_id, // Explicitly set school_id
           });
         } else {
           duplicatesSkipped++;
@@ -146,12 +164,14 @@ export async function POST(request: NextRequest) {
         const isDuplicate = recipientSpecialActivities?.some(recipientActivity => 
           isSpecialActivityDuplicate(recipientActivity, sharerActivity)
         );
+        console.log(`Special activity ${sharerActivity.activity_name} (${sharerActivity.teacher_name}): isDuplicate=${isDuplicate}`);
+        
         if (!isDuplicate) {
+          const { id, created_at, ...rest } = sharerActivity;
           specialActivitiesToImport.push({
-            ...sharerActivity,
-            id: undefined,
+            ...rest,
             provider_id: user.id,
-            created_at: undefined,
+            school_id: school_id, // Explicitly set school_id
           });
         } else {
           duplicatesSkipped++;
@@ -160,19 +180,23 @@ export async function POST(request: NextRequest) {
 
     } else if (mode === 'import_all') {
       // Import everything, allow duplicates
-      bellSchedulesToImport = sharerBellSchedules?.map(schedule => ({
-        ...schedule,
-        id: undefined,
-        provider_id: user.id,
-        created_at: undefined,
-      })) || [];
+      bellSchedulesToImport = sharerBellSchedules?.map(schedule => {
+        const { id, created_at, ...rest } = schedule;
+        return {
+          ...rest,
+          provider_id: user.id,
+          school_id: school_id, // Explicitly set school_id
+        };
+      }) || [];
 
-      specialActivitiesToImport = sharerSpecialActivities?.map(activity => ({
-        ...activity,
-        id: undefined,
-        provider_id: user.id,
-        created_at: undefined,
-      })) || [];
+      specialActivitiesToImport = sharerSpecialActivities?.map(activity => {
+        const { id, created_at, ...rest } = activity;
+        return {
+          ...rest,
+          provider_id: user.id,
+          school_id: school_id, // Explicitly set school_id
+        };
+      }) || [];
     }
 
     // Insert the schedules to import
@@ -215,6 +239,13 @@ export async function POST(request: NextRequest) {
       .delete()
       .eq('sharer_id', sharer_id)
       .eq('school_id', school_id);
+
+    console.log('Import complete:', {
+      bell_schedules_imported: bellSchedulesImported,
+      special_activities_imported: specialActivitiesImported,
+      duplicates_skipped: duplicatesSkipped,
+      items_replaced: itemsReplaced,
+    });
 
     return NextResponse.json({
       success: true,
