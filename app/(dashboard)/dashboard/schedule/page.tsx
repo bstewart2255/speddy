@@ -16,6 +16,9 @@ import { useSchool } from '../../../components/providers/school-context';
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
   
+  // Session tags state (ephemeral, not persisted)
+  const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
+  
   // Data management hook
   const {
     students,
@@ -527,6 +530,8 @@ export default function SchedulePage() {
             providerRole={providerRole}
             currentUserId={currentUserId}
             gridConfig={gridConfig}
+            sessionTags={sessionTags}
+            setSessionTags={setSessionTags}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragOver={handleDragOver}

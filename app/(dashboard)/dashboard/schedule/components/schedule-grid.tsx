@@ -22,6 +22,8 @@ interface ScheduleGridProps {
   seaProfiles: any[];
   providerRole: string;
   currentUserId: string | null;
+  sessionTags: Record<string, string>;
+  setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   gridConfig: {
     startHour: number;
     endHour: number;
@@ -70,6 +72,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   seaProfiles,
   providerRole,
   currentUserId,
+  sessionTags,
+  setSessionTags,
   gridConfig,
   onDragStart,
   onDragEnd,
@@ -524,6 +528,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
           student={students.find((s: any) => s.id === selectedSession.student_id)}
           position={popupPosition}
           seaProfiles={seaProfiles}
+          sessionTags={sessionTags}
+          setSessionTags={setSessionTags}
           onClose={onPopupClose}
           onUpdate={onPopupUpdate}
         />

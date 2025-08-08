@@ -8,6 +8,8 @@ interface SessionAssignmentPopupProps {
   student: any;
   position: { x: number; y: number };
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
+  sessionTags: Record<string, string>;
+  setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onClose: () => void;
   onUpdate: () => void;
 }
@@ -17,6 +19,8 @@ export function SessionAssignmentPopup({
   student,
   position,
   seaProfiles,
+  sessionTags,
+  setSessionTags,
   onClose,
   onUpdate,
 }: SessionAssignmentPopupProps) {
