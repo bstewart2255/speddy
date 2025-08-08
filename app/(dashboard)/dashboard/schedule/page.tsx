@@ -11,6 +11,7 @@ import { SessionAssignmentPopup } from "./session-assignment-popup";
 import { useSchool } from '../../../components/providers/school-context';
 import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
 import { getSchoolHours } from '../../../../lib/supabase/queries/school-hours';
+import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 
 interface Student {
   id: string;
@@ -226,110 +227,7 @@ export default function SchedulePage() {
     }
   };
 
-  const checkSlotConflicts = async (
-    session: ScheduleSession & { student: Student },
-    targetDay: number,
-    targetTime: string,
-  ): Promise<{ hasConflict: boolean; reason?: string }> => {
-    const [hours, minutes] = targetTime.split(":");
-    const startTime = `${hours}:${minutes}:00`;
-    const endTime = new Date();
-    endTime.setHours(
-      parseInt(hours),
-      parseInt(minutes) + session.student.minutes_per_session,
-      0,
-    );
-    const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
-
-    const conflicts: string[] = [];
-
-    // Check school hours
-    const studentGrade = session.student.grade_level.trim();
-    const schoolHoursForGrade = getSchoolHoursForDay(targetDay, studentGrade, targetTime);
-    const schoolStartMinutes = timeToMinutes(schoolHoursForGrade.start);
-    const schoolEndMinutes = timeToMinutes(schoolHoursForGrade.end);
-    const sessionStart = parseInt(hours) * 60 + parseInt(minutes);
-    const sessionEnd = endTime.getHours() * 60 + endTime.getMinutes();
-
-    if (sessionStart < schoolStartMinutes || sessionEnd > schoolEndMinutes) {
-      conflicts.push(`• Session outside school hours (${schoolHoursForGrade.start} - ${schoolHoursForGrade.end})`);
-    }
-
-    // Check provider work schedule
-    const { data: workSchedule } = await supabase
-      .from("user_site_schedules")
-      .select(`
-        day_of_week,
-        provider_schools!inner(
-          school_site
-        )
-      `)
-      .eq("user_id", session.student.provider_id)
-      .eq("provider_schools.school_site", session.student.school_site);
-
-    const workDaysAtSchool = workSchedule?.map(s => s.day_of_week) || [];
-    if (workDaysAtSchool.length > 0 && !workDaysAtSchool.includes(targetDay)) {
-      conflicts.push("• Provider not scheduled to work at this time");
-    }
-
-    // Check bell schedule conflicts
-    const bellConflict = bellSchedules.find((bell) => {
-      const grades = bell.grade_level.split(",").map((g) => g.trim());
-      return (
-        grades.includes(session.student.grade_level.trim()) &&
-        bell.day_of_week === targetDay &&
-        bell.school_site === session.student.school_site &&
-        hasTimeOverlap(startTime, endTimeStr, bell.start_time, bell.end_time)
-      );
-    });
-
-    if (bellConflict) {
-      conflicts.push(`• Conflicts with bell schedule: ${bellConflict.period_name}`);
-    }
-
-    // Check special activity conflicts
-    const activityConflict = specialActivities.find(
-      (activity) =>
-        activity.teacher_name === session.student.teacher_name &&
-        activity.day_of_week === targetDay &&
-        activity.school_site === session.student.school_site &&
-        hasTimeOverlap(startTime, endTimeStr, activity.start_time, activity.end_time)
-    );
-
-    if (activityConflict) {
-      conflicts.push(`• Conflicts with special activity: ${activityConflict.activity_name}`);
-    }
-
-    // Check if the same student already has a session at this time
-    const studentConflict = sessions.find(
-      (s) =>
-        s.student_id === session.student.id &&
-        s.day_of_week === targetDay &&
-        s.id !== session.id &&
-        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
-    );
-
-    if (studentConflict) {
-      conflicts.push("• Overlaps with another session");
-    }
-
-    // Check slot capacity
-    const slotOccupancy = sessions.filter(
-      (s) =>
-        s.day_of_week === targetDay &&
-        s.id !== session.id &&
-        hasTimeOverlap(startTime, endTimeStr, s.start_time, s.end_time)
-    ).length;
-
-    if (slotOccupancy >= 6) {
-      conflicts.push("• Time slot is at capacity (6 sessions maximum)");
-    }
-
-    return { 
-      hasConflict: conflicts.length > 0, 
-      reason: conflicts.join('\n') 
-    };
-  };
+  // Removed checkSlotConflicts function - now using comprehensive validation from sessionUpdateService
 
   // Helper function to check time overlap
   const hasTimeOverlap = (
@@ -436,7 +334,8 @@ export default function SchedulePage() {
       pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
     });
 
-    // Get student info
+    // Simple visual feedback for basic conflicts (capacity check only)
+    // Comprehensive validation happens in handleDrop
     const student = students.find(s => s.id === draggedSession.student_id);
     if (!student) return;
 
@@ -446,90 +345,20 @@ export default function SchedulePage() {
     endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
     const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
-    let quickConflict = false;
+    // Basic capacity check for immediate visual feedback
+    const overlappingCount = sessions.filter(
+      (s) =>
+        s.day_of_week === day &&
+        s.id !== draggedSession.id &&
+        hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
+    ).length;
 
-    // Check against school hours
-    const studentGrade = student.grade_level.trim();
-    const schoolHoursForGrade = getSchoolHoursForDay(day, studentGrade, time);
-
-    // Helper function to convert time string to minutes
-    const timeToMinutes = (timeString: string): number => {
-      const [hours, minutes] = timeString.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
-
-    const schoolStartMinutes = timeToMinutes(schoolHoursForGrade.start);
-    const schoolEndMinutes = timeToMinutes(schoolHoursForGrade.end);
-    const sessionStart = parseInt(hours) * 60 + parseInt(minutes);
-    const sessionEnd = endTime.getHours() * 60 + endTime.getMinutes();
-
-    if (sessionStart < schoolStartMinutes || sessionEnd > schoolEndMinutes) {
-      quickConflict = true;
-    }
-
-    // 2. Check bell schedules (immediate, no async)
-    if (!quickConflict) {
-      const bellConflict = bellSchedules.some((bell) => {
-        const grades = bell.grade_level.split(",").map((g) => g.trim());
-        return (
-          grades.includes(student.grade_level.trim()) &&
-          bell.day_of_week === day &&
-          bell.school_site === student.school_site &&
-          hasTimeOverlap(startTimeStr, endTimeStr, bell.start_time, bell.end_time)
-        );
-      });
-      if (bellConflict) quickConflict = true;
-    }
-
-    // 3. Check special activities (immediate, no async)
-    if (!quickConflict) {
-      const activityConflict = specialActivities.some(
-        (activity) =>
-          activity.teacher_name === student.teacher_name &&
-          activity.day_of_week === day &&
-          activity.school_site === student.school_site &&
-          hasTimeOverlap(startTimeStr, endTimeStr, activity.start_time, activity.end_time)
-      );
-      if (activityConflict) quickConflict = true;
-    }
-
-    // Check for same student conflicts
-    if (!quickConflict) {
-      const studentConflict = sessions.some(
-        (s) =>
-          s.student_id === draggedSession.student_id &&
-          s.day_of_week === day &&
-          s.id !== draggedSession.id &&
-          hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
-      );
-      if (studentConflict) quickConflict = true;
-    }
-
-    // 4. Check slot capacity
-    if (!quickConflict) {
-      const overlappingCount = sessions.filter(
-        (s) =>
-          s.day_of_week === day &&
-          s.id !== draggedSession.id &&
-          hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
-      ).length;
-
-      if (overlappingCount >= 4) {
-        quickConflict = true;
-      }
-    }
-
-    // Set conflict state immediately
+    // Show red indicator only for obvious capacity issues
     const conflictKey = `${day}-${time}`;
-    if (quickConflict) {
+    if (overlappingCount >= 6) {
       setConflictSlots(new Set([conflictKey]));
     } else {
       setConflictSlots(new Set());
-    }
-
-    // Cancel any pending async checks since we're doing it all inline now
-    if (conflictCheckTimeoutRef.current) {
-      clearTimeout(conflictCheckTimeoutRef.current);
     }
   };
 
@@ -561,55 +390,55 @@ export default function SchedulePage() {
     const newEndTime = `${endDate.getHours().toString().padStart(2, "0")}:${endDate.getMinutes().toString().padStart(2, "0")}:00`;
     const newStartTimeWithSeconds = `${newStartTime}:00`;
 
-    // Check for conflicts and gather warning messages
-    const sessionWithStudent = { ...sessionToMove, student };
-    const conflictResult = await checkSlotConflicts(sessionWithStudent, day, newStartTime);
-
-    if (conflictResult.hasConflict) {
-      // Show confirmation dialog with specific conflict warnings
-      const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictResult.reason}\n\nDo you want to proceed anyway?`;
-      
-      if (!confirm(confirmMessage)) {
-        return; // User cancelled, don't move the session
-      }
-      // User confirmed, proceed with the move despite conflicts
-    }
-
-    // Update UI immediately - optimistic update
+    // Apply optimistic update immediately for smooth UX
     setSessions(prev => prev.map(s => 
       s.id === sessionToMove.id 
         ? { ...s, day_of_week: day, start_time: newStartTimeWithSeconds, end_time: newEndTime }
         : s
     ));
 
-    // Do the database update in the background
-    try {
-      const { error } = await supabase
-        .from("schedule_sessions")
-        .update({
-          day_of_week: day,
-          start_time: newStartTimeWithSeconds,
-          end_time: newEndTime,
-        })
-        .eq("id", sessionToMove.id);
+    // Call updateSessionTime which now includes comprehensive validation
+    const result = await sessionUpdateService.updateSessionTime(
+      sessionToMove.id,
+      day,
+      newStartTimeWithSeconds,
+      newEndTime
+    );
 
-      if (error) {
-        // Revert on error
+    // Check for conflicts using the comprehensive validation results
+    if (result.hasConflicts && result.conflicts) {
+      const conflictMessages = result.conflicts.map(c => `- ${c.description}`).join('\n');
+      const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`;
+      
+      if (!confirm(confirmMessage)) {
+        // User cancelled - revert the optimistic update
         setSessions(prev => prev.map(s => 
           s.id === sessionToMove.id 
-            ? sessionToMove
+            ? { ...s, day_of_week: sessionToMove.day_of_week, start_time: sessionToMove.start_time, end_time: sessionToMove.end_time }
             : s
         ));
-        alert("Failed to update session position");
+        
+        // Also revert in the database
+        await sessionUpdateService.updateSessionTime(
+          sessionToMove.id,
+          sessionToMove.day_of_week,
+          sessionToMove.start_time,
+          sessionToMove.end_time
+        );
+        return;
       }
-    } catch (error) {
-      // Revert on error
+      // User confirmed, keep the change
+    }
+
+    if (!result.success) {
+      console.error('Failed to update session:', result.error);
+      // Revert optimistic update on failure
       setSessions(prev => prev.map(s => 
         s.id === sessionToMove.id 
-          ? sessionToMove
+          ? { ...s, day_of_week: sessionToMove.day_of_week, start_time: sessionToMove.start_time, end_time: sessionToMove.end_time }
           : s
       ));
-      console.error("Error updating session:", error);
+      alert('Failed to update session position');
     }
   };
 
