@@ -16,8 +16,26 @@ import { useSchool } from '../../../components/providers/school-context';
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
   
-  // Session tags state (ephemeral, not persisted)
+  // Session tags state (persisted to localStorage)
   const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
+  
+  // Load tags from localStorage on mount
+  useEffect(() => {
+    const savedTags = localStorage.getItem('speddy-session-tags');
+    if (savedTags) {
+      try {
+        const parsedTags = JSON.parse(savedTags);
+        setSessionTags(parsedTags);
+      } catch (error) {
+        console.error('Failed to parse saved tags:', error);
+      }
+    }
+  }, []);
+  
+  // Save tags to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('speddy-session-tags', JSON.stringify(sessionTags));
+  }, [sessionTags]);
   
   // Data management hook
   const {

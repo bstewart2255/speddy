@@ -499,7 +499,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             onSessionClick(session, { x: rect.right + 10, y: rect.top });
                           }}
                         >
-                          <div className="flex flex-col h-full relative">
+                          <div className="flex flex-col h-full relative overflow-hidden">
                             <div className="font-medium text-[10px]">{student?.initials}</div>
                             {height > 40 && (
                               <div className="text-[9px] opacity-90">{student?.minutes_per_session}m</div>
@@ -510,7 +510,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                               </div>
                             )}
                             {sessionTags[session.id]?.trim() && (
-                              <div className="absolute bottom-1 left-1 bg-gray-200 text-gray-700 text-xs px-1.5 py-0.5 rounded-full max-w-full overflow-hidden">
+                              <div className="absolute bottom-0 left-0 bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded-full">
                                 {sessionTags[session.id].trim().length > 4 
                                   ? sessionTags[session.id].trim().substring(0, 4) + '...'
                                   : sessionTags[session.id].trim()}
