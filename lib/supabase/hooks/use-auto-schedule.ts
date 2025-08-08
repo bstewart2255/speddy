@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OptimizedScheduler } from '../../scheduling/optimized-scheduler';
+import { SchedulingDataManager } from '../../scheduling/scheduling-data-manager';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -102,6 +103,9 @@ export function useAutoSchedule() {
         studentsBySchool.get(school)!.push(student);
       });
 
+      // Get data manager instance
+      const dataManager = SchedulingDataManager.getInstance();
+      
       // Schedule each school separately
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
         console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
@@ -114,7 +118,7 @@ export function useAutoSchedule() {
           await dataManager.refresh();
         }
 
-        // Create optimized scheduler instance
+        // Create optimized scheduler instance (uses refactored version by default)
         const scheduler = new OptimizedScheduler(user.id, profile.role);
 
         // Initialize context once for the school
