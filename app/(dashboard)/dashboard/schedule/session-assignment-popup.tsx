@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { createClient } from '@/lib/supabase/client';
 
 interface SessionAssignmentPopupProps {
@@ -24,11 +24,8 @@ export function SessionAssignmentPopup({
   onClose,
   onUpdate,
 }: SessionAssignmentPopupProps) {
-  const [loading, setLoading] = useState(false);
-  const [selectedSeaId, setSelectedSeaId] = useState<string>(
-    session.assigned_to_sea_id || "",
-  );
   const supabase = createClient();
+  const popupRef = useRef<HTMLDivElement>(null);
 
   // Format time for display (12-hour format)
   const formatTime = (time: string): string => {
@@ -39,16 +36,21 @@ export function SessionAssignmentPopup({
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const handleAssignmentChange = async () => {
-    setLoading(true);
+  // Auto-save when assignment changes
+  const handleAssignmentChange = async (newSeaId: string) => {
+    // Skip if value hasn't changed
+    if (newSeaId === (session.assigned_to_sea_id || "")) {
+      return;
+    }
+
     try {
       const updateData: any = {
-        delivered_by: selectedSeaId ? "sea" : "provider",
+        delivered_by: newSeaId ? "sea" : "provider",
       };
 
       // Set or clear the assigned_to_sea_id
-      if (selectedSeaId) {
-        updateData.assigned_to_sea_id = selectedSeaId;
+      if (newSeaId) {
+        updateData.assigned_to_sea_id = newSeaId;
       } else {
         updateData.assigned_to_sea_id = null;
       }
@@ -68,17 +70,36 @@ export function SessionAssignmentPopup({
       }
 
       onUpdate();
-      onClose();
+      // Close popup after successful save
+      setTimeout(() => onClose(), 100);
     } catch (error) {
       console.error("Error updating session:", error);
       alert(error instanceof Error ? error.message : "Failed to update session assignment");
-    } finally {
-      setLoading(false);
     }
   };
 
+  // Handle click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Add delay to prevent immediate closing from the click that opened the popup
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [onClose]);
+
   return (
     <div 
+      ref={popupRef}
       id="session-assignment-popup"
       className="fixed bg-white rounded-lg shadow-lg border p-4 z-50 min-w-64"
       style={{ 
@@ -99,10 +120,9 @@ export function SessionAssignmentPopup({
       <div className="mb-3">
         <p className="text-xs font-medium text-gray-500 mb-2">ASSIGN TO</p>
         <select
-          value={selectedSeaId}
-          onChange={(e) => setSelectedSeaId(e.target.value)}
-          className="w-full p-2 border rounded-md text-sm"
-          disabled={loading}
+          value={session.assigned_to_sea_id || ""}
+          onChange={(e) => handleAssignmentChange(e.target.value)}
+          className="w-full p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Me (Resource Specialist)</option>
           {seaProfiles.map((sea) => (
@@ -113,7 +133,7 @@ export function SessionAssignmentPopup({
         </select>
       </div>
 
-      <div className="mb-3">
+      <div>
         <p className="text-xs font-medium text-gray-500 mb-2">TAG</p>
         <input
           type="text"
@@ -125,28 +145,8 @@ export function SessionAssignmentPopup({
             }));
           }}
           placeholder="Add tag..."
-          className="w-full p-2 border rounded-md text-sm"
-          disabled={loading}
+          className="w-full p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <button
-          onClick={onClose}
-          className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-          disabled={loading}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleAssignmentChange}
-          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-          disabled={
-            loading || selectedSeaId === (session.assigned_to_sea_id || "")
-          }
-        >
-          {loading ? "Saving..." : "Save"}
-        </button>
       </div>
     </div>
   );
