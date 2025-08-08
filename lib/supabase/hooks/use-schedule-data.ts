@@ -146,52 +146,30 @@ export function useScheduleData() {
         .is('session_date', null);
 
       // Fetch SEA profiles if user is Resource Specialist
-      // Include both supervised SEAs and school-shared SEAs
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
       if (profile.role === 'resource') {
-        // Get user's school info for shared SEAs
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('school_district, school_site')
-          .eq('id', user.id)
-          .single();
+        try {
+          // Get SEAs supervised by this provider
+          const { data: supervisedSeas, error } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .eq('supervising_provider_id', user.id)
+            .eq('role', 'sea')
+            .order('full_name', { ascending: true });
 
-        if (userProfile) {
-          // Fetch both supervised and shared SEAs in parallel
-          const [supervisedResult, sharedResult] = await Promise.all([
-            // Supervised SEAs (existing relationship)
-            supabase
-              .from('profiles')
-              .select('id, full_name')
-              .eq('supervising_provider_id', user.id)
-              .eq('role', 'sea')
-              .order('full_name', { ascending: true }),
+          if (error) {
+            console.error('[useScheduleData] Error fetching SEA profiles:', error);
+          } else if (supervisedSeas) {
+            seaProfiles = supervisedSeas.map(sea => ({
+              id: sea.id,
+              full_name: sea.full_name,
+              is_shared: false
+            }));
             
-            // Shared SEAs at the same school
-            supabase
-              .from('profiles')
-              .select('id, full_name, supervising_provider_id')
-              .eq('role', 'sea')
-              .eq('shared_at_school', true)
-              .eq('school_district', userProfile.school_district)
-              .eq('school_site', userProfile.school_site)
-              .neq('supervising_provider_id', user.id) // Exclude ones already supervised by this user
-              .order('full_name', { ascending: true })
-          ]);
-
-          // Combine and deduplicate SEAs
-          const supervisedSeas = (supervisedResult.data || []).map(sea => ({
-            ...sea,
-            is_shared: false
-          }));
-          
-          const sharedSeas = (sharedResult.data || []).map(sea => ({
-            ...sea,
-            is_shared: true
-          }));
-          
-          // Combine lists, supervised SEAs first
-          seaProfiles = [...supervisedSeas, ...sharedSeas];
+            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
+          }
+        } catch (error) {
+          console.error('[useScheduleData] Exception fetching SEA profiles:', error);
         }
       }
 
