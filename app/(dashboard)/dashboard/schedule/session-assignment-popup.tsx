@@ -26,6 +26,16 @@ export function SessionAssignmentPopup({
 }: SessionAssignmentPopupProps) {
   const supabase = createClient();
   const popupRef = useRef<HTMLDivElement>(null);
+  
+  // Log session info when popup opens
+  useEffect(() => {
+    console.log('[SessionPopup] Opened for session:', {
+      sessionId: session.id,
+      studentId: session.student_id,
+      currentTag: sessionTags[session.id] || '(no tag)',
+      allTags: sessionTags
+    });
+  }, []);
 
   // Format time for display (12-hour format)
   const formatTime = (time: string): string => {
@@ -139,10 +149,19 @@ export function SessionAssignmentPopup({
           type="text"
           value={sessionTags[session.id] || ''}
           onChange={(e) => {
-            setSessionTags(prev => ({
-              ...prev,
-              [session.id]: e.target.value
-            }));
+            console.log('[SessionPopup] Setting tag for session:', {
+              sessionId: session.id,
+              newValue: e.target.value,
+              currentTags: sessionTags
+            });
+            setSessionTags(prev => {
+              const newTags = {
+                ...prev,
+                [session.id]: e.target.value
+              };
+              console.log('[SessionPopup] Updated tags state:', newTags);
+              return newTags;
+            });
           }}
           placeholder="Add tag..."
           className="w-full p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

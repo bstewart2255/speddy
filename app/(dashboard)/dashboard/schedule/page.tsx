@@ -21,20 +21,30 @@ export default function SchedulePage() {
   
   // Load tags from localStorage on mount
   useEffect(() => {
+    console.log('[SchedulePage] Loading tags from localStorage...');
     const savedTags = localStorage.getItem('speddy-session-tags');
     if (savedTags) {
       try {
         const parsedTags = JSON.parse(savedTags);
+        console.log('[SchedulePage] Loaded tags from localStorage:', parsedTags);
         setSessionTags(parsedTags);
       } catch (error) {
-        console.error('Failed to parse saved tags:', error);
+        console.error('[SchedulePage] Failed to parse saved tags:', error);
       }
+    } else {
+      console.log('[SchedulePage] No saved tags found in localStorage');
     }
   }, []);
   
   // Save tags to localStorage whenever they change
   useEffect(() => {
+    console.log('[SchedulePage] sessionTags state changed:', sessionTags);
+    console.log('[SchedulePage] Saving to localStorage:', JSON.stringify(sessionTags));
     localStorage.setItem('speddy-session-tags', JSON.stringify(sessionTags));
+    
+    // Verify what was actually saved
+    const verifyStored = localStorage.getItem('speddy-session-tags');
+    console.log('[SchedulePage] Verified localStorage content:', verifyStored);
   }, [sessionTags]);
   
   // Data management hook
