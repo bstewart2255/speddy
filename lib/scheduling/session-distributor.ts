@@ -146,7 +146,7 @@ export class SessionDistributor {
       const secondPassSlots = this.findSlotsWithCapacityLimit(
         remainingSlots,
         sessionsNeeded - result.length,
-        this.config.secondPassLimit
+        this.config.secondPassLimit || 10
       );
       result.push(...secondPassSlots);
     }
