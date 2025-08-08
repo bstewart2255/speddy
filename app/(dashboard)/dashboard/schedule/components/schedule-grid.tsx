@@ -339,12 +339,51 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       />
                     ))}
 
-                    {/* Drop preview - Shows red for conflicts, blue for valid drops */}
+                    {/* Conflict indicators - Show ALL conflicted slots for the student being dragged */}
+                    {draggedSession && (() => {
+                      const student = students.find((s: any) => s.id === draggedSession.student_id);
+                      if (!student) return null;
+                      
+                      const conflictIndicators: JSX.Element[] = [];
+                      const sessionHeight = (student.minutes_per_session * gridConfig.pixelsPerHour) / 60;
+                      
+                      // Check each time slot for conflicts
+                      timeMarkers.forEach((time) => {
+                        const slotKey = `${dayNumber}-${time}`;
+                        
+                        // Skip if this is the drop preview position (we handle that separately)
+                        if (dragPosition?.day === dayNumber && dragPosition?.time === time) {
+                          return;
+                        }
+                        
+                        if (conflictSlots.has(slotKey)) {
+                          const pixelY = timeToPixels(time);
+                          
+                          conflictIndicators.push(
+                            <div
+                              key={`conflict-${dayNumber}-${time}`}
+                              className="absolute bg-red-200 border-2 border-red-500 rounded opacity-50 pointer-events-none"
+                              style={{
+                                top: `${pixelY}px`,
+                                height: `${sessionHeight}px`,
+                                left: '2px',
+                                right: '2px',
+                                zIndex: 5,
+                              }}
+                            />
+                          );
+                        }
+                      });
+                      
+                      return conflictIndicators;
+                    })()}
+
+                    {/* Drop preview - Shows current drag position with red for conflicts, blue for valid drops */}
                     {draggedSession && dragPosition?.day === dayNumber && (
                       <div
-                        className={`absolute w-full rounded opacity-75 pointer-events-none z-10 ${
+                        className={`absolute w-full rounded pointer-events-none z-20 ${
                           conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
-                            ? 'bg-red-200 border-2 border-red-500'  // Conflict state: red visual indicator
+                            ? 'bg-red-300 border-2 border-red-600'  // Conflict state: stronger red for current position
                             : 'bg-blue-200 border-2 border-blue-500' // Normal state: blue visual indicator
                         }`}
                         style={{

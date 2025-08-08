@@ -4,6 +4,7 @@ import React, { useCallback, useEffect } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
+import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-error-boundary';
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
@@ -70,21 +71,102 @@ export default function SchedulePage() {
     clearDragValidation,
   } = useScheduleOperations();
 
-  // Handle drag start
+  // Handle drag start - Pre-calculate conflicts for all slots
   const handleDragStart = useCallback((e: React.DragEvent, session: any) => {
     e.dataTransfer.effectAllowed = 'move';
     const rect = e.currentTarget.getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
+    
+    // Start the drag
     startDrag(session, offsetY);
-  }, [startDrag]);
+    
+    // Find the student being dragged
+    const student = students.find(s => s.id === session.student_id);
+    if (!student) return;
+    
+    // Pre-calculate conflicts for ALL time slots across ALL days for THIS student
+    // We'll do this asynchronously to avoid blocking the UI
+    (async () => {
+      const conflictedSlots = new Set<string>();
+      
+      // Generate all possible time slots (15-minute intervals)
+      const snapInterval = gridConfig.snapInterval;
+      const startHour = gridConfig.startHour;
+      const endHour = gridConfig.endHour;
+      
+      // Create an array of all slots to check
+      const slotsToCheck: Array<{day: number, timeStr: string, slotKey: string}> = [];
+      
+      for (let day = 1; day <= 5; day++) {
+        for (let hour = startHour; hour < endHour; hour++) {
+          for (let minute = 0; minute < 60; minute += snapInterval) {
+            const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            const slotKey = `${day}-${timeStr}`;
+            
+            // Skip the session's current position (it's not a conflict to stay in place)
+            const currentStartTime = session.start_time.substring(0, 5);
+            if (day === session.day_of_week && timeStr === currentStartTime) {
+              continue;
+            }
+            
+            // Skip slots that would put the session end time beyond grid bounds
+            const endMinutes = hour * 60 + minute + student.minutes_per_session;
+            if (endMinutes > endHour * 60) {
+              conflictedSlots.add(slotKey); // Mark as conflicted since it goes beyond bounds
+              continue;
+            }
+            
+            slotsToCheck.push({day, timeStr, slotKey});
+          }
+        }
+      }
+      
+      // Process slots in batches to avoid overwhelming the system
+      const batchSize = 10;
+      for (let i = 0; i < slotsToCheck.length; i += batchSize) {
+        const batch = slotsToCheck.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async ({day, timeStr, slotKey}) => {
+          // Calculate end time for this potential position
+          const [hour, minute] = timeStr.split(':').map(Number);
+          const endMinutes = hour * 60 + minute + student.minutes_per_session;
+          const endHour = Math.floor(endMinutes / 60);
+          const endMinute = endMinutes % 60;
+          const endTimeStr = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}:00`;
+          const startTimeWithSeconds = `${timeStr}:00`;
+          
+          try {
+            const validation = await sessionUpdateService.validateOnly(
+              session.id,
+              day,
+              startTimeWithSeconds,
+              endTimeStr
+            );
+            
+            if (!validation.valid) {
+              conflictedSlots.add(slotKey);
+            }
+          } catch (error) {
+            // If validation fails, consider it conflicted to be safe
+            console.error(`Error validating slot ${slotKey}:`, error);
+            conflictedSlots.add(slotKey);
+          }
+        }));
+        
+        // Update conflicts progressively as we validate
+        updateConflictSlots(new Set(conflictedSlots));
+      }
+    })();
+  }, [startDrag, students, gridConfig, updateConflictSlots]);
 
-  // Handle drag end
+  // Handle drag end - Clear all conflict indicators
   const handleDragEnd = useCallback(() => {
     clearDragValidation();
     endDrag();
-  }, [clearDragValidation, endDrag]);
+    updateConflictSlots(new Set()); // Clear all conflict indicators
+  }, [clearDragValidation, endDrag, updateConflictSlots]);
 
-  // Handle drag over
+  // Handle drag over - Just update position, conflicts already pre-calculated
   const handleDragOver = useCallback((e: React.DragEvent, day: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -102,21 +184,9 @@ export default function SchedulePage() {
       time,
       pixelY: (minutesFromStart * gridConfig.pixelsPerHour) / 60,
     });
-
-    const student = students.find(s => s.id === draggedSession.student_id);
-    if (!student) return;
-
-    // Validate drag position
-    validateDragOver(
-      draggedSession,
-      day,
-      time,
-      student,
-      (hasConflict, conflictKey) => {
-        updateConflictSlots(hasConflict ? new Set([conflictKey]) : new Set());
-      }
-    );
-  }, [draggedSession, dragOffset, gridConfig, students, updateDragPosition, validateDragOver, updateConflictSlots]);
+    
+    // No validation needed here - conflicts are already pre-calculated
+  }, [draggedSession, dragOffset, gridConfig, updateDragPosition]);
 
   // Handle drop
   const handleDrop = useCallback(async (e: React.DragEvent, day: number) => {
