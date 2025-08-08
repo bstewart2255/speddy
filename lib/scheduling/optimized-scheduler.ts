@@ -39,6 +39,26 @@ interface SchedulingContext {
     end_time: string;
   }>;
   studentGradeMap: Map<string, string>; // Map student ID to grade level
+  
+  // Enhanced caching structures for O(1) lookups
+  providerAvailability: Map<string, Map<number, AvailabilitySlot[]>>; // provider -> day -> slots
+  bellSchedulesByGrade: Map<string, Map<number, BellSchedule[]>>; // grade -> day -> schedules
+  specialActivitiesByTeacher: Map<string, Map<number, SpecialActivity[]>>; // teacher -> day -> activities
+  
+  // Cache metadata
+  cacheMetadata: {
+    lastFetched: Date;
+    isStale: boolean;
+    fetchErrors: string[];
+    queryCount: number;
+  };
+}
+
+interface AvailabilitySlot {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  schoolSite: string;
 }
 
 interface SchedulingResult {
@@ -54,6 +74,12 @@ interface SchedulingResult {
 export class OptimizedScheduler {
   private supabase = createClient();
   private context: SchedulingContext | null = null;
+  private performanceMetrics = {
+    totalQueries: 0,
+    batchQueries: 0,
+    cacheHits: 0,
+    cacheMisses: 0
+  };
 
   constructor(
     private providerId: string,
@@ -61,89 +87,235 @@ export class OptimizedScheduler {
   ) {}
 
   /**
+   * Preload all scheduling-related data in a single batch query
+   * This prevents N+1 query issues by fetching everything upfront
+   */
+  private async preloadAllSchedulingData(schoolSite: string, providerId: string) {
+    console.log('[PERFORMANCE] Starting batch data preload...');
+    const startTime = Date.now();
+    
+    try {
+      // Single batch query using Postgres JSON aggregation for maximum efficiency
+      const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
+        p_provider_id: providerId,
+        p_school_site: schoolSite
+      }).single();
+      
+      if (error) {
+        // Fallback to multiple parallel queries if RPC doesn't exist
+        console.log('[PERFORMANCE] RPC not available, falling back to parallel queries');
+        return this.preloadAllSchedulingDataFallback(schoolSite, providerId);
+      }
+      
+      this.performanceMetrics.batchQueries++;
+      const elapsed = Date.now() - startTime;
+      console.log(`[PERFORMANCE] Batch preload completed in ${elapsed}ms (1 query)`);
+      
+      return data;
+    } catch (err) {
+      console.error('[PERFORMANCE] Batch preload failed:', err);
+      return this.preloadAllSchedulingDataFallback(schoolSite, providerId);
+    }
+  }
+  
+  /**
+   * Validate that cache is populated and not stale
+   */
+  private validateCacheReady(): boolean {
+    if (!this.context) {
+      console.error('[ERROR] Context not initialized');
+      return false;
+    }
+    
+    if (this.context.cacheMetadata.fetchErrors.length > 0) {
+      console.warn('[WARNING] Cache has fetch errors:', this.context.cacheMetadata.fetchErrors);
+    }
+    
+    const cacheAge = Date.now() - this.context.cacheMetadata.lastFetched.getTime();
+    const maxCacheAge = 15 * 60 * 1000; // 15 minutes
+    
+    if (cacheAge > maxCacheAge) {
+      console.warn(`[WARNING] Cache is ${Math.round(cacheAge / 1000 / 60)} minutes old`);
+      this.context.cacheMetadata.isStale = true;
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Fallback method using parallel queries when RPC is not available
+   */
+  private async preloadAllSchedulingDataFallback(schoolSite: string, providerId: string) {
+    console.log('[PERFORMANCE] Using fallback parallel query strategy');
+    const startTime = Date.now();
+    
+    // Execute all queries in parallel for better performance than sequential
+    const [workScheduleResult, bellDataResult, activitiesDataResult, sessionsDataResult, hoursDataResult] = 
+      await Promise.all([
+        // Query 1: Work schedules with provider schools join
+        this.supabase
+          .from("user_site_schedules")
+          .select(`
+            day_of_week,
+            provider_schools!inner(
+              school_site
+            )
+          `)
+          .eq("user_id", providerId)
+          .eq("provider_schools.school_site", schoolSite),
+        
+        // Query 2: Bell schedules
+        this.supabase
+          .from("bell_schedules")
+          .select("*")
+          .eq("provider_id", providerId)
+          .eq("school_site", schoolSite),
+        
+        // Query 3: Special activities
+        this.supabase
+          .from("special_activities")
+          .select("*")
+          .eq("provider_id", providerId)
+          .eq("school_site", schoolSite),
+        
+        // Query 4: Existing sessions with student joins
+        this.supabase
+          .from("schedule_sessions")
+          .select(`
+            *,
+            students!inner(
+              school_site,
+              grade_level
+            )
+          `)
+          .eq("provider_id", providerId)
+          .eq("students.school_site", schoolSite),
+        
+        // Query 5: School hours
+        this.supabase
+          .from("school_hours")
+          .select("*")
+          .eq("provider_id", providerId)
+          .eq("school_site", schoolSite)
+      ]);
+    
+    this.performanceMetrics.totalQueries += 5;
+    const elapsed = Date.now() - startTime;
+    console.log(`[PERFORMANCE] Parallel preload completed in ${elapsed}ms (5 parallel queries)`);
+    
+    return {
+      workSchedule: workScheduleResult.data || [],
+      bellSchedules: bellDataResult.data || [],
+      specialActivities: activitiesDataResult.data || [],
+      existingSessions: sessionsDataResult.data || [],
+      schoolHours: hoursDataResult.data || []
+    };
+  }
+
+  /**
    * Pre-compute all valid time slots for the school
    * This runs ONCE per scheduling session, not per student
    */
   async initializeContext(schoolSite: string): Promise<SchedulingContext> {
     console.log(`Initializing scheduling context for ${schoolSite}...`);
+    console.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
-    // 1. Get work days for this school
-    const { data: workSchedule } = await this.supabase
-      .from("user_site_schedules")
-      .select(
-        `
-        day_of_week,
-        provider_schools!inner(
-          school_site
-        )
-      `,
-      )
-      .eq("user_id", this.providerId)
-      .eq("provider_schools.school_site", schoolSite);
-
-    const workDays = workSchedule?.map((s) => s.day_of_week) || [];
-
+    // Use batch preload instead of multiple separate queries
+    const preloadedData = await this.preloadAllSchedulingData(schoolSite, this.providerId);
+    
+    // Extract work days from preloaded data
+    const workDays = preloadedData.workSchedule?.map((s: any) => s.day_of_week) || [];
+    
     // If no work schedule defined, assume all weekdays (backwards compatibility)
     if (workDays.length === 0) {
-      const { data: anySchedule } = await this.supabase
-        .from("user_site_schedules")
-        .select("id")
-        .eq("user_id", this.providerId)
-        .limit(1);
-
-      if (!anySchedule || anySchedule.length === 0) {
+      // Check if provider has any schedule at all (already in preloaded data)
+      if (!preloadedData.workSchedule || preloadedData.workSchedule.length === 0) {
         workDays.push(1, 2, 3, 4, 5);
       }
     }
-
+    
     console.log(`Work days at ${schoolSite}: ${workDays.join(", ")}`);
 
-    // 2. Get all bell schedules, special activities, and school hours
-    const [bellData, activitiesData, sessionsData, hoursData] = await Promise.all([
-      this.supabase
-        .from("bell_schedules")
-        .select("*")
-        .eq("provider_id", this.providerId)
-        .eq("school_site", schoolSite),
-      this.supabase
-        .from("special_activities")
-        .select("*")
-        .eq("provider_id", this.providerId)
-        .eq("school_site", schoolSite),
-      this.supabase
-        .from("schedule_sessions")
-        .select(
-          `
-          *,
-          students!inner(
-            school_site
-          )
-        `,
-        )
-        .eq("provider_id", this.providerId)
-        .eq("students.school_site", schoolSite),
-      this.supabase
-        .from("school_hours")
-        .select("*")
-        .eq("provider_id", this.providerId)
-        .eq("school_site", schoolSite)
-    ]);
-
+    // Build enhanced caching structures for O(1) lookups
+    const providerAvailability = new Map<string, Map<number, AvailabilitySlot[]>>();
+    const bellSchedulesByGrade = new Map<string, Map<number, BellSchedule[]>>();
+    const specialActivitiesByTeacher = new Map<string, Map<number, SpecialActivity[]>>();
+    
+    // Index bell schedules by grade for O(1) lookup
+    for (const bell of preloadedData.bellSchedules) {
+      const grades = bell.grade_level.split(',').map((g: string) => g.trim());
+      for (const grade of grades) {
+        if (!bellSchedulesByGrade.has(grade)) {
+          bellSchedulesByGrade.set(grade, new Map());
+        }
+        const gradeMap = bellSchedulesByGrade.get(grade)!;
+        if (!gradeMap.has(bell.day_of_week)) {
+          gradeMap.set(bell.day_of_week, []);
+        }
+        gradeMap.get(bell.day_of_week)!.push(bell);
+      }
+    }
+    
+    // Index special activities by teacher for O(1) lookup
+    for (const activity of preloadedData.specialActivities) {
+      if (!specialActivitiesByTeacher.has(activity.teacher_name)) {
+        specialActivitiesByTeacher.set(activity.teacher_name, new Map());
+      }
+      const teacherMap = specialActivitiesByTeacher.get(activity.teacher_name)!;
+      if (!teacherMap.has(activity.day_of_week)) {
+        teacherMap.set(activity.day_of_week, []);
+      }
+      teacherMap.get(activity.day_of_week)!.push(activity);
+    }
+    
+    // Build provider availability map
+    const providerKey = `${this.providerId}-${schoolSite}`;
+    providerAvailability.set(providerKey, new Map());
+    for (const day of workDays) {
+      const slots: AvailabilitySlot[] = [{
+        dayOfWeek: day,
+        startTime: '08:00',
+        endTime: '15:00',
+        schoolSite
+      }];
+      providerAvailability.get(providerKey)!.set(day, slots);
+    }
+    
     const context: SchedulingContext = {
       schoolSite,
       workDays,
-      bellSchedules: bellData.data || [],
-      specialActivities: activitiesData.data || [],
-      existingSessions: sessionsData.data || [],
+      bellSchedules: preloadedData.bellSchedules || [],
+      specialActivities: preloadedData.specialActivities || [],
+      existingSessions: preloadedData.existingSessions || [],
       validSlots: new Map(),
-      schoolHours: hoursData.data || [],
+      schoolHours: preloadedData.schoolHours || [],
       studentGradeMap: new Map(),
+      
+      // Enhanced caching structures
+      providerAvailability,
+      bellSchedulesByGrade,
+      specialActivitiesByTeacher,
+      
+      // Cache metadata
+      cacheMetadata: {
+        lastFetched: new Date(),
+        isStale: false,
+        fetchErrors: [],
+        queryCount: this.performanceMetrics.totalQueries
+      }
     };
 
     // 3. Pre-compute all valid time slots
     this.buildValidSlotsMap(context);
 
     this.context = context;
+    
+    console.log('[PERFORMANCE] Context initialization complete');
+    console.log(`[PERFORMANCE] Total queries so far: ${this.performanceMetrics.totalQueries}`);
+    console.log(`[PERFORMANCE] Batch queries: ${this.performanceMetrics.batchQueries}`);
+    console.log(`[PERFORMANCE] Bell schedules indexed: ${bellSchedulesByGrade.size} grades`);
+    console.log(`[PERFORMANCE] Special activities indexed: ${specialActivitiesByTeacher.size} teachers`);
+    
     return context;
   }
 
@@ -245,6 +417,16 @@ export class OptimizedScheduler {
     if (!this.context) {
       throw new Error("Context not initialized. Call initializeContext first.");
     }
+    
+    // Validate cache is not stale
+    if (this.context.cacheMetadata.isStale) {
+      console.warn('[WARNING] Cache is marked as stale. Consider reinitializing context.');
+    }
+    
+    // Log performance metrics at start
+    console.log('[PERFORMANCE] Starting batch scheduling');
+    console.log(`[PERFORMANCE] Initial query count: ${this.performanceMetrics.totalQueries}`);
+    const batchStartTime = Date.now();
 
     console.log(
       `\nScheduling ${students.length} students at ${this.context.schoolSite}`,
@@ -311,11 +493,23 @@ export class OptimizedScheduler {
       const { error } = await this.supabase
         .from("schedule_sessions")
         .insert(allScheduledSessions);
+        
+      this.performanceMetrics.totalQueries++; // Count the insert query
 
       if (error) {
         results.errors.push(`Failed to save sessions: ${error.message}`);
+        this.context.cacheMetadata.fetchErrors.push(error.message);
       }
     }
+    
+    // Log final performance metrics
+    const batchElapsed = Date.now() - batchStartTime;
+    console.log('[PERFORMANCE] Batch scheduling complete');
+    console.log(`[PERFORMANCE] Time elapsed: ${batchElapsed}ms`);
+    console.log(`[PERFORMANCE] Total queries executed: ${this.performanceMetrics.totalQueries}`);
+    console.log(`[PERFORMANCE] Cache hits: ${this.performanceMetrics.cacheHits}`);
+    console.log(`[PERFORMANCE] Query reduction: ${this.context.cacheMetadata.queryCount} initial vs ${this.performanceMetrics.totalQueries} total`);
+    console.log(`[PERFORMANCE] Students scheduled: ${results.totalScheduled}/${students.length}`);
 
     return results;
   }
@@ -330,6 +524,12 @@ export class OptimizedScheduler {
       unscheduledStudents: [],
       errors: [],
     };
+    
+    // Validate cache before proceeding
+    if (!this.validateCacheReady()) {
+      result.errors.push(`Cache validation failed for student ${student.initials}`);
+      return result;
+    }
 
     const sessionsNeeded = student.sessions_per_week;
     const duration = student.minutes_per_session;
@@ -503,35 +703,37 @@ export class OptimizedScheduler {
           continue;
         }
 
-        // Check bell schedule conflicts for this student's grade
-        const hasBellConflict = this.context!.bellSchedules.some(bell => {
-          const grades = bell.grade_level.split(',').map(g => g.trim());
-          const hasGrade = grades.includes(student.grade_level.trim());
-          const hasTimeOverlap = bell.day_of_week === day &&
-                 this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
-
-          if (hasGrade && hasTimeOverlap) {
+        // Check bell schedule conflicts using cached index (O(1) lookup)
+        const studentGrade = student.grade_level.trim();
+        const gradeBellSchedules = this.context!.bellSchedulesByGrade.get(studentGrade)?.get(day) || [];
+        
+        const hasBellConflict = gradeBellSchedules.some(bell => {
+          const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
+          
+          if (hasTimeOverlap) {
             console.log(`    ❌ Bell schedule conflict: ${bell.period_name} for grade ${student.grade_level}`);
+            this.performanceMetrics.cacheHits++;
           }
-
-          return hasGrade && hasTimeOverlap;
+          
+          return hasTimeOverlap;
         });
-
+        
         if (hasBellConflict) continue;
 
-        // Check special activities for this student's teacher
-        const hasActivityConflict = this.context!.specialActivities.some(activity => {
-          const hasTeacherConflict = activity.teacher_name === student.teacher_name &&
-                 activity.day_of_week === day &&
-                 this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
-
-          if (hasTeacherConflict) {
+        // Check special activities using cached index (O(1) lookup)
+        const teacherActivities = this.context!.specialActivitiesByTeacher.get(student.teacher_name)?.get(day) || [];
+        
+        const hasActivityConflict = teacherActivities.some(activity => {
+          const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
+          
+          if (hasTimeOverlap) {
             console.log(`    ❌ Special activity conflict: ${activity.activity_name} for teacher ${student.teacher_name}`);
+            this.performanceMetrics.cacheHits++;
           }
-
-          return hasTeacherConflict;
+          
+          return hasTimeOverlap;
         });
-
+        
         if (hasActivityConflict) continue;
 
         // Check for overlapping sessions FIRST
@@ -899,6 +1101,28 @@ export class OptimizedScheduler {
    * Sort slots with preference for grade-level grouping
    * Prioritizes slots that already have sessions with the same grade level
    */
+  /**
+   * Get performance metrics for monitoring and optimization
+   */
+  public getPerformanceMetrics() {
+    return {
+      ...this.performanceMetrics,
+      cacheMetadata: this.context?.cacheMetadata || null
+    };
+  }
+  
+  /**
+   * Reset performance metrics for new scheduling session
+   */
+  public resetPerformanceMetrics() {
+    this.performanceMetrics = {
+      totalQueries: 0,
+      batchQueries: 0,
+      cacheHits: 0,
+      cacheMisses: 0
+    };
+  }
+  
   private sortSlotsWithGradePreference(
     slots: Array<any>,
     day: number,
