@@ -334,8 +334,7 @@ export default function SchedulePage() {
       pixelY: (minutesFromStart * PIXELS_PER_HOUR) / 60,
     });
 
-    // Simple visual feedback for basic conflicts (capacity check only)
-    // Comprehensive validation happens in handleDrop
+    // Get student info
     const student = students.find(s => s.id === draggedSession.student_id);
     if (!student) return;
 
@@ -345,21 +344,44 @@ export default function SchedulePage() {
     endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
     const endTimeStr = `${endTime.getHours().toString().padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}:00`;
 
-    // Basic capacity check for immediate visual feedback
-    const overlappingCount = sessions.filter(
-      (s) =>
-        s.day_of_week === day &&
-        s.id !== draggedSession.id &&
-        hasTimeOverlap(startTimeStr, endTimeStr, s.start_time, s.end_time)
-    ).length;
-
-    // Show red indicator only for obvious capacity issues
+    // Use comprehensive validation for visual feedback
     const conflictKey = `${day}-${time}`;
-    if (overlappingCount >= 6) {
-      setConflictSlots(new Set([conflictKey]));
-    } else {
-      setConflictSlots(new Set());
+    
+    // Cancel any pending validation checks
+    if (conflictCheckTimeoutRef.current) {
+      clearTimeout(conflictCheckTimeoutRef.current);
     }
+    
+    // Debounce the comprehensive validation to avoid excessive API calls
+    conflictCheckTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Find the full session data from sessions array
+        const fullSession = sessions.find(s => s.id === draggedSession.id);
+        if (!fullSession) {
+          console.error('Could not find full session data for validation');
+          return;
+        }
+        
+        const validation = await sessionUpdateService.validateSessionMove({
+          session: fullSession as any, // Cast to any to handle type mismatch
+          targetDay: day,
+          targetStartTime: startTimeStr,
+          targetEndTime: endTimeStr,
+          studentMinutes: student.minutes_per_session
+        });
+        
+        // Update visual feedback based on comprehensive validation
+        if (!validation.valid) {
+          setConflictSlots(new Set([conflictKey]));
+        } else {
+          setConflictSlots(new Set());
+        }
+      } catch (error) {
+        console.error('Error during drag-over validation:', error);
+        // On error, don't show conflict indicator
+        setConflictSlots(new Set());
+      }
+    }, 150); // 150ms debounce to balance responsiveness with performance
   };
 
   // Handle drop
@@ -690,6 +712,15 @@ export default function SchedulePage() {
       checkUnscheduledSessions();
     }
   }, [loading, currentSchool]); // Add currentSchool as dependency
+
+  // Cleanup effect for conflictCheckTimeoutRef
+  useEffect(() => {
+    return () => {
+      if (conflictCheckTimeoutRef.current) {
+        clearTimeout(conflictCheckTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handle session deletion
   const handleDeleteSession = async (sessionId: string) => {
