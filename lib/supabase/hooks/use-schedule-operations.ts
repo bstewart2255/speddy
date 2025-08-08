@@ -61,27 +61,31 @@ export function useScheduleOperations() {
       const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
       const newStartTimeWithSeconds = `${targetTime}:00`;
 
-      // Update session time with comprehensive validation
-      const result = await sessionUpdateService.updateSessionTime(
+      // First attempt update without forcing (to check for conflicts)
+      let result = await sessionUpdateService.updateSessionTime(
         session.id,
         targetDay,
         newStartTimeWithSeconds,
-        newEndTime
+        newEndTime,
+        false // Don't force update yet
       );
 
-      // Handle conflicts
-      if (result.hasConflicts && result.conflicts) {
+      // If there are conflicts, ask for confirmation
+      if (result.requiresConfirmation && result.conflicts) {
         const conflictMessages = result.conflicts.map(c => `- ${c.description}`).join('\n');
         const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`;
         
-        if (!confirm(confirmMessage)) {
-          // Revert the change
-          await sessionUpdateService.updateSessionTime(
+        if (confirm(confirmMessage)) {
+          // User confirmed, force the update
+          result = await sessionUpdateService.updateSessionTime(
             session.id,
-            session.day_of_week,
-            session.start_time,
-            session.end_time
+            targetDay,
+            newStartTimeWithSeconds,
+            newEndTime,
+            true // Force update after confirmation
           );
+        } else {
+          // User cancelled, return without updating
           return {
             success: false,
             hasConflicts: true,
@@ -202,7 +206,7 @@ export function useScheduleOperations() {
       clearTimeout(conflictCheckTimeoutRef.current);
     }
     
-    // Debounce the validation
+    // Debounce the validation with reduced delay for faster response
     conflictCheckTimeoutRef.current = setTimeout(async () => {
       try {
         const [hours, minutes] = targetTime.split(':');
@@ -211,20 +215,20 @@ export function useScheduleOperations() {
         endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
         const endTimeStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`;
         
-        const validation = await sessionUpdateService.validateSessionMove({
-          session: session as any,
+        // Use validateOnly method for drag preview (no database update)
+        const validation = await sessionUpdateService.validateOnly(
+          session.id,
           targetDay,
-          targetStartTime: startTimeStr,
-          targetEndTime: endTimeStr,
-          studentMinutes: student.minutes_per_session,
-        });
+          startTimeStr,
+          endTimeStr
+        );
         
         onConflictDetected(!validation.valid, conflictKey);
       } catch (error) {
         console.error('Error during drag validation:', error);
         onConflictDetected(false, conflictKey);
       }
-    }, 150); // 150ms debounce
+    }, 50); // Reduced to 50ms for faster visual feedback
   }, []);
 
   // Cleanup function for drag validation

@@ -43,19 +43,59 @@ export class SessionUpdateService {
   private supabase = createClient();
 
   /**
+   * Validates a session move without updating the database
+   * Used for drag preview and pre-drop validation
+   */
+  async validateOnly(
+    sessionId: string,
+    newDay: number,
+    newStartTime: string,
+    newEndTime: string
+  ): Promise<ValidationResult> {
+    try {
+      // Fetch the current session
+      const { data: session, error: sessionError } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionError || !session) {
+        return { valid: false, error: 'Session not found' };
+      }
+
+      // Validate the move
+      const validation = await this.validateSessionMove({
+        session,
+        targetDay: newDay,
+        targetStartTime: newStartTime,
+        targetEndTime: newEndTime,
+        studentMinutes: Math.floor((timeToMinutes(newEndTime) - timeToMinutes(newStartTime)))
+      });
+
+      return validation;
+    } catch (error) {
+      console.error('Validation error:', error);
+      return { valid: false, error: 'Validation failed' };
+    }
+  }
+
+  /**
    * Updates a session's schedule time
    */
   async updateSessionTime(
     sessionId: string,
     newDay: number,
     newStartTime: string,
-    newEndTime: string
+    newEndTime: string,
+    forceUpdate: boolean = false
   ): Promise<{ 
     success: boolean; 
     error?: string; 
     session?: ScheduleSession;
     conflicts?: ValidationResult['conflicts'];
     hasConflicts?: boolean;
+    requiresConfirmation?: boolean;
   }> {
     try {
       // Get current user
@@ -84,13 +124,19 @@ export class SessionUpdateService {
         studentMinutes: Math.floor((timeToMinutes(newEndTime) - timeToMinutes(newStartTime)))
       });
 
-      // Return validation results but allow override (UI handles confirmation)
-      if (!validation.valid && validation.conflicts) {
-        console.log('Session move has conflicts:', validation.conflicts);
-        // Still allow the update but return the conflicts for UI to handle
+      // If validation fails and force update is not set, return without updating
+      if (!validation.valid && validation.conflicts && !forceUpdate) {
+        console.log('Session move has conflicts, requiring confirmation:', validation.conflicts);
+        return {
+          success: false,
+          conflicts: validation.conflicts,
+          hasConflicts: true,
+          requiresConfirmation: true,
+          error: validation.error
+        };
       }
 
-      // Perform the update
+      // Perform the update (either valid or forced)
       const { data: updatedSession, error: updateError } = await this.supabase
         .from('schedule_sessions')
         .update({
