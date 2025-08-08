@@ -113,6 +113,23 @@ export function SessionAssignmentPopup({
         </select>
       </div>
 
+      <div className="mb-3">
+        <p className="text-xs font-medium text-gray-500 mb-2">TAG</p>
+        <input
+          type="text"
+          value={sessionTags[session.id] || ''}
+          onChange={(e) => {
+            setSessionTags(prev => ({
+              ...prev,
+              [session.id]: e.target.value
+            }));
+          }}
+          placeholder="Add tag..."
+          className="w-full p-2 border rounded-md text-sm"
+          disabled={loading}
+        />
+      </div>
+
       <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
