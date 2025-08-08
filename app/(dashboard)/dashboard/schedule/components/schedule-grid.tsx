@@ -509,6 +509,13 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                                 <span className="text-[8px] font-bold text-white">S</span>
                               </div>
                             )}
+                            {sessionTags[session.id]?.trim() && (
+                              <div className="absolute bottom-0 left-0 bg-gray-200 text-gray-700 text-xs px-1 rounded-bl">
+                                {sessionTags[session.id].trim().length > 3 
+                                  ? sessionTags[session.id].trim().substring(0, 3) + '...'
+                                  : sessionTags[session.id].trim()}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
