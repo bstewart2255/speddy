@@ -131,6 +131,7 @@ export default function SchedulePage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [schoolHours, setSchoolHours] = useState<any[]>([]);
   const [showSchoolHours, setShowSchoolHours] = useState(true);
+  const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
   
   
   const latestDragPositionRef = useRef<string | null>(null);
@@ -1392,6 +1393,8 @@ export default function SchedulePage() {
             student={students.find((s) => s.id === selectedSession.student_id)}
             position={popupPosition}
             seaProfiles={seaProfiles}
+            sessionTags={sessionTags}
+            setSessionTags={setSessionTags}
             onClose={() => {
               setSelectedSession(null);
               setPopupPosition(null);

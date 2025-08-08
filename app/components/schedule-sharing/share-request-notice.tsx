@@ -14,7 +14,7 @@ interface ShareRequest {
     full_name: string;
     email: string;
     role: string;
-  };
+  } | null;
 }
 
 interface ShareRequestNoticeProps {
@@ -144,7 +144,7 @@ export function ShareRequestNotice({ schoolId, schoolName }: ShareRequestNoticeP
               <Users className="h-5 w-5 text-blue-600 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-900">
-                  {request.profiles.full_name} wants to share their Bell Schedule and Special Activities entries with you.
+                  {request.profiles?.full_name || 'A team member'} wants to share their Bell Schedule and Special Activities entries with you.
                 </p>
                 <p className="text-xs text-gray-600 mt-1">
                   Do you want to import them?
