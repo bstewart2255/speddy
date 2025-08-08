@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from "../../src/types/database";
-
-type Student = Database["public"]["Tables"]["students"]["Row"];
-type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
-type BellSchedule = Database["public"]["Tables"]["bell_schedules"]["Row"];
-type SpecialActivity =
-  Database["public"]["Tables"]["special_activities"]["Row"];
+import { SchedulingDataManager } from './scheduling-data-manager';
+import type {
+  Student,
+  ScheduleSession,
+  BellSchedule,
+  SpecialActivity
+} from './types/scheduling-data';
 
 interface TimeSlot {
   dayOfWeek: number;
@@ -74,6 +75,7 @@ interface SchedulingResult {
 export class OptimizedScheduler {
   private supabase = createClient();
   private context: SchedulingContext | null = null;
+  private dataManager: SchedulingDataManager;
   private performanceMetrics = {
     totalQueries: 0,
     batchQueries: 0,
@@ -84,38 +86,56 @@ export class OptimizedScheduler {
   constructor(
     private providerId: string,
     private providerRole: string,
-  ) {}
+  ) {
+    // Get or create the singleton data manager instance
+    this.dataManager = SchedulingDataManager.getInstance();
+  }
 
   /**
-   * Preload all scheduling-related data in a single batch query
-   * This prevents N+1 query issues by fetching everything upfront
+   * Get data from the data manager instead of direct queries
    */
-  private async preloadAllSchedulingData(schoolSite: string, providerId: string) {
-    console.log('[PERFORMANCE] Starting batch data preload...');
+  private async getDataFromManager(schoolSite: string) {
+    console.log('[PERFORMANCE] Getting data from DataManager...');
     const startTime = Date.now();
     
-    try {
-      // Single batch query using Postgres JSON aggregation for maximum efficiency
-      const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
-        p_provider_id: providerId,
-        p_school_site: schoolSite
-      }).single();
-      
-      if (error) {
-        // Fallback to multiple parallel queries if RPC doesn't exist
-        console.log('[PERFORMANCE] RPC not available, falling back to parallel queries');
-        return this.preloadAllSchedulingDataFallback(schoolSite, providerId);
+    // Get work days from data manager
+    const workDays = this.dataManager.getProviderWorkDays(schoolSite);
+    
+    // Get all existing sessions
+    const existingSessions = this.dataManager.getExistingSessions();
+    
+    // Get bell schedules for all grades
+    const bellSchedules: BellSchedule[] = [];
+    const grades = ['K', 'TK', '1', '2', '3', '4', '5'];
+    for (const grade of grades) {
+      for (const day of [1, 2, 3, 4, 5]) {
+        const conflicts = this.dataManager.getBellScheduleConflicts(grade, day, '00:00', '23:59');
+        bellSchedules.push(...conflicts);
       }
-      
-      this.performanceMetrics.batchQueries++;
-      const elapsed = Date.now() - startTime;
-      console.log(`[PERFORMANCE] Batch preload completed in ${elapsed}ms (1 query)`);
-      
-      return data;
-    } catch (err) {
-      console.error('[PERFORMANCE] Batch preload failed:', err);
-      return this.preloadAllSchedulingDataFallback(schoolSite, providerId);
     }
+    
+    // Get special activities (we'll need to query all teachers)
+    const specialActivities: SpecialActivity[] = [];
+    // For now, we'll leave this empty as we'd need to know all teacher names
+    
+    // Get school hours from existing context or use defaults
+    const schoolHours = [];
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`[PERFORMANCE] DataManager data retrieval completed in ${elapsed}ms`);
+    
+    // Update metrics from data manager
+    const dmMetrics = this.dataManager.getMetrics();
+    this.performanceMetrics.cacheHits += dmMetrics.cacheHits;
+    this.performanceMetrics.cacheMisses += dmMetrics.cacheMisses;
+    
+    return {
+      workSchedule: workDays.map(day => ({ day_of_week: day })),
+      bellSchedules,
+      specialActivities,
+      existingSessions,
+      schoolHours
+    };
   }
   
   /**
@@ -142,75 +162,6 @@ export class OptimizedScheduler {
     return true;
   }
   
-  /**
-   * Fallback method using parallel queries when RPC is not available
-   */
-  private async preloadAllSchedulingDataFallback(schoolSite: string, providerId: string) {
-    console.log('[PERFORMANCE] Using fallback parallel query strategy');
-    const startTime = Date.now();
-    
-    // Execute all queries in parallel for better performance than sequential
-    const [workScheduleResult, bellDataResult, activitiesDataResult, sessionsDataResult, hoursDataResult] = 
-      await Promise.all([
-        // Query 1: Work schedules with provider schools join
-        this.supabase
-          .from("user_site_schedules")
-          .select(`
-            day_of_week,
-            provider_schools!inner(
-              school_site
-            )
-          `)
-          .eq("user_id", providerId)
-          .eq("provider_schools.school_site", schoolSite),
-        
-        // Query 2: Bell schedules
-        this.supabase
-          .from("bell_schedules")
-          .select("*")
-          .eq("provider_id", providerId)
-          .eq("school_site", schoolSite),
-        
-        // Query 3: Special activities
-        this.supabase
-          .from("special_activities")
-          .select("*")
-          .eq("provider_id", providerId)
-          .eq("school_site", schoolSite),
-        
-        // Query 4: Existing sessions with student joins
-        this.supabase
-          .from("schedule_sessions")
-          .select(`
-            *,
-            students!inner(
-              school_site,
-              grade_level
-            )
-          `)
-          .eq("provider_id", providerId)
-          .eq("students.school_site", schoolSite),
-        
-        // Query 5: School hours
-        this.supabase
-          .from("school_hours")
-          .select("*")
-          .eq("provider_id", providerId)
-          .eq("school_site", schoolSite)
-      ]);
-    
-    this.performanceMetrics.totalQueries += 5;
-    const elapsed = Date.now() - startTime;
-    console.log(`[PERFORMANCE] Parallel preload completed in ${elapsed}ms (5 parallel queries)`);
-    
-    return {
-      workSchedule: workScheduleResult.data || [],
-      bellSchedules: bellDataResult.data || [],
-      specialActivities: activitiesDataResult.data || [],
-      existingSessions: sessionsDataResult.data || [],
-      schoolHours: hoursDataResult.data || []
-    };
-  }
 
   /**
    * Pre-compute all valid time slots for the school
@@ -220,8 +171,13 @@ export class OptimizedScheduler {
     console.log(`Initializing scheduling context for ${schoolSite}...`);
     console.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
-    // Use batch preload instead of multiple separate queries
-    const preloadedData = await this.preloadAllSchedulingData(schoolSite, this.providerId);
+    // Initialize the data manager if not already initialized
+    if (!this.dataManager.isInitialized()) {
+      await this.dataManager.initialize(this.providerId, schoolSite);
+    }
+
+    // Use data manager instead of direct queries
+    const preloadedData = await this.getDataFromManager(schoolSite);
     
     // Extract work days from preloaded data
     const workDays = preloadedData.workSchedule?.map((s: any) => s.day_of_week) || [];

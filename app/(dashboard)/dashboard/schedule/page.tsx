@@ -12,6 +12,7 @@ import { useSchool } from '../../../components/providers/school-context';
 import { ScheduleSessions } from "../../../components/schedule/schedule-sessions";
 import { getSchoolHours } from '../../../../lib/supabase/queries/school-hours';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
+import { useSchedulingData } from '../../../../lib/supabase/hooks/use-scheduling-data';
 
 interface Student {
   id: string;
@@ -86,6 +87,21 @@ export default function SchedulePage() {
   );
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Use the new scheduling data hook
+  const {
+    getExistingSessions,
+    getBellScheduleConflicts,
+    getSpecialActivityConflicts,
+    isSlotAvailable,
+    getSlotCapacity,
+    refresh: refreshSchedulingData,
+    isInitialized: isDataManagerInitialized,
+    isLoading: isDataManagerLoading,
+    error: dataManagerError,
+    isCacheStale,
+    metrics
+  } = useSchedulingData();
   const [highlightedStudentId, setHighlightedStudentId] = useState<
     string | null
   >(null);
@@ -652,6 +668,24 @@ export default function SchedulePage() {
       fetchData();
     }
   }, [currentSchool]); // Add currentSchool as a dependency
+  
+  // Sync data from data manager when it's initialized
+  useEffect(() => {
+    if (isDataManagerInitialized && !isDataManagerLoading) {
+      // Update sessions from data manager
+      const cachedSessions = getExistingSessions();
+      if (cachedSessions.length > 0) {
+        setSessions(cachedSessions);
+        console.log('[DataManager] Loaded', cachedSessions.length, 'sessions from cache');
+        console.log('[DataManager] Metrics:', metrics);
+      }
+      
+      // Refresh if cache is stale
+      if (isCacheStale) {
+        refreshSchedulingData().catch(console.error);
+      }
+    }
+  }, [isDataManagerInitialized, isDataManagerLoading]);
 
   // Add this after the existing useEffect
   const [unscheduledCount, setUnscheduledCount] = useState(0);

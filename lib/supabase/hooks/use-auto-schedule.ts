@@ -72,7 +72,8 @@ export function useAutoSchedule() {
     const results = {
       totalScheduled: 0,
       totalFailed: 0,
-      errors: [] as string[]
+      errors: [] as string[],
+      lastSchool: null as string | null
     };
 
     try {
@@ -104,6 +105,14 @@ export function useAutoSchedule() {
       // Schedule each school separately
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
         console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
+
+        // Ensure data manager is initialized for this school
+        if (!dataManager.isInitialized() || schoolSite !== results.lastSchool) {
+          await dataManager.initialize(user.id, schoolSite);
+          results.lastSchool = schoolSite;
+        } else if (dataManager.isCacheStale()) {
+          await dataManager.refresh();
+        }
 
         // Create optimized scheduler instance
         const scheduler = new OptimizedScheduler(user.id, profile.role);
