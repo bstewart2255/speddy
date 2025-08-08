@@ -344,7 +344,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       const student = students.find((s: any) => s.id === draggedSession.student_id);
                       if (!student) return null;
                       
-                      const conflictIndicators: JSX.Element[] = [];
+                      const conflictIndicators: React.ReactElement[] = [];
                       const sessionHeight = (student.minutes_per_session * gridConfig.pixelsPerHour) / 60;
                       
                       // Check each time slot for conflicts

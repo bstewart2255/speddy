@@ -4,12 +4,12 @@ import React, { Profiler, ProfilerOnRenderCallback, useState } from 'react';
 
 interface ProfileMetrics {
   id: string;
-  phase: 'mount' | 'update';
+  phase: 'mount' | 'update' | 'nested-update';
   actualDuration: number;
   baseDuration: number;
   startTime: number;
   commitTime: number;
-  interactions: Set<any>;
+  interactions?: Set<any>;
 }
 
 interface PerformanceProfilerProps {
@@ -25,14 +25,13 @@ export function PerformanceProfiler({
 }: PerformanceProfilerProps) {
   const [profileData, setProfileData] = useState<ProfileMetrics[]>([]);
 
-  const onRender: ProfilerOnRenderCallback = (
-    id,
-    phase,
-    actualDuration,
-    baseDuration,
-    startTime,
-    commitTime,
-    interactions
+  const onRender = (
+    id: string,
+    phase: 'mount' | 'update' | 'nested-update',
+    actualDuration: number,
+    baseDuration: number,
+    startTime: number,
+    commitTime: number
   ) => {
     const metrics: ProfileMetrics = {
       id,
@@ -40,8 +39,7 @@ export function PerformanceProfiler({
       actualDuration,
       baseDuration,
       startTime,
-      commitTime,
-      interactions,
+      commitTime
     };
 
     setProfileData(prev => [...prev, metrics].slice(-50)); // Keep last 50 measurements

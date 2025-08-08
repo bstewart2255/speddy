@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
-import { fastConflictDetectionService } from '../../../../lib/services/fast-conflict-detection-service';
+import { optimizedConflictDetectionService } from '../../../../lib/services/optimized-conflict-detection-service';
 import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-error-boundary';
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
@@ -74,14 +74,52 @@ export default function SchedulePage() {
     clearDragValidation,
   } = useScheduleOperations();
 
-  // Add ref to track current drag calculation
-  const conflictCalculationRef = useRef<AbortController | null>(null);
+  // Add ref to track if data has been cached
+  const dataCachedRef = useRef(false);
+  const [cacheReady, setCacheReady] = useState(false);
   
   // Feature flag to switch between old and new conflict detection
-  const USE_FAST_CONFLICT_DETECTION = true;
+  const USE_OPTIMIZED_CONFLICT_DETECTION = true;
   
-  // Handle drag start - Pre-calculate conflicts using FAST method
+  // Cache all data when it loads (happens once per page load)
+  useEffect(() => {
+    if (!loading && students.length > 0 && !dataCachedRef.current) {
+      console.log('[Schedule] Caching all schedule data for conflict detection');
+      optimizedConflictDetectionService.loadAndCacheData({
+        bellSchedules,
+        specialActivities,
+        existingSessions: sessions,
+        schoolHours: schoolHours.map(sh => ({
+          grade_level: sh.grade_level,
+          start_time: sh.start_time,
+          end_time: sh.end_time
+        })),
+        students: students.map(s => ({
+          id: s.id,
+          grade_level: s.grade_level,
+          teacher_name: s.teacher_name,
+          minutes_per_session: s.minutes_per_session
+        }))
+      }).then(() => {
+        dataCachedRef.current = true;
+        setCacheReady(true);
+        console.log('[Schedule] Data cached successfully');
+      }).catch(error => {
+        console.error('[Schedule] Failed to cache data:', error);
+        setCacheReady(false);
+      });
+    }
+  }, [loading, students, bellSchedules, specialActivities, sessions, schoolHours]);
+
+  // Handle drag start - Pre-calculate conflicts using OPTIMIZED method
   const handleDragStart = useCallback((e: React.DragEvent, session: any) => {
+    // Prevent drag if cache is not ready
+    if (!cacheReady && USE_OPTIMIZED_CONFLICT_DETECTION) {
+      e.preventDefault();
+      console.warn('[DragStart] Cache not ready, preventing drag');
+      return;
+    }
+    
     e.dataTransfer.effectAllowed = 'move';
     const rect = e.currentTarget.getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
@@ -93,60 +131,60 @@ export default function SchedulePage() {
     const student = students.find(s => s.id === session.student_id);
     if (!student) return;
     
-    if (USE_FAST_CONFLICT_DETECTION) {
-      // NEW FAST METHOD
-      // Abort any previous calculation
-      if (conflictCalculationRef.current) {
-        conflictCalculationRef.current.abort();
+    if (USE_OPTIMIZED_CONFLICT_DETECTION) {
+      // NEW OPTIMIZED METHOD - INSTANT, NO ASYNC
+      console.time('[DragStart] Optimized conflict calculation');
+      
+      // Check if data is cached
+      const cacheStatus = optimizedConflictDetectionService.getCacheStatus();
+      if (!cacheStatus.isLoaded) {
+        console.warn('[DragStart] Cache not loaded, loading now...');
+        // Fallback: load data now (should rarely happen)
+        optimizedConflictDetectionService.loadAndCacheData({
+          bellSchedules,
+          specialActivities,
+          existingSessions: sessions,
+          schoolHours: schoolHours.map(sh => ({
+            grade_level: sh.grade_level,
+            start_time: sh.start_time,
+            end_time: sh.end_time
+          })),
+          students: students.map(s => ({
+            id: s.id,
+            grade_level: s.grade_level,
+            teacher_name: s.teacher_name,
+            minutes_per_session: s.minutes_per_session
+          }))
+        }).then(() => {
+          // Calculate conflicts after loading
+          const conflicts = optimizedConflictDetectionService.calculateConflictsInstant(
+            session.id,
+            student.id,
+            student.grade_level,
+            student.teacher_name,
+            student.minutes_per_session
+          );
+          updateConflictSlots(conflicts);
+          console.timeEnd('[DragStart] Optimized conflict calculation');
+          console.log('[DragStart] Conflicts found:', conflicts.size);
+        });
+        return;
       }
-      conflictCalculationRef.current = new AbortController();
       
-      // Get current day for priority
-      const currentDay = new Date().getDay() || 7; // Convert Sunday (0) to 7
-      const weekDay = currentDay <= 5 ? currentDay : 1; // Default to Monday if weekend
-      
-      // Use FAST conflict detection service
-      console.time('[DragStart] Total conflict calculation');
-      
-      // Prepare conflict check data
-      const conflictCheckData = {
-        bellSchedules,
-        specialActivities,
-        existingSessions: sessions,
-        studentData: {
-          id: student.id,
-          grade_level: student.grade_level,
-          teacher_name: student.teacher_name,
-          minutes_per_session: student.minutes_per_session
-        },
-        providerId: currentUserId || '',
-        schoolHours: schoolHours.map(sh => ({
-          grade_level: sh.grade_level,
-          start_time: sh.start_time,
-          end_time: sh.end_time
-        }))
-      };
-      
-      // Calculate conflicts progressively
-      fastConflictDetectionService.calculateConflictsProgressive(
-        conflictCheckData,
+      // Calculate conflicts instantly (no async, no await)
+      const conflicts = optimizedConflictDetectionService.calculateConflictsInstant(
         session.id,
-        weekDay,
-        (conflicts) => {
-          // Update UI progressively as conflicts are found
-          if (!conflictCalculationRef.current?.signal.aborted) {
-            updateConflictSlots(conflicts);
-          }
-        }
-      ).then((finalConflicts) => {
-        console.timeEnd('[DragStart] Total conflict calculation');
-        console.log('[DragStart] Final conflicts count:', finalConflicts.size);
-        if (!conflictCalculationRef.current?.signal.aborted) {
-          updateConflictSlots(finalConflicts);
-        }
-      }).catch((error) => {
-        console.error('[DragStart] Error calculating conflicts:', error);
-      });
+        student.id,
+        student.grade_level,
+        student.teacher_name,
+        student.minutes_per_session
+      );
+      
+      // Update UI immediately
+      updateConflictSlots(conflicts);
+      
+      console.timeEnd('[DragStart] Optimized conflict calculation');
+      console.log('[DragStart] Conflicts found:', conflicts.size, 'Cache age:', cacheStatus.dataAge + 'ms');
     } else {
       // OLD METHOD (for comparison)
       console.warn('Using OLD conflict detection method - this is slow!');
@@ -218,20 +256,14 @@ export default function SchedulePage() {
         console.log('[DragStart] OLD Final conflicts count:', conflictedSlots.size);
       })();
     }
-  }, [startDrag, students, bellSchedules, specialActivities, sessions, currentUserId, schoolHours, gridConfig, updateConflictSlots, sessionUpdateService]);
+  }, [startDrag, students, bellSchedules, specialActivities, sessions, currentUserId, schoolHours, gridConfig, updateConflictSlots, cacheReady]);
 
   // Handle drag end - Clear all conflict indicators
   const handleDragEnd = useCallback(() => {
-    // Abort any ongoing conflict calculation
-    if (conflictCalculationRef.current) {
-      conflictCalculationRef.current.abort();
-      conflictCalculationRef.current = null;
-    }
-    
     clearDragValidation();
     endDrag();
     updateConflictSlots(new Set()); // Clear all conflict indicators
-    fastConflictDetectionService.clearCache(); // Clear cached data
+    // Note: We don't clear the cache here - it persists for the entire page session
   }, [clearDragValidation, endDrag, updateConflictSlots]);
 
   // Handle drag over - Just update position, conflicts already pre-calculated
@@ -343,6 +375,7 @@ export default function SchedulePage() {
   useEffect(() => {
     return () => {
       clearDragValidation();
+      optimizedConflictDetectionService.clearCache();
     };
   }, [clearDragValidation]);
 
@@ -402,6 +435,14 @@ export default function SchedulePage() {
             onHighlightClear={clearHighlight}
             onSchoolHoursToggle={setShowSchoolHours}
           />
+
+          {/* Cache Status Indicator - Only show when loading */}
+          {USE_OPTIMIZED_CONFLICT_DETECTION && !cacheReady && (
+            <div className="mb-2 p-2 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-yellow-800">
+              <span className="inline-block animate-pulse">⏳</span> Preparing conflict detection... 
+              Sessions may not be draggable until ready.
+            </div>
+          )}
 
           <ScheduleGrid
             sessions={sessions}
