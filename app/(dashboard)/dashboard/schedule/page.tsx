@@ -16,28 +16,40 @@ import { useSchool } from '../../../components/providers/school-context';
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
   
-  // Session tags state (persisted to localStorage)
-  const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
-  
-  // Load tags from localStorage on mount
-  useEffect(() => {
-    console.log('[SchedulePage] Loading tags from localStorage...');
+  // Session tags state (persisted to localStorage) - Initialize with localStorage data
+  const [sessionTags, setSessionTags] = useState<Record<string, string>>(() => {
+    console.log('[SchedulePage] Initializing sessionTags from localStorage...');
+    if (typeof window === 'undefined') {
+      return {};
+    }
+    
     const savedTags = localStorage.getItem('speddy-session-tags');
     if (savedTags) {
       try {
         const parsedTags = JSON.parse(savedTags);
-        console.log('[SchedulePage] Loaded tags from localStorage:', parsedTags);
-        setSessionTags(parsedTags);
+        console.log('[SchedulePage] Initialized with tags from localStorage:', parsedTags);
+        return parsedTags;
       } catch (error) {
         console.error('[SchedulePage] Failed to parse saved tags:', error);
+        return {};
       }
     } else {
-      console.log('[SchedulePage] No saved tags found in localStorage');
+      console.log('[SchedulePage] No saved tags found, initializing empty');
+      return {};
     }
-  }, []);
+  });
   
-  // Save tags to localStorage whenever they change
+  // Track if this is the first render to avoid saving on mount
+  const isFirstRender = useRef(true);
+  
+  // Save tags to localStorage whenever they change (but not on first render)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      console.log('[SchedulePage] First render, skipping localStorage save');
+      return;
+    }
+    
     console.log('[SchedulePage] sessionTags state changed:', sessionTags);
     console.log('[SchedulePage] Saving to localStorage:', JSON.stringify(sessionTags));
     localStorage.setItem('speddy-session-tags', JSON.stringify(sessionTags));
