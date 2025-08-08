@@ -339,13 +339,13 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       />
                     ))}
 
-                    {/* Drop preview */}
+                    {/* Drop preview - Shows red for conflicts, blue for valid drops */}
                     {draggedSession && dragPosition?.day === dayNumber && (
                       <div
                         className={`absolute w-full rounded opacity-75 pointer-events-none z-10 ${
                           conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
-                            ? 'bg-red-100 border-2 border-red-400'
-                            : 'bg-blue-100 border-2 border-blue-400'
+                            ? 'bg-red-200 border-2 border-red-500'  // Conflict state: red visual indicator
+                            : 'bg-blue-200 border-2 border-blue-500' // Normal state: blue visual indicator
                         }`}
                         style={{
                           top: `${dragPosition.pixelY}px`,
