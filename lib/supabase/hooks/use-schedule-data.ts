@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../app/components/providers/school-context';
 import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
-import { useSchedulingData } from './use-scheduling-data';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -47,20 +46,6 @@ export function useScheduleData() {
     error: null,
   });
 
-  // Use existing scheduling data hook
-  const {
-    getExistingSessions,
-    getBellScheduleConflicts,
-    getSpecialActivityConflicts,
-    isSlotAvailable,
-    getSlotCapacity,
-    refresh: refreshSchedulingData,
-    isInitialized: isDataManagerInitialized,
-    isLoading: isDataManagerLoading,
-    error: dataManagerError,
-    isCacheStale,
-    metrics
-  } = useSchedulingData();
 
   // Fetch all schedule data
   const fetchData = useCallback(async () => {
@@ -85,9 +70,6 @@ export function useScheduleData() {
 
       if (!profile) throw new Error('Profile not found');
 
-      // Build optimized queries
-      const queryStrategy = currentSchool.is_migrated ? 'optimized' : 'legacy';
-      console.log(`[useScheduleData] Using ${queryStrategy} query strategy`);
 
       // Parallel fetch all data
       const [
@@ -158,18 +140,15 @@ export function useScheduleData() {
             .order('full_name', { ascending: true });
 
           if (error) {
-            console.error('[useScheduleData] Error fetching SEA profiles:', error);
-          } else if (supervisedSeas) {
+            } else if (supervisedSeas) {
             seaProfiles = supervisedSeas.map(sea => ({
               id: sea.id,
               full_name: sea.full_name,
               is_shared: false
             }));
             
-            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
         } catch (error) {
-          console.error('[useScheduleData] Exception fetching SEA profiles:', error);
         }
       }
 
@@ -187,16 +166,8 @@ export function useScheduleData() {
         error: null,
       });
 
-      console.log('[useScheduleData] Data loaded:', {
-        students: studentsResult.data?.length || 0,
-        sessions: sessionsResult.data?.length || 0,
-        bellSchedules: bellResult.data?.length || 0,
-        specialActivities: activitiesResult.data?.length || 0,
-        unscheduledCount: unscheduledCountData,
-      });
 
     } catch (error) {
-      console.error('[useScheduleData] Error fetching data:', error);
       setData(prev => ({
         ...prev,
         loading: false,
@@ -212,23 +183,6 @@ export function useScheduleData() {
     }
   }, [currentSchool, fetchData]);
 
-  // Sync with data manager when initialized
-  useEffect(() => {
-    if (isDataManagerInitialized && !isDataManagerLoading) {
-      const cachedSessions = getExistingSessions();
-      if (cachedSessions.length > 0) {
-        setData(prev => ({
-          ...prev,
-          sessions: cachedSessions as ScheduleSession[],
-        }));
-        console.log('[useScheduleData] Synced with data manager:', cachedSessions.length);
-      }
-      
-      if (isCacheStale) {
-        refreshSchedulingData().catch(console.error);
-      }
-    }
-  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, refreshSchedulingData]);
 
   // Real-time subscription
   useEffect(() => {
@@ -244,8 +198,7 @@ export function useScheduleData() {
           table: 'schedule_sessions',
           filter: `provider_id=eq.${data.currentUserId}`,
         },
-        (payload) => {
-          console.log('[useScheduleData] Real-time update:', payload);
+        () => {
           fetchData();
         }
       )
@@ -269,10 +222,7 @@ export function useScheduleData() {
   // Refresh functions
   const refreshSessions = useCallback(async () => {
     await fetchData();
-    if (isDataManagerInitialized) {
-      await refreshSchedulingData();
-    }
-  }, [fetchData, isDataManagerInitialized, refreshSchedulingData]);
+  }, [fetchData]);
 
   const refreshUnscheduledCount = useCallback(async () => {
     if (!currentSchool) return;
@@ -281,26 +231,12 @@ export function useScheduleData() {
       const count = await getUnscheduledSessionsCount(currentSchool.school_site);
       setData(prev => ({ ...prev, unscheduledCount: count }));
     } catch (error) {
-      console.error('[useScheduleData] Error refreshing unscheduled count:', error);
     }
   }, [currentSchool]);
 
   return {
     // Data
     ...data,
-    
-    // Data manager functions
-    getBellScheduleConflicts,
-    getSpecialActivityConflicts,
-    isSlotAvailable,
-    getSlotCapacity,
-    
-    // State
-    isDataManagerInitialized,
-    isDataManagerLoading,
-    dataManagerError,
-    isCacheStale,
-    metrics,
     
     // Actions
     refreshData: fetchData,

@@ -126,7 +126,6 @@ export class SessionUpdateService {
 
       // If validation fails and force update is not set, return without updating
       if (!validation.valid && validation.conflicts && !forceUpdate) {
-        console.log('Session move has conflicts, requiring confirmation:', validation.conflicts);
         return {
           success: false,
           conflicts: validation.conflicts,
@@ -150,15 +149,8 @@ export class SessionUpdateService {
         .single();
 
       if (updateError) {
-        console.error('Database update error:', updateError);
         return { success: false, error: 'Failed to update session' };
       }
-
-      console.log('Session updated successfully:', sessionId, {
-        newDay,
-        newStartTime,
-        newEndTime
-      });
 
       // The database update will automatically trigger real-time events
       // No need to manually broadcast
@@ -177,7 +169,6 @@ export class SessionUpdateService {
       
       return result;
     } catch (error) {
-      console.error('Session update error:', error);
       return { success: false, error: 'An unexpected error occurred' };
     }
   }

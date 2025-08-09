@@ -86,10 +86,10 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   onPopupClose,
   onPopupUpdate,
 }: ScheduleGridProps) {
-  // NEW: Merge conflicting start slots into red "bands" per day
+  // Simple conflict indicators - just highlight conflicted slots
   const conflictBandsByDay = useMemo(() => {
     const map = new Map<number, Array<{ topPx: number; heightPx: number }>>();
-    if (!draggedSession) return map;
+    if (!draggedSession || conflictSlots.size === 0) return map;
 
     const student = students.find((s: any) => s.id === draggedSession.student_id);
     if (!student) return map;
@@ -97,9 +97,11 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     const durationMin = Number(student.minutes_per_session) || 0;
     if (durationMin <= 0) return map;
 
-    const intervalsByDay = new Map<number, Array<{ startMin: number; endMin: number }>>();
+    // Simple conflict indicators for each conflicted slot
+    const gridStart = gridConfig.startHour * 60;
+    const pxPerMin = gridConfig.pixelsPerHour / 60;
 
-    // Keys are of form `${day}-${HH:MM}`
+    // Group conflicts by day and create simple bands
     for (const key of conflictSlots) {
       const [dayStr, timeStr] = key.split('-');
       const dayNum = Number(dayStr);
@@ -109,45 +111,11 @@ export const ScheduleGrid = memo(function ScheduleGrid({
       const startMin = h * 60 + m;
       const endMin = startMin + durationMin;
 
-      if (!intervalsByDay.has(dayNum)) intervalsByDay.set(dayNum, []);
-      intervalsByDay.get(dayNum)!.push({ startMin, endMin });
-    }
-
-    const gridStart = gridConfig.startHour * 60;
-    const gridEnd = gridConfig.endHour * 60;
-    const pxPerMin = gridConfig.pixelsPerHour / 60;
-
-    for (let day = 1; day <= 5; day++) {
-      const intervals = (intervalsByDay.get(day) || []).sort((a, b) => a.startMin - b.startMin);
-      if (intervals.length === 0) continue;
-
-      // Merge overlapping/touching intervals
-      const merged: Array<{ startMin: number; endMin: number }> = [];
-      let current = { ...intervals[0] };
-      for (let i = 1; i < intervals.length; i++) {
-        const next = intervals[i];
-        if (next.startMin <= current.endMin) {
-          current.endMin = Math.max(current.endMin, next.endMin);
-        } else {
-          merged.push(current);
-          current = { ...next };
-        }
-      }
-      merged.push(current);
-
-      // Clamp and convert to pixel bands
-      const bands: Array<{ topPx: number; heightPx: number }> = [];
-      for (const { startMin, endMin } of merged) {
-        const clampedStart = Math.max(gridStart, startMin);
-        const clampedEnd = Math.min(gridEnd, endMin);
-        if (clampedEnd <= clampedStart) continue;
-
-        const topPx = (clampedStart - gridStart) * pxPerMin;
-        const heightPx = (clampedEnd - clampedStart) * pxPerMin;
-        bands.push({ topPx, heightPx });
-      }
-
-      if (bands.length > 0) map.set(day, bands);
+      if (!map.has(dayNum)) map.set(dayNum, []);
+      
+      const topPx = (startMin - gridStart) * pxPerMin;
+      const heightPx = durationMin * pxPerMin;
+      map.get(dayNum)!.push({ topPx, heightPx });
     }
 
     return map;

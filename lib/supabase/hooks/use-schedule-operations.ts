@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '../../services/session-update-service';
 import type { Database } from '../../../src/types/database';
@@ -18,7 +18,6 @@ interface DragOperationResult {
 export function useScheduleOperations() {
   const supabase = createClient<Database>();
   const [isUpdating, setIsUpdating] = useState(false);
-  const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Validate session move
   const validateSessionMove = useCallback(async (
@@ -39,7 +38,6 @@ export function useScheduleOperations() {
       
       return validation;
     } catch (error) {
-      console.error('Error validating session move:', error);
       return { valid: false, conflicts: [] };
     }
   }, []);
@@ -101,7 +99,6 @@ export function useScheduleOperations() {
         error: result.error,
       };
     } catch (error) {
-      console.error('Error handling session drop:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to update session',
@@ -130,7 +127,6 @@ export function useScheduleOperations() {
 
       return true;
     } catch (error) {
-      console.error('Error deleting session:', error);
       alert('Failed to delete session');
       return false;
     }
@@ -153,13 +149,11 @@ export function useScheduleOperations() {
         .eq('id', sessionId);
 
       if (error) {
-        console.error('Error updating session assignment:', error);
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Error updating session assignment:', error);
       return false;
     }
   }, [supabase]);
@@ -180,63 +174,24 @@ export function useScheduleOperations() {
       const hasErrors = results.some(r => r.error);
 
       if (hasErrors) {
-        console.error('Some session updates failed:', results.filter(r => r.error));
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Error in batch update:', error);
       return false;
     }
   }, [supabase]);
 
-  // Validate drag over with debouncing
-  const validateDragOver = useCallback((
-    session: ScheduleSession,
-    targetDay: number,
-    targetTime: string,
-    student: Student,
-    onConflictDetected: (hasConflict: boolean, conflictKey: string) => void
-  ) => {
-    const conflictKey = `${targetDay}-${targetTime}`;
-    
-    // Cancel any pending validation
-    if (conflictCheckTimeoutRef.current) {
-      clearTimeout(conflictCheckTimeoutRef.current);
-    }
-    
-    // Debounce the validation with reduced delay for faster response
-    conflictCheckTimeoutRef.current = setTimeout(async () => {
-      try {
-        const [hours, minutes] = targetTime.split(':');
-        const startTimeStr = `${hours}:${minutes}:00`;
-        const endTime = new Date();
-        endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
-        const endTimeStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`;
-        
-        // Use validateOnly method for drag preview (no database update)
-        const validation = await sessionUpdateService.validateOnly(
-          session.id,
-          targetDay,
-          startTimeStr,
-          endTimeStr
-        );
-        
-        onConflictDetected(!validation.valid, conflictKey);
-      } catch (error) {
-        console.error('Error during drag validation:', error);
-        onConflictDetected(false, conflictKey);
-      }
-    }, 50); // Reduced to 50ms for faster visual feedback
+  // Simplified drag validation - no longer needed with pre-calculated conflicts
+  const validateDragOver = useCallback(() => {
+    // This function is kept for compatibility but no longer performs validation
+    // Conflicts are now pre-calculated when drag starts
   }, []);
 
-  // Cleanup function for drag validation
+  // Cleanup function for compatibility
   const clearDragValidation = useCallback(() => {
-    if (conflictCheckTimeoutRef.current) {
-      clearTimeout(conflictCheckTimeoutRef.current);
-      conflictCheckTimeoutRef.current = null;
-    }
+    // No cleanup needed anymore
   }, []);
 
   return {
