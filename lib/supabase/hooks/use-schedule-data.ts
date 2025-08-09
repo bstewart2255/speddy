@@ -87,7 +87,6 @@ export function useScheduleData() {
 
       // Build optimized queries
       const queryStrategy = currentSchool.is_migrated ? 'optimized' : 'legacy';
-      console.log(`[useScheduleData] Using ${queryStrategy} query strategy`);
 
       // Parallel fetch all data
       const [
@@ -165,8 +164,6 @@ export function useScheduleData() {
               full_name: sea.full_name,
               is_shared: false
             }));
-            
-            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
         } catch (error) {
           console.error('[useScheduleData] Exception fetching SEA profiles:', error);
@@ -187,13 +184,6 @@ export function useScheduleData() {
         error: null,
       });
 
-      console.log('[useScheduleData] Data loaded:', {
-        students: studentsResult.data?.length || 0,
-        sessions: sessionsResult.data?.length || 0,
-        bellSchedules: bellResult.data?.length || 0,
-        specialActivities: activitiesResult.data?.length || 0,
-        unscheduledCount: unscheduledCountData,
-      });
 
     } catch (error) {
       console.error('[useScheduleData] Error fetching data:', error);
@@ -221,7 +211,6 @@ export function useScheduleData() {
           ...prev,
           sessions: cachedSessions as ScheduleSession[],
         }));
-        console.log('[useScheduleData] Synced with data manager:', cachedSessions.length);
       }
       
       if (isCacheStale) {
@@ -245,7 +234,6 @@ export function useScheduleData() {
           filter: `provider_id=eq.${data.currentUserId}`,
         },
         (payload) => {
-          console.log('[useScheduleData] Real-time update:', payload);
           fetchData();
         }
       )
