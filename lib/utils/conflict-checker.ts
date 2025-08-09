@@ -48,8 +48,13 @@ export async function checkSlotConflict(
     
     return { hasConflict: false };
   } catch (error) {
-    // On error, assume conflict to be safe
-    return { hasConflict: true, reason: 'Unable to validate' };
+    // Log the error for debugging
+    console.error('Error in checkSlotConflict:', error);
+    // If error has a message, include it in the reason
+    const reason = error && typeof error === 'object' && 'message' in error
+      ? `Unable to validate: ${(error as Error).message}`
+      : 'Unable to validate';
+    return { hasConflict: true, reason };
   }
 }
 
