@@ -6,7 +6,7 @@ import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
 
-export function useAutoSchedule() {
+export function useAutoSchedule(debug: boolean = false) {
   const [isScheduling, setIsScheduling] = useState(false);
   const [schedulingErrors, setSchedulingErrors] = useState<string[]>([]);
   const supabase = createClient<Database>();
@@ -29,7 +29,7 @@ export function useAutoSchedule() {
       if (!profile) throw new Error('Profile not found');
 
       // Create optimized scheduler instance
-      const scheduler = new OptimizedScheduler(user.id, profile.role);
+      const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
 
       // Initialize context for the student's school
       if (!student.school_site) {
@@ -54,7 +54,7 @@ export function useAutoSchedule() {
 
       return result;
     } catch (error) {
-      console.error('Auto-scheduling error:', error);
+      if (debug) console.error('Auto-scheduling error:', error);
       setSchedulingErrors([error.message]);
       return {
         success: false,
@@ -108,7 +108,9 @@ export function useAutoSchedule() {
       
       // Schedule each school separately
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
-        console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
+        if (debug) {
+          console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
+        }
 
         // Ensure data manager is initialized for this school
         if (!dataManager.isInitialized() || schoolSite !== results.lastSchool) {
@@ -119,7 +121,7 @@ export function useAutoSchedule() {
         }
 
         // Create optimized scheduler instance (uses refactored version by default)
-        const scheduler = new OptimizedScheduler(user.id, profile.role);
+        const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
 
         // Initialize context once for the school
         await scheduler.initializeContext(schoolSite);
@@ -135,7 +137,7 @@ export function useAutoSchedule() {
       setSchedulingErrors(results.errors);
       return results;
     } catch (error) {
-      console.error('Batch scheduling error:', error);
+      if (debug) console.error('Batch scheduling error:', error);
       setSchedulingErrors([error.message]);
       return {
         totalScheduled: 0,

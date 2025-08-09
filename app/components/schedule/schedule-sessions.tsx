@@ -17,7 +17,9 @@ interface ScheduleSessionsProps {
 
 export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const { scheduleBatchStudents } = useAutoSchedule();
+  // Set debug to true only in development mode
+  const debug = process.env.NODE_ENV === 'development';
+  const { scheduleBatchStudents } = useAutoSchedule(debug);
   const supabase = createClient();
 
   const handleScheduleSessions = async () => {
@@ -84,26 +86,27 @@ Continue?`;
         alert('All students are fully scheduled!');
         return;
       }
-      // Detailed logging to understand scheduling issues
-      console.log('=== SCHEDULING ANALYSIS ===');
-      console.log(`Total students at ${currentSchool?.school_site}: ${allStudents.length}`);
-      console.log(`Total existing sessions: ${existingSessions?.length || 0}`);
+      // Detailed logging to understand scheduling issues (only in debug mode)
+      if (debug) {
+        console.log('=== SCHEDULING ANALYSIS ===');
+        console.log(`Total students at ${currentSchool?.school_site}: ${allStudents.length}`);
+        console.log(`Total existing sessions: ${existingSessions?.length || 0}`);
 
-      // Log each student's status
-      allStudents.forEach(student => {
-        const currentSessions = sessionCounts[student.id] || 0;
-        const needed = student.sessions_per_week - currentSessions;
-        console.log(`Student ${student.initials}: ${currentSessions}/${student.sessions_per_week} sessions scheduled (${needed} needed)`);
-      });
+        // Log each student's status
+        allStudents.forEach(student => {
+          const currentSessions = sessionCounts[student.id] || 0;
+          const needed = student.sessions_per_week - currentSessions;
+          console.log(`Student ${student.initials}: ${currentSessions}/${student.sessions_per_week} sessions scheduled (${needed} needed)`);
+        });
 
-      console.log(`Students needing scheduling: ${studentsNeedingScheduling.length}`);
-      console.log('Students to schedule:', studentsNeedingScheduling.map(s => ({
-        initials: s.initials,
-        sessionsNeeded: s.sessions_per_week - (sessionCounts[s.id] || 0)
-      })));
-      console.log('=========================');
-
-      console.log(`Found ${studentsNeedingScheduling.length} students needing scheduling`);
+        console.log(`Students needing scheduling: ${studentsNeedingScheduling.length}`);
+        console.log('Students to schedule:', studentsNeedingScheduling.map(s => ({
+          initials: s.initials,
+          sessionsNeeded: s.sessions_per_week - (sessionCounts[s.id] || 0)
+        })));
+        console.log('=========================');
+        console.log(`Found ${studentsNeedingScheduling.length} students needing scheduling`);
+      }
 
       // Save snapshot before making changes
       await saveScheduleSnapshot(user.id);
@@ -123,7 +126,7 @@ Continue?`;
         onComplete();
       }
     } catch (error) {
-      console.error('Error scheduling sessions:', error);
+      if (debug) console.error('Error scheduling sessions:', error);
       alert('Failed to schedule sessions: ' + error.message);
     } finally {
       setIsProcessing(false);

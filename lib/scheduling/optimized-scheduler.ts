@@ -76,6 +76,7 @@ export class OptimizedScheduler {
   private supabase = createClient();
   private context: SchedulingContext | null = null;
   private dataManager: SchedulingDataManager;
+  private debug: boolean;
   private performanceMetrics = {
     totalQueries: 0,
     batchQueries: 0,
@@ -86,16 +87,27 @@ export class OptimizedScheduler {
   constructor(
     private providerId: string,
     private providerRole: string,
+    debug: boolean = false
   ) {
     // Get or create the singleton data manager instance
     this.dataManager = SchedulingDataManager.getInstance();
+    this.debug = debug;
+  }
+
+  /**
+   * Conditional logging helper
+   */
+  private log(...args: any[]): void {
+    if (this.debug) {
+      console.log(...args);
+    }
   }
 
   /**
    * Get data from the data manager instead of direct queries
    */
   private async getDataFromManager(schoolSite: string) {
-    console.log('[PERFORMANCE] Getting data from DataManager...');
+    this.log('[PERFORMANCE] Getting data from DataManager...');
     const startTime = Date.now();
     
     // Get work days from data manager
@@ -122,7 +134,7 @@ export class OptimizedScheduler {
     const schoolHours = [];
     
     const elapsed = Date.now() - startTime;
-    console.log(`[PERFORMANCE] DataManager data retrieval completed in ${elapsed}ms`);
+    this.log(`[PERFORMANCE] DataManager data retrieval completed in ${elapsed}ms`);
     
     // Update metrics from data manager
     const dmMetrics = this.dataManager.getMetrics();
@@ -143,19 +155,19 @@ export class OptimizedScheduler {
    */
   private validateCacheReady(): boolean {
     if (!this.context) {
-      console.error('[ERROR] Context not initialized');
+      if (this.debug) console.error('[ERROR] Context not initialized');
       return false;
     }
     
     if (this.context.cacheMetadata.fetchErrors.length > 0) {
-      console.warn('[WARNING] Cache has fetch errors:', this.context.cacheMetadata.fetchErrors);
+      if (this.debug) console.warn('[WARNING] Cache has fetch errors:', this.context.cacheMetadata.fetchErrors);
     }
     
     const cacheAge = Date.now() - this.context.cacheMetadata.lastFetched.getTime();
     const maxCacheAge = 15 * 60 * 1000; // 15 minutes
     
     if (cacheAge > maxCacheAge) {
-      console.warn(`[WARNING] Cache is ${Math.round(cacheAge / 1000 / 60)} minutes old`);
+      if (this.debug) console.warn(`[WARNING] Cache is ${Math.round(cacheAge / 1000 / 60)} minutes old`);
       this.context.cacheMetadata.isStale = true;
     }
     
@@ -168,8 +180,8 @@ export class OptimizedScheduler {
    * This runs ONCE per scheduling session, not per student
    */
   async initializeContext(schoolSite: string): Promise<SchedulingContext> {
-    console.log(`Initializing scheduling context for ${schoolSite}...`);
-    console.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
+    this.log(`Initializing scheduling context for ${schoolSite}...`);
+    this.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
     // Initialize the data manager if not already initialized
     if (!this.dataManager.isInitialized()) {
@@ -190,7 +202,7 @@ export class OptimizedScheduler {
       }
     }
     
-    console.log(`Work days at ${schoolSite}: ${workDays.join(", ")}`);
+    this.log(`Work days at ${schoolSite}: ${workDays.join(", ")}`);
 
     // Build enhanced caching structures for O(1) lookups
     const providerAvailability = new Map<string, Map<number, AvailabilitySlot[]>>();
@@ -266,11 +278,11 @@ export class OptimizedScheduler {
 
     this.context = context;
     
-    console.log('[PERFORMANCE] Context initialization complete');
-    console.log(`[PERFORMANCE] Total queries so far: ${this.performanceMetrics.totalQueries}`);
-    console.log(`[PERFORMANCE] Batch queries: ${this.performanceMetrics.batchQueries}`);
-    console.log(`[PERFORMANCE] Bell schedules indexed: ${bellSchedulesByGrade.size} grades`);
-    console.log(`[PERFORMANCE] Special activities indexed: ${specialActivitiesByTeacher.size} teachers`);
+    this.log('[PERFORMANCE] Context initialization complete');
+    this.log(`[PERFORMANCE] Total queries so far: ${this.performanceMetrics.totalQueries}`);
+    this.log(`[PERFORMANCE] Batch queries: ${this.performanceMetrics.batchQueries}`);
+    this.log(`[PERFORMANCE] Bell schedules indexed: ${bellSchedulesByGrade.size} grades`);
+    this.log(`[PERFORMANCE] Special activities indexed: ${specialActivitiesByTeacher.size} teachers`);
     
     return context;
   }
@@ -279,7 +291,7 @@ export class OptimizedScheduler {
    * Build a map of all possible time slots and their availability
    */
   private buildValidSlotsMap(context: SchedulingContext) {
-    console.log("Building valid slots map...");
+    this.log("Building valid slots map...");
 
     const timeSlots = this.generateTimeSlots(8, 14); // Default hours for slot generation
     let totalSlots = 0;
@@ -314,7 +326,7 @@ export class OptimizedScheduler {
       }
     }
 
-    console.log(
+    this.log(
       `Valid slots: ${validSlots}/${totalSlots} (${Math.round((validSlots / totalSlots) * 100)}% available)`,
     );
   }
@@ -376,18 +388,18 @@ export class OptimizedScheduler {
     
     // Validate cache is not stale
     if (this.context.cacheMetadata.isStale) {
-      console.warn('[WARNING] Cache is marked as stale. Consider reinitializing context.');
+      if (this.debug) console.warn('[WARNING] Cache is marked as stale. Consider reinitializing context.');
     }
     
     // Log performance metrics at start
-    console.log('[PERFORMANCE] Starting batch scheduling');
-    console.log(`[PERFORMANCE] Initial query count: ${this.performanceMetrics.totalQueries}`);
+    this.log('[PERFORMANCE] Starting batch scheduling');
+    this.log(`[PERFORMANCE] Initial query count: ${this.performanceMetrics.totalQueries}`);
     const batchStartTime = Date.now();
 
-    console.log(
+    this.log(
       `\nScheduling ${students.length} students at ${this.context.schoolSite}`,
     );
-    console.log(`Available days: ${this.context.workDays.join(", ")}`);
+    this.log(`Available days: ${this.context.workDays.join(", ")}`);
 
     const results = {
       totalScheduled: 0,
@@ -414,10 +426,10 @@ export class OptimizedScheduler {
       return b.sessions_per_week - a.sessions_per_week;
     });
 
-    console.log('Student scheduling order:');
+    this.log('Student scheduling order:');
     sortedStudents.forEach(s => {
       const totalMinutes = s.sessions_per_week * s.minutes_per_session;
-      console.log(`  ${s.initials}: ${s.sessions_per_week} sessions × ${s.minutes_per_session}min = ${totalMinutes} total minutes`);
+      this.log(`  ${s.initials}: ${s.sessions_per_week} sessions × ${s.minutes_per_session}min = ${totalMinutes} total minutes`);
     });
 
     const allScheduledSessions: Omit<
@@ -426,7 +438,7 @@ export class OptimizedScheduler {
     >[] = [];
 
     for (const student of sortedStudents) {
-      console.log(
+      this.log(
         `\nScheduling ${student.initials}: ${student.sessions_per_week} sessions x ${student.minutes_per_session}min`,
       );
 
@@ -460,12 +472,12 @@ export class OptimizedScheduler {
     
     // Log final performance metrics
     const batchElapsed = Date.now() - batchStartTime;
-    console.log('[PERFORMANCE] Batch scheduling complete');
-    console.log(`[PERFORMANCE] Time elapsed: ${batchElapsed}ms`);
-    console.log(`[PERFORMANCE] Total queries executed: ${this.performanceMetrics.totalQueries}`);
-    console.log(`[PERFORMANCE] Cache hits: ${this.performanceMetrics.cacheHits}`);
-    console.log(`[PERFORMANCE] Query reduction: ${this.context.cacheMetadata.queryCount} initial vs ${this.performanceMetrics.totalQueries} total`);
-    console.log(`[PERFORMANCE] Students scheduled: ${results.totalScheduled}/${students.length}`);
+    this.log('[PERFORMANCE] Batch scheduling complete');
+    this.log(`[PERFORMANCE] Time elapsed: ${batchElapsed}ms`);
+    this.log(`[PERFORMANCE] Total queries executed: ${this.performanceMetrics.totalQueries}`);
+    this.log(`[PERFORMANCE] Cache hits: ${this.performanceMetrics.cacheHits}`);
+    this.log(`[PERFORMANCE] Query reduction: ${this.context.cacheMetadata.queryCount} initial vs ${this.performanceMetrics.totalQueries} total`);
+    this.log(`[PERFORMANCE] Students scheduled: ${results.totalScheduled}/${students.length}`);
 
     return results;
   }
@@ -490,11 +502,11 @@ export class OptimizedScheduler {
     const sessionsNeeded = student.sessions_per_week;
     const duration = student.minutes_per_session;
 
-    console.log(
+    this.log(
       `\nScheduling ${student.initials}: ${sessionsNeeded} sessions x ${duration}min`,
     );
-    console.log("Context available?", !!this.context);
-    console.log("Valid slots in context:", this.context?.validSlots.size);
+    this.log("Context available?", !!this.context);
+    this.log("Valid slots in context:", this.context?.validSlots.size);
 
     // Find available slots for this student
     const availableSlots = this.findStudentSlots(
@@ -530,7 +542,7 @@ export class OptimizedScheduler {
     }
 
     result.success = result.scheduledSessions.length === sessionsNeeded;
-    console.log(
+    this.log(
       `Scheduled ${result.scheduledSessions.length}/${sessionsNeeded} sessions for ${student.initials}`,
     );
 
@@ -545,7 +557,7 @@ export class OptimizedScheduler {
     duration: number,
     slotsNeeded: number
   ): TimeSlot[] {
-    console.log(`\nFinding slots for ${student.initials} (Grade ${student.grade_level})`);
+    this.log(`\nFinding slots for ${student.initials} (Grade ${student.grade_level})`);
 
     const foundSlots: TimeSlot[] = [];
 
@@ -553,7 +565,7 @@ export class OptimizedScheduler {
     const validWorkDays = this.context!.workDays.filter(day => day >= 1 && day <= 5);
 
     if (validWorkDays.length === 0) {
-      console.log(`❌ No valid work days found for ${this.context!.schoolSite}`);
+      this.log(`❌ No valid work days found for ${this.context!.schoolSite}`);
       return [];
     }
 
@@ -564,18 +576,18 @@ export class OptimizedScheduler {
       return aCount - bCount;
     });
 
-    console.log(`Work days from context: ${this.context!.workDays}`);
-    console.log(`Valid work days: ${validWorkDays.join(', ')}`);
-    console.log(`Sorted days for distribution: ${sortedDays.join(', ')}`);
+    this.log(`Work days from context: ${this.context!.workDays}`);
+    this.log(`Valid work days: ${validWorkDays.join(', ')}`);
+    this.log(`Sorted days for distribution: ${sortedDays.join(', ')}`);
 
     // TWO-PASS DISTRIBUTION STRATEGY
     // First pass: Try to distribute with max 3 sessions per slot
-    console.log("\n=== FIRST PASS: Distribute with max 3 sessions per slot ===");
+    this.log("\n=== FIRST PASS: Distribute with max 3 sessions per slot ===");
     foundSlots.push(...this.findSlotsWithCapacityLimit(student, duration, slotsNeeded, sortedDays, 3));
 
     // Second pass: If we need more slots, allow up to 6 sessions per slot
     if (foundSlots.length < slotsNeeded) {
-      console.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 6 per slot ===`);
+      this.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 6 per slot ===`);
       const additionalSlots = this.findSlotsWithCapacityLimit(
         student, 
         duration, 
@@ -587,7 +599,7 @@ export class OptimizedScheduler {
       foundSlots.push(...additionalSlots);
     }
 
-    console.log(`\n=== RESULT: Found ${foundSlots.length}/${slotsNeeded} slots for ${student.initials} ===`);
+    this.log(`\n=== RESULT: Found ${foundSlots.length}/${slotsNeeded} slots for ${student.initials} ===`);
     return foundSlots;
   }
 
@@ -608,7 +620,7 @@ export class OptimizedScheduler {
     for (const day of sortedDays) {
       if (foundSlots.length >= slotsNeeded) break;
 
-      console.log(`\nChecking day ${day}, foundSlots.length: ${foundSlots.length}, slotsNeeded: ${slotsNeeded}`);
+      this.log(`\nChecking day ${day}, foundSlots.length: ${foundSlots.length}, slotsNeeded: ${slotsNeeded}`);
 
       // Get all valid slots for this day
       const daySlots = Array.from(this.context!.validSlots.entries())
@@ -618,7 +630,7 @@ export class OptimizedScheduler {
       // Sort slots with grade-level grouping preference
       const sortedDaySlots = this.sortSlotsWithGradePreference(daySlots, day, student.grade_level.trim());
 
-      console.log(`Day ${day}: Found ${sortedDaySlots.length} potential slots`);
+      this.log(`Day ${day}: Found ${sortedDaySlots.length} potential slots`);
 
       // Check how many sessions we already have scheduled for this student on this day
       const sessionsOnThisDay = [...existingFoundSlots, ...foundSlots].filter(s => s.dayOfWeek === day).length;
@@ -630,7 +642,7 @@ export class OptimizedScheduler {
         const slotsStillNeeded = slotsNeeded - foundSlots.length;
 
         if (remainingDaysToCheck > 0 && slotsStillNeeded > 1) {
-          console.log(`  Day ${day}: Already have ${sessionsOnThisDay} sessions scheduled. Moving to next day for better distribution.`);
+          this.log(`  Day ${day}: Already have ${sessionsOnThisDay} sessions scheduled. Moving to next day for better distribution.`);
           continue; // Skip to next day
         }
       }
@@ -638,14 +650,14 @@ export class OptimizedScheduler {
       // Check each slot for student-specific constraints
       for (const slotInfo of sortedDaySlots) {
         if (foundSlots.length >= slotsNeeded) {
-          console.log(`Found enough slots, breaking from slot loop`);
+          this.log(`Found enough slots, breaking from slot loop`);
           break;  // This breaks from the slot loop, not the day loop
         }
 
         const slot = slotInfo;
         const endTime = this.addMinutesToTime(slot.startTime, duration);
 
-        console.log(`  Checking slot ${slot.startTime}-${endTime}`);
+        this.log(`  Checking slot ${slot.startTime}-${endTime}`);
 
         // Check if session extends beyond school hours for this grade
         const schoolHours = this.getSchoolHoursForGrade(day, student.grade_level.trim(), slot.startTime);
@@ -655,7 +667,7 @@ export class OptimizedScheduler {
         const sessionEndMinutes = this.timeToMinutes(endTime);
 
         if (sessionStartMinutes < schoolStartMinutes || sessionEndMinutes > schoolEndMinutes) {
-          console.log(`    ❌ Session outside school hours (${schoolHours.start} - ${schoolHours.end})`);
+          this.log(`    ❌ Session outside school hours (${schoolHours.start} - ${schoolHours.end})`);
           continue;
         }
 
@@ -667,7 +679,7 @@ export class OptimizedScheduler {
           const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, bell.start_time, bell.end_time);
           
           if (hasTimeOverlap) {
-            console.log(`    ❌ Bell schedule conflict: ${bell.period_name} for grade ${student.grade_level}`);
+            this.log(`    ❌ Bell schedule conflict: ${bell.period_name} for grade ${student.grade_level}`);
             this.performanceMetrics.cacheHits++;
           }
           
@@ -683,7 +695,7 @@ export class OptimizedScheduler {
           const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
           
           if (hasTimeOverlap) {
-            console.log(`    ❌ Special activity conflict: ${activity.activity_name} for teacher ${student.teacher_name}`);
+            this.log(`    ❌ Special activity conflict: ${activity.activity_name} for teacher ${student.teacher_name}`);
             this.performanceMetrics.cacheHits++;
           }
           
@@ -694,19 +706,19 @@ export class OptimizedScheduler {
 
         // Check for overlapping sessions FIRST
         if (!this.validateNoOverlap(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
-          console.log(`    ❌ Session overlap detected`);
+          this.log(`    ❌ Session overlap detected`);
           continue;
         }
 
         // Check consecutive session rules (max 60 minutes without break)
         if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
-          console.log(`    ❌ Consecutive session rule violation`);
+          this.log(`    ❌ Consecutive session rule violation`);
           continue;
         }
 
         // Check break requirements (30-minute break between non-consecutive sessions) - PASSING foundSlots
         if (!this.validateBreakRequirements(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
-          console.log(`    ❌ Break requirement violation`);
+          this.log(`    ❌ Break requirement violation`);
           continue;
         }
 
@@ -718,12 +730,12 @@ export class OptimizedScheduler {
         );
         
         if (overlappingSessions.length >= maxCapacity) {
-          console.log(`    ❌ Slot at capacity (${overlappingSessions.length}/${maxCapacity} sessions)`);
+          this.log(`    ❌ Slot at capacity (${overlappingSessions.length}/${maxCapacity} sessions)`);
           continue;
         }
 
         // Valid slot found!
-        console.log(`    ✅ Valid slot found! Current capacity: ${overlappingSessions.length}/${maxCapacity}`);
+        this.log(`    ✅ Valid slot found! Current capacity: ${overlappingSessions.length}/${maxCapacity}`);
         foundSlots.push({
           ...slot,
           endTime
@@ -731,7 +743,7 @@ export class OptimizedScheduler {
       }
     }
 
-    console.log(`Found ${foundSlots.length} slots for ${student.initials}`);
+    this.log(`Found ${foundSlots.length} slots for ${student.initials}`);
     return foundSlots;
   }
 
@@ -755,7 +767,7 @@ export class OptimizedScheduler {
         const existingEnd = this.timeToMinutes(existing.end_time);
 
         if (!(newEnd <= existingStart || newStart >= existingEnd)) {
-          console.log(`    ❌ Overlaps with existing session ${existing.start_time}-${existing.end_time}`);
+          this.log(`    ❌ Overlaps with existing session ${existing.start_time}-${existing.end_time}`);
           return false;
         }
       }
@@ -768,7 +780,7 @@ export class OptimizedScheduler {
         const slotEnd = this.timeToMinutes(slot.endTime);
 
         if (!(newEnd <= slotStart || newStart >= slotEnd)) {
-          console.log(`    ❌ Overlaps with found slot ${slot.startTime}-${slot.endTime}`);
+          this.log(`    ❌ Overlaps with found slot ${slot.startTime}-${slot.endTime}`);
           return false;
         }
       }
@@ -822,11 +834,11 @@ export class OptimizedScheduler {
     allStudentSessionsOnDay.sort((a, b) => a.startMinutes - b.startMinutes);
 
     // ADD LOGGING HERE:
-    console.log(`    Checking consecutive sessions for ${student.initials} on day ${day}:`);
+    this.log(`    Checking consecutive sessions for ${student.initials} on day ${day}:`);
     allStudentSessionsOnDay.forEach((session, i) => {
       const startTime = `${Math.floor(session.startMinutes / 60).toString().padStart(2, '0')}:${(session.startMinutes % 60).toString().padStart(2, '0')}`;
       const endTime = `${Math.floor(session.endMinutes / 60).toString().padStart(2, '0')}:${(session.endMinutes % 60).toString().padStart(2, '0')}`;
-      console.log(`      Session ${i + 1}: ${startTime}-${endTime} (${session.duration}min)`);
+      this.log(`      Session ${i + 1}: ${startTime}-${endTime} (${session.duration}min)`);
     });
 
     if (allStudentSessionsOnDay.length === 0) {
@@ -849,7 +861,7 @@ export class OptimizedScheduler {
 
       if (session.duration > 60) {
         // A single session cannot be longer than 60 minutes if that's an implicit part of the rule
-        console.log(`    ❌ Single session duration ${session.duration} mins exceeds 60 mins`);
+        this.log(`    ❌ Single session duration ${session.duration} mins exceeds 60 mins`);
         return false;
       }
 
@@ -862,7 +874,7 @@ export class OptimizedScheduler {
       }
 
       if (currentConsecutiveDuration > 60) {
-        console.log(`    ❌ Consecutive session block of ${currentConsecutiveDuration} mins exceeds 60 mins`);
+        this.log(`    ❌ Consecutive session block of ${currentConsecutiveDuration} mins exceeds 60 mins`);
         return false;
       }
 
@@ -914,14 +926,14 @@ export class OptimizedScheduler {
     allStudentSessionsOnDay.sort((a, b) => a.startMinutes - b.startMinutes);
 
     // ADD LOGGING HERE:
-    console.log(`    Checking break requirements for ${student.initials} on day ${day}:`);
+    this.log(`    Checking break requirements for ${student.initials} on day ${day}:`);
     if (allStudentSessionsOnDay.length > 1) {
       for (let i = 0; i < allStudentSessionsOnDay.length - 1; i++) {
         const current = allStudentSessionsOnDay[i];
         const next = allStudentSessionsOnDay[i + 1];
         const gap = next.startMinutes - current.endMinutes;
         if (gap > 0) {
-          console.log(`      Gap between session ${i + 1} and ${i + 2}: ${gap} minutes`);
+          this.log(`      Gap between session ${i + 1} and ${i + 2}: ${gap} minutes`);
         }
       }
     }
@@ -939,7 +951,7 @@ export class OptimizedScheduler {
       if (currentSession.endMinutes < nextSession.startMinutes) {
         const breakDuration = nextSession.startMinutes - currentSession.endMinutes;
         if (breakDuration < 30) {
-          console.log(`    ❌ Insufficient break: ${breakDuration} mins between sessions (requires 30 mins)`);
+          this.log(`    ❌ Insufficient break: ${breakDuration} mins between sessions (requires 30 mins)`);
           return false;
         }
       }
