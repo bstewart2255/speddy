@@ -17,7 +17,6 @@ export interface ScheduleUIState {
     time: string;
     pixelY: number;
   } | null;
-  conflictSlots: Set<string>;
   selectedSession: any | null;
   popupPosition: { x: number; y: number } | null;
 }
@@ -41,7 +40,6 @@ export function useScheduleState() {
     time: string;
     pixelY: number;
   } | null>(null);
-  const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
 
   // Popup states
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
@@ -99,12 +97,8 @@ export function useScheduleState() {
     setDraggedSession(null);
     setDragOffset(0);
     setDragPosition(null);
-    setConflictSlots(new Set());
   }, []);
 
-  const updateConflictSlots = useCallback((slots: Set<string>) => {
-    setConflictSlots(slots);
-  }, []);
 
   // Popup handlers
   const openSessionPopup = useCallback((session: any, position: { x: number; y: number }) => {
@@ -151,7 +145,6 @@ export function useScheduleState() {
     draggedSession,
     dragOffset,
     dragPosition,
-    conflictSlots,
     selectedSession,
     popupPosition,
     gridConfig,
@@ -172,7 +165,6 @@ export function useScheduleState() {
     startDrag,
     updateDragPosition,
     endDrag,
-    updateConflictSlots,
 
     // Popup handlers
     openSessionPopup,

@@ -3,11 +3,20 @@
 import React, { useMemo, memo } from 'react';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
+import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
 
 interface ScheduleGridProps {
   sessions: any[];
   students: any[];
   schoolHours: any[];
+  bellSchedules: any[];
+  specialActivities: any[];
+  visualFilters: {
+    bellScheduleGrade: string | null;
+    specialActivityTeacher: string | null;
+    showProviderSchedule: boolean;
+    showSchoolHours: boolean;
+  };
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
@@ -16,7 +25,6 @@ interface ScheduleGridProps {
   showSchoolHours: boolean;
   draggedSession: any | null;
   dragPosition: any | null;
-  conflictSlots: Set<string>;
   selectedSession: any | null;
   popupPosition: any | null;
   seaProfiles: any[];
@@ -58,6 +66,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   sessions,
   students,
   schoolHours,
+  bellSchedules,
+  specialActivities,
+  visualFilters,
   selectedGrades,
   selectedTimeSlot,
   selectedDay,
@@ -66,7 +77,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   showSchoolHours,
   draggedSession,
   dragPosition,
-  conflictSlots,
   selectedSession,
   popupPosition,
   seaProfiles,
@@ -391,6 +401,18 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       ));
                     })()}
 
+                    {/* Visual Availability Layer */}
+                    <VisualAvailabilityLayer
+                      day={dayNumber}
+                      bellSchedules={bellSchedules}
+                      specialActivities={specialActivities}
+                      schoolHours={schoolHours}
+                      sessions={sessions}
+                      students={students}
+                      filters={visualFilters}
+                      gridConfig={gridConfig}
+                    />
+
                     {/* Grid lines */}
                     {timeMarkers.map((_, index) => (
                       <div
@@ -409,32 +431,10 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       />
                     ))}
 
-                    {/* NEW: merged conflict bands */}
-                    {draggedSession &&
-                      (conflictBandsByDay.get(dayNumber) || []).map((band, i) => (
-                        <div
-                          key={`conflict-band-${dayNumber}-${i}`}
-                          className="absolute bg-red-200 border-2 border-red-500 rounded opacity-50 pointer-events-none"
-                          style={{
-                            top: `${band.topPx}px`,
-                            height: `${band.heightPx}px`,
-                            left: '2px',
-                            right: '2px',
-                            zIndex: 6,
-                            willChange: 'transform',
-                            transform: 'translateZ(0)',
-                          }}
-                        />
-                      ))}
-
-                    {/* Drop preview - Shows current drag position with red for conflicts, blue for valid drops */}
+                    {/* Drop preview - Shows current drag position */}
                     {draggedSession && dragPosition?.day === dayNumber && (
                       <div
-                        className={`absolute w-full rounded pointer-events-none z-20 ${
-                          conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
-                            ? 'bg-red-300 border-2 border-red-600'  // Conflict state: stronger red for current position
-                            : 'bg-blue-200 border-2 border-blue-500' // Normal state: blue visual indicator
-                        }`}
+                        className="absolute w-full rounded pointer-events-none z-20 bg-blue-200 border-2 border-blue-500"
                         style={{
                           top: `${dragPosition.pixelY}px`,
                           height: `${((students.find((s: any) => s.id === draggedSession.student_id)?.minutes_per_session || 30) * gridConfig.pixelsPerHour) / 60}px`,
