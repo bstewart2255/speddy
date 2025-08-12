@@ -12,9 +12,12 @@ import { ScheduleGrid } from './components/schedule-grid';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { useSchool } from '../../../components/providers/school-context';
+import { createClient } from '../../../../lib/supabase/client';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
+  const supabase = createClient();
+  const [teachers, setTeachers] = useState<any[]>([]);
   
   // Session tags state (persisted to localStorage) - Initialize with localStorage data
   const [sessionTags, setSessionTags] = useState<Record<string, string>>(() => {
@@ -81,6 +84,29 @@ export default function SchedulePage() {
       localStorage.setItem('speddy-visual-filters', JSON.stringify(visualFilters));
     }
   }, [visualFilters]);
+  
+  // Fetch teachers from the teachers table
+  useEffect(() => {
+    async function fetchTeachers() {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user?.user) return;
+      
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('*')
+        .eq('provider_id', user.user.id)
+        .order('last_name');
+      
+      if (data && !error) {
+        console.log('[SchedulePage] Fetched teachers:', data.length);
+        setTeachers(data);
+      } else {
+        console.error('[SchedulePage] Error fetching teachers:', error);
+      }
+    }
+    
+    fetchTeachers();
+  }, [supabase]);
   
   // Save tags to localStorage whenever they change (but not on first render)
   useEffect(() => {
@@ -328,6 +354,7 @@ export default function SchedulePage() {
             bellSchedules={bellSchedules}
             specialActivities={specialActivities}
             students={students}
+            teachers={teachers}
             selectedFilters={visualFilters}
             onFilterChange={setVisualFilters}
           />

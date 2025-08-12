@@ -85,8 +85,9 @@ export function VisualAvailabilityLayer({
       });
     }
 
-    // Special Activities conflicts
+    // Teacher/Special Activities conflicts
     if (filters.specialActivityTeacher) {
+      // First, show special activities for this teacher
       const teacherActivities = specialActivities.filter(
         sa => sa.teacher === filters.specialActivityTeacher && sa.day_of_week === day
       );
@@ -100,6 +101,7 @@ export function VisualAvailabilityLayer({
       }, {} as Record<string, number>);
       const primaryGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
       
+      // Add bands for special activities
       teacherActivities.forEach(activity => {
         const [startH, startM] = activity.start_time.split(':').map(Number);
         const [endH, endM] = activity.end_time.split(':').map(Number);
@@ -113,6 +115,30 @@ export function VisualAvailabilityLayer({
             color: primaryGrade ? (GRADE_COLOR_MAP[primaryGrade] || 'bg-gray-300') : 'bg-gray-300',
             type: 'activity',
             opacity: 40,
+          });
+        }
+      });
+      
+      // Also show when this teacher's students have sessions scheduled
+      const teacherSessionIds = teacherStudents.map(s => s.id);
+      const teacherSessions = sessions.filter(
+        session => teacherSessionIds.includes(session.student_id) && session.day_of_week === day
+      );
+      console.log('[VisualAvailabilityLayer] Found sessions:', teacherSessions.length, 'for teacher\'s students on day', day);
+      
+      teacherSessions.forEach(session => {
+        const [startH, startM] = session.start_time.split(':').map(Number);
+        const [endH, endM] = session.end_time.split(':').map(Number);
+        const startMin = startH * 60 + startM;
+        const endMin = endH * 60 + endM;
+        
+        if (startMin < gridEndMin && endMin > gridStartMin) {
+          bands.push({
+            startMin: Math.max(startMin, gridStartMin),
+            endMin: Math.min(endMin, gridEndMin),
+            color: primaryGrade ? (GRADE_COLOR_MAP[primaryGrade] || 'bg-gray-300') : 'bg-gray-300',
+            type: 'activity',
+            opacity: 30,
           });
         }
       });

@@ -7,6 +7,7 @@ interface ConflictFilterPanelProps {
   bellSchedules: any[];
   specialActivities: any[];
   students: any[];
+  teachers?: any[];
   selectedFilters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
@@ -25,18 +26,33 @@ export function ConflictFilterPanel({
   bellSchedules,
   specialActivities,
   students,
+  teachers: teachersFromTable,
   selectedFilters,
   onFilterChange,
 }: ConflictFilterPanelProps) {
   // Get unique grade levels from bell schedules
   const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
   
-  // Get unique teachers from students (since all students have a teacher)
-  // Also check special activities for any additional teachers
-  const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
-  const teachersFromActivities = specialActivities.map(sa => sa.teacher).filter(Boolean);
-  const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
-  const teachers = Array.from(new Set(allTeachers)).filter(Boolean).sort();
+  // Use teachers from the teachers table if available, otherwise fall back to extracting from students
+  let teachers: string[] = [];
+  
+  if (teachersFromTable && teachersFromTable.length > 0) {
+    // Use teachers from the teachers table
+    teachers = teachersFromTable
+      .map(t => {
+        const firstName = t.first_name || '';
+        const lastName = t.last_name || '';
+        return `${firstName} ${lastName}`.trim();
+      })
+      .filter(Boolean)
+      .sort();
+  } else {
+    // Fall back to extracting from students and activities
+    const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
+    const teachersFromActivities = specialActivities.map(sa => sa.teacher).filter(Boolean);
+    const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
+    teachers = Array.from(new Set(allTeachers)).filter(Boolean).sort();
+  }
   
   // Map teachers to their primary grade
   const teacherGrades = new Map<string, string>();
