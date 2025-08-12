@@ -18,10 +18,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request data' }, { status: 400 });
     }
 
-    // Get user's school information
+    // Get user's school information including school_id
     const { data: profile } = await supabase
       .from('profiles')
-      .select('school_site, school_district')
+      .select('school_site, school_district, school_id')
       .eq('id', user.id)
       .single();
 
@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
               sessions_per_week: student.sessions_per_week,
               minutes_per_session: student.minutes_per_session,
               school_site: profile?.school_site || '',
-              school_district: profile?.school_district || ''
+              school_district: profile?.school_district || '',
+              school_id: profile?.school_id
             });
 
           if (error) {
@@ -76,7 +77,8 @@ export async function POST(request: NextRequest) {
                 day_of_week: day,
                 start_time: schedule.start_time + ':00',
                 end_time: schedule.end_time + ':00',
-                school_site: profile?.school_site
+                school_site: profile?.school_site,
+                school_id: profile?.school_id
               });
 
             if (error) {
@@ -107,7 +109,8 @@ export async function POST(request: NextRequest) {
               day_of_week: activity.day_of_week,
               start_time: activity.start_time + ':00',
               end_time: activity.end_time + ':00',
-              school_site: profile?.school_site
+              school_site: profile?.school_site,
+              school_id: profile?.school_id
             });
 
           if (error) {
