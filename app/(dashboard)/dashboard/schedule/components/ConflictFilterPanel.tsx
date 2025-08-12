@@ -120,7 +120,7 @@ export function ConflictFilterPanel({
               onChange={(e) => handleGradeChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option value="">All Grades</option>
+              <option key="all-grades" value="">All Grades</option>
               {gradeLevels.map(grade => (
                 <option key={grade} value={grade}>
                   {grade === 'K' ? 'Kindergarten' : `Grade ${grade}`}
@@ -142,7 +142,7 @@ export function ConflictFilterPanel({
               onChange={(e) => handleTeacherChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option value="">All Teachers</option>
+              <option key="all-teachers" value="">All Teachers</option>
               {teachers.map(teacher => {
                 const grade = teacherGrades.get(teacher);
                 return (
