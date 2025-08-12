@@ -90,6 +90,7 @@ export function VisualAvailabilityLayer({
       const teacherActivities = specialActivities.filter(
         sa => sa.teacher === filters.specialActivityTeacher && sa.day_of_week === day
       );
+      console.log('[VisualAvailabilityLayer] Found special activities:', teacherActivities.length, 'for teacher', filters.specialActivityTeacher, 'on day', day);
       
       // Find the teacher's primary grade for color
       const teacherStudents = students.filter(s => s.teacher_name === filters.specialActivityTeacher);

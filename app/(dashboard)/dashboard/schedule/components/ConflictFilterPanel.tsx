@@ -31,8 +31,12 @@ export function ConflictFilterPanel({
   // Get unique grade levels from bell schedules
   const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
   
-  // Get unique teachers from special activities
-  const teachers = Array.from(new Set(specialActivities.map(sa => sa.teacher))).filter(Boolean).sort();
+  // Get unique teachers from students (since all students have a teacher)
+  // Also check special activities for any additional teachers
+  const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
+  const teachersFromActivities = specialActivities.map(sa => sa.teacher).filter(Boolean);
+  const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
+  const teachers = Array.from(new Set(allTeachers)).filter(Boolean).sort();
   
   // Map teachers to their primary grade
   const teacherGrades = new Map<string, string>();
