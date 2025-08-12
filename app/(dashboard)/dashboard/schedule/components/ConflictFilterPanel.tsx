@@ -29,10 +29,10 @@ export function ConflictFilterPanel({
   onFilterChange,
 }: ConflictFilterPanelProps) {
   // Get unique grade levels from bell schedules
-  const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).sort();
+  const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
   
   // Get unique teachers from special activities
-  const teachers = Array.from(new Set(specialActivities.map(sa => sa.teacher))).sort();
+  const teachers = Array.from(new Set(specialActivities.map(sa => sa.teacher))).filter(Boolean).sort();
   
   // Map teachers to their primary grade
   const teacherGrades = new Map<string, string>();
@@ -120,9 +120,9 @@ export function ConflictFilterPanel({
               onChange={(e) => handleGradeChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option key="all-grades" value="">All Grades</option>
-              {gradeLevels.map(grade => (
-                <option key={grade} value={grade}>
+              <option value="">All Grades</option>
+              {gradeLevels.map((grade, index) => (
+                <option key={`grade-${grade}-${index}`} value={grade}>
                   {grade === 'K' ? 'Kindergarten' : `Grade ${grade}`}
                 </option>
               ))}
@@ -142,11 +142,11 @@ export function ConflictFilterPanel({
               onChange={(e) => handleTeacherChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option key="all-teachers" value="">All Teachers</option>
-              {teachers.map(teacher => {
+              <option value="">All Teachers</option>
+              {teachers.map((teacher, index) => {
                 const grade = teacherGrades.get(teacher);
                 return (
-                  <option key={teacher} value={teacher}>
+                  <option key={`teacher-${teacher}-${index}`} value={teacher}>
                     {teacher} {grade ? `(${grade})` : ''}
                   </option>
                 );
