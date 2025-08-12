@@ -2,6 +2,9 @@
 
 import React, { useMemo } from 'react';
 
+// Force Tailwind to include these classes in the build
+// bg-purple-300 bg-sky-300 bg-green-300 bg-blue-300 bg-yellow-300 bg-pink-300 bg-gray-300 bg-red-300
+
 interface VisualAvailabilityLayerProps {
   day: number;
   bellSchedules: any[];
@@ -22,14 +25,14 @@ interface VisualAvailabilityLayerProps {
   };
 }
 
-// Grade color mapping - same as in ScheduleGrid
+// Grade color mapping - using complete Tailwind classes
 const GRADE_COLOR_MAP: { [key: string]: string } = {
-  K: 'purple',
-  '1': 'sky',
-  '2': 'green',
-  '3': 'blue',
-  '4': 'yellow',
-  '5': 'pink',
+  K: 'bg-purple-300',
+  '1': 'bg-sky-300',
+  '2': 'bg-green-300',
+  '3': 'bg-blue-300',
+  '4': 'bg-yellow-300',
+  '5': 'bg-pink-300',
 };
 
 export function VisualAvailabilityLayer({
@@ -42,6 +45,8 @@ export function VisualAvailabilityLayer({
   filters,
   gridConfig,
 }: VisualAvailabilityLayerProps) {
+  // Debug logging
+  console.log('[VisualAvailabilityLayer] Day:', day, 'Filters:', filters);
   // Calculate availability bands based on filters
   const availabilityBands = useMemo(() => {
     const bands: Array<{
@@ -60,6 +65,7 @@ export function VisualAvailabilityLayer({
       const gradeBellSchedules = bellSchedules.filter(
         bs => bs.grade_level === filters.bellScheduleGrade && bs.day_of_week === day
       );
+      console.log('[VisualAvailabilityLayer] Found bell schedules:', gradeBellSchedules.length, 'for grade', filters.bellScheduleGrade, 'on day', day);
       
       gradeBellSchedules.forEach(schedule => {
         const [startH, startM] = schedule.start_time.split(':').map(Number);
@@ -71,7 +77,7 @@ export function VisualAvailabilityLayer({
           bands.push({
             startMin: Math.max(startMin, gridStartMin),
             endMin: Math.min(endMin, gridEndMin),
-            color: `bg-${GRADE_COLOR_MAP[filters.bellScheduleGrade] || 'gray'}-300`,
+            color: GRADE_COLOR_MAP[filters.bellScheduleGrade] || 'bg-gray-300',
             type: 'bell',
             opacity: 40,
           });
@@ -103,7 +109,7 @@ export function VisualAvailabilityLayer({
           bands.push({
             startMin: Math.max(startMin, gridStartMin),
             endMin: Math.min(endMin, gridEndMin),
-            color: primaryGrade ? `bg-${GRADE_COLOR_MAP[primaryGrade] || 'gray'}-300` : 'bg-gray-300',
+            color: primaryGrade ? (GRADE_COLOR_MAP[primaryGrade] || 'bg-gray-300') : 'bg-gray-300',
             type: 'activity',
             opacity: 40,
           });
@@ -191,22 +197,27 @@ export function VisualAvailabilityLayer({
     });
   }, [mergedBands, gridConfig, day]);
 
+  console.log('[VisualAvailabilityLayer] Rendering', pixelBands.length, 'bands for day', day);
+  
   return (
     <>
-      {pixelBands.map(band => (
-        <div
-          key={band.key}
-          className={`absolute w-full pointer-events-none transition-all duration-300 ease-in-out ${band.color}`}
-          style={{
-            top: `${band.topPx}px`,
-            height: `${band.heightPx}px`,
-            opacity: band.opacity / 100,
-            left: '2px',
-            right: '2px',
-            zIndex: 5,
-          }}
-        />
-      ))}
+      {pixelBands.map(band => {
+        console.log('[VisualAvailabilityLayer] Rendering band:', band);
+        return (
+          <div
+            key={band.key}
+            className={`absolute w-full pointer-events-none transition-all duration-300 ease-in-out ${band.color}`}
+            style={{
+              top: `${band.topPx}px`,
+              height: `${band.heightPx}px`,
+              opacity: band.opacity / 100,
+              left: '2px',
+              right: '2px',
+              zIndex: 5,
+            }}
+          />
+        );
+      })}
     </>
   );
 }
