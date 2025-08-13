@@ -1,0 +1,11 @@
+name: Brain dump
+about: Short brain-dump for Spec Manager to expand into full spec
+title: "feature: | bug: | task: "
+labels: brain-dump
+body:
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Provide any additional context, links, or steps
+      placeholder: '- reason for request\n- desired behavior\n- constraints\n'
