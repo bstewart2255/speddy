@@ -119,29 +119,8 @@ export function VisualAvailabilityLayer({
         }
       });
       
-      // Also show when this teacher's students have sessions scheduled
-      const teacherSessionIds = teacherStudents.map(s => s.id);
-      const teacherSessions = sessions.filter(
-        session => teacherSessionIds.includes(session.student_id) && session.day_of_week === day
-      );
-      console.log('[VisualAvailabilityLayer] Found sessions:', teacherSessions.length, 'for teacher\'s students on day', day);
-      
-      teacherSessions.forEach(session => {
-        const [startH, startM] = session.start_time.split(':').map(Number);
-        const [endH, endM] = session.end_time.split(':').map(Number);
-        const startMin = startH * 60 + startM;
-        const endMin = endH * 60 + endM;
-        
-        if (startMin < gridEndMin && endMin > gridStartMin) {
-          bands.push({
-            startMin: Math.max(startMin, gridStartMin),
-            endMin: Math.min(endMin, gridEndMin),
-            color: primaryGrade ? (GRADE_COLOR_MAP[primaryGrade] || 'bg-gray-300') : 'bg-gray-300',
-            type: 'activity',
-            opacity: 30,
-          });
-        }
-      });
+      // Note: We only show the teacher's special activities as conflict zones,
+      // not the student sessions themselves
     }
 
     // School Hours conflicts
