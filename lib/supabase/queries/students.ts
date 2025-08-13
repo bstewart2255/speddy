@@ -93,10 +93,10 @@ export async function createStudent(studentData: {
         provider_id: user.id,
         school_site: schoolData.school_site,
         school_district: schoolData.school_district,
-        // Add structured IDs if available (for future columns)
-        // school_id: schoolData.school_id,
-        // district_id: schoolData.district_id,
-        // state_id: schoolData.state_id
+        // Add structured IDs - these columns now exist in the database
+        school_id: schoolData.school_id || null,
+        district_id: schoolData.district_id || null,
+        state_id: schoolData.state_id || null
       };
       
       const { data, error } = await supabase
@@ -157,18 +157,12 @@ export async function getStudents(school?: SchoolIdentifier) {
 
       // Apply intelligent school filter for optimal performance
       if (school) {
-        // Note: When school_id column is added to students table,
-        // buildSchoolFilter will automatically use it for faster queries
         if (school.school_id) {
-          // For now, still use text matching but log optimization opportunity
-          console.log('[getStudents] Could use school_id index if column existed');
-          if (school.school_site) {
-            query = query.eq('school_site', school.school_site);
-          }
-          if (school.school_district) {
-            query = query.eq('school_district', school.school_district);
-          }
+          // Use indexed school_id for optimal performance
+          console.log('[getStudents] Using school_id index for fast query');
+          query = query.eq('school_id', school.school_id);
         } else {
+          // Fall back to text-based filtering for legacy data
           console.log('[getStudents] Using text-based filtering');
           if (school.school_site) {
             query = query.eq('school_site', school.school_site);
