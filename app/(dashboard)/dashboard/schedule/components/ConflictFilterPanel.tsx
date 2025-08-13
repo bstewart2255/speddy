@@ -11,14 +11,10 @@ interface ConflictFilterPanelProps {
   selectedFilters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
-    showProviderSchedule: boolean;
-    showSchoolHours: boolean;
   };
   onFilterChange: (filters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
-    showProviderSchedule: boolean;
-    showSchoolHours: boolean;
   }) => void;
 }
 
@@ -85,34 +81,17 @@ export function ConflictFilterPanel({
     });
   };
 
-  const handleProviderScheduleToggle = () => {
-    onFilterChange({
-      ...selectedFilters,
-      showProviderSchedule: !selectedFilters.showProviderSchedule,
-    });
-  };
-
-  const handleSchoolHoursToggle = () => {
-    onFilterChange({
-      ...selectedFilters,
-      showSchoolHours: !selectedFilters.showSchoolHours,
-    });
-  };
 
   const handleClear = () => {
     onFilterChange({
       bellScheduleGrade: null,
       specialActivityTeacher: null,
-      showProviderSchedule: false,
-      showSchoolHours: false,
     });
   };
 
   const hasActiveFilters = 
     selectedFilters.bellScheduleGrade ||
-    selectedFilters.specialActivityTeacher ||
-    selectedFilters.showProviderSchedule ||
-    selectedFilters.showSchoolHours;
+    selectedFilters.specialActivityTeacher;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
@@ -128,7 +107,7 @@ export function ConflictFilterPanel({
         )}
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Bell Schedule Filter */}
         <div className="relative">
           <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -175,32 +154,6 @@ export function ConflictFilterPanel({
             <ChevronDownIcon className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
-
-        {/* Provider Schedule Toggle */}
-        <div className="flex items-center sm:items-end">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selectedFilters.showProviderSchedule}
-              onChange={handleProviderScheduleToggle}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
-            />
-            <span className="text-sm text-gray-700">Provider Schedule</span>
-          </label>
-        </div>
-
-        {/* School Hours Toggle */}
-        <div className="flex items-center sm:items-end">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selectedFilters.showSchoolHours}
-              onChange={handleSchoolHoursToggle}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
-            />
-            <span className="text-sm text-gray-700">School Hours</span>
-          </label>
-        </div>
       </div>
 
       {/* Active Filters Summary */}
@@ -214,16 +167,6 @@ export function ConflictFilterPanel({
           {selectedFilters.specialActivityTeacher && (
             <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
               Activity: {selectedFilters.specialActivityTeacher}
-            </span>
-          )}
-          {selectedFilters.showProviderSchedule && (
-            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800">
-              Provider Schedule
-            </span>
-          )}
-          {selectedFilters.showSchoolHours && (
-            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-100 text-red-800">
-              School Hours
             </span>
           )}
         </div>

@@ -9,7 +9,6 @@ export interface ScheduleUIState {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea';
-  showSchoolHours: boolean;
   draggedSession: any | null;
   dragOffset: number;
   dragPosition: {
@@ -30,7 +29,6 @@ export function useScheduleState() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
-  const [showSchoolHours, setShowSchoolHours] = useState(true);
 
   // Drag and drop states
   const [draggedSession, setDraggedSession] = useState<any | null>(null);
@@ -141,7 +139,6 @@ export function useScheduleState() {
     selectedDay,
     highlightedStudentId,
     sessionFilter,
-    showSchoolHours,
     draggedSession,
     dragOffset,
     dragPosition,
@@ -154,7 +151,6 @@ export function useScheduleState() {
     setSelectedTimeSlot,
     setSelectedDay,
     setSessionFilter,
-    setShowSchoolHours,
     toggleGrade,
     clearTimeSlot,
     clearDay,

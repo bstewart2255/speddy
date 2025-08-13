@@ -51,8 +51,6 @@ export default function SchedulePage() {
       return {
         bellScheduleGrade: null as string | null,
         specialActivityTeacher: null as string | null,
-        showProviderSchedule: false,
-        showSchoolHours: false,
       };
     }
     
@@ -64,8 +62,6 @@ export default function SchedulePage() {
         return {
           bellScheduleGrade: null as string | null,
           specialActivityTeacher: null as string | null,
-          showProviderSchedule: false,
-          showSchoolHours: false,
         };
       }
     }
@@ -73,8 +69,6 @@ export default function SchedulePage() {
     return {
       bellScheduleGrade: null as string | null,
       specialActivityTeacher: null as string | null,
-      showProviderSchedule: false,
-      showSchoolHours: false,
     };
   });
   
@@ -198,7 +192,6 @@ export default function SchedulePage() {
     selectedDay,
     highlightedStudentId,
     sessionFilter,
-    showSchoolHours,
     draggedSession,
     dragOffset,
     dragPosition,
@@ -208,7 +201,6 @@ export default function SchedulePage() {
     setSelectedTimeSlot,
     setSelectedDay,
     setSessionFilter,
-    setShowSchoolHours,
     toggleGrade,
     clearTimeSlot,
     clearDay,
@@ -412,13 +404,11 @@ export default function SchedulePage() {
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
-            showSchoolHours={showSchoolHours}
             onSessionFilterChange={setSessionFilter}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
             onHighlightClear={clearHighlight}
-            onSchoolHoursToggle={setShowSchoolHours}
           />
 
           <ScheduleGrid
@@ -433,7 +423,6 @@ export default function SchedulePage() {
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
             sessionFilter={sessionFilter}
-            showSchoolHours={showSchoolHours}
             draggedSession={draggedSession}
             dragPosition={dragPosition}
             selectedSession={selectedSession}
@@ -461,15 +450,6 @@ export default function SchedulePage() {
             <div className="text-sm text-gray-600">
               Total Sessions: {filteredSessionsCount}
             </div>
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={showSchoolHours}
-                onChange={(e) => setShowSchoolHours(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Show school hours
-            </label>
           </div>
         </div>
       </div>

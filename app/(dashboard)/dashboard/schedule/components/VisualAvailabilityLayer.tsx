@@ -15,8 +15,6 @@ interface VisualAvailabilityLayerProps {
   filters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
-    showProviderSchedule: boolean;
-    showSchoolHours: boolean;
   };
   gridConfig: {
     startHour: number;
@@ -51,7 +49,7 @@ export function VisualAvailabilityLayer({
       startMin: number;
       endMin: number;
       color: string;
-      type: 'bell' | 'activity' | 'provider' | 'schoolHours';
+      type: 'bell' | 'activity';
       opacity: number;
     }> = [];
 
@@ -75,7 +73,7 @@ export function VisualAvailabilityLayer({
           bands.push({
             startMin: Math.max(startMin, gridStartMin),
             endMin: Math.min(endMin, gridEndMin),
-            color: GRADE_COLOR_MAP[filters.bellScheduleGrade] || 'bg-gray-300',
+            color: GRADE_COLOR_MAP[filters.bellScheduleGrade!] || 'bg-gray-300',
             type: 'bell',
             opacity: 40,
           });
@@ -124,29 +122,6 @@ export function VisualAvailabilityLayer({
       // not the student sessions themselves
     }
 
-    // School Hours conflicts
-    if (filters.showSchoolHours) {
-      // Assuming school hours end at 3:00 PM (15:00)
-      const schoolEndHour = 15;
-      const schoolEndMin = schoolEndHour * 60;
-      
-      if (schoolEndMin < gridEndMin) {
-        bands.push({
-          startMin: Math.max(schoolEndMin, gridStartMin),
-          endMin: gridEndMin,
-          color: 'bg-red-300',
-          type: 'schoolHours',
-          opacity: 30,
-        });
-      }
-    }
-
-    // Provider Schedule conflicts (placeholder - would need provider availability data)
-    if (filters.showProviderSchedule) {
-      // This would typically check against provider availability
-      // For now, we'll just show a sample unavailable period
-      // In real implementation, this would query provider schedules
-    }
 
     return bands;
   }, [day, bellSchedules, specialActivities, schoolHours, sessions, students, filters, gridConfig]);

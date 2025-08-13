@@ -14,15 +14,12 @@ interface ScheduleGridProps {
   visualFilters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
-    showProviderSchedule: boolean;
-    showSchoolHours: boolean;
   };
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea';
-  showSchoolHours: boolean;
   draggedSession: any | null;
   dragPosition: any | null;
   selectedSession: any | null;
@@ -74,7 +71,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   selectedDay,
   highlightedStudentId,
   sessionFilter,
-  showSchoolHours,
   draggedSession,
   dragPosition,
   selectedSession,
@@ -307,34 +303,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                     onDragOver={(e) => onDragOver(e, dayNumber)}
                     onDrop={(e) => onDrop(e, dayNumber)}
                   >
-                    {/* School hours boundaries */}
-                    {showSchoolHours && (() => {
-                      const uniqueHours = new Map();
-                      Array.from(selectedGrades).forEach(grade => {
-                        const hours = getSchoolHoursForDay(dayNumber, grade);
-                        const key = `${hours.start}-${hours.end}`;
-                        if (!uniqueHours.has(key)) {
-                          uniqueHours.set(key, { ...hours, grades: [grade] });
-                        } else {
-                          uniqueHours.get(key).grades.push(grade);
-                        }
-                      });
-
-                      return Array.from(uniqueHours.values()).map((hours, idx) => (
-                        <div
-                          key={`boundary-${dayIndex}-${idx}`}
-                          className="absolute left-0 right-0 pointer-events-none"
-                          style={{
-                            top: `${timeToPixels(hours.start)}px`,
-                            height: `${timeToPixels(hours.end) - timeToPixels(hours.start)}px`,
-                            backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                            borderTop: '2px dashed rgba(59, 130, 246, 0.3)',
-                            borderBottom: '2px dashed rgba(59, 130, 246, 0.3)',
-                            zIndex: 0,
-                          }}
-                        />
-                      ));
-                    })()}
 
                     {/* Visual Availability Layer */}
                     <VisualAvailabilityLayer
