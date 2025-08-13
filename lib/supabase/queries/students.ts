@@ -73,8 +73,8 @@ export async function createStudent(studentData: {
   if (!teacherId && studentData.teacher_name) {
     try {
       const teacher = await getOrCreateTeacher(studentData.teacher_name, {
-        school_id: schoolData.school_id || null,
-        school_site: schoolData.school_site || null
+        school_id: schoolData.school_id ?? null,
+        school_site: schoolData.school_site ?? null
       });
       teacherId = teacher.id;
     } catch (error) {
@@ -91,16 +91,16 @@ export async function createStudent(studentData: {
         initials: studentData.initials,
         grade_level: studentData.grade_level.trim(),
         teacher_name: studentData.teacher_name,
-        teacher_id: teacherId || null,
+        teacher_id: teacherId ?? null,
         sessions_per_week: studentData.sessions_per_week,
         minutes_per_session: studentData.minutes_per_session,
         provider_id: user.id,
         school_site: schoolData.school_site,
         school_district: schoolData.school_district,
         // Add structured IDs - these columns now exist in the database
-        school_id: schoolData.school_id || null,
-        district_id: schoolData.district_id || null,
-        state_id: schoolData.state_id || null
+        school_id: schoolData.school_id ?? null,
+        district_id: schoolData.district_id ?? null,
+        state_id: schoolData.state_id ?? null
       };
       
       const { data, error } = await supabase
