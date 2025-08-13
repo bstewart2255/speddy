@@ -45,8 +45,6 @@ export function VisualAvailabilityLayer({
   filters,
   gridConfig,
 }: VisualAvailabilityLayerProps) {
-  // Debug logging
-  console.log('[VisualAvailabilityLayer] Day:', day, 'Filters:', filters);
   // Calculate availability bands based on filters
   const availabilityBands = useMemo(() => {
     const bands: Array<{
@@ -87,11 +85,12 @@ export function VisualAvailabilityLayer({
 
     // Teacher/Special Activities conflicts
     if (filters.specialActivityTeacher) {
+      
       // First, show special activities for this teacher
+      // Note: special activities use 'teacher_name' field, not 'teacher'
       const teacherActivities = specialActivities.filter(
-        sa => sa.teacher === filters.specialActivityTeacher && sa.day_of_week === day
+        sa => sa.teacher_name === filters.specialActivityTeacher && sa.day_of_week === day
       );
-      console.log('[VisualAvailabilityLayer] Found special activities:', teacherActivities.length, 'for teacher', filters.specialActivityTeacher, 'on day', day);
       
       // Find the teacher's primary grade for color
       const teacherStudents = students.filter(s => s.teacher_name === filters.specialActivityTeacher);
@@ -108,14 +107,16 @@ export function VisualAvailabilityLayer({
         const startMin = startH * 60 + startM;
         const endMin = endH * 60 + endM;
         
+        
         if (startMin < gridEndMin && endMin > gridStartMin) {
-          bands.push({
+          const band = {
             startMin: Math.max(startMin, gridStartMin),
             endMin: Math.min(endMin, gridEndMin),
             color: primaryGrade ? (GRADE_COLOR_MAP[primaryGrade] || 'bg-gray-300') : 'bg-gray-300',
-            type: 'activity',
+            type: 'activity' as const,
             opacity: 40,
-          });
+          };
+          bands.push(band);
         }
       });
       
@@ -148,7 +149,7 @@ export function VisualAvailabilityLayer({
     }
 
     return bands;
-  }, [day, bellSchedules, specialActivities, schoolHours, students, filters, gridConfig]);
+  }, [day, bellSchedules, specialActivities, schoolHours, sessions, students, filters, gridConfig]);
 
   // Merge overlapping bands
   const mergedBands = useMemo(() => {
@@ -203,12 +204,10 @@ export function VisualAvailabilityLayer({
     });
   }, [mergedBands, gridConfig, day]);
 
-  console.log('[VisualAvailabilityLayer] Rendering', pixelBands.length, 'bands for day', day);
   
   return (
     <>
       {pixelBands.map(band => {
-        console.log('[VisualAvailabilityLayer] Rendering band:', band);
         return (
           <div
             key={band.key}

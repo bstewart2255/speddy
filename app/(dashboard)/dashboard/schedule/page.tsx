@@ -85,20 +85,67 @@ export default function SchedulePage() {
     }
   }, [visualFilters]);
   
-  // Fetch teachers from the teachers table
+  // Fetch teachers from the teachers table filtered by current school
   useEffect(() => {
     async function fetchTeachers() {
       const { data: user } = await supabase.auth.getUser();
       if (!user?.user) return;
       
-      const { data, error } = await supabase
+      console.log('[SchedulePage] Current school for teacher fetch:', {
+        display_name: currentSchool?.display_name,
+        school_id: currentSchool?.school_id,
+        school_site: currentSchool?.school_site,
+        school_district: currentSchool?.school_district
+      });
+      
+      // First, fetch all teachers for this provider to check their school_id values
+      const { data: allTeachers, error: checkError } = await supabase
         .from('teachers')
         .select('*')
-        .eq('provider_id', user.user.id)
-        .order('last_name');
+        .eq('provider_id', user.user.id);
+      
+      if (checkError) {
+        console.error('[SchedulePage] Error checking teachers:', checkError);
+        return;
+      }
+      
+      console.log('[SchedulePage] All teachers before filtering:');
+      allTeachers?.forEach(t => {
+        console.log(`  - ${t.first_name} ${t.last_name}: school_id = "${t.school_id}"`);
+      });
+      
+      // Build query with provider filter
+      let query = supabase
+        .from('teachers')
+        .select('*')
+        .eq('provider_id', user.user.id);
+      
+      // Add school filter if current school has a school_id
+      // Only filter if teachers actually have school_id values set
+      if (currentSchool?.school_id && allTeachers?.some(t => t.school_id)) {
+        console.log('[SchedulePage] Applying filter - school_id:', currentSchool.school_id);
+        console.log('[SchedulePage] Teachers with this school_id:', allTeachers.filter(t => t.school_id === currentSchool.school_id).length);
+        console.log('[SchedulePage] Teachers with different school_id:', allTeachers.filter(t => t.school_id !== currentSchool.school_id).map(t => ({
+          name: `${t.first_name} ${t.last_name}`,
+          school_id: t.school_id
+        })));
+        query = query.eq('school_id', currentSchool.school_id);
+      } else if (currentSchool?.school_id) {
+        // If current school has school_id but teachers don't have school_id set,
+        // we can't filter properly - log a warning
+        console.warn('[SchedulePage] Current school has school_id but teachers do not have school_id values set');
+      }
+      
+      // Execute query with ordering
+      console.log('[SchedulePage] Executing query with school_id filter:', currentSchool?.school_id || 'none');
+      const { data, error } = await query.order('last_name');
       
       if (data && !error) {
-        console.log('[SchedulePage] Fetched teachers:', data.length);
+        console.log('[SchedulePage] Fetched teachers after filtering:', data.length, 'for school:', currentSchool?.display_name);
+        console.log('[SchedulePage] Filtered teachers with school_ids:');
+        data.forEach(t => {
+          console.log(`  - ${t.first_name} ${t.last_name}: school_id = "${t.school_id}"`);
+        });
         setTeachers(data);
       } else {
         console.error('[SchedulePage] Error fetching teachers:', error);
@@ -106,7 +153,7 @@ export default function SchedulePage() {
     }
     
     fetchTeachers();
-  }, [supabase]);
+  }, [supabase, currentSchool]);
   
   // Save tags to localStorage whenever they change (but not on first render)
   useEffect(() => {

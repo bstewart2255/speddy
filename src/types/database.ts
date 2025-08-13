@@ -195,6 +195,7 @@ export interface Database {
           classroom_number: string | null
           phone_number: string | null
           provider_id: string
+          school_id: string | null
           created_at: string
           updated_at: string
         }
@@ -206,6 +207,7 @@ export interface Database {
           classroom_number?: string | null
           phone_number?: string | null
           provider_id: string
+          school_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -217,6 +219,7 @@ export interface Database {
           classroom_number?: string | null
           phone_number?: string | null
           provider_id?: string
+          school_id?: string | null
           created_at?: string
           updated_at?: string
         }
