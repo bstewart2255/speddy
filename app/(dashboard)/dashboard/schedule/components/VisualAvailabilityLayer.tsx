@@ -2,9 +2,6 @@
 
 import React, { useMemo } from 'react';
 
-// Force Tailwind to include these classes in the build
-// bg-purple-300 bg-sky-300 bg-green-300 bg-blue-300 bg-yellow-300 bg-pink-300 bg-gray-300 bg-red-300
-
 interface VisualAvailabilityLayerProps {
   day: number;
   bellSchedules: any[];
