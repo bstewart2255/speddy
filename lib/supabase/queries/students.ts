@@ -30,18 +30,6 @@ export async function createStudent(studentData: {
 
   const user = authResult.data.data.user;
 
-  // Get or create teacher if teacher_name is provided but no teacher_id
-  let teacherId = studentData.teacher_id;
-  if (!teacherId && studentData.teacher_name) {
-    try {
-      const teacher = await getOrCreateTeacher(studentData.teacher_name);
-      teacherId = teacher.id;
-    } catch (error) {
-      console.error('Error creating teacher:', error);
-      // Continue without teacher_id if creation fails
-    }
-  }
-
   // Get complete school data if not provided
   let schoolData: SchoolIdentifier = {
     school_site: studentData.school_site,
@@ -76,6 +64,22 @@ export async function createStudent(studentData: {
         district_id: schoolData.district_id || profileResult.data.district_id,
         state_id: schoolData.state_id || profileResult.data.state_id
       };
+    }
+  }
+
+  // Get or create teacher if teacher_name is provided but no teacher_id
+  // Now we have the complete school data to associate with the teacher
+  let teacherId = studentData.teacher_id;
+  if (!teacherId && studentData.teacher_name) {
+    try {
+      const teacher = await getOrCreateTeacher(studentData.teacher_name, {
+        school_id: schoolData.school_id || null,
+        school_site: schoolData.school_site || null
+      });
+      teacherId = teacher.id;
+    } catch (error) {
+      console.error('Error creating teacher:', error);
+      // Continue without teacher_id if creation fails
     }
   }
 
