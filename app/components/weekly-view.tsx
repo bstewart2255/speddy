@@ -463,8 +463,8 @@ return (
           if (dayIndex < 0 || dayIndex > 4) return null;
 
           return (
-            <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
-              <div className={`px-3 py-2 font-medium text-sm ${isToday ? 'bg-blue-100' : 'bg-gray-50'}`}>
+            <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400' : 'border-gray-200'}`}>
+              <div className="px-3 py-2 font-medium text-sm bg-gray-50">
                 {format(currentDate, 'EEEE, MMM d')}
               </div>
 
