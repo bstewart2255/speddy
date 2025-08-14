@@ -74,6 +74,10 @@ const config: Config = {
     'bg-pink-300',
     'bg-gray-300',
     'bg-red-300',
+    // Gradient class for conflict visualization
+    'bg-gradient-to-r',
+    'from-red-300',
+    'to-blue-300',
   ],
 }
 

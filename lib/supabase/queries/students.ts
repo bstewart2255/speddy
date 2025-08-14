@@ -98,9 +98,9 @@ export async function createStudent(studentData: {
         school_site: schoolData.school_site,
         school_district: schoolData.school_district,
         // Add structured IDs - these columns now exist in the database
-        school_id: schoolData.school_id ?? null,
-        district_id: schoolData.district_id ?? null,
-        state_id: schoolData.state_id ?? null
+        school_id: schoolData.school_id,
+        district_id: schoolData.district_id,
+        state_id: schoolData.state_id
       };
       
       const { data, error } = await supabase
