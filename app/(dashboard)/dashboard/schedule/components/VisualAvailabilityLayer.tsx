@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
 
 interface VisualAvailabilityLayerProps {
   day: number;
@@ -19,16 +20,6 @@ interface VisualAvailabilityLayerProps {
     pixelsPerHour: number;
   };
 }
-
-// Grade color mapping - using complete Tailwind classes
-const GRADE_COLOR_MAP: { [key: string]: string } = {
-  K: 'bg-purple-300',
-  '1': 'bg-sky-300',
-  '2': 'bg-green-300',
-  '3': 'bg-blue-300',
-  '4': 'bg-yellow-300',
-  '5': 'bg-pink-300',
-};
 
 export function VisualAvailabilityLayer({
   day,
@@ -55,9 +46,12 @@ export function VisualAvailabilityLayer({
 
     // Bell Schedule conflicts
     if (filters.bellScheduleGrade) {
-      const gradeBellSchedules = bellSchedules.filter(
-        bs => bs.day_of_week === day && bs.grade_level === filters.bellScheduleGrade
-      );
+      const gradeBellSchedules = bellSchedules.filter(bs => {
+        if (bs.day_of_week !== day) return false;
+        // Handle comma-separated grade levels
+        const grades = bs.grade_level.split(',').map(g => g.trim());
+        return grades.includes(filters.bellScheduleGrade!);
+      });
       console.log('[VisualAvailabilityLayer] Found bell schedules:', gradeBellSchedules.length, 'for grade', filters.bellScheduleGrade, 'on day', day);
       
       gradeBellSchedules.forEach(schedule => {

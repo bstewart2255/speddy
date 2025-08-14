@@ -91,7 +91,7 @@ export async function createStudent(studentData: {
         initials: studentData.initials,
         grade_level: studentData.grade_level.trim(),
         teacher_name: studentData.teacher_name,
-        teacher_id: teacherId,
+        teacher_id: teacherId || null,
         sessions_per_week: studentData.sessions_per_week,
         minutes_per_session: studentData.minutes_per_session,
         provider_id: user.id,

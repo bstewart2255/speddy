@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 
 // Utility function to format teacher names
@@ -37,38 +37,47 @@ export function ConflictFilterPanel({
   const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
   
   // Use teachers from the teachers table if available, otherwise fall back to extracting from students
-  let teachers: string[] = [];
-  
-  if (teachersFromTable && teachersFromTable.length > 0) {
-    // Use teachers from the teachers table
-    teachers = teachersFromTable
-      .map(formatTeacherName)
-      .filter(Boolean)
-      .sort();
-  } else {
-    // Fall back to extracting from students and activities
-    const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
-    const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean);
-    const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
-    teachers = Array.from(new Set(allTeachers)).filter(Boolean).sort();
-  }
-  
-  // Map teachers to their primary grade
-  const teacherGrades = new Map<string, string>();
-  teachers.forEach(teacher => {
-    const teacherStudents = students.filter(s => s.teacher_name === teacher);
-    if (teacherStudents.length > 0) {
-      // Use the most common grade level for this teacher
-      const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
-        acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      const primaryGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (primaryGrade) {
-        teacherGrades.set(teacher, primaryGrade);
-      }
+  const teachers = useMemo(() => {
+    let teacherList: string[] = [];
+    
+    if (teachersFromTable && teachersFromTable.length > 0) {
+      // Use teachers from the teachers table
+      teacherList = teachersFromTable
+        .map(formatTeacherName)
+        .filter(Boolean)
+        .sort();
+    } else {
+      // Fall back to extracting from students and activities
+      const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
+      const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean);
+      const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
+      teacherList = Array.from(new Set(allTeachers)).filter(Boolean).sort();
     }
-  });
+    
+    return teacherList;
+  }, [teachersFromTable, students, specialActivities]);
+  
+  // Map teachers to their primary grade - memoized for performance
+  const teacherGrades = useMemo(() => {
+    const grades = new Map<string, string>();
+    
+    teachers.forEach(teacher => {
+      const teacherStudents = students.filter(s => s.teacher_name === teacher);
+      if (teacherStudents.length > 0) {
+        // Use the most common grade level for this teacher
+        const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
+          acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        const primaryGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (primaryGrade) {
+          grades.set(teacher, primaryGrade);
+        }
+      }
+    });
+    
+    return grades;
+  }, [teachers, students]);
 
   const handleGradeChange = (grade: string | null) => {
     onFilterChange({

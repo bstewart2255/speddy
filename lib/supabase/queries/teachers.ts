@@ -7,6 +7,17 @@ type Teacher = Database['public']['Tables']['teachers']['Row'];
 type TeacherInsert = Database['public']['Tables']['teachers']['Insert'];
 type TeacherUpdate = Database['public']['Tables']['teachers']['Update'];
 
+// Separate type for teacher creation data for clarity
+export type TeacherCreationData = {
+  first_name: string | null;
+  last_name: string;
+  email?: string | null;
+  classroom_number?: string | null;
+  phone_number?: string | null;
+  school_id?: string | null;
+  school_site?: string | null;
+};
+
 export async function getTeachers() {
   const supabase = createClient<Database>();
 
@@ -47,7 +58,7 @@ export async function getTeachers() {
   return fetchResult.data || [];
 }
 
-export async function createTeacher(teacherData: Omit<TeacherInsert, 'provider_id' | 'id' | 'created_at' | 'updated_at'> & { school_id?: string | null; school_site?: string | null }) {
+export async function createTeacher(teacherData: TeacherCreationData) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
