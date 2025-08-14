@@ -7,6 +7,17 @@ type Teacher = Database['public']['Tables']['teachers']['Row'];
 type TeacherInsert = Database['public']['Tables']['teachers']['Insert'];
 type TeacherUpdate = Database['public']['Tables']['teachers']['Update'];
 
+// Separate type for teacher creation data for clarity
+export type TeacherCreationData = {
+  first_name: string | null;
+  last_name: string;
+  email?: string | null;
+  classroom_number?: string | null;
+  phone_number?: string | null;
+  school_id?: string | null;
+  school_site?: string | null;
+};
+
 export async function getTeachers() {
   const supabase = createClient<Database>();
 
@@ -47,7 +58,7 @@ export async function getTeachers() {
   return fetchResult.data || [];
 }
 
-export async function createTeacher(teacherData: Omit<TeacherInsert, 'provider_id' | 'id' | 'created_at' | 'updated_at'>) {
+export async function createTeacher(teacherData: TeacherCreationData) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -68,7 +79,9 @@ export async function createTeacher(teacherData: Omit<TeacherInsert, 'provider_i
         .from('teachers')
         .insert([{
           ...teacherData,
-          provider_id: user.id
+          provider_id: user.id,
+          school_id: teacherData.school_id || null,
+          school_site: teacherData.school_site || null
         }])
         .select()
         .single();
@@ -249,7 +262,10 @@ export async function getTeacherByName(name: string): Promise<Teacher | null> {
   return fetchResult.data;
 }
 
-export async function getOrCreateTeacher(name: string): Promise<Teacher> {
+export async function getOrCreateTeacher(
+  name: string, 
+  schoolInfo: { school_id?: string | null; school_site?: string | null } = {}
+): Promise<Teacher> {
   const existing = await getTeacherByName(name);
   if (existing) return existing;
 
@@ -262,6 +278,8 @@ export async function getOrCreateTeacher(name: string): Promise<Teacher> {
     last_name: lastName || name,
     email: null,
     classroom_number: null,
-    phone_number: null
+    phone_number: null,
+    school_id: schoolInfo.school_id || null,
+    school_site: schoolInfo.school_site || null
   });
 }

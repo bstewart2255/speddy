@@ -64,6 +64,21 @@ const config: Config = {
     },
   },
   plugins: [],
+  safelist: [
+    // Colors used dynamically in VisualAvailabilityLayer for grade levels
+    'bg-purple-300',
+    'bg-sky-300',
+    'bg-green-300',
+    'bg-blue-300',
+    'bg-yellow-300',
+    'bg-pink-300',
+    'bg-gray-300',
+    'bg-red-300',
+    // Gradient class for conflict visualization
+    'bg-gradient-to-r',
+    'from-red-300',
+    'to-blue-300',
+  ],
 }
 
 export default config

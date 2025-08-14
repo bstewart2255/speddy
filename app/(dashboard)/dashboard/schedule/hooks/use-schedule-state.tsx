@@ -9,7 +9,6 @@ export interface ScheduleUIState {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea';
-  showSchoolHours: boolean;
   draggedSession: any | null;
   dragOffset: number;
   dragPosition: {
@@ -17,7 +16,6 @@ export interface ScheduleUIState {
     time: string;
     pixelY: number;
   } | null;
-  conflictSlots: Set<string>;
   selectedSession: any | null;
   popupPosition: { x: number; y: number } | null;
 }
@@ -31,7 +29,6 @@ export function useScheduleState() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
-  const [showSchoolHours, setShowSchoolHours] = useState(true);
 
   // Drag and drop states
   const [draggedSession, setDraggedSession] = useState<any | null>(null);
@@ -41,7 +38,6 @@ export function useScheduleState() {
     time: string;
     pixelY: number;
   } | null>(null);
-  const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
 
   // Popup states
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
@@ -99,12 +95,8 @@ export function useScheduleState() {
     setDraggedSession(null);
     setDragOffset(0);
     setDragPosition(null);
-    setConflictSlots(new Set());
   }, []);
 
-  const updateConflictSlots = useCallback((slots: Set<string>) => {
-    setConflictSlots(slots);
-  }, []);
 
   // Popup handlers
   const openSessionPopup = useCallback((session: any, position: { x: number; y: number }) => {
@@ -147,11 +139,9 @@ export function useScheduleState() {
     selectedDay,
     highlightedStudentId,
     sessionFilter,
-    showSchoolHours,
     draggedSession,
     dragOffset,
     dragPosition,
-    conflictSlots,
     selectedSession,
     popupPosition,
     gridConfig,
@@ -161,7 +151,6 @@ export function useScheduleState() {
     setSelectedTimeSlot,
     setSelectedDay,
     setSessionFilter,
-    setShowSchoolHours,
     toggleGrade,
     clearTimeSlot,
     clearDay,
@@ -172,7 +161,6 @@ export function useScheduleState() {
     startDrag,
     updateDragPosition,
     endDrag,
-    updateConflictSlots,
 
     // Popup handlers
     openSessionPopup,

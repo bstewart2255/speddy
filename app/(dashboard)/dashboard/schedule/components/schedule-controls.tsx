@@ -8,13 +8,11 @@ interface ScheduleControlsProps {
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
-  showSchoolHours: boolean;
   onSessionFilterChange: (filter: 'all' | 'mine' | 'sea') => void;
   onGradeToggle: (grade: string) => void;
   onTimeSlotClear: () => void;
   onDayClear: () => void;
   onHighlightClear: () => void;
-  onSchoolHoursToggle: (show: boolean) => void;
 }
 
 const GRADE_COLORS = [
@@ -34,13 +32,11 @@ export function ScheduleControls({
   selectedTimeSlot,
   selectedDay,
   highlightedStudentId,
-  showSchoolHours,
   onSessionFilterChange,
   onGradeToggle,
   onTimeSlotClear,
   onDayClear,
   onHighlightClear,
-  onSchoolHoursToggle,
 }: ScheduleControlsProps) {
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':');
@@ -79,18 +75,7 @@ export function ScheduleControls({
 
       {/* Grade Level Filter */}
       <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-sm font-medium text-gray-700">Grade Levels</h3>
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={showSchoolHours}
-              onChange={(e) => onSchoolHoursToggle(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            Show school hours
-          </label>
-        </div>
+        <h3 className="text-sm font-medium text-gray-700 mb-3">Grade Levels</h3>
         <div className="flex flex-wrap gap-3">
           {GRADE_COLORS.map(({ grade, colorClass, displayName }) => {
             const isActive = selectedGrades.has(grade);

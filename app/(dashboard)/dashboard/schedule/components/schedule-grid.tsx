@@ -3,20 +3,25 @@
 import React, { useMemo, memo } from 'react';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
+import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
 
 interface ScheduleGridProps {
   sessions: any[];
   students: any[];
   schoolHours: any[];
+  bellSchedules: any[];
+  specialActivities: any[];
+  visualFilters: {
+    bellScheduleGrade: string | null;
+    specialActivityTeacher: string | null;
+  };
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea';
-  showSchoolHours: boolean;
   draggedSession: any | null;
   dragPosition: any | null;
-  conflictSlots: Set<string>;
   selectedSession: any | null;
   popupPosition: any | null;
   seaProfiles: any[];
@@ -58,15 +63,16 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   sessions,
   students,
   schoolHours,
+  bellSchedules,
+  specialActivities,
+  visualFilters,
   selectedGrades,
   selectedTimeSlot,
   selectedDay,
   highlightedStudentId,
   sessionFilter,
-  showSchoolHours,
   draggedSession,
   dragPosition,
-  conflictSlots,
   selectedSession,
   popupPosition,
   seaProfiles,
@@ -87,71 +93,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   onPopupUpdate,
 }: ScheduleGridProps) {
   // NEW: Merge conflicting start slots into red "bands" per day
-  const conflictBandsByDay = useMemo(() => {
-    const map = new Map<number, Array<{ topPx: number; heightPx: number }>>();
-    if (!draggedSession) return map;
-
-    const student = students.find((s: any) => s.id === draggedSession.student_id);
-    if (!student) return map;
-
-    const durationMin = Number(student.minutes_per_session) || 0;
-    if (durationMin <= 0) return map;
-
-    const intervalsByDay = new Map<number, Array<{ startMin: number; endMin: number }>>();
-
-    // Keys are of form `${day}-${HH:MM}`
-    for (const key of conflictSlots) {
-      const [dayStr, timeStr] = key.split('-');
-      const dayNum = Number(dayStr);
-      if (!dayNum || dayNum < 1 || dayNum > 5) continue;
-
-      const [h, m] = timeStr.split(':').map(Number);
-      const startMin = h * 60 + m;
-      const endMin = startMin + durationMin;
-
-      if (!intervalsByDay.has(dayNum)) intervalsByDay.set(dayNum, []);
-      intervalsByDay.get(dayNum)!.push({ startMin, endMin });
-    }
-
-    const gridStart = gridConfig.startHour * 60;
-    const gridEnd = gridConfig.endHour * 60;
-    const pxPerMin = gridConfig.pixelsPerHour / 60;
-
-    for (let day = 1; day <= 5; day++) {
-      const intervals = (intervalsByDay.get(day) || []).sort((a, b) => a.startMin - b.startMin);
-      if (intervals.length === 0) continue;
-
-      // Merge overlapping/touching intervals
-      const merged: Array<{ startMin: number; endMin: number }> = [];
-      let current = { ...intervals[0] };
-      for (let i = 1; i < intervals.length; i++) {
-        const next = intervals[i];
-        if (next.startMin <= current.endMin) {
-          current.endMin = Math.max(current.endMin, next.endMin);
-        } else {
-          merged.push(current);
-          current = { ...next };
-        }
-      }
-      merged.push(current);
-
-      // Clamp and convert to pixel bands
-      const bands: Array<{ topPx: number; heightPx: number }> = [];
-      for (const { startMin, endMin } of merged) {
-        const clampedStart = Math.max(gridStart, startMin);
-        const clampedEnd = Math.min(gridEnd, endMin);
-        if (clampedEnd <= clampedStart) continue;
-
-        const topPx = (clampedStart - gridStart) * pxPerMin;
-        const heightPx = (clampedEnd - clampedStart) * pxPerMin;
-        bands.push({ topPx, heightPx });
-      }
-
-      if (bands.length > 0) map.set(day, bands);
-    }
-
-    return map;
-  }, [conflictSlots, draggedSession, students, gridConfig.startHour, gridConfig.endHour, gridConfig.pixelsPerHour]);
   // Generate time markers
   const timeMarkers = useMemo(() => 
     Array.from(
@@ -362,34 +303,18 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                     onDragOver={(e) => onDragOver(e, dayNumber)}
                     onDrop={(e) => onDrop(e, dayNumber)}
                   >
-                    {/* School hours boundaries */}
-                    {showSchoolHours && (() => {
-                      const uniqueHours = new Map();
-                      Array.from(selectedGrades).forEach(grade => {
-                        const hours = getSchoolHoursForDay(dayNumber, grade);
-                        const key = `${hours.start}-${hours.end}`;
-                        if (!uniqueHours.has(key)) {
-                          uniqueHours.set(key, { ...hours, grades: [grade] });
-                        } else {
-                          uniqueHours.get(key).grades.push(grade);
-                        }
-                      });
 
-                      return Array.from(uniqueHours.values()).map((hours, idx) => (
-                        <div
-                          key={`boundary-${dayIndex}-${idx}`}
-                          className="absolute left-0 right-0 pointer-events-none"
-                          style={{
-                            top: `${timeToPixels(hours.start)}px`,
-                            height: `${timeToPixels(hours.end) - timeToPixels(hours.start)}px`,
-                            backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                            borderTop: '2px dashed rgba(59, 130, 246, 0.3)',
-                            borderBottom: '2px dashed rgba(59, 130, 246, 0.3)',
-                            zIndex: 0,
-                          }}
-                        />
-                      ));
-                    })()}
+                    {/* Visual Availability Layer */}
+                    <VisualAvailabilityLayer
+                      day={dayNumber}
+                      bellSchedules={bellSchedules}
+                      specialActivities={specialActivities}
+                      schoolHours={schoolHours}
+                      sessions={sessions}
+                      students={students}
+                      filters={visualFilters}
+                      gridConfig={gridConfig}
+                    />
 
                     {/* Grid lines */}
                     {timeMarkers.map((_, index) => (
@@ -409,32 +334,10 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       />
                     ))}
 
-                    {/* NEW: merged conflict bands */}
-                    {draggedSession &&
-                      (conflictBandsByDay.get(dayNumber) || []).map((band, i) => (
-                        <div
-                          key={`conflict-band-${dayNumber}-${i}`}
-                          className="absolute bg-red-200 border-2 border-red-500 rounded opacity-50 pointer-events-none"
-                          style={{
-                            top: `${band.topPx}px`,
-                            height: `${band.heightPx}px`,
-                            left: '2px',
-                            right: '2px',
-                            zIndex: 6,
-                            willChange: 'transform',
-                            transform: 'translateZ(0)',
-                          }}
-                        />
-                      ))}
-
-                    {/* Drop preview - Shows current drag position with red for conflicts, blue for valid drops */}
+                    {/* Drop preview - Shows current drag position */}
                     {draggedSession && dragPosition?.day === dayNumber && (
                       <div
-                        className={`absolute w-full rounded pointer-events-none z-20 ${
-                          conflictSlots.has(`${dragPosition.day}-${dragPosition.time}`)
-                            ? 'bg-red-300 border-2 border-red-600'  // Conflict state: stronger red for current position
-                            : 'bg-blue-200 border-2 border-blue-500' // Normal state: blue visual indicator
-                        }`}
+                        className="absolute w-full rounded pointer-events-none z-20 bg-blue-200 border-2 border-blue-500"
                         style={{
                           top: `${dragPosition.pixelY}px`,
                           height: `${((students.find((s: any) => s.id === draggedSession.student_id)?.minutes_per_session || 30) * gridConfig.pixelsPerHour) / 60}px`,

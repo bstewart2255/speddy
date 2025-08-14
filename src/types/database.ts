@@ -149,7 +149,9 @@ export interface Database {
           teacher_id: string | null
           sessions_per_week: number
           minutes_per_session: number
-          school_id: string
+          school_id: string | null
+          district_id: string | null
+          state_id: string | null
           school_site: string | null // Display only
           school_district: string | null // Display only
           created_at: string
@@ -164,7 +166,9 @@ export interface Database {
           teacher_id?: string | null
           sessions_per_week: number
           minutes_per_session: number
-          school_id: string
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
           school_site?: string | null
           school_district?: string | null
           created_at?: string
@@ -179,7 +183,9 @@ export interface Database {
           teacher_id?: string | null
           sessions_per_week?: number
           minutes_per_session?: number
-          school_id?: string
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
           school_site?: string | null  
           school_district?: string | null  
           created_at?: string
@@ -195,6 +201,7 @@ export interface Database {
           classroom_number: string | null
           phone_number: string | null
           provider_id: string
+          school_id: string | null
           created_at: string
           updated_at: string
         }
@@ -206,6 +213,7 @@ export interface Database {
           classroom_number?: string | null
           phone_number?: string | null
           provider_id: string
+          school_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -217,6 +225,7 @@ export interface Database {
           classroom_number?: string | null
           phone_number?: string | null
           provider_id?: string
+          school_id?: string | null
           created_at?: string
           updated_at?: string
         }
