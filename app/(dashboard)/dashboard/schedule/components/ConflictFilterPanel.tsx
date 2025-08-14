@@ -3,6 +3,13 @@
 import React from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 
+// Utility function to format teacher names
+const formatTeacherName = (teacher: { first_name?: string; last_name?: string }): string => {
+  const firstName = teacher.first_name || '';
+  const lastName = teacher.last_name || '';
+  return `${firstName} ${lastName}`.trim();
+};
+
 interface ConflictFilterPanelProps {
   bellSchedules: any[];
   specialActivities: any[];
@@ -35,11 +42,7 @@ export function ConflictFilterPanel({
   if (teachersFromTable && teachersFromTable.length > 0) {
     // Use teachers from the teachers table
     teachers = teachersFromTable
-      .map(t => {
-        const firstName = t.first_name || '';
-        const lastName = t.last_name || '';
-        return `${firstName} ${lastName}`.trim();
-      })
+      .map(formatTeacherName)
       .filter(Boolean)
       .sort();
   } else {

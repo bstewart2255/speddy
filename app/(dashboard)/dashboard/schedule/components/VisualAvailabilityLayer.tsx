@@ -56,7 +56,7 @@ export function VisualAvailabilityLayer({
     // Bell Schedule conflicts
     if (filters.bellScheduleGrade) {
       const gradeBellSchedules = bellSchedules.filter(
-        bs => bs.grade_level === filters.bellScheduleGrade && bs.day_of_week === day
+        bs => bs.day_of_week === day && bs.grade_level === filters.bellScheduleGrade
       );
       console.log('[VisualAvailabilityLayer] Found bell schedules:', gradeBellSchedules.length, 'for grade', filters.bellScheduleGrade, 'on day', day);
       
