@@ -429,10 +429,10 @@ const handleSubmit = async (e: React.FormEvent) => {
           value={formData.email}
           onChange={handleChange}
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          placeholder="you@district.edu"
+          placeholder="you@school.edu"
         />
         <p className="mt-1 text-xs text-gray-500">
-          Must be a valid district email address (.edu)
+          Use your school or organization email (.edu, .org, etc.)
         </p>
       </div>
 
