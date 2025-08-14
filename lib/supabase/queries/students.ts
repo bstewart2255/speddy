@@ -97,7 +97,8 @@ export async function createStudent(studentData: {
         provider_id: user.id,
         school_site: schoolData.school_site,
         school_district: schoolData.school_district,
-        // Add structured IDs - these columns now exist in the database
+        // Add structured IDs - the following columns assume the relevant database migration has been completed
+        // Migration adds: school_id, district_id, state_id columns to the students table
         school_id: schoolData.school_id,
         district_id: schoolData.district_id,
         state_id: schoolData.state_id
@@ -134,8 +135,6 @@ export async function createStudent(studentData: {
  */
 export async function getStudents(school?: SchoolIdentifier) {
   const queryType = school?.school_id ? 'indexed' : 'text-based';
-  console.log('[getStudents] Called with school:', school);
-  console.log('[getStudents] Using', queryType, 'query strategy');
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -149,7 +148,6 @@ export async function getStudents(school?: SchoolIdentifier) {
   }
   
   const user = authResult.data.data.user;
-  console.log('[getStudents] User ID:', user.id);
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_students', 'database');
   const fetchResult = await safeQuery(
@@ -163,11 +161,9 @@ export async function getStudents(school?: SchoolIdentifier) {
       if (school) {
         if (school.school_id) {
           // Use indexed school_id for optimal performance
-          console.log('[getStudents] Using school_id index for fast query');
           query = query.eq('school_id', school.school_id);
         } else {
           // Fall back to text-based filtering for legacy data
-          console.log('[getStudents] Using text-based filtering');
           if (school.school_site) {
             query = query.eq('school_site', school.school_site);
           }
@@ -175,8 +171,6 @@ export async function getStudents(school?: SchoolIdentifier) {
             query = query.eq('school_district', school.school_district);
           }
         }
-      } else {
-        console.log('[getStudents] No school filter applied');
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -202,7 +196,6 @@ export async function getStudents(school?: SchoolIdentifier) {
     throw fetchResult.error;
   }
   
-  console.log('[getStudents] Results:', fetchResult.data?.length || 0, 'students found');
   return fetchResult.data || [];
 }
 

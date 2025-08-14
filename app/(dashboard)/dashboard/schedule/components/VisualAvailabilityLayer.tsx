@@ -52,7 +52,6 @@ export function VisualAvailabilityLayer({
         const grades = bs.grade_level.split(',').map(g => g.trim());
         return grades.includes(filters.bellScheduleGrade!);
       });
-      console.log('[VisualAvailabilityLayer] Found bell schedules:', gradeBellSchedules.length, 'for grade', filters.bellScheduleGrade, 'on day', day);
       
       gradeBellSchedules.forEach(schedule => {
         const [startH, startM] = schedule.start_time.split(':').map(Number);

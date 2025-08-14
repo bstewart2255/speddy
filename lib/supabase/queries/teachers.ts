@@ -262,7 +262,10 @@ export async function getTeacherByName(name: string): Promise<Teacher | null> {
   return fetchResult.data;
 }
 
-export async function getOrCreateTeacher(name: string, schoolInfo?: { school_id?: string | null; school_site?: string | null }): Promise<Teacher> {
+export async function getOrCreateTeacher(
+  name: string, 
+  schoolInfo: { school_id?: string | null; school_site?: string | null } = {}
+): Promise<Teacher> {
   const existing = await getTeacherByName(name);
   if (existing) return existing;
 
@@ -276,7 +279,7 @@ export async function getOrCreateTeacher(name: string, schoolInfo?: { school_id?
     email: null,
     classroom_number: null,
     phone_number: null,
-    school_id: schoolInfo?.school_id || null,
-    school_site: schoolInfo?.school_site || null
+    school_id: schoolInfo.school_id || null,
+    school_site: schoolInfo.school_site || null
   });
 }

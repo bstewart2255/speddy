@@ -2,13 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-
-// Utility function to format teacher names
-const formatTeacherName = (teacher: { first_name?: string; last_name?: string }): string => {
-  const firstName = teacher.first_name || '';
-  const lastName = teacher.last_name || '';
-  return `${firstName} ${lastName}`.trim();
-};
+import { formatTeacherName } from '@/lib/utils/teacher-utils';
 
 interface ConflictFilterPanelProps {
   bellSchedules: any[];
