@@ -45,7 +45,7 @@ export function ConflictFilterPanel({
   } else {
     // Fall back to extracting from students and activities
     const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
-    const teachersFromActivities = specialActivities.map(sa => sa.teacher).filter(Boolean);
+    const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean);
     const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
     teachers = Array.from(new Set(allTeachers)).filter(Boolean).sort();
   }
@@ -56,7 +56,7 @@ export function ConflictFilterPanel({
     const teacherStudents = students.filter(s => s.teacher_name === teacher);
     if (teacherStudents.length > 0) {
       // Use the most common grade level for this teacher
-      const gradeCounts = teacherStudents.reduce((acc, s) => {
+      const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
         acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);

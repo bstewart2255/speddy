@@ -89,7 +89,7 @@ export function VisualAvailabilityLayer({
       
       // Find the teacher's primary grade for color
       const teacherStudents = students.filter(s => s.teacher_name === filters.specialActivityTeacher);
-      const gradeCounts = teacherStudents.reduce((acc, s) => {
+      const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
         acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
