@@ -1,0 +1,55 @@
+name: 'Automated Spec Generation'
+on:
+  workflow_dispatch:
+    inputs:
+      issue_numbers:
+        description: 'Issue numbers to process (comma-separated, or "all" for needs-spec label)'
+        required: true
+        default: 'all'
+        type: string
+  # 🆕 LABEL-BASED TRIGGERS
+  issues:
+    types: [labeled]
+  schedule:
+    - cron: '0 9 * * MON'  # Weekly Monday morning review
+
+jobs:
+  generate-specs:
+    runs-on: ubuntu-latest
+    # 🆕 Only run if needs-spec label added OR manual trigger OR scheduled
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'schedule' ||
+      (github.event_name == 'issues' && github.event.label.name == 'needs-spec')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+          
+      - name: Install dependencies
+        run: npm install @octokit/rest
+          
+      - name: Run spec automation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Pass the specific issue number if triggered by label
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            node .github/scripts/spec-automation.js "${{ github.event.issue.number }}"
+          else
+            node .github/scripts/spec-automation.js "${{ inputs.issue_numbers || 'all' }}"
+          fi
+          
+      - name: Create summary report
+        run: |
+          echo "## Spec Generation Summary" >> $GITHUB_STEP_SUMMARY
+          if [ -f spec-report.md ]; then
+            cat spec-report.md >> $GITHUB_STEP_SUMMARY
+          fi

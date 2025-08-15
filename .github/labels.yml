@@ -1,0 +1,20 @@
+# .github/labels.yml (for label consistency)
+- name: "needs-spec"
+  color: "ff9900"
+  description: "Issue needs detailed specification"
+
+- name: "spec:done"  
+  color: "00ff00"
+  description: "Specification completed"
+
+- name: "priority:high"
+  color: "ff0000"
+  description: "High priority item"
+
+- name: "size:small"
+  color: "90EE90"
+  description: "Small complexity (<1 day)"
+
+- name: "category:frontend"
+  color: "blue" 
+  description: "Frontend component changes"
