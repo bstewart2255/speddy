@@ -16,6 +16,10 @@ on:
 jobs:
   generate-specs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     # 🆕 Only run if needs-spec label added OR manual trigger OR scheduled
     if: |
       github.event_name == 'workflow_dispatch' || 

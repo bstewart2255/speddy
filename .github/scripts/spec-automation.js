@@ -2,6 +2,17 @@ const { Octokit } = require('@octokit/rest');
 const fs = require('fs').promises;
 
 class SpecAutomation {
+  // Constants for configuration
+  static KEYWORD_MIN_LENGTH = 4;
+  static KEYWORD_MAX_COUNT = 5;
+  static KEYWORD_STOPWORDS = ['this', 'that', 'with', 'from', 'should', 'would', 'could', 'have', 'been', 'will', 'what', 'when', 'where'];
+  static TITLE_SEARCH_MAX_LENGTH = 50;
+  static MAX_AFFECTED_FILES = 10;
+  static MAX_SIMILAR_ISSUES = 3;
+  static MAX_REQUIREMENTS = 10;
+  static API_RETRY_DELAY = 1000; // milliseconds
+  static API_MAX_RETRIES = 3;
+
   constructor() {
     this.octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
     this.repo = { owner: 'bstewart2255', repo: 'speddy' };
@@ -89,19 +100,51 @@ class SpecAutomation {
     });
   }
 
+  // Helper method for API calls with exponential backoff
+  async makeApiCallWithRetry(apiCall, retries = SpecAutomation.API_MAX_RETRIES) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await apiCall();
+      } catch (error) {
+        if (error.status === 403 && error.message.includes('rate limit')) {
+          if (i < retries - 1) {
+            const delay = SpecAutomation.API_RETRY_DELAY * Math.pow(2, i);
+            console.log(`Rate limited. Waiting ${delay}ms before retry ${i + 1}/${retries}...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
   async checkForDuplicates(issue) {
-    // Search for similar titles
-    const searchQuery = `repo:${this.repo.owner}/${this.repo.repo} is:issue ${issue.title.substring(0, 50)}`;
+    // Truncate the title at the last word boundary
+    let truncatedTitle = issue.title;
+    if (issue.title.length > SpecAutomation.TITLE_SEARCH_MAX_LENGTH) {
+      const lastSpace = issue.title.lastIndexOf(' ', SpecAutomation.TITLE_SEARCH_MAX_LENGTH);
+      if (lastSpace > 0) {
+        truncatedTitle = issue.title.substring(0, lastSpace);
+      } else {
+        truncatedTitle = issue.title.substring(0, SpecAutomation.TITLE_SEARCH_MAX_LENGTH);
+      }
+    }
+    const searchQuery = `repo:${this.repo.owner}/${this.repo.repo} is:issue ${truncatedTitle}`;
     
     try {
-      const { data } = await this.octokit.search.issuesAndPullRequests({
-        q: searchQuery
-      });
+      const { data } = await this.makeApiCallWithRetry(() =>
+        this.octokit.search.issuesAndPullRequests({
+          q: searchQuery
+        })
+      );
       
       return data.items.filter(item => 
         item.number !== issue.number && 
         item.state === 'open'
-      ).slice(0, 3);
+      ).slice(0, SpecAutomation.MAX_SIMILAR_ISSUES);
     } catch (error) {
       console.error('Error searching for duplicates:', error);
       return [];
@@ -169,7 +212,7 @@ class SpecAutomation {
     // Look for component/page mentions
     const componentMatches = body.match(/(\w+)Component|\w+Page|\w+Modal/g) || [];
     
-    return [...fileMatches, ...componentMatches].slice(0, 10);
+    return [...fileMatches, ...componentMatches].slice(0, SpecAutomation.MAX_AFFECTED_FILES);
   }
 
   async findSimilarIssues(issue) {
@@ -177,10 +220,12 @@ class SpecAutomation {
     const searchQuery = `repo:${this.repo.owner}/${this.repo.repo} ${keywords.slice(0, 3).join(' ')}`;
     
     try {
-      const { data } = await this.octokit.search.issuesAndPullRequests({
-        q: searchQuery
-      });
-      return data.items.filter(item => item.number !== issue.number).slice(0, 3);
+      const { data } = await this.makeApiCallWithRetry(() => 
+        this.octokit.search.issuesAndPullRequests({
+          q: searchQuery
+        })
+      );
+      return data.items.filter(item => item.number !== issue.number).slice(0, SpecAutomation.MAX_SIMILAR_ISSUES);
     } catch (error) {
       return [];
     }
@@ -189,9 +234,9 @@ class SpecAutomation {
   extractKeywords(text) {
     return text.toLowerCase()
       .split(/\s+/)
-      .filter(word => word.length > 3)
-      .filter(word => !['this', 'that', 'with', 'from', 'should', 'would', 'could'].includes(word))
-      .slice(0, 5);
+      .filter(word => word.length >= SpecAutomation.KEYWORD_MIN_LENGTH)
+      .filter(word => !SpecAutomation.KEYWORD_STOPWORDS.includes(word))
+      .slice(0, SpecAutomation.KEYWORD_MAX_COUNT);
   }
 
   parseIssueType(issue, labels) {
@@ -218,7 +263,7 @@ class SpecAutomation {
              lowerLine.includes('task:') ||
              lowerLine.startsWith('- [ ]') ||
              lowerLine.startsWith('* ');
-    }).slice(0, 10);
+    }).slice(0, SpecAutomation.MAX_REQUIREMENTS);
   }
 
   // LABEL PARSING METHODS
