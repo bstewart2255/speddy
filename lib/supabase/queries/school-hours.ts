@@ -120,3 +120,37 @@ export async function deleteSchoolHours(gradeLevel: string, school?: SchoolIdent
   
   if (error) throw error;
 }
+
+/**
+ * Clean up orphaned K schedules (when K checkbox is unchecked but data exists).
+ * Deletes K, K-AM, and K-PM schedules.
+ */
+export async function cleanupKindergartenSchedules(school?: SchoolIdentifier) {
+  const supabase = createClient<Database>();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const kGradeLevels = ['K', 'K-AM', 'K-PM'];
+  
+  for (const gradeLevel of kGradeLevels) {
+    await deleteSchoolHours(gradeLevel, school);
+  }
+}
+
+/**
+ * Clean up orphaned TK schedules (when TK checkbox is unchecked but data exists).
+ * Deletes TK, TK-AM, and TK-PM schedules.
+ */
+export async function cleanupTKSchedules(school?: SchoolIdentifier) {
+  const supabase = createClient<Database>();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const tkGradeLevels = ['TK', 'TK-AM', 'TK-PM'];
+  
+  for (const gradeLevel of tkGradeLevels) {
+    await deleteSchoolHours(gradeLevel, school);
+  }
+}
