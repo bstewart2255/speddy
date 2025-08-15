@@ -14,6 +14,8 @@ import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../components/schedule/filter-select';
+import { LastSaved } from '../../../components/ui/last-saved';
+import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -23,6 +25,7 @@ export default function BellSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const supabase = createClient();
   const { currentSchool, loading: schoolLoading } = useSchool();
   
@@ -39,6 +42,10 @@ export default function BellSchedulesPage() {
       console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
 
       const data = await getBellSchedules(currentSchool || undefined);
+      
+      // Fetch last saved timestamp
+      const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
+      setLastSaved(lastUpdated);
 
       const endTime = performance.now();
       console.log(`Bell schedules loaded in ${Math.round(endTime - startTime)}ms`);
@@ -157,6 +164,7 @@ export default function BellSchedulesPage() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            <LastSaved timestamp={lastSaved} />
             <Button 
               variant="secondary" 
               onClick={() => setShowImportSection(!showImportSection)}

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { upsertSchoolHours, getSchoolHours, cleanupKindergartenSchedules, cleanupTKSchedules } from '../../../lib/supabase/queries/school-hours';
 import { useSchool } from '../providers/school-context';
+import { LastSaved } from '../ui/last-saved';
+import { getLastSavedSchoolHours } from '../../../lib/supabase/queries/last-saved';
 
 type TimeSlot = {
   start: string;
@@ -23,6 +25,7 @@ type ScheduleType = 'default' | 'tk' | 'k' | 'k-am' | 'k-pm' | 'tk-am' | 'tk-pm'
 export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }) {
   const { currentSchool } = useSchool();
   const [loading, setLoading] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showTK, setShowTK] = useState(false);
   const [showK, setShowK] = useState(false); // Defaults to false
 
@@ -94,6 +97,10 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
       try {
         // Pass full school identifier for optimized queries
         const hours = await getSchoolHours(currentSchool || undefined);
+        
+        // Fetch last saved timestamp
+        const lastUpdated = await getLastSavedSchoolHours(currentSchool || undefined);
+        setLastSaved(lastUpdated);
 
         // Process loaded hours into our state structure
         hours.forEach(hour => {
@@ -324,6 +331,10 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
 
       // Wait for all promises to complete
       await Promise.all(promises);
+      
+      // Update last saved timestamp
+      const lastUpdated = await getLastSavedSchoolHours(currentSchool || undefined);
+      setLastSaved(lastUpdated);
         
       onSuccess();
     } catch (error) {
@@ -516,9 +527,12 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         )}
       </div>
 
-      <Button type="submit" disabled={loading} variant="primary">
-        {loading ? 'Saving...' : 'Save School Hours'}
-      </Button>
+      <div className="flex items-center gap-4">
+        <Button type="submit" disabled={loading} variant="primary">
+          {loading ? 'Saving...' : 'Save School Hours'}
+        </Button>
+        <LastSaved timestamp={lastSaved} />
+      </div>
     </form>
   );
 }
