@@ -46,6 +46,7 @@ export function AIContentModal({
 
   // Escape HTML special characters in user-supplied notes
   function escapeHTML(str: string): string {
+    if (!str) return '';
     return str.replace(/&/g, "&amp;")
               .replace(/</g, "&lt;")
               .replace(/>/g, "&gt;")
