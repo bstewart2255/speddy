@@ -287,6 +287,7 @@ export interface Database {
           school_district: string | null
           school_id: string | null
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -300,6 +301,7 @@ export interface Database {
           school_district?: string | null
           school_id?: string | null
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -328,6 +330,7 @@ export interface Database {
           school_district: string | null
           school_id: string | null
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -341,6 +344,7 @@ export interface Database {
           school_district?: string | null
           school_id?: string | null
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string

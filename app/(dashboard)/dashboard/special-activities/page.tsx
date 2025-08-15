@@ -12,6 +12,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { FilterSelect } from '../../../components/schedule/filter-select';
+import { LastSaved } from '../../../components/ui/last-saved';
+import { getLastSavedSpecialActivity } from '../../../../lib/supabase/queries/last-saved';
 
 interface SpecialActivity {
   id: string;
@@ -29,6 +31,7 @@ export default function SpecialActivitiesPage() {
   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const { currentSchool } = useSchool();
   const supabase = createClient();
   
@@ -59,6 +62,10 @@ export default function SpecialActivitiesPage() {
 
       if (error) throw error;
       setSpecialActivities(data || []);
+      
+      // Fetch last saved timestamp
+      const lastUpdated = await getLastSavedSpecialActivity(currentSchool || undefined);
+      setLastSaved(lastUpdated);
     } catch (error) {
       console.error('Error fetching special activities:', error);
     } finally {
@@ -147,31 +154,36 @@ export default function SpecialActivitiesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Page Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
-            <p className="text-gray-600">Manage teacher-specific activities (Music, Library, STEM, etc)</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowImportSection(!showImportSection)}
-            >
-              Import CSV
-            </Button>
-            <AIUploadButton 
-              uploadType="special_activities" 
-              onSuccess={() => {
-                // Refresh special activities
-                window.location.reload();
-              }} 
-            />
-            <Button 
-              variant="primary" 
-              onClick={() => setShowAddForm(!showAddForm)}
-            >
-              + Add Activity
-            </Button>
+        <div className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
+              <p className="text-gray-600">Manage teacher-specific activities (Music, Library, STEM, etc)</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setShowImportSection(!showImportSection)}
+                >
+                  Import CSV
+                </Button>
+                <AIUploadButton 
+                  uploadType="special_activities" 
+                  onSuccess={() => {
+                    // Refresh special activities
+                    window.location.reload();
+                  }} 
+                />
+                <Button 
+                  variant="primary" 
+                  onClick={() => setShowAddForm(!showAddForm)}
+                >
+                  + Add Activity
+                </Button>
+              </div>
+              <LastSaved timestamp={lastSaved} />
+            </div>
           </div>
         </div>
 

@@ -14,6 +14,8 @@ import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../components/schedule/filter-select';
+import { LastSaved } from '../../../components/ui/last-saved';
+import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -23,6 +25,7 @@ export default function BellSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const supabase = createClient();
   const { currentSchool, loading: schoolLoading } = useSchool();
   
@@ -39,6 +42,10 @@ export default function BellSchedulesPage() {
       console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
 
       const data = await getBellSchedules(currentSchool || undefined);
+      
+      // Fetch last saved timestamp
+      const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
+      setLastSaved(lastUpdated);
 
       const endTime = performance.now();
       console.log(`Bell schedules loaded in ${Math.round(endTime - startTime)}ms`);
@@ -141,41 +148,46 @@ export default function BellSchedulesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Page Header with School Info */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-            <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
-            {currentSchool && (
-              <p className="text-sm text-gray-500 mt-1">
-                {currentSchool.display_name}
-                {currentSchool.is_migrated && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                    Optimized
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowImportSection(!showImportSection)}
-            >
-              Import CSV
-            </Button>
-            <AIUploadButton 
-              uploadType="bell_schedule" 
-              onSuccess={() => {
-                // Refresh bell schedules
-                window.location.reload();
-              }} 
-            />
-            <Button 
-              variant="primary" 
-              onClick={() => setShowAddForm(!showAddForm)}
-            >
-              + Add Schedule
-            </Button>
+        <div className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
+              <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
+              {currentSchool && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {currentSchool.display_name}
+                  {currentSchool.is_migrated && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      Optimized
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setShowImportSection(!showImportSection)}
+                >
+                  Import CSV
+                </Button>
+                <AIUploadButton 
+                  uploadType="bell_schedule" 
+                  onSuccess={() => {
+                    // Refresh bell schedules
+                    window.location.reload();
+                  }} 
+                />
+                <Button 
+                  variant="primary" 
+                  onClick={() => setShowAddForm(!showAddForm)}
+                >
+                  + Add Schedule
+                </Button>
+              </div>
+              <LastSaved timestamp={lastSaved} />
+            </div>
           </div>
         </div>
 
