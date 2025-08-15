@@ -148,42 +148,46 @@ export default function BellSchedulesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Page Header with School Info */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-            <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
-            {currentSchool && (
-              <p className="text-sm text-gray-500 mt-1">
-                {currentSchool.display_name}
-                {currentSchool.is_migrated && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                    Optimized
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <LastSaved timestamp={lastSaved} />
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowImportSection(!showImportSection)}
-            >
-              Import CSV
-            </Button>
-            <AIUploadButton 
-              uploadType="bell_schedule" 
-              onSuccess={() => {
-                // Refresh bell schedules
-                window.location.reload();
-              }} 
-            />
-            <Button 
-              variant="primary" 
-              onClick={() => setShowAddForm(!showAddForm)}
-            >
-              + Add Schedule
-            </Button>
+        <div className="mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
+              <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
+              {currentSchool && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {currentSchool.display_name}
+                  {currentSchool.is_migrated && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      Optimized
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setShowImportSection(!showImportSection)}
+                >
+                  Import CSV
+                </Button>
+                <AIUploadButton 
+                  uploadType="bell_schedule" 
+                  onSuccess={() => {
+                    // Refresh bell schedules
+                    window.location.reload();
+                  }} 
+                />
+                <Button 
+                  variant="primary" 
+                  onClick={() => setShowAddForm(!showAddForm)}
+                >
+                  + Add Schedule
+                </Button>
+              </div>
+              <LastSaved timestamp={lastSaved} />
+            </div>
           </div>
         </div>
 

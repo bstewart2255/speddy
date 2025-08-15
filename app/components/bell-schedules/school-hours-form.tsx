@@ -527,11 +527,11 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         )}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <Button type="submit" disabled={loading} variant="primary">
           {loading ? 'Saving...' : 'Save School Hours'}
         </Button>
-        <LastSaved timestamp={lastSaved} />
+        <LastSaved timestamp={lastSaved} className="ml-2" />
       </div>
     </form>
   );

@@ -54,9 +54,13 @@ export function LastSaved({ timestamp, className = '' }: LastSavedProps) {
     return () => clearInterval(interval);
   }, [timestamp]);
 
+  if (!timestamp) {
+    return null; // Don't show anything if never saved
+  }
+
   return (
-    <span className={`text-sm text-gray-500 ${className}`}>
-      Last saved: {relativeTime}
+    <span className={`text-xs text-gray-400 italic ${className}`}>
+      Saved {relativeTime}
     </span>
   );
 }
