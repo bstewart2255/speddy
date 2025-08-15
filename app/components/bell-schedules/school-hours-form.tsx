@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
-import { upsertSchoolHours, getSchoolHours } from '../../../lib/supabase/queries/school-hours';
+import { upsertSchoolHours, getSchoolHours, cleanupKindergartenSchedules, cleanupTKSchedules } from '../../../lib/supabase/queries/school-hours';
 import { useSchool } from '../providers/school-context';
 
 type TimeSlot = {
@@ -24,7 +24,7 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
   const { currentSchool } = useSchool();
   const [loading, setLoading] = useState(false);
   const [showTK, setShowTK] = useState(false);
-  const [showK, setShowK] = useState(false);
+  const [showK, setShowK] = useState(false); // Defaults to false
 
   // Default schedule state
   const [defaultSchedule, setDefaultSchedule] = useState<DaySchedule>({
@@ -106,10 +106,10 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
           if (hour.grade_level === 'default') {
             setDefaultSchedule(prev => ({ ...prev, [day]: timeSlot }));
           } else if (hour.grade_level === 'TK') {
-            setShowTK(true);
+            setShowTK(true); // Only set to true when K-specific data exists
             setTkSchedule(prev => ({ ...prev, [day]: timeSlot }));
           } else if (hour.grade_level === 'K') {
-            setShowK(true);
+            setShowK(true); // Only set to true when K-specific data exists
             setKSchedule(prev => ({ ...prev, [day]: timeSlot }));
           } else if (hour.grade_level === 'K-AM') {
             setShowKAM(true);
@@ -216,17 +216,10 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
         );
       }
 
-      Object.entries(kSchedule).forEach(([day, times]) => {
-        promises.push(
-          upsertSchoolHours({
-            school_site: currentSchool?.school_site,
-            day_of_week: dayNameToNumber(day),
-            grade_level: 'K',
-            start_time: times.start + ':00',
-            end_time: times.end + ':00'
-          })
-        );
-      });
+      // Clean up K schedules if checkbox is unchecked
+      if (!showK) {
+        await cleanupKindergartenSchedules(currentSchool || undefined);
+      }
 
       // Save K schedule if enabled
       if (showK) {
@@ -274,6 +267,11 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
             );
           });
         }
+      }
+
+      // Clean up TK schedules if checkbox is unchecked
+      if (!showTK) {
+        await cleanupTKSchedules(currentSchool || undefined);
       }
 
       // Save TK schedule if enabled
