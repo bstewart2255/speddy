@@ -10,7 +10,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
 
   test('should default to unchecked for kindergarten schedule', async ({ page }) => {
     // Check that the kindergarten checkbox is unchecked by default
-    const kindergartenCheckbox = page.locator('input[type="checkbox"]').filter({ hasText: 'Different schedule for Kindergarten' });
+    const kindergartenCheckbox = page.getByLabel('Different schedule for Kindergarten');
     await expect(kindergartenCheckbox).not.toBeChecked();
   });
 
@@ -56,7 +56,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify the checkbox is still checked
-    const reloadedCheckbox = page.locator('input[type="checkbox"]').filter({ hasText: 'Different schedule for Kindergarten' });
+    const reloadedCheckbox = page.getByLabel('Different schedule for Kindergarten');
     await expect(reloadedCheckbox).toBeChecked();
 
     // Verify the saved times are displayed
@@ -97,7 +97,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify the checkbox is unchecked
-    const reloadedCheckbox = page.locator('input[type="checkbox"]').filter({ hasText: 'Different schedule for Kindergarten' });
+    const reloadedCheckbox = page.getByLabel('Different schedule for Kindergarten');
     await expect(reloadedCheckbox).not.toBeChecked();
 
     // Verify kindergarten schedule fields are not visible
@@ -148,9 +148,9 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify checkboxes are checked
-    await expect(page.locator('input[type="checkbox"]').filter({ hasText: 'Different schedule for Kindergarten' })).toBeChecked();
-    await expect(page.locator('input[type="checkbox"]').filter({ hasText: 'Separate AM schedule' })).toBeChecked();
-    await expect(page.locator('input[type="checkbox"]').filter({ hasText: 'Separate PM schedule' })).toBeChecked();
+    await expect(page.getByLabel('Different schedule for Kindergarten')).toBeChecked();
+    await expect(page.getByLabel('Separate AM schedule')).toBeChecked();
+    await expect(page.getByLabel('Separate PM schedule')).toBeChecked();
 
     // Verify saved times
     const reloadedAmSection = page.locator('div').filter({ hasText: 'Kindergarten AM Hours' }).first();

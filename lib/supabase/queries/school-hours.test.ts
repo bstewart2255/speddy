@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { 
-  cleanupKindergartenSchedules, 
-  cleanupTKSchedules,
-  deleteSchoolHours 
-} from './school-hours';
+import * as schoolHoursModule from './school-hours';
 
 // Mock the Supabase client
 vi.mock('@/lib/supabase/client', () => ({
@@ -37,10 +33,9 @@ describe('School Hours Cleanup Functions', () => {
 
   describe('cleanupKindergartenSchedules', () => {
     it('should delete K, K-AM, and K-PM schedules', async () => {
-      const mockDelete = vi.fn(() => Promise.resolve({ error: null }));
-      const deleteSchoolHoursSpy = vi.spyOn({ deleteSchoolHours }, 'deleteSchoolHours');
+      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
       
-      await cleanupKindergartenSchedules({ school_site: 'test-school' });
+      await schoolHoursModule.cleanupKindergartenSchedules({ school_site: 'test-school' });
       
       // Should be called 3 times for K, K-AM, K-PM
       expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
@@ -50,9 +45,9 @@ describe('School Hours Cleanup Functions', () => {
     });
 
     it('should handle cleanup without school identifier', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn({ deleteSchoolHours }, 'deleteSchoolHours');
+      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
       
-      await cleanupKindergartenSchedules();
+      await schoolHoursModule.cleanupKindergartenSchedules();
       
       expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
       expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K', undefined);
@@ -63,9 +58,9 @@ describe('School Hours Cleanup Functions', () => {
 
   describe('cleanupTKSchedules', () => {
     it('should delete TK, TK-AM, and TK-PM schedules', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn({ deleteSchoolHours }, 'deleteSchoolHours');
+      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
       
-      await cleanupTKSchedules({ school_site: 'test-school' });
+      await schoolHoursModule.cleanupTKSchedules({ school_site: 'test-school' });
       
       // Should be called 3 times for TK, TK-AM, TK-PM
       expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
@@ -75,9 +70,9 @@ describe('School Hours Cleanup Functions', () => {
     });
 
     it('should handle cleanup without school identifier', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn({ deleteSchoolHours }, 'deleteSchoolHours');
+      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
       
-      await cleanupTKSchedules();
+      await schoolHoursModule.cleanupTKSchedules();
       
       expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
       expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK', undefined);
