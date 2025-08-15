@@ -44,6 +44,16 @@ export function AIContentModal({
   const [showNotes, setShowNotes] = React.useState(false);
   const sanitizedContent = content ? getSanitizedHTML(content) : null;
 
+  // Escape HTML special characters in user-supplied notes
+  function escapeHTML(str: string): string {
+    if (!str) return '';
+    return str.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#39;");
+  }
+
   // Reset saved state when modal opens with new content
   React.useEffect(() => {
     if (isOpen && content) {
@@ -150,7 +160,7 @@ export function AIContentModal({
             <p style="margin: 5px 0;"><strong>Time:</strong> ${timeSlot}</p>
             <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
             <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-            ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${notes}</p>` : ''}
+            ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
           ${sanitizedContent ? sanitizedContent.__html : ''}
         </body>
