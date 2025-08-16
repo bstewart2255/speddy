@@ -12,6 +12,10 @@ on:
       - 'playwright.config.js'
       - '.github/workflows/playwright*.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   # Quick smoke tests for PRs
   smoke-test:

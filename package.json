@@ -23,7 +23,7 @@
     "populate:schools": "tsx scripts/populate-school-data.ts",
     "populate:schools:test": "BATCH_SIZE=10 tsx scripts/populate-school-data.ts",
     "test:schools:setup": "tsx scripts/test-school-import.ts",
-    "postinstall": "playwright install --with-deps chromium"
+    "postinstall": "playwright install chromium"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
