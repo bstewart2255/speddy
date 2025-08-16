@@ -7,10 +7,10 @@ test.describe('Homepage E2E Tests', () => {
     expect(title).toBeTruthy();
   });
 
-  test('homepage has expected content', async ({ page }) => {
+  test('homepage redirects to login', async ({ page }) => {
     await page.goto('/');
-    // Adjust this selector based on your actual homepage
-    const heading = await page.textContent('h1');
-    expect(heading).toBeTruthy();
+    // Homepage redirects to /login
+    await page.waitForURL('**/login');
+    expect(page.url()).toContain('/login');
   });
 });
