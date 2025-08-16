@@ -115,7 +115,12 @@ async function loginUser(page: any, userData: typeof teacherUser, expectedPath =
   await page.fill('input[type="email"]', userData.email);
   await page.fill('input[type="password"]', userData.password);
   await page.click('button[type="submit"]');
-  await expect(page).toHaveURL(expectedPath);
+  
+  // Debug: Log current URL for troubleshooting
+  console.log('After login - Current URL:', page.url());
+  
+  // Increase timeout for URL check to handle slower redirects
+  await expect(page).toHaveURL(expectedPath, { timeout: 15000 });
 }
 
 test.describe('Referral Code Display', () => {
@@ -133,7 +138,8 @@ test.describe('Referral Code Display', () => {
 
   test('Teacher dashboard should display referral code', async ({ page }) => {
     // Create teacher user and profile
-    await createUserAndProfile(teacherUser);
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -157,7 +163,8 @@ test.describe('Referral Code Display', () => {
 
   test('SEA dashboard should NOT display referral code', async ({ page }) => {
     // Create SEA user and profile
-    await createUserAndProfile(seaUser);
+    const userId = await createUserAndProfile(seaUser);
+    console.log('Created SEA user with ID:', userId);
 
     // Login as SEA
     await loginUser(page, seaUser, /\/dashboard\/sea(\/|$)/);
@@ -172,7 +179,8 @@ test.describe('Referral Code Display', () => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
     // Create teacher user and profile
-    await createUserAndProfile(teacherUser);
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -193,7 +201,8 @@ test.describe('Referral Code Display', () => {
 
   test('Referral code expansion shows full details', async ({ page }) => {
     // Create teacher user and profile
-    await createUserAndProfile(teacherUser);
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -232,7 +241,8 @@ test.describe('Billing Page Referral Display', () => {
 
   test('Billing page should display referral code for teachers', async ({ page }) => {
     // Create teacher user and profile
-    await createUserAndProfile(teacherUser);
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -244,7 +254,7 @@ test.describe('Billing Page Referral Display', () => {
     await expect(page.locator('text=Your referral code')).toBeVisible();
     
     // Verify the referral code is displayed
-    const referralCodeElement = await page.locator('.font-mono').first();
+    const referralCodeElement = page.locator('.font-mono').first();
     const codeText = await referralCodeElement.textContent();
     expect(codeText).toMatch(/^[A-Z0-9]{6}$/);
   });

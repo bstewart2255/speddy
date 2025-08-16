@@ -82,6 +82,9 @@ test.describe('Kindergarten Schedule Toggle', () => {
     const kindergartenCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Different schedule for Kindergarten")') });
     await kindergartenCheckbox.click();
 
+    // Wait for kindergarten schedule fields to appear
+    await expect(page.locator('text="Kindergarten Hours (All Day)"')).toBeVisible();
+
     // Fill in kindergarten schedule
     const kScheduleSection = page.locator('div').filter({ hasText: 'Kindergarten Hours (All Day)' }).first();
     const mondayStartSelect = kScheduleSection.locator('select').first();
@@ -97,6 +100,9 @@ test.describe('Kindergarten Schedule Toggle', () => {
 
     // Now uncheck the kindergarten checkbox
     await kindergartenCheckbox.click();
+
+    // Wait for kindergarten schedule fields to disappear
+    await expect(page.locator('text="Kindergarten Hours (All Day)"')).not.toBeVisible();
 
     // Save again
     await page.locator('button').filter({ hasText: 'Save School Hours' }).click();
@@ -124,8 +130,18 @@ test.describe('Kindergarten Schedule Toggle', () => {
     const kindergartenCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Different schedule for Kindergarten")') });
     await kindergartenCheckbox.click();
 
-    // Check the AM schedule checkbox
-    const amCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate AM schedule")') });
+    // Wait for kindergarten schedule fields to appear
+    await expect(page.locator('text="Kindergarten Hours (All Day)"')).toBeVisible();
+
+    // Check the AM schedule checkbox - try using getByLabel first, fallback to sibling selector
+    let amCheckbox;
+    try {
+      amCheckbox = page.getByLabel('Separate AM schedule');
+      await expect(amCheckbox).toBeVisible({ timeout: 2000 });
+    } catch {
+      // Fallback to sibling selector if getByLabel doesn't work
+      amCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate AM schedule")') });
+    }
     await amCheckbox.click();
 
     // Verify AM schedule fields appear
@@ -138,8 +154,15 @@ test.describe('Kindergarten Schedule Toggle', () => {
     const amMondayEnd = amSection.locator('select').nth(1);
     await amMondayEnd.selectOption('11:30');
 
-    // Check the PM schedule checkbox
-    const pmCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate PM schedule")') });
+    // Check the PM schedule checkbox - try using getByLabel first, fallback to sibling selector
+    let pmCheckbox;
+    try {
+      pmCheckbox = page.getByLabel('Separate PM schedule');
+      await expect(pmCheckbox).toBeVisible({ timeout: 2000 });
+    } catch {
+      // Fallback to sibling selector if getByLabel doesn't work
+      pmCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate PM schedule")') });
+    }
     await pmCheckbox.click();
 
     // Verify PM schedule fields appear
@@ -164,8 +187,16 @@ test.describe('Kindergarten Schedule Toggle', () => {
 
     // Verify checkboxes are checked
     await expect(page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Different schedule for Kindergarten")') })).toBeChecked();
-    await expect(page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate AM schedule")') })).toBeChecked();
-    await expect(page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate PM schedule")') })).toBeChecked();
+    
+    // Try getByLabel first for AM/PM checkboxes
+    try {
+      await expect(page.getByLabel('Separate AM schedule')).toBeChecked();
+      await expect(page.getByLabel('Separate PM schedule')).toBeChecked();
+    } catch {
+      // Fallback to sibling selectors
+      await expect(page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate AM schedule")') })).toBeChecked();
+      await expect(page.locator('input[type="checkbox"]').filter({ has: page.locator('~ span:text("Separate PM schedule")') })).toBeChecked();
+    }
 
     // Verify saved times
     const reloadedAmSection = page.locator('div').filter({ hasText: 'Kindergarten AM Hours' }).first();
