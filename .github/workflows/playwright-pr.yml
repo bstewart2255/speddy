@@ -38,6 +38,21 @@ jobs:
     - name: Install Playwright
       run: npx playwright install --with-deps chromium
     
+    - name: Build application
+      run: npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    
+    - name: Start server
+      run: npm run start &
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    
+    - name: Wait for server to be ready
+      run: npx wait-on http://localhost:3000 --timeout 60000
+    
     - name: Run affected tests
       if: steps.changed-files.outputs.any_changed == 'true'
       run: |
@@ -49,6 +64,7 @@ jobs:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        BASE_URL: 'http://localhost:3000'
     
     - name: Run all tests
       if: steps.changed-files.outputs.any_changed == 'false'
@@ -58,6 +74,7 @@ jobs:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        BASE_URL: 'http://localhost:3000'
     
     - name: Upload test results
       if: always()
