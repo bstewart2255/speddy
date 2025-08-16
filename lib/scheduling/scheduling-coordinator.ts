@@ -93,7 +93,8 @@ export class SchedulingCoordinator {
     
     // Initialize data manager if not already initialized
     if (!this.dataManager.isInitialized()) {
-      await this.dataManager.initialize(providerId, schoolSite, schoolId);
+      // TODO: Get school_district from context if needed
+      await this.dataManager.initialize(providerId, schoolSite, '', schoolId);
     }
     
     // Build context

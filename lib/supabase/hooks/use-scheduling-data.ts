@@ -86,12 +86,10 @@ export function useSchedulingData(config?: DataManagerConfig): UseSchedulingData
           throw new Error('Not authenticated');
         }
         
-        // Initialize data manager if not already initialized or if school changed
-        if (!dataManager.isInitialized() || refreshTrigger > 0) {
-          await dataManager.initialize(user.id, currentSchool.school_site, currentSchool.school_id || undefined);
-          setIsInitialized(true);
-          setLastRefresh(new Date());
-        }
+        // Always re-initialize when school changes to ensure proper filtering
+        await dataManager.initialize(user.id, currentSchool.school_site, currentSchool.school_district, currentSchool.school_id || undefined);
+        setIsInitialized(true);
+        setLastRefresh(new Date());
         
         setIsLoading(false);
       } catch (err) {

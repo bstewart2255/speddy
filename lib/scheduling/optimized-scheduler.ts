@@ -179,13 +179,14 @@ export class OptimizedScheduler {
    * Pre-compute all valid time slots for the school
    * This runs ONCE per scheduling session, not per student
    */
-  async initializeContext(schoolSite: string): Promise<SchedulingContext> {
+  async initializeContext(schoolSite: string, schoolDistrict?: string): Promise<SchedulingContext> {
     this.log(`Initializing scheduling context for ${schoolSite}...`);
     this.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
     // Initialize the data manager if not already initialized
     if (!this.dataManager.isInitialized()) {
-      await this.dataManager.initialize(this.providerId, schoolSite);
+      // Use empty string as fallback for backward compatibility
+      await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', undefined);
     }
 
     // Use data manager instead of direct queries
