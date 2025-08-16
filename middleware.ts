@@ -21,9 +21,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // BYPASS AUTH FOR E2E TESTS
-  // Check for test authentication bypass header
-  if (process.env.NODE_ENV === 'test' || request.headers.get('x-test-auth-bypass') === 'true') {
+  // BYPASS AUTH FOR E2E TESTS - ONLY IN CI ENVIRONMENT
+  // Multiple safety checks to prevent accidental exposure
+  if (
+    process.env.CI === 'true' && // Only in CI environment
+    process.env.NODE_ENV !== 'production' && // Never in production
+    request.headers.get('x-test-auth-bypass') === 'true'
+  ) {
+    console.warn('⚠️ Test auth bypass active - this should only happen in CI tests');
     const response = NextResponse.next()
     response.headers.set('x-user-id', 'test-user-id')
     response.headers.set('x-user-email', 'test@example.com')
