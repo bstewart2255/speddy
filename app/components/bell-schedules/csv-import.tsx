@@ -91,8 +91,8 @@ K,Recess,10:00,10:15
                   grade_level: row.grade.toString().toUpperCase().trim(),
                   period_name: row.activity.trim(),
                   day_of_week: dayNum,
-                  start_time: row["start time"],
-                  end_time: row["end time"]
+                  start_time: row["start time"]?.trim() || '',
+                  end_time: row["end time"]?.trim() || ''
                 }));
               });
 

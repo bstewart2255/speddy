@@ -7,6 +7,7 @@ import {
   normalizeSpecialActivity,
   normalizeBellSchedule,
   createImportSummary,
+  toFullTimeFormat,
   type ImportSummary
 } from '@/lib/utils/dedupe-helpers';
 
@@ -77,7 +78,10 @@ export async function POST(request: NextRequest) {
         for (const day of days) {
           expandedSchedules.push({
             ...schedule,
-            day_of_week: day
+            day_of_week: day,
+            // Ensure times have full HH:MM:SS format
+            start_time: toFullTimeFormat(schedule.start_time || ''),
+            end_time: toFullTimeFormat(schedule.end_time || '')
           });
         }
       }
@@ -148,8 +152,15 @@ export async function POST(request: NextRequest) {
       summary.skipped = summary.total - dedupedSchedules.length;
       
     } else if (uploadType === 'special_activities') {
+      // Ensure times have full HH:MM:SS format before deduplication
+      const formattedActivities = confirmedData.map((activity: any) => ({
+        ...activity,
+        start_time: toFullTimeFormat(activity.start_time || ''),
+        end_time: toFullTimeFormat(activity.end_time || '')
+      }));
+      
       // Deduplicate special activities
-      const dedupedActivities = dedupeSpecialActivities(confirmedData);
+      const dedupedActivities = dedupeSpecialActivities(formattedActivities);
       
       // Get existing activities
       const { data: existingActivities } = await supabase

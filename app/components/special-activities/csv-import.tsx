@@ -105,8 +105,8 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
                 teacher_name: row.teacher.trim(),
                 activity_name: row.activity.trim(),
                 day_of_week: dayNameToNumber(row.day),
-                start_time: row['start time'],
-                end_time: row['end time']
+                start_time: row['start time']?.trim() || '',
+                end_time: row['end time']?.trim() || ''
               }));
 
             console.log("Raw activities:", rawActivities);

@@ -43,8 +43,32 @@ function normalizeTime(time: string): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+export function toFullTimeFormat(time: string): string {
+  // Ensures time string has full HH:MM:SS format
+  // If input is HH:MM, adds :00 for seconds
+  // If input is already HH:MM:SS, returns as is
+  return normalizeTime(time);
+}
+
 function generateContentHash(obj: any): string {
-  const str = JSON.stringify(obj, Object.keys(obj).sort());
+  // Recursively sort keys for nested objects to ensure deterministic serialization
+  const sortKeys = (value: any): any => {
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(sortKeys);
+    }
+    return Object.keys(value)
+      .sort()
+      .reduce((sorted: any, key) => {
+        sorted[key] = sortKeys(value[key]);
+        return sorted;
+      }, {});
+  };
+  
+  const sorted = sortKeys(obj);
+  const str = JSON.stringify(sorted);
   return crypto.createHash('sha256').update(str).digest('hex');
 }
 
