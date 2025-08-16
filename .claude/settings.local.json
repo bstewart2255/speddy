@@ -19,7 +19,10 @@
       "Bash(git checkout:*)",
       "Bash(npm run typecheck:*)",
       "Bash(mkdir:*)",
-      "Bash(gh pr view:*)"
+      "Bash(gh pr view:*)",
+      "Bash(gh issue:*)",
+      "Bash(npm install openai)",
+      "Bash(node:*)"
     ],
     "deny": []
   }

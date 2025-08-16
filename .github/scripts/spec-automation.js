@@ -1,5 +1,6 @@
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs').promises;
+const OpenAI = require('openai');
 
 class SpecAutomation {
   // Constants for configuration
@@ -15,6 +16,12 @@ class SpecAutomation {
 
   constructor() {
     this.octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+    
+    // Initialize OpenAI client with API key from Replit secrets
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+    
     this.repo = { owner: 'bstewart2255', repo: 'speddy' };
     this.processedItems = [];
     this.lastProcessedContext = null;
@@ -174,6 +181,12 @@ class SpecAutomation {
     // Check for similar implementations
     const similarIssues = await this.findSimilarIssues(issue);
     
+    // Get recent related commits if any
+    const recentCommits = await this.getRecentCommits(issue);
+    
+    // Get related PRs if any
+    const relatedPRs = await this.getRelatedPRs(issue);
+    
     // Parse issue type and content
     const issueType = this.parseIssueType(issue, existingLabels);
     const requirements = this.extractRequirements(issue.body);
@@ -191,6 +204,8 @@ class SpecAutomation {
     return {
       affectedFiles,
       similarIssues,
+      recentCommits,
+      relatedPRs,
       issueType,
       requirements,
       priority,
@@ -227,6 +242,51 @@ class SpecAutomation {
       );
       return data.items.filter(item => item.number !== issue.number).slice(0, SpecAutomation.MAX_SIMILAR_ISSUES);
     } catch (error) {
+      return [];
+    }
+  }
+
+  async getRecentCommits(issue) {
+    // Search for commits that might be related based on keywords
+    const keywords = this.extractKeywords(issue.title);
+    if (keywords.length === 0) return [];
+    
+    try {
+      const { data } = await this.makeApiCallWithRetry(() =>
+        this.octokit.repos.listCommits({
+          ...this.repo,
+          per_page: 10
+        })
+      );
+      
+      // Filter commits that might be related
+      return data.filter(commit => {
+        const message = commit.commit.message.toLowerCase();
+        return keywords.some(keyword => message.includes(keyword.toLowerCase()));
+      }).slice(0, 3);
+    } catch (error) {
+      console.error('Error fetching commits:', error);
+      return [];
+    }
+  }
+
+  async getRelatedPRs(issue) {
+    // Search for PRs that might be related
+    const keywords = this.extractKeywords(issue.title);
+    if (keywords.length === 0) return [];
+    
+    const searchQuery = `repo:${this.repo.owner}/${this.repo.repo} is:pr ${keywords[0]}`;
+    
+    try {
+      const { data } = await this.makeApiCallWithRetry(() =>
+        this.octokit.search.issuesAndPullRequests({
+          q: searchQuery
+        })
+      );
+      
+      return data.items.slice(0, 3);
+    } catch (error) {
+      console.error('Error fetching PRs:', error);
       return [];
     }
   }
@@ -332,6 +392,155 @@ class SpecAutomation {
   }
 
   async createSpec(issue, context) {
+    try {
+      // Use OpenAI to generate intelligent spec
+      const aiSpec = await this.generateAISpec(issue, context);
+      
+      if (aiSpec) {
+        return aiSpec;
+      }
+      
+      // Fallback to template-based generation if AI fails
+      console.log('Falling back to template-based spec generation');
+      return this.createTemplateSpec(issue, context);
+    } catch (error) {
+      console.error('Error generating AI spec:', error);
+      // Fallback to template-based generation
+      return this.createTemplateSpec(issue, context);
+    }
+  }
+
+  async generateAISpec(issue, context) {
+    // Prepare context for GPT-4
+    const contextInfo = {
+      issueTitle: issue.title,
+      issueBody: issue.body || 'No description provided',
+      issueNumber: issue.number,
+      issueType: context.issueType,
+      labels: issue.labels.map(l => l.name),
+      affectedFiles: context.affectedFiles,
+      similarIssues: context.similarIssues.map(i => ({
+        number: i.number,
+        title: i.title
+      })),
+      recentCommits: context.recentCommits.map(c => ({
+        message: c.commit.message,
+        author: c.commit.author.name
+      })),
+      relatedPRs: context.relatedPRs.map(pr => ({
+        number: pr.number,
+        title: pr.title,
+        state: pr.state
+      })),
+      priority: context.priority,
+      complexity: context.complexity,
+      category: context.category
+    };
+
+    const systemPrompt = `You are an expert software architect creating detailed implementation specifications for the Speddy project - a modern web application for dispatch management. Your specs should be immediately actionable by developers.
+
+The Speddy project uses:
+- Next.js/React for frontend
+- Supabase for backend and database
+- TypeScript throughout
+- Tailwind CSS for styling
+- Stripe for payments
+- Modern React patterns (hooks, functional components)
+
+Generate comprehensive, developer-ready specifications that include concrete implementation details.`;
+
+    const userPrompt = `Generate a detailed implementation specification for the following GitHub issue:
+
+Issue #${contextInfo.issueNumber}: ${contextInfo.issueTitle}
+
+Description:
+${contextInfo.issueBody}
+
+Context Information:
+- Issue Type: ${contextInfo.issueType}
+- Labels: ${contextInfo.labels.join(', ')}
+- Priority: ${contextInfo.priority}
+- Complexity: ${contextInfo.complexity}
+- Category: ${contextInfo.category}
+${contextInfo.affectedFiles.length > 0 ? `- Potentially Affected Files: ${contextInfo.affectedFiles.join(', ')}` : ''}
+${contextInfo.similarIssues.length > 0 ? `- Similar Issues: ${contextInfo.similarIssues.map(i => `#${i.number}: ${i.title}`).join(', ')}` : ''}
+${contextInfo.recentCommits.length > 0 ? `- Recent Related Commits: ${contextInfo.recentCommits.map(c => c.message).join('; ')}` : ''}
+${contextInfo.relatedPRs.length > 0 ? `- Related PRs: ${contextInfo.relatedPRs.map(pr => `#${pr.number}: ${pr.title} (${pr.state})`).join(', ')}` : ''}
+
+Please generate a comprehensive specification with the following sections:
+
+1. **Problem Statement**: Clear description of what needs to be solved and why
+2. **Proposed Solution**: High-level approach to solving the problem
+3. **Technical Approach**: Detailed technical implementation plan including:
+   - Specific files to create/modify
+   - Key functions/components to implement
+   - Data structures and interfaces
+   - Database schema changes if needed
+   - API endpoints if needed
+4. **Implementation Details**: Step-by-step implementation guide with code snippets or pseudocode where helpful
+5. **Testing Requirements**: Specific test cases and scenarios to validate
+6. **Acceptance Criteria**: Clear, measurable criteria for completion
+7. **Potential Risks & Mitigations**: Technical risks and how to handle them
+8. **Estimated Effort**: Time estimate based on complexity
+
+Format the specification in clean Markdown with proper headers and bullet points. Be specific and actionable - developers should be able to start coding immediately after reading this spec.`;
+
+    try {
+      // Make OpenAI API call with retry logic
+      const completion = await this.makeOpenAICallWithRetry(async () => {
+        return await this.openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2500
+        });
+      });
+
+      const aiGeneratedSpec = completion.choices[0].message.content;
+      
+      // Add metadata footer
+      const fullSpec = `${aiGeneratedSpec}
+
+---
+*🤖 AI-Generated Specification by GPT-4 on ${new Date().toISOString().split('T')[0]}*
+*Issue #${issue.number} | Priority: ${context.priority} | Complexity: ${context.complexity}*`;
+
+      return fullSpec;
+    } catch (error) {
+      console.error('OpenAI API error:', error);
+      throw error;
+    }
+  }
+
+  async makeOpenAICallWithRetry(apiCall, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await apiCall();
+      } catch (error) {
+        if (error.status === 429 || (error.response && error.response.status === 429)) {
+          // Rate limit error - wait with exponential backoff
+          if (i < retries - 1) {
+            const delay = Math.pow(2, i) * 2000; // 2s, 4s, 8s
+            console.log(`OpenAI rate limited. Waiting ${delay}ms before retry ${i + 1}/${retries}...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            throw error;
+          }
+        } else if (error.status === 401 || (error.response && error.response.status === 401)) {
+          console.error('OpenAI API key is invalid or not set. Please set OPENAI_API_KEY in Replit secrets.');
+          throw new Error('OpenAI API key not configured');
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  // Keep the template-based spec as fallback
+  createTemplateSpec(issue, context) {
     const titlePrefix = `[${context.issueType}]`;
     const formattedTitle = issue.title.startsWith('[') ? issue.title : `${titlePrefix} ${issue.title}`;
 
@@ -529,11 +738,19 @@ ${context.similarIssues.map(issue => `- #${issue.number}: ${issue.title}`).join(
   }
 
   async updateIssueWithSpec(issue, spec) {
-    await this.octokit.issues.update({
+    // Post spec as a comment instead of replacing issue body
+    await this.octokit.issues.createComment({
       ...this.repo,
       issue_number: issue.number,
-      body: spec
+      body: `## 📋 Implementation Specification
+
+${spec}
+
+---
+*Please review this AI-generated specification and provide feedback. Once approved, developers can use this as the implementation guide.*`
     });
+    
+    console.log(`✅ Posted AI-generated spec to issue #${issue.number}`);
   }
 
   async finalizeIssue(issue) {
@@ -635,6 +852,11 @@ ${this.processedItems.map(item => `
   }
 }
 
-// Run the automation
-const issueInput = process.argv[2] || 'all';
-new SpecAutomation().run(issueInput).catch(console.error);
+// Export for testing
+module.exports = { SpecAutomation };
+
+// Run the automation if called directly
+if (require.main === module) {
+  const issueInput = process.argv[2] || 'all';
+  new SpecAutomation().run(issueInput).catch(console.error);
+}
