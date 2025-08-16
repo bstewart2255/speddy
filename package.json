@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:e2e": "jest --config=jest.e2e.config.js",
-    "test:e2e:watch": "jest --config=jest.e2e.config.js --watch",
+    "test:e2e": "playwright test",
+    "test:e2e:watch": "playwright test --ui",
     "test:e2e:ai": "node tests/e2e/runner/test-runner.js",
-    "test:e2e:debug": "HEADLESS=false jest --config=jest.e2e.config.js --runInBand",
+    "test:e2e:debug": "playwright test --debug",
     "deploy:replit": "./deploy.sh",
     "test:e2e:ci": "node tests/e2e/deployment/replit-deploy-check.js",
     "prebuild": "npm run lint",

@@ -2,9 +2,11 @@ import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
 // Test configuration
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+// Skip tests if environment variables are not set
+test.skip(!supabaseUrl || !supabaseServiceKey, 'Supabase environment variables not configured');
 
 // Test users
 const teacherUser = {
@@ -36,6 +38,7 @@ const seaUser = {
 // Cleanup function
 async function cleanupTestUser(email: string) {
   try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: user } = await supabase.auth.admin.listUsers();
     const testUser = user.users.find(u => u.email === email);
     
@@ -64,6 +67,7 @@ test.describe('Referral Code Display', () => {
 
   test('Teacher dashboard should display referral code', async ({ page }) => {
     // Create teacher user
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: signUpData } = await supabase.auth.admin.createUser({
       email: teacherUser.email,
       password: teacherUser.password,
@@ -122,6 +126,7 @@ test.describe('Referral Code Display', () => {
 
   test('SEA dashboard should NOT display referral code', async ({ page }) => {
     // Create SEA user
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: signUpData } = await supabase.auth.admin.createUser({
       email: seaUser.email,
       password: seaUser.password,
@@ -168,6 +173,7 @@ test.describe('Referral Code Display', () => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
     // Create teacher user
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: signUpData } = await supabase.auth.admin.createUser({
       email: teacherUser.email,
       password: teacherUser.password,
@@ -219,6 +225,7 @@ test.describe('Referral Code Display', () => {
 
   test('Referral code expansion shows full details', async ({ page }) => {
     // Create teacher user with some referral data
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: signUpData } = await supabase.auth.admin.createUser({
       email: teacherUser.email,
       password: teacherUser.password,
@@ -288,6 +295,7 @@ test.describe('Billing Page Referral Display', () => {
 
   test('Billing page should display referral code for teachers', async ({ page }) => {
     // Create teacher user
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: signUpData } = await supabase.auth.admin.createUser({
       email: teacherUser.email,
       password: teacherUser.password,
