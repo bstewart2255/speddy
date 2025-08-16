@@ -351,7 +351,6 @@ export function AIContentModal({
                 Lesson saved successfully!
               </span>
             )}
-            {!saved && content && !isViewingSaved && "Tip: Save this lesson to access it later."}
           </div>
           <div className="flex gap-3">
             <button
