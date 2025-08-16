@@ -23,9 +23,10 @@ export async function middleware(request: NextRequest) {
 
   // BYPASS AUTH FOR E2E TESTS - ONLY IN CI ENVIRONMENT
   // Multiple safety checks to prevent accidental exposure
+  // Note: Next.js always sets NODE_ENV=production when built, so we use a custom env var
   if (
     process.env.CI === 'true' && // Only in CI environment
-    process.env.NODE_ENV !== 'production' && // Never in production
+    process.env.ENABLE_TEST_AUTH_BYPASS === 'true' && // Explicit opt-in
     request.headers.get('x-test-auth-bypass') === 'true'
   ) {
     console.warn('⚠️ Test auth bypass active - this should only happen in CI tests');

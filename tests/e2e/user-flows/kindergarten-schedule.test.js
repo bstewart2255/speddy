@@ -8,8 +8,30 @@ test.describe('Kindergarten Schedule Toggle', () => {
   });
 
   test('should default to unchecked for kindergarten schedule', async ({ page }) => {
-    // Wait for the form to load
-    await page.waitForSelector('form', { timeout: 10000 });
+    // Debug: Log current URL
+    const currentUrl = page.url();
+    console.log('Current URL:', currentUrl);
+    
+    // Debug: Check if we're still on login page
+    if (currentUrl.includes('/login')) {
+      // Try to see what's on the login page
+      const pageContent = await page.content();
+      console.log('Still on login page. Page title:', await page.title());
+      console.log('Page has form:', await page.locator('form').count(), 'forms');
+      
+      // Log first 500 chars of page content
+      console.log('Page content preview:', pageContent.substring(0, 500));
+    }
+    
+    // Try waiting for either the form OR an error message
+    try {
+      await page.waitForSelector('form', { timeout: 5000 });
+    } catch (e) {
+      console.error('No form found after 5 seconds');
+      // Try to find any text that might indicate what page we're on
+      const bodyText = await page.locator('body').innerText();
+      console.log('Page body text (first 500 chars):', bodyText.substring(0, 500));
+    }
     
     // Find the kindergarten checkbox by looking for the label that contains the text
     const kindergartenCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
