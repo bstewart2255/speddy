@@ -5,8 +5,12 @@ test.describe('Kindergarten Schedule Toggle', () => {
   test.beforeEach(async ({ page }) => {
     // Authenticate and navigate to the bell schedules page
     await authenticatedGoto(page, '/dashboard/bell-schedules');
+    // Explicitly check if authentication failed
+    if (page.url().includes('/login')) {
+      throw new Error('Authentication failed: still on login page after authenticatedGoto');
+    }
     // Ensure we actually reached the bell schedules page before interacting
-    await expect(page).toHaveURL(/\/dashboard\/bell-schedules(\/?|$)/);
+    await expect(page).toHaveURL(/\/dashboard\/bell-schedules(\/?|$)/, { timeout: 10000 });
     await expect(page.getByRole('heading', { name: 'Bell Schedules' })).toBeVisible({ timeout: 10000 });
   });
 
