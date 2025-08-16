@@ -986,6 +986,9 @@ export function CalendarWeekView({
           const dayOfWeek = index + 1; // 1 = Monday, 2 = Tuesday, etc.
           const daySessions = sessionsByDay[dayOfWeek] || [];
           const isToday = date.toDateString() === new Date().toDateString();
+          
+          // Sort sessions by start time for chronological order
+          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
 
           return (
             <div
@@ -1045,12 +1048,12 @@ export function CalendarWeekView({
               </div>
 
               {/* AI Lesson Buttons - only show if there are sessions */}
-              {daySessions.length > 0 && (
+              {sortedDaySessions.length > 0 && (
                 <div className="px-2 pt-1 pb-2 space-y-1">
                   {/* AI Daily Lesson Button */}
                   <button
                     onClick={() =>
-                      handleGenerateDailyAILesson(date, daySessions)
+                      handleGenerateDailyAILesson(date, sortedDaySessions)
                     }
                     disabled={savedLessons.has(
                       date.toISOString().split("T")[0],
@@ -1196,14 +1199,12 @@ export function CalendarWeekView({
                     </p>
                   </div>
                 )}
-                {daySessions.length === 0 ? (
+                {sortedDaySessions.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center mt-4">
                     No sessions
                   </p>
                 ) : (
-                  daySessions
-                    .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                    .map((session) => {
+                  sortedDaySessions.map((session) => {
                       const student = students.get(session.student_id);
                       const currentSession = sessionsState.find(s => s.id === session.id) || session;
                     return (
