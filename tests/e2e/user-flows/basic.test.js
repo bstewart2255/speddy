@@ -1,5 +1,6 @@
-// tests/e2e/user-flows/basic-test.js
-describe('E2E Testing Setup', () => {
+import { test, expect } from '@playwright/test';
+
+test.describe('E2E Testing Setup', () => {
   test('should be configured correctly', () => {
     expect(true).toBe(true);
   });
