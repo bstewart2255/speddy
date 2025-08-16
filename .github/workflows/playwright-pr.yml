@@ -84,6 +84,8 @@ jobs:
           echo "${{ steps.changed-files.outputs.all_changed_files }}"
           npx playwright test ${{ steps.changed-files.outputs.all_changed_files }} --reporter=list
         env:
+          CI: true
+          ENABLE_TEST_AUTH_BYPASS: true
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -94,6 +96,8 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'false'
         run: npx playwright test --reporter=list
         env:
+          CI: true
+          ENABLE_TEST_AUTH_BYPASS: true
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

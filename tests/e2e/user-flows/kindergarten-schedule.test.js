@@ -5,6 +5,9 @@ test.describe('Kindergarten Schedule Toggle', () => {
   test.beforeEach(async ({ page }) => {
     // Authenticate and navigate to the bell schedules page
     await authenticatedGoto(page, '/dashboard/bell-schedules');
+    // Ensure we actually reached the bell schedules page before interacting
+    await expect(page).toHaveURL(/\/dashboard\/bell-schedules(\/?|$)/);
+    await expect(page.getByRole('heading', { name: 'Bell Schedules' })).toBeVisible({ timeout: 10000 });
   });
 
   test('should default to unchecked for kindergarten schedule', async ({ page }) => {
@@ -33,8 +36,8 @@ test.describe('Kindergarten Schedule Toggle', () => {
       console.log('Page body text (first 500 chars):', bodyText.substring(0, 500));
     }
     
-    // Find the kindergarten checkbox by looking for the label that contains the text
-    const kindergartenCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    // Prefer role-based locator anchored by visible label
+    const kindergartenCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await expect(kindergartenCheckbox).not.toBeChecked();
   });
 
@@ -43,7 +46,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForSelector('form', { timeout: 10000 });
     
     // Find and check the kindergarten checkbox
-    const kindergartenCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    const kindergartenCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await kindergartenCheckbox.click();
 
     // Verify that the kindergarten schedule fields appear
@@ -59,7 +62,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForSelector('form', { timeout: 10000 });
     
     // Check the kindergarten checkbox
-    const kindergartenCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    const kindergartenCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await kindergartenCheckbox.click();
 
     // Fill in some kindergarten schedule times
@@ -86,7 +89,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify the checkbox is still checked
-    const reloadedCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    const reloadedCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await expect(reloadedCheckbox).toBeChecked();
 
     // Verify the saved times are displayed
@@ -100,7 +103,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForSelector('form', { timeout: 10000 });
     
     // First, set up a kindergarten schedule
-    const kindergartenCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    const kindergartenCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await kindergartenCheckbox.click();
 
     // Wait for kindergarten schedule fields to appear
@@ -136,7 +139,7 @@ test.describe('Kindergarten Schedule Toggle', () => {
     await page.waitForLoadState('networkidle');
 
     // Verify the checkbox is unchecked
-    const reloadedCheckbox = page.locator('label:has-text("Different schedule for Kindergarten") input[type="checkbox"]');
+    const reloadedCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
     await expect(reloadedCheckbox).not.toBeChecked();
 
     // Verify kindergarten schedule fields are not visible

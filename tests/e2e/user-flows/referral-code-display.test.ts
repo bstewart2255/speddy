@@ -71,6 +71,8 @@ async function cleanupTestUser(email: string) {
     }
 
     if (userId) {
+      // Remove any seeded subscriptions for this test user
+      await supabase.from('subscriptions').delete().eq('user_id', userId);
       await supabase.from('referral_codes').delete().eq('user_id', userId);
       await supabase.from('profiles').delete().eq('id', userId);
       await supabase.auth.admin.deleteUser(userId);
@@ -110,6 +112,31 @@ async function createUserAndProfile(userData: typeof teacherUser) {
   return signUpData.user.id;
 }
 
+async function seedActiveSubscriptionForUser(userId: string) {
+  const supabase = createSupabaseClient();
+
+  // Ensure idempotency for retries
+  await supabase.from('subscriptions').delete().eq('user_id', userId);
+
+  const now = Date.now();
+  const currentPeriodStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const currentPeriodEnd = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .insert({
+      user_id: userId,
+      stripe_customer_id: `test_c_${userId.substring(0, 12)}`,
+      stripe_subscription_id: `sub_test_${userId.substring(0, 12)}`,
+      status: 'active',
+      current_period_start: currentPeriodStart,
+      current_period_end: currentPeriodEnd,
+      trial_end: null,
+    });
+
+  if (error) throw error;
+}
+
 async function loginUser(page: any, userData: typeof teacherUser, expectedPath = /\/dashboard(\/|$)/) {
   await page.goto('/login');
   await page.fill('input[type="email"]', userData.email);
@@ -140,6 +167,9 @@ test.describe('Referral Code Display', () => {
     // Create teacher user and profile
     const userId = await createUserAndProfile(teacherUser);
     console.log('Created teacher user with ID:', userId);
+
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -182,6 +212,9 @@ test.describe('Referral Code Display', () => {
     const userId = await createUserAndProfile(teacherUser);
     console.log('Created teacher user with ID:', userId);
 
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
+
     // Login as teacher
     await loginUser(page, teacherUser);
 
@@ -203,6 +236,9 @@ test.describe('Referral Code Display', () => {
     // Create teacher user and profile
     const userId = await createUserAndProfile(teacherUser);
     console.log('Created teacher user with ID:', userId);
+
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
@@ -243,6 +279,9 @@ test.describe('Billing Page Referral Display', () => {
     // Create teacher user and profile
     const userId = await createUserAndProfile(teacherUser);
     console.log('Created teacher user with ID:', userId);
+
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
     // Login as teacher
     await loginUser(page, teacherUser);
