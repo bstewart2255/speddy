@@ -26,13 +26,11 @@ export async function authenticateUser(page) {
 
   // Option 2: If the app requires actual Supabase auth, use test credentials
   // Uncomment and modify based on your auth setup:
-  /*
-  await page.goto('/login');
-  await page.fill('input[name="email"]', process.env.TEST_USER_EMAIL || 'test@example.com');
-  await page.fill('input[name="password"]', process.env.TEST_USER_PASSWORD || 'testpassword');
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard/**');
-  */
+  // await page.goto('/login');
+  // await page.fill('input[name="email"]', process.env.TEST_USER_EMAIL || 'test@example.com');
+  // await page.fill('input[name="password"]', process.env.TEST_USER_PASSWORD || 'testpassword');
+  // await page.click('button[type="submit"]');
+  // await page.waitForURL('**/dashboard/**');
 }
 
 /**
