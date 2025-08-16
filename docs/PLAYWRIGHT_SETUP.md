@@ -77,11 +77,28 @@ We have two Playwright workflows:
 
 Required environment variables for CI:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (for tests requiring admin access)
-- `ANTHROPIC_API_KEY`
-- `BASE_URL` (optional, defaults to http://localhost:3000)
+**Core Services:**
+
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for admin operations)
+
+**External APIs:**
+
+- `ANTHROPIC_API_KEY` - Claude API key for AI features
+- `RESEND_API_KEY` - Resend email service API key
+
+**Stripe Payment:**
+
+- `STRIPE_SECRET_KEY` - Stripe secret key
+- `STRIPE_WEBHOOK_SECRET` - Stripe webhook endpoint secret
+- `STRIPE_MONTHLY_PRICE_ID` - Stripe price ID for monthly subscription
+- `NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID` - Public Stripe price ID
+
+**Application:**
+
+- `NEXT_PUBLIC_APP_URL` - Application URL (defaults to http://localhost:3000)
+- `BASE_URL` - Base URL for tests (defaults to http://localhost:3000)
 
 ### Setting up Secrets in GitHub
 
