@@ -68,13 +68,14 @@ export class OptimizedScheduler {
   /**
    * Initialize context - delegates to coordinator
    */
-  async initializeContext(schoolSite: string): Promise<SchedulingContext> {
+  async initializeContext(schoolSite: string, schoolDistrict?: string): Promise<SchedulingContext> {
     console.log(`[OptimizedScheduler] Initializing context for ${schoolSite}...`);
     console.log('[PERFORMANCE] Using refactored architecture with separated concerns');
     
     // Initialize data manager if needed
     if (!this.dataManager.isInitialized()) {
-      await this.dataManager.initialize(this.providerId, schoolSite);
+      // Use empty string as fallback for backward compatibility
+      await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', undefined);
     }
     
     // Initialize coordinator

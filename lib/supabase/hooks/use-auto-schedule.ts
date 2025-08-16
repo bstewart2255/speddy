@@ -35,7 +35,7 @@ export function useAutoSchedule(debug: boolean = false) {
       if (!student.school_site) {
         throw new Error('Student school site is required but not set');
       }
-      await scheduler.initializeContext(student.school_site);
+      await scheduler.initializeContext(student.school_site, student.school_district || '');
 
       // Schedule just this one student
       const results = await scheduler.scheduleBatch([student]);
@@ -113,8 +113,10 @@ export function useAutoSchedule(debug: boolean = false) {
         }
 
         // Ensure data manager is initialized for this school
+        // Get school_district from the first student in this school group
+        const schoolDistrict = schoolStudents[0]?.school_district || '';
         if (!dataManager.isInitialized() || schoolSite !== results.lastSchool) {
-          await dataManager.initialize(user.id, schoolSite);
+          await dataManager.initialize(user.id, schoolSite, schoolDistrict);
           results.lastSchool = schoolSite;
         } else if (dataManager.isCacheStale()) {
           await dataManager.refresh();
@@ -124,7 +126,7 @@ export function useAutoSchedule(debug: boolean = false) {
         const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
 
         // Initialize context once for the school
-        await scheduler.initializeContext(schoolSite);
+        await scheduler.initializeContext(schoolSite, schoolDistrict);
 
         // Schedule all students at this school
         const schoolResults = await scheduler.scheduleBatch(schoolStudents);

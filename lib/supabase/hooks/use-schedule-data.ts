@@ -214,21 +214,27 @@ export function useScheduleData() {
 
   // Sync with data manager when initialized
   useEffect(() => {
-    if (isDataManagerInitialized && !isDataManagerLoading) {
+    if (isDataManagerInitialized && !isDataManagerLoading && data.students.length > 0) {
       const cachedSessions = getExistingSessions();
-      if (cachedSessions.length > 0) {
+      // Filter cached sessions to only include those for students in the current school
+      const studentIds = data.students.map(s => s.id);
+      const filteredSessions = cachedSessions.filter(session => 
+        studentIds.includes(session.student_id)
+      );
+      
+      if (filteredSessions.length > 0) {
         setData(prev => ({
           ...prev,
-          sessions: cachedSessions as ScheduleSession[],
+          sessions: filteredSessions as ScheduleSession[],
         }));
-        console.log('[useScheduleData] Synced with data manager:', cachedSessions.length);
+        console.log('[useScheduleData] Synced with data manager:', filteredSessions.length, 'sessions (filtered from', cachedSessions.length, ')');
       }
       
       if (isCacheStale) {
         refreshSchedulingData().catch(console.error);
       }
     }
-  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, refreshSchedulingData]);
+  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, refreshSchedulingData, data.students]);
 
   // Real-time subscription
   useEffect(() => {

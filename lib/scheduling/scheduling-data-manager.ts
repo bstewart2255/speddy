@@ -31,6 +31,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private initialized = false;
   private providerId: string | null = null;
   private schoolSite: string | null = null;
+  private schoolDistrict: string | null = null;
   private schoolId: string | null = null;
   
   // Core data structures
@@ -85,11 +86,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   /**
    * Initialize the data manager with provider and school context
    */
-  public async initialize(providerId: string, schoolSite: string, schoolId?: string): Promise<void> {
-    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite} (school_id: ${schoolId})`);
+  public async initialize(providerId: string, schoolSite: string, schoolDistrict: string, schoolId?: string): Promise<void> {
+    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite}/${schoolDistrict} (school_id: ${schoolId})`);
     
     this.providerId = providerId;
     this.schoolSite = schoolSite;
+    this.schoolDistrict = schoolDistrict;
     this.schoolId = schoolId || null;
     this.data.version.modifiedBy = providerId;
     
@@ -274,16 +276,40 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Fetch existing sessions
    */
   private async fetchExistingSessions(): Promise<ScheduleSession[]> {
+    // First, fetch students for this school to get their IDs
+    const { data: students, error: studentError } = await this.supabase
+      .from('students')
+      .select('id')
+      .eq('provider_id', this.providerId!)
+      .eq('school_site', this.schoolSite!)
+      .eq('school_district', this.schoolDistrict!);
+    
+    if (studentError) {
+      this.cacheMetadata.fetchErrors.push(`Students fetch: ${studentError.message}`);
+      return [];
+    }
+    
+    if (!students || students.length === 0) {
+      console.log('[DataManager] No students found for school, returning empty sessions');
+      return [];
+    }
+    
+    // Get student IDs
+    const studentIds = students.map(s => s.id);
+    
+    // Fetch sessions only for students in the current school
     const { data, error } = await this.supabase
       .from('schedule_sessions')
       .select('*')
-      .eq('provider_id', this.providerId!);
+      .eq('provider_id', this.providerId!)
+      .in('student_id', studentIds);
     
     if (error) {
       this.cacheMetadata.fetchErrors.push(`Existing sessions: ${error.message}`);
       return [];
     }
     
+    console.log(`[DataManager] Fetched ${data?.length || 0} sessions for ${studentIds.length} students at ${this.schoolSite}`);
     return data || [];
   }
   
