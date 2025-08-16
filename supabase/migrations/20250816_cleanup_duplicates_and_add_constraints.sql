@@ -70,32 +70,4 @@ ON bell_schedules (provider_id, school_id, content_hash)
 WHERE content_hash IS NOT NULL;
 
 
--- Report on duplicates that were removed
-DO $$
-DECLARE
-  special_activities_removed INTEGER;
-  bell_schedules_removed INTEGER;
-BEGIN
-  -- Count removed duplicates (this is just for logging, actual removal happened above)
-  SELECT COUNT(*) INTO special_activities_removed
-  FROM (
-    SELECT COUNT(*) as cnt
-    FROM special_activities
-    WHERE school_id IS NOT NULL
-    GROUP BY provider_id, school_id, teacher_name, activity_name, day_of_week, start_time
-    HAVING COUNT(*) > 1
-  ) as duplicates;
-  
-  SELECT COUNT(*) INTO bell_schedules_removed
-  FROM (
-    SELECT COUNT(*) as cnt
-    FROM bell_schedules
-    WHERE school_id IS NOT NULL
-    GROUP BY provider_id, school_id, grade_level, period_name, day_of_week, start_time
-    HAVING COUNT(*) > 1
-  ) as duplicates;
-  
-  RAISE NOTICE 'Cleaned up duplicate entries - Special Activities: %, Bell Schedules: %', 
-    special_activities_removed, bell_schedules_removed;
-END;
-$$;
+-- Duplicate counting and cleanup is handled in the DELETE statements above

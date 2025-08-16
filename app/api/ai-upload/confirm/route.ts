@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { 
   dedupeSpecialActivities, 
   dedupeBellSchedules,
+  normalizeSpecialActivity,
+  normalizeBellSchedule,
   createImportSummary,
   type ImportSummary
 } from '@/lib/utils/dedupe-helpers';
@@ -94,7 +96,7 @@ export async function POST(request: NextRequest) {
       const existingMap = new Map();
       if (existingSchedules) {
         for (const schedule of existingSchedules) {
-          const normalized = dedupeBellSchedules([schedule])[0];
+          const normalized = normalizeBellSchedule(schedule);
           existingMap.set(normalized.normalized_key, schedule.id);
         }
       }
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
       const existingMap = new Map();
       if (existingActivities) {
         for (const activity of existingActivities) {
-          const normalized = dedupeSpecialActivities([activity])[0];
+          const normalized = normalizeSpecialActivity(activity);
           existingMap.set(normalized.normalized_key, activity.id);
         }
       }

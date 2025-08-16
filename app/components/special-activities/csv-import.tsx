@@ -5,7 +5,7 @@ import Papa from "papaparse";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
-import { dedupeSpecialActivities, createImportSummary } from '../../../lib/utils/dedupe-helpers';
+import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 
 interface Props {
   onSuccess: () => void;
@@ -132,7 +132,7 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
             const existingMap = new Map();
             if (existingActivities) {
               for (const activity of existingActivities) {
-                const normalized = dedupeSpecialActivities([activity])[0];
+                const normalized = normalizeSpecialActivity(activity);
                 existingMap.set(normalized.normalized_key, activity.id);
               }
             }

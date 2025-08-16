@@ -5,7 +5,7 @@ import Papa from "papaparse";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
-import { dedupeBellSchedules, createImportSummary } from '../../../lib/utils/dedupe-helpers';
+import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 
 interface Props {
   onSuccess: () => void;
@@ -119,7 +119,7 @@ K,Recess,10:00,10:15
             const existingMap = new Map();
             if (existingSchedules) {
               for (const schedule of existingSchedules) {
-                const normalized = dedupeBellSchedules([schedule])[0];
+                const normalized = normalizeBellSchedule(schedule);
                 existingMap.set(normalized.normalized_key, schedule.id);
               }
             }

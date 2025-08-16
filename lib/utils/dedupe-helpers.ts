@@ -25,14 +25,21 @@ function normalizeString(str: string): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
-    .replace(/[^\w\s]/g, '');
+    .replace(/[^\w\s'.-]/g, '');
 }
 
 function normalizeTime(time: string): string {
-  const parts = time.split(':');
-  const hours = parts[0].padStart(2, '0');
-  const minutes = (parts[1] || '00').padStart(2, '0');
-  const seconds = (parts[2] || '00').padStart(2, '0');
+  if (typeof time !== 'string' || !time.trim()) {
+    return '00:00:00';
+  }
+  // Match HH:MM or HH:MM:SS, allowing single or double digit hours/minutes/seconds
+  const match = time.trim().match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
+  if (!match) {
+    return '00:00:00';
+  }
+  const hours = match[1].padStart(2, '0');
+  const minutes = (match[2] || '00').padStart(2, '0');
+  const seconds = (match[3] || '00').padStart(2, '0');
   return `${hours}:${minutes}:${seconds}`;
 }
 
