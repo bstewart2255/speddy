@@ -87,7 +87,9 @@ export function useSchedulingData(config?: DataManagerConfig): UseSchedulingData
         }
         
         // Always re-initialize when school changes to ensure proper filtering
-        await dataManager.initialize(user.id, currentSchool.school_site, currentSchool.school_district, currentSchool.school_id || undefined);
+        // Use empty string as fallback if school_district is somehow missing
+        const schoolDistrict = currentSchool.school_district || '';
+        await dataManager.initialize(user.id, currentSchool.school_site, schoolDistrict, currentSchool.school_id || undefined);
         setIsInitialized(true);
         setLastRefresh(new Date());
         
