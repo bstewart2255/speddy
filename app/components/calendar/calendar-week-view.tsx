@@ -686,6 +686,9 @@ export function CalendarWeekView({
           const hasAIContent = savedLessons.has(dateStr);
           const dayManualLessons = manualLessons.get(dateStr) || [];
           const isPast = isDateInPast(date);
+          
+          // Sort sessions by start time for chronological order
+          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
 
           return (
             <div
@@ -734,8 +737,8 @@ export function CalendarWeekView({
                       <button
                         onClick={() => handleCreateLesson(date)}
                         className="w-full text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 py-1 px-2 rounded"
-                        disabled={daySessions.length === 0}
-                        title={daySessions.length === 0 ? "No sessions scheduled" : "Create lesson plan"}
+                        disabled={sortedDaySessions.length === 0}
+                        title={sortedDaySessions.length === 0 ? "No sessions scheduled" : "Create lesson plan"}
                       >
                         + Create Lesson
                       </button>
@@ -787,29 +790,29 @@ export function CalendarWeekView({
                     Holiday - No sessions
                   </p>
                 ) : (
-                  daySessions.length === 0 ? (
+                  sortedDaySessions.length === 0 ? (
                     <p className="text-xs text-gray-400 text-center mt-4">
                       No sessions
                     </p>
                   ) : (
-                    daySessions.map((session) => {
-                      const student = students.get(session.student_id);
-                      return (
-                        <div key={session.id} className="mb-2">
-                          <div className="bg-white border border-gray-200 rounded p-2 text-xs">
-                            <div className="font-medium text-gray-900">
-                              {formatTime(session.start_time)}
-                            </div>
-                            <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
-                              {student?.initials || 'S'}
-                              {session.delivered_by === 'sea' && (
-                                <div className="text-green-600 text-xs">SEA</div>
-                              )}
+                    sortedDaySessions.map((session) => {
+                        const student = students.get(session.student_id);
+                        return (
+                          <div key={session.id} className="mb-2">
+                            <div className="bg-white border border-gray-200 rounded p-2 text-xs">
+                              <div className="font-medium text-gray-900">
+                                {formatTime(session.start_time)}
+                              </div>
+                              <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
+                                {student?.initials || 'S'}
+                                {session.delivered_by === 'sea' && (
+                                  <div className="text-green-600 text-xs">SEA</div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })
                   )
                 )}
               </div>
