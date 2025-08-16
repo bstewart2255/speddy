@@ -792,24 +792,26 @@ export function CalendarWeekView({
                       No sessions
                     </p>
                   ) : (
-                    daySessions.map((session) => {
-                      const student = students.get(session.student_id);
-                      return (
-                        <div key={session.id} className="mb-2">
-                          <div className="bg-white border border-gray-200 rounded p-2 text-xs">
-                            <div className="font-medium text-gray-900">
-                              {formatTime(session.start_time)}
-                            </div>
-                            <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
-                              {student?.initials || 'S'}
-                              {session.delivered_by === 'sea' && (
-                                <div className="text-green-600 text-xs">SEA</div>
-                              )}
+                    daySessions
+                      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                      .map((session) => {
+                        const student = students.get(session.student_id);
+                        return (
+                          <div key={session.id} className="mb-2">
+                            <div className="bg-white border border-gray-200 rounded p-2 text-xs">
+                              <div className="font-medium text-gray-900">
+                                {formatTime(session.start_time)}
+                              </div>
+                              <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
+                                {student?.initials || 'S'}
+                                {session.delivered_by === 'sea' && (
+                                  <div className="text-green-600 text-xs">SEA</div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })
                   )
                 )}
               </div>

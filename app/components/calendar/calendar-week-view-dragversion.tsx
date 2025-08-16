@@ -1201,9 +1201,11 @@ export function CalendarWeekView({
                     No sessions
                   </p>
                 ) : (
-                  daySessions.map((session) => {
-                    const student = students.get(session.student_id);
-                    const currentSession = sessionsState.find(s => s.id === session.id) || session;
+                  daySessions
+                    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                    .map((session) => {
+                      const student = students.get(session.student_id);
+                      const currentSession = sessionsState.find(s => s.id === session.id) || session;
                     return (
                       <div
                         key={session.id}
