@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { authenticatedGoto } from '../helpers/auth.helper.js';
 
 test.describe('Kindergarten Schedule Toggle', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the bell schedules page
-    // Assuming user is already authenticated in test setup
-    await page.goto('/dashboard/bell-schedules');
-    await page.waitForLoadState('networkidle');
+    // Authenticate and navigate to the bell schedules page
+    await authenticatedGoto(page, '/dashboard/bell-schedules');
   });
 
   test('should default to unchecked for kindergarten schedule', async ({ page }) => {
