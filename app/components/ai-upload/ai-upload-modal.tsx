@@ -114,7 +114,8 @@ export default function AIUploadModal({
 
       if (response.ok) {
         setUploadResult(result);
-        if (result.failedCount === 0) {
+        const failedCount = result.summary?.failed || result.failedCount || 0;
+        if (failedCount === 0) {
           setTimeout(() => {
             onSuccess();
             handleClose();
@@ -586,12 +587,23 @@ export default function AIUploadModal({
                 <CheckCircle className="h-5 w-5 mr-2" />
                 Import Complete
               </h4>
-              <p className="mt-1 text-sm text-green-700">
-                Successfully imported {uploadResult.successCount} items
-              </p>
+              {uploadResult.summary ? (
+                <div className="mt-1 text-sm text-green-700">
+                  <p>Total processed: {uploadResult.summary.total}</p>
+                  <p>Added: {uploadResult.summary.inserted}</p>
+                  <p>Updated: {uploadResult.summary.updated}</p>
+                  {uploadResult.summary.skipped > 0 && (
+                    <p>Skipped (duplicates): {uploadResult.summary.skipped}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-sm text-green-700">
+                  Successfully imported {uploadResult.successCount} items
+                </p>
+              )}
             </div>
 
-            {uploadResult.failedCount > 0 && (
+            {((uploadResult.summary?.failed || uploadResult.failedCount || 0) > 0) && (
               <div className="p-4 rounded-lg bg-red-50 border border-red-200">
                 <h4 className="font-medium text-red-800 flex items-center">
                   <AlertCircle className="h-5 w-5 mr-2" />

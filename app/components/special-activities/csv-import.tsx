@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
+import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 
 interface Props {
   onSuccess: () => void;
@@ -98,37 +99,91 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
               );
             }
 
-            const activities = results.data
+            const rawActivities = results.data
               .filter((row: any) => row.teacher && row.activity && row.day)
               .map((row: any) => ({
-                provider_id: user.user!.id,
                 teacher_name: row.teacher.trim(),
                 activity_name: row.activity.trim(),
                 day_of_week: dayNameToNumber(row.day),
-                start_time: row['start time'] + ':00',
-                end_time: row['end time'] + ':00',
-                school_id: currentSchool?.school_id
+                start_time: row['start time']?.trim() || '',
+                end_time: row['end time']?.trim() || ''
               }));
 
-            console.log("Activities to insert:", activities);
+            console.log("Raw activities:", rawActivities);
 
-            if (activities.length > 0) {
-              const { error: insertError } = await supabase
-                .from("special_activities")
-                .insert(activities);
-
-              if (insertError) {
-                console.error("Insert error:", insertError);
-                throw insertError;
-              }
-
-              alert(
-                `Successfully imported ${activities.length} special activities!`,
-              );
-              onSuccess();
-            } else {
+            if (rawActivities.length === 0) {
               throw new Error("No valid activities found in CSV");
             }
+
+            // Deduplicate activities
+            const dedupedActivities = dedupeSpecialActivities(rawActivities);
+            const summary = createImportSummary();
+            summary.total = rawActivities.length;
+            summary.skipped = rawActivities.length - dedupedActivities.length;
+
+            // Get existing activities
+            const { data: existingActivities } = await supabase
+              .from('special_activities')
+              .select('*')
+              .eq('provider_id', user.user!.id)
+              .eq('school_id', currentSchool?.school_id || '');
+
+            // Create a map of existing activities by normalized key
+            const existingMap = new Map();
+            if (existingActivities) {
+              for (const activity of existingActivities) {
+                const normalized = normalizeSpecialActivity(activity);
+                existingMap.set(normalized.normalized_key, activity.id);
+              }
+            }
+
+            // Process each deduplicated activity
+            for (const activity of dedupedActivities) {
+              const activityData = {
+                provider_id: user.user!.id,
+                teacher_name: activity.teacher_name,
+                activity_name: activity.activity_name,
+                day_of_week: activity.day_of_week,
+                start_time: activity.start_time,
+                end_time: activity.end_time,
+                school_id: currentSchool?.school_id,
+                content_hash: activity.content_hash
+              };
+
+              if (existingMap.has(activity.normalized_key)) {
+                // Update existing record
+                const { error } = await supabase
+                  .from('special_activities')
+                  .update(activityData)
+                  .eq('id', existingMap.get(activity.normalized_key));
+                
+                if (error) {
+                  summary.errors.push({ item: activity, error: error.message });
+                } else {
+                  summary.updated++;
+                }
+              } else {
+                // Insert new record
+                const { error } = await supabase
+                  .from('special_activities')
+                  .insert(activityData);
+                
+                if (error) {
+                  summary.errors.push({ item: activity, error: error.message });
+                } else {
+                  summary.inserted++;
+                }
+              }
+            }
+
+            const message = `Import complete: ${summary.inserted} added, ${summary.updated} updated, ${summary.skipped} skipped${summary.errors.length > 0 ? `, ${summary.errors.length} errors` : ''}`;
+            alert(message);
+            
+            if (summary.errors.length > 0) {
+              console.error("Import errors:", summary.errors);
+            }
+            
+            onSuccess();
           } catch (err: any) {
             console.error("Import error:", err);
             setError(err.message);

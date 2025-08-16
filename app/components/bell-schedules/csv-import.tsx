@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
+import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 
 interface Props {
   onSuccess: () => void;
@@ -82,40 +83,95 @@ K,Recess,10:00,10:15
               );
             }
 
-            const schedules = results.data
+            const rawSchedules = results.data
               .filter((row: any) => row.grade && row.activity)
               .flatMap((row: any) => {
                 // Create entries for each day of the week (Monday-Friday)
                 return [1, 2, 3, 4, 5].map((dayNum) => ({
-                  provider_id: user.user!.id,
                   grade_level: row.grade.toString().toUpperCase().trim(),
-                  period_name: row.activity,
+                  period_name: row.activity.trim(),
                   day_of_week: dayNum,
-                  start_time: row["start time"] + ":00", // Add seconds if missing
-                  end_time: row["end time"] + ":00",
-                  school_id: currentSchool?.school_id, // Use school_id instead of school_site
+                  start_time: row["start time"]?.trim() || '',
+                  end_time: row["end time"]?.trim() || ''
                 }));
               });
 
-            console.log("Schedules to insert:", schedules);
+            console.log("Raw schedules:", rawSchedules);
 
-            if (schedules.length > 0) {
-              const { error: insertError } = await supabase
-                .from("bell_schedules")
-                .insert(schedules);
-
-              if (insertError) {
-                console.error("Insert error:", insertError);
-                throw insertError;
-              }
-
-              alert(
-                `Successfully imported ${schedules.length / 5} bell schedules (applied to all weekdays)!`,
-              );
-              onSuccess();
-            } else {
+            if (rawSchedules.length === 0) {
               throw new Error("No valid schedules found in CSV");
             }
+
+            // Deduplicate schedules
+            const dedupedSchedules = dedupeBellSchedules(rawSchedules);
+            const summary = createImportSummary();
+            summary.total = rawSchedules.length;
+            summary.skipped = rawSchedules.length - dedupedSchedules.length;
+
+            // Get existing schedules
+            const { data: existingSchedules } = await supabase
+              .from('bell_schedules')
+              .select('*')
+              .eq('provider_id', user.user!.id)
+              .eq('school_id', currentSchool?.school_id || '');
+
+            // Create a map of existing schedules by normalized key
+            const existingMap = new Map();
+            if (existingSchedules) {
+              for (const schedule of existingSchedules) {
+                const normalized = normalizeBellSchedule(schedule);
+                existingMap.set(normalized.normalized_key, schedule.id);
+              }
+            }
+
+            // Process each deduplicated schedule
+            for (const schedule of dedupedSchedules) {
+              const scheduleData = {
+                provider_id: user.user!.id,
+                grade_level: schedule.grade_level,
+                period_name: schedule.period_name,
+                day_of_week: schedule.day_of_week,
+                start_time: schedule.start_time,
+                end_time: schedule.end_time,
+                school_id: currentSchool?.school_id,
+                content_hash: schedule.content_hash
+              };
+
+              if (existingMap.has(schedule.normalized_key)) {
+                // Update existing record
+                const { error } = await supabase
+                  .from('bell_schedules')
+                  .update(scheduleData)
+                  .eq('id', existingMap.get(schedule.normalized_key));
+                
+                if (error) {
+                  summary.errors.push({ item: schedule, error: error.message });
+                } else {
+                  summary.updated++;
+                }
+              } else {
+                // Insert new record
+                const { error } = await supabase
+                  .from('bell_schedules')
+                  .insert(scheduleData);
+                
+                if (error) {
+                  summary.errors.push({ item: schedule, error: error.message });
+                } else {
+                  summary.inserted++;
+                }
+              }
+            }
+
+            const uniqueSchedules = Math.ceil(dedupedSchedules.length / 5);
+            const message = `Import complete: ${summary.inserted} entries added, ${summary.updated} updated, ${summary.skipped} skipped (${uniqueSchedules} unique schedules)${summary.errors.length > 0 ? `, ${summary.errors.length} errors` : ''}`;
+            alert(message);
+            
+            if (summary.errors.length > 0) {
+              console.error("Import errors:", summary.errors);
+            }
+            
+            onSuccess();
           } catch (err: any) {
             console.error("Import error:", err);
             setError(err.message);
