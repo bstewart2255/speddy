@@ -1,3 +1,10 @@
+-- Add school_id and district_id columns if they don't exist
+ALTER TABLE calendar_events 
+ADD COLUMN IF NOT EXISTS school_id TEXT;
+
+ALTER TABLE calendar_events 
+ADD COLUMN IF NOT EXISTS district_id TEXT;
+
 -- Add foreign key constraints to existing calendar_events table
 ALTER TABLE calendar_events 
 DROP CONSTRAINT IF EXISTS calendar_events_school_id_fkey;
