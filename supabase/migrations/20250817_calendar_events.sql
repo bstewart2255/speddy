@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   event_type TEXT CHECK (event_type IN ('meeting', 'assessment', 'activity', 'other')),
   location TEXT,
   attendees TEXT[], -- Array of student IDs or teacher names
-  school_id TEXT,
-  district_id TEXT,
+  school_id TEXT REFERENCES schools(id) ON DELETE SET NULL,
+  district_id TEXT REFERENCES districts(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

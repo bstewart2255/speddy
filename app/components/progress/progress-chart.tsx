@@ -16,7 +16,7 @@ export function ProgressChart({ data, height = 300 }: ProgressChartProps) {
 
   // Group data by date and calculate daily averages
   const chartData = data.reduce((acc: any[], item) => {
-    const date = new Date(item.date).toLocaleDateString();
+    const date = new Date(item.date + "T00:00:00").toLocaleDateString();
     const existing = acc.find(d => d.date === date);
 
     if (existing) {

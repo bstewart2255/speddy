@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { CalendarEvent } from '../../../src/types/database';
+import { toDateKeyLocal } from '@/app/utils/date-helpers';
 
 interface CalendarEventModalProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export function CalendarEventModal({
         provider_id: providerId,
         title: title.trim(),
         description: description.trim() || null,
-        date: selectedDate.toISOString().split('T')[0],
+        date: toDateKeyLocal(selectedDate),
         start_time: allDay ? null : startTime || null,
         end_time: allDay ? null : endTime || null,
         all_day: allDay,

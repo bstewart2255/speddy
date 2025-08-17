@@ -52,6 +52,27 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [providerId, setProviderId] = useState<string>('');
 
+  // Helper function to fetch calendar events
+  const getCalendarEvents = async (providerIdParam?: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    
+    const effectiveProviderId = providerIdParam || providerId || user.id;
+    
+    const { data: eventsData, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('provider_id', effectiveProviderId)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching calendar events:', error);
+      return [];
+    }
+    
+    return eventsData || [];
+  };
+
   // Navigation handlers
   const handlePreviousDay = () => {
     const newDate = new Date(currentDate);
@@ -132,16 +153,9 @@ export default function CalendarPage() {
       });
       setStudents(studentMap);
 
-      // Fetch calendar events
-      const { data: eventsData } = await supabase
-        .from('calendar_events')
-        .select('*')
-        .eq('provider_id', user.id)
-        .order('date', { ascending: true });
-
-      if (eventsData) {
-        setCalendarEvents(eventsData);
-      }
+      // Fetch calendar events using the helper
+      const eventsData = await getCalendarEvents(user.id);
+      setCalendarEvents(eventsData);
 
       // Fetch holidays - add better error handling and logging
       if (currentSchool) {
@@ -191,21 +205,14 @@ export default function CalendarPage() {
 
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
-    setSelectedEventDate(new Date(event.date));
+    setSelectedEventDate(new Date(event.date + "T00:00:00"));
     setShowEventModal(true);
   };
 
   const handleEventSave = async (event: CalendarEvent) => {
-    // Refresh calendar events
-    const { data: eventsData } = await supabase
-      .from('calendar_events')
-      .select('*')
-      .eq('provider_id', providerId)
-      .order('date', { ascending: true });
-
-    if (eventsData) {
-      setCalendarEvents(eventsData);
-    }
+    // Refresh calendar events using the centralized helper
+    const eventsData = await getCalendarEvents();
+    setCalendarEvents(eventsData);
   };
 
   const handleDayClick = async (date: Date) => {

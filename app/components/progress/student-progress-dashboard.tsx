@@ -433,7 +433,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
                   <div>
                     <p className="font-medium">{submission.worksheetType}</p>
                     <p className="text-sm text-gray-600">
-                      {new Date(submission.date).toLocaleDateString()}
+                      {new Date(submission.date + "T00:00:00").toLocaleDateString()}
                     </p>
                   </div>
                 </div>
