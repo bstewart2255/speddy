@@ -34,7 +34,7 @@ jobs:
         uses: tj-actions/changed-files@v44
         with:
           files: |
-            tests/e2e/**/*.test.{js,ts}
+            tests/e2e/**/*.{test,spec}.{js,ts,tsx}
 
       - name: Install dependencies
         run: npm ci
@@ -48,7 +48,7 @@ jobs:
           CI: true
           ENABLE_TEST_AUTH_BYPASS: true
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }}
           NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID: ${{ secrets.NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -82,7 +82,7 @@ jobs:
         run: |
           echo "Running tests for changed files:"
           echo "${{ steps.changed-files.outputs.all_changed_files }}"
-          npx playwright test ${{ steps.changed-files.outputs.all_changed_files }} --reporter=list
+          npx playwright test ${{ steps.changed-files.outputs.all_changed_files }}
         env:
           CI: true
           ENABLE_TEST_AUTH_BYPASS: true
@@ -94,7 +94,7 @@ jobs:
 
       - name: Run all tests
         if: steps.changed-files.outputs.any_changed == 'false'
-        run: npx playwright test --reporter=list
+        run: npx playwright test
         env:
           CI: true
           ENABLE_TEST_AUTH_BYPASS: true
@@ -121,11 +121,9 @@ jobs:
             const status = '${{ job.status }}';
             const emoji = status === 'success' ? '✅' : '❌';
             const message = status === 'success' ? 'All tests passed!' : 'Some tests failed.';
-            
             const body = `## ${emoji} Playwright Tests: ${message}
             
             [View Test Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            
             <details>
             <summary>Test Configuration</summary>
             
@@ -144,7 +142,7 @@ jobs:
             });
             
             const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
+              comment.user.type === 'Bot' &&
               comment.body.includes('Playwright Tests:')
             );
             
