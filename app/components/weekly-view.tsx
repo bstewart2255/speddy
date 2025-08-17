@@ -14,6 +14,24 @@ interface Holiday {
   name?: string;
 }
 
+interface CalendarEvent {
+  id: string;
+  provider_id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  event_type: 'meeting' | 'assessment' | 'activity' | 'other' | null;
+  location: string | null;
+  attendees: string[] | null;
+  school_id: string | null;
+  district_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 // Compact time slots - only 30-minute intervals from 8 AM to 3 PM
 const TIME_SLOTS = [
@@ -38,6 +56,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<any>(null);
@@ -69,6 +88,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .eq('id', user.id)
           .single();
 
+        let hasSEAs = false;
         if (profile?.role === 'resource' && profile.school_site) {
           // Check if there are any SEAs at the same school
           const { data: seas, count: seaCount } = await supabase
@@ -77,7 +97,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             .eq('role', 'sea')
             .eq('school_site', profile.school_site);
            
-          setShowToggle((seaCount || 0) > 0);
+          hasSEAs = (seaCount || 0) > 0;
+          setShowToggle(hasSEAs);
         } else {
           setShowToggle(false);
         }
@@ -91,7 +112,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .order("day_of_week")
           .order("start_time");
 
-        if (showToggle && viewMode === 'sea') {
+        if (hasSEAs && viewMode === 'sea') {
           // Show sessions assigned to SEAs
           sessionQuery = sessionQuery
             .eq("provider_id", user.id)
@@ -157,6 +178,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
               setHolidays(holidayData);
             }
           }
+          
+          // Fetch calendar events for the week
+          const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+          const weekEndStr = format(addDays(weekStart, 4), 'yyyy-MM-dd');
+          
+          const { data: eventsData } = await supabase
+            .from('calendar_events')
+            .select('*')
+            .eq('provider_id', user.id)
+            .gte('date', weekStartStr)
+            .lte('date', weekEndStr)
+            .order('date')
+            .order('start_time');
+          
+          if (eventsData && isMounted) {
+            setCalendarEvents(eventsData);
+          }
         }
       } catch (error) {
         console.error("Fetch error:", error);
@@ -190,20 +228,26 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   const getTimeSlotIndex = (timeString: string) => {
-    const time = parse(timeString, "HH:mm:ss", new Date());
-    const hours = time.getHours();
-    const minutes = time.getMinutes();
+    if (!timeString) return -1;
+    
+    // Handle both HH:mm and HH:mm:ss formats
+    const parts = timeString.split(':');
+    if (parts.length < 2) return -1;
+    
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    
+    if (isNaN(hours) || isNaN(minutes)) return -1;
 
-    // Find the 30-minute slot this time falls into (not rounding, but which window it starts in)
-    let slotHours = hours;
-    let slotMinutes = minutes < 30 ? 0 : 30;
+    // Find the 30-minute slot this time falls into
+    const slotMinutes = minutes < 30 ? 0 : 30;
 
     // Create a new date with the slot time
     const slotTime = new Date();
-    slotTime.setHours(slotHours, slotMinutes, 0);
+    slotTime.setHours(hours, slotMinutes, 0, 0);
     const formattedTime = format(slotTime, "h:mm a");
 
-    return TIME_SLOTS.findIndex((slot) => slot === formattedTime);
+    return TIME_SLOTS.indexOf(formattedTime);
   };
 
   const getSessionSpan = (startTime: string, endTime: string) => {
@@ -496,7 +540,19 @@ return (
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            if (sessionsInSlot.length === 0) {
+                            
+                            // Check for calendar events at this time
+                            const dateStr = format(currentDate, 'yyyy-MM-dd');
+                            const timeEvents = calendarEvents.filter(event => {
+                              if (event.date !== dateStr) return false;
+                              if (event.all_day) return true;
+                              if (!event.start_time) return false;
+                              
+                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
+                              return eventTimeIndex === timeIndex;
+                            });
+                            
+                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
                               // Show preview if this is the drop target
                               if (dropTarget === sessionKey && draggedSession) {
                                 return (
@@ -507,7 +563,31 @@ return (
                               }
                               return <span className="text-gray-400">-</span>;
                             }
-                            return sessionsInSlot.map((session) => (
+                            // Display both sessions and calendar events
+                            const allItems = [...sessionsInSlot];
+                            
+                            return (
+                              <>
+                                {timeEvents.map((event) => (
+                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
+                                    style={{
+                                      backgroundColor: 
+                                        event.event_type === 'meeting' ? '#DBEAFE' : 
+                                        event.event_type === 'assessment' ? '#FEF3C7' :
+                                        event.event_type === 'activity' ? '#D1FAE5' :
+                                        '#F3F4F6',
+                                      color:
+                                        event.event_type === 'meeting' ? '#1E40AF' : 
+                                        event.event_type === 'assessment' ? '#92400E' :
+                                        event.event_type === 'activity' ? '#065F46' :
+                                        '#374151'
+                                    }}
+                                    title={event.description || event.title}
+                                  >
+                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
+                                  </span>
+                                ))}
+                                {sessionsInSlot.map((session) => (
                               <DraggableSessionBox
                                 key={session.id}
                                 session={session}
@@ -524,7 +604,9 @@ return (
                                 variant="pill"
                                 hasConflict={sessionConflicts[session.id] || false}
                               />
-                            ));
+                            ))}
+                              </>
+                            );
                           })()}
                         </span>
                         </div>
@@ -560,7 +642,19 @@ return (
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            if (sessionsInSlot.length === 0) {
+                            
+                            // Check for calendar events at this time
+                            const dateStr = format(currentDate, 'yyyy-MM-dd');
+                            const timeEvents = calendarEvents.filter(event => {
+                              if (event.date !== dateStr) return false;
+                              if (event.all_day) return true;
+                              if (!event.start_time) return false;
+                              
+                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
+                              return eventTimeIndex === timeIndex;
+                            });
+                            
+                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
                               // Show preview if this is the drop target
                               if (dropTarget === sessionKey && draggedSession) {
                                 return (
@@ -571,7 +665,31 @@ return (
                               }
                               return <span className="text-gray-400">-</span>;
                             }
-                            return sessionsInSlot.map((session) => (
+                            // Display both sessions and calendar events
+                            const allItems = [...sessionsInSlot];
+                            
+                            return (
+                              <>
+                                {timeEvents.map((event) => (
+                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
+                                    style={{
+                                      backgroundColor: 
+                                        event.event_type === 'meeting' ? '#DBEAFE' : 
+                                        event.event_type === 'assessment' ? '#FEF3C7' :
+                                        event.event_type === 'activity' ? '#D1FAE5' :
+                                        '#F3F4F6',
+                                      color:
+                                        event.event_type === 'meeting' ? '#1E40AF' : 
+                                        event.event_type === 'assessment' ? '#92400E' :
+                                        event.event_type === 'activity' ? '#065F46' :
+                                        '#374151'
+                                    }}
+                                    title={event.description || event.title}
+                                  >
+                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
+                                  </span>
+                                ))}
+                                {sessionsInSlot.map((session) => (
                               <DraggableSessionBox
                                 key={session.id}
                                 session={session}
@@ -588,7 +706,9 @@ return (
                                 variant="pill"
                                 hasConflict={sessionConflicts[session.id] || false}
                               />
-                            ));
+                            ))}
+                              </>
+                            );
                           })()}
                         </span>
                         </div>

@@ -6,6 +6,7 @@ import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
 import { CalendarWeekView } from "../../../components/calendar/calendar-week-view";
 import { CalendarMonthView } from "../../../components/calendar/calendar-month-view";
+import { CalendarEventModal } from "../../../components/calendar/calendar-event-modal";
 import { useSchool } from "../../../components/providers/school-context";
 import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
@@ -13,6 +14,7 @@ import type { Database } from "../../../../src/types/database";
 type ViewType = 'today' | 'week' | 'month';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 
 interface Holiday {
   id: string;
@@ -44,6 +46,32 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [selectedEventDate, setSelectedEventDate] = useState<Date>(new Date());
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [providerId, setProviderId] = useState<string>('');
+
+  // Helper function to fetch calendar events
+  const getCalendarEvents = async (providerIdParam?: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    
+    const effectiveProviderId = providerIdParam || providerId || user.id;
+    
+    const { data: eventsData, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('provider_id', effectiveProviderId)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching calendar events:', error);
+      return [];
+    }
+    
+    return eventsData || [];
+  };
 
   // Navigation handlers
   const handlePreviousDay = () => {
@@ -99,6 +127,8 @@ export default function CalendarPage() {
       if (profile) {
         setUserRole(profile.role);
       }
+      
+      setProviderId(user.id);
 
       // Fetch sessions
       const { data: sessionData, error: sessionError } = await supabase
@@ -122,6 +152,10 @@ export default function CalendarPage() {
         studentMap.set(student.id, student);
       });
       setStudents(studentMap);
+
+      // Fetch calendar events using the helper
+      const eventsData = await getCalendarEvents(user.id);
+      setCalendarEvents(eventsData);
 
       // Fetch holidays - add better error handling and logging
       if (currentSchool) {
@@ -161,6 +195,24 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddEvent = (date: Date) => {
+    setSelectedEventDate(date);
+    setSelectedEvent(null);
+    setShowEventModal(true);
+  };
+
+  const handleEventClick = (event: CalendarEvent) => {
+    setSelectedEvent(event);
+    setSelectedEventDate(new Date(event.date + "T00:00:00"));
+    setShowEventModal(true);
+  };
+
+  const handleEventSave = async (event: CalendarEvent) => {
+    // Refresh calendar events using the centralized helper
+    const eventsData = await getCalendarEvents();
+    setCalendarEvents(eventsData);
   };
 
   const handleDayClick = async (date: Date) => {
@@ -387,6 +439,9 @@ export default function CalendarPage() {
                   onSessionClick={handleSessionClick}
                   currentDate={currentDate}
                   holidays={holidays}
+                  calendarEvents={calendarEvents}
+                  onAddEvent={handleAddEvent}
+                  onEventClick={handleEventClick}
                 />
               </ToastProvider>
             )}
@@ -398,6 +453,9 @@ export default function CalendarPage() {
                   onSessionClick={handleSessionClick}
                   weekOffset={weekOffset}
                   holidays={holidays}  // Add this line
+                  calendarEvents={calendarEvents}
+                  onAddEvent={handleAddEvent}
+                  onEventClick={handleEventClick}
                 />
               </ToastProvider>
             )}
@@ -409,6 +467,9 @@ export default function CalendarPage() {
                 userRole={userRole}
                 monthOffset={monthOffset}
                 onDateClick={handleDateClick}  // Add this to navigate from 'month' to 'week'
+                calendarEvents={calendarEvents}
+                onAddEvent={handleAddEvent}
+                onEventClick={handleEventClick}
               />
             )}
           </CardBody>
@@ -422,6 +483,23 @@ export default function CalendarPage() {
         )}
       </div>
       
+      {/* Event Modal */}
+      {showEventModal && (
+        <CalendarEventModal
+          isOpen={showEventModal}
+          onClose={() => {
+            setShowEventModal(false);
+            setSelectedEvent(null);
+          }}
+          onSave={handleEventSave}
+          selectedDate={selectedEventDate}
+          event={selectedEvent}
+          providerId={providerId}
+          schoolId={currentSchool?.school_id || undefined}
+          districtId={currentSchool?.district_id || undefined}
+        />
+      )}
+
       {/* Holiday Modal */}
       {showHolidayModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

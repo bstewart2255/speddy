@@ -7,8 +7,10 @@ import { SessionGenerator } from '@/lib/services/session-generator';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
+import { toDateKeyLocal } from '../../utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 
 interface CalendarTodayViewProps {
   sessions: ScheduleSession[];
@@ -16,6 +18,9 @@ interface CalendarTodayViewProps {
   onSessionClick?: (session: ScheduleSession) => void;
   currentDate?: Date;  
   holidays?: Array<{ date: string; name?: string }>;
+  calendarEvents?: CalendarEvent[];
+  onAddEvent?: (date: Date) => void;
+  onEventClick?: (event: CalendarEvent) => void;
 }
 
 export function CalendarTodayView({ 
@@ -23,7 +28,10 @@ export function CalendarTodayView({
   students,
   onSessionClick,
   currentDate = new Date(),
-  holidays = []
+  holidays = [],
+  calendarEvents = [],
+  onAddEvent,
+  onEventClick
 }: CalendarTodayViewProps) {
   const { showToast } = useToast();
 
@@ -111,13 +119,13 @@ export function CalendarTodayView({
 
   // Check if current date is a holiday
   const isHoliday = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toDateKeyLocal(currentDate);
     return holidays.some(h => h.date === dateStr);
   };
 
   // Get holiday name for current date
   const getHolidayName = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toDateKeyLocal(currentDate);
     const holiday = holidays.find(h => h.date === dateStr);
     return holiday?.name || 'Holiday';
   };
@@ -289,6 +297,64 @@ export function CalendarTodayView({
           </p>
         )}
       </div>
+
+      {/* Calendar Events */}
+      {!isHoliday() && calendarEvents.length > 0 && (() => {
+        const dateStr = toDateKeyLocal(currentDate);
+        const todayEvents = calendarEvents.filter(e => e.date === dateStr);
+        
+        if (todayEvents.length === 0) return null;
+        
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <h3 className="text-md font-semibold text-gray-900 mb-3">Events</h3>
+            <div className="space-y-2">
+              {todayEvents.map((event) => (
+                <div
+                  key={event.id}
+                  onClick={() => onEventClick?.(event)}
+                  className="p-3 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  style={{
+                    backgroundColor: 
+                      event.event_type === 'meeting' ? '#DBEAFE' : 
+                      event.event_type === 'assessment' ? '#FEF3C7' :
+                      event.event_type === 'activity' ? '#D1FAE5' :
+                      '#F3F4F6',
+                    color:
+                      event.event_type === 'meeting' ? '#1E40AF' : 
+                      event.event_type === 'assessment' ? '#92400E' :
+                      event.event_type === 'activity' ? '#065F46' :
+                      '#374151'
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">
+                        {event.title}
+                      </div>
+                      {!event.all_day && event.start_time && (
+                        <div className="text-sm opacity-75 mt-1">
+                          {formatTime(event.start_time)}
+                          {event.end_time && ` - ${formatTime(event.end_time)}`}
+                        </div>
+                      )}
+                      {event.all_day && (
+                        <div className="text-sm opacity-75 mt-1">All Day</div>
+                      )}
+                      {event.location && (
+                        <div className="text-sm opacity-75 mt-1">📍 {event.location}</div>
+                      )}
+                    </div>
+                    <div className="text-xs uppercase font-medium opacity-75">
+                      {event.event_type}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Sessions list */}
       {!isHoliday() && (
