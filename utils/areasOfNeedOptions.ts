@@ -1,6 +1,11 @@
-import { GRADE_SKILLS_CONFIG, SkillItem } from '../lib/grade-skills-config';
+import { GRADE_SKILLS_CONFIG } from '../lib/grade-skills-config';
 
-export interface CrossGradeSkill extends SkillItem {
+export interface CrossGradeSkill {
+  id: string;
+  label: string;
+  category: 'math' | 'ela' | 'both';
+  trimester?: 'beginning' | 'middle' | 'end';
+  gradeLevel: string;  // Made required for CrossGradeSkill
   gradeLabel: string;
   displayLabel: string;
 }
@@ -20,10 +25,13 @@ export function getSkillsForGradeTransition(currentGrade: string): CrossGradeSki
     const previousGradeConfig = GRADE_SKILLS_CONFIG[previousGrade];
     
     if (previousGradeConfig) {
-      const endOfYearSkills = previousGradeConfig.skills
+      const endOfYearSkills: CrossGradeSkill[] = previousGradeConfig.skills
         .filter(skill => skill.trimester === 'end')
         .map(skill => ({
-          ...skill,
+          id: skill.id,
+          label: skill.label,
+          category: skill.category,
+          trimester: skill.trimester,
           gradeLevel: previousGrade,
           gradeLabel: `${previousGradeConfig.label} - End of Year`,
           displayLabel: `${skill.label} (${previousGradeConfig.label} - End)`
@@ -35,28 +43,37 @@ export function getSkillsForGradeTransition(currentGrade: string): CrossGradeSki
   
   const currentGradeConfig = GRADE_SKILLS_CONFIG[currentGrade];
   if (currentGradeConfig) {
-    const beginningSkills = currentGradeConfig.skills
+    const beginningSkills: CrossGradeSkill[] = currentGradeConfig.skills
       .filter(skill => skill.trimester === 'beginning')
       .map(skill => ({
-        ...skill,
+        id: skill.id,
+        label: skill.label,
+        category: skill.category,
+        trimester: skill.trimester,
         gradeLevel: currentGrade,
         gradeLabel: `${currentGradeConfig.label} - Beginning of Year`,
         displayLabel: `${skill.label} (${currentGradeConfig.label} - Beginning)`
       }));
     
-    const middleSkills = currentGradeConfig.skills
+    const middleSkills: CrossGradeSkill[] = currentGradeConfig.skills
       .filter(skill => skill.trimester === 'middle')
       .map(skill => ({
-        ...skill,
+        id: skill.id,
+        label: skill.label,
+        category: skill.category,
+        trimester: skill.trimester,
         gradeLevel: currentGrade,
         gradeLabel: `${currentGradeConfig.label} - Middle of Year`,
         displayLabel: `${skill.label} (${currentGradeConfig.label} - Middle)`
       }));
     
-    const endSkills = currentGradeConfig.skills
+    const endSkills: CrossGradeSkill[] = currentGradeConfig.skills
       .filter(skill => skill.trimester === 'end')
       .map(skill => ({
-        ...skill,
+        id: skill.id,
+        label: skill.label,
+        category: skill.category,
+        trimester: skill.trimester,
         gradeLevel: currentGrade,
         gradeLabel: `${currentGradeConfig.label} - End of Year`,
         displayLabel: `${skill.label} (${currentGradeConfig.label} - End)`
@@ -76,7 +93,10 @@ export function getAllSkillsForGrade(grade: string): CrossGradeSkill[] {
   }
   
   return gradeConfig.skills.map(skill => ({
-    ...skill,
+    id: skill.id,
+    label: skill.label,
+    category: skill.category,
+    trimester: skill.trimester,
     gradeLevel: grade,
     gradeLabel: gradeConfig.label,
     displayLabel: skill.label
@@ -90,7 +110,10 @@ export function getSkillsByIds(skillIds: string[]): CrossGradeSkill[] {
     gradeConfig.skills.forEach(skill => {
       if (skillIds.includes(skill.id)) {
         skills.push({
-          ...skill,
+          id: skill.id,
+          label: skill.label,
+          category: skill.category,
+          trimester: skill.trimester,
           gradeLevel: grade,
           gradeLabel: gradeConfig.label,
           displayLabel: skill.label
