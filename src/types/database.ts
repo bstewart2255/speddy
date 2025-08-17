@@ -1055,6 +1055,59 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+      },
+      calendar_events: {
+        Row: {
+          id: string
+          provider_id: string
+          title: string
+          description: string | null
+          date: string
+          start_time: string | null
+          end_time: string | null
+          all_day: boolean
+          event_type: 'meeting' | 'assessment' | 'activity' | 'other' | null
+          location: string | null
+          attendees: string[] | null
+          school_site_id: string | null
+          school_district_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          title: string
+          description?: string | null
+          date: string
+          start_time?: string | null
+          end_time?: string | null
+          all_day?: boolean
+          event_type?: 'meeting' | 'assessment' | 'activity' | 'other' | null
+          location?: string | null
+          attendees?: string[] | null
+          school_site_id?: string | null
+          school_district_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          title?: string
+          description?: string | null
+          date?: string
+          start_time?: string | null
+          end_time?: string | null
+          all_day?: boolean
+          event_type?: 'meeting' | 'assessment' | 'activity' | 'other' | null
+          location?: string | null
+          attendees?: string[] | null
+          school_site_id?: string | null
+          school_district_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
       }
     }
   }
@@ -1072,6 +1125,7 @@ export type State = Tables<'states'>;
 export type District = Tables<'districts'>;
 export type School = Tables<'schools'>;
 export type IEPGoalProgress = Tables<'iep_goal_progress'>;
+export type CalendarEvent = Tables<'calendar_events'>;
 export type Subscription = Tables<'subscriptions'>;
 export type ReferralCode = Tables<'referral_codes'>;
 export type ReferralRelationship = Tables<'referral_relationships'>;

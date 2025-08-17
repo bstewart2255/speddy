@@ -4,6 +4,7 @@ import React from 'react';
 import { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 
 interface CalendarMonthViewProps {
   sessions: ScheduleSession[];
@@ -12,6 +13,9 @@ interface CalendarMonthViewProps {
   userRole: string;
   monthOffset?: number;
   onDateClick?: (date: Date) => void;  // Add this for navigation
+  calendarEvents?: CalendarEvent[];
+  onAddEvent?: (date: Date) => void;
+  onEventClick?: (event: CalendarEvent) => void;
 }
 
 export function CalendarMonthView({ 
@@ -20,7 +24,10 @@ export function CalendarMonthView({
   onDayClick,
   userRole,
   monthOffset = 0,
-  onDateClick, 
+  onDateClick,
+  calendarEvents = [],
+  onAddEvent,
+  onEventClick,
 }: CalendarMonthViewProps) {
   // Calculate current month based on offset
   const currentMonth = new Date();
@@ -84,6 +91,12 @@ export function CalendarMonthView({
     return holiday?.name;
   };
 
+  // Get events for a specific date
+  const getEventsForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return calendarEvents.filter(e => e.date === dateStr);
+  };
+
   const calendarDays = getCalendarDays();
 
   return (
@@ -105,6 +118,7 @@ export function CalendarMonthView({
           const holiday = isHoliday(date);
           const holidayName = getHolidayName(date);
           const sessionCount = !isWeekend ? getSessionCountForDate(date) : 0;
+          const events = getEventsForDate(date);
 
           return (
             <div
@@ -118,29 +132,52 @@ export function CalendarMonthView({
                 ${isWeekend ? 'bg-gray-100' : ''}
               `}
             >
-              {/* Holiday checkbox - only show for non-SEA users */}
-              {userRole !== 'sea' && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDayClick(date);
-                  }}
-                  className={`
-                    absolute top-1 right-1 w-5 h-5 rounded border-2 
-                    ${holiday ? 'bg-red-500 border-red-500' : 'bg-white border-red-300'}
-                    ${holiday ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
-                    transition-opacity duration-200 flex items-center justify-center
-                    hover:border-red-500
-                  `}
-                  title={holiday ? 'Remove holiday' : 'Mark as holiday'}
-                >
-                  {holiday && (
-                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              {/* Action buttons - holiday checkbox and add event */}
+              <div className="absolute top-1 right-1 flex gap-1">
+                {/* Add Event button - only show for non-SEA users */}
+                {userRole !== 'sea' && onAddEvent && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddEvent(date);
+                    }}
+                    className={`
+                      w-5 h-5 rounded border-2 bg-white border-blue-300
+                      opacity-0 group-hover:opacity-100
+                      transition-opacity duration-200 flex items-center justify-center
+                      hover:border-blue-500 hover:bg-blue-50
+                    `}
+                    title="Add event"
+                  >
+                    <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                  )}
-                </button>
-              )}
+                  </button>
+                )}
+                {/* Holiday checkbox - only show for non-SEA users */}
+                {userRole !== 'sea' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDayClick(date);
+                    }}
+                    className={`
+                      w-5 h-5 rounded border-2 
+                      ${holiday ? 'bg-red-500 border-red-500' : 'bg-white border-red-300'}
+                      ${holiday ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                      transition-opacity duration-200 flex items-center justify-center
+                      hover:border-red-500
+                    `}
+                    title={holiday ? 'Remove holiday' : 'Mark as holiday'}
+                  >
+                    {holiday && (
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+              </div>
 
               <div className={`text-sm font-medium ${
                 isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
@@ -157,6 +194,43 @@ export function CalendarMonthView({
               {!isWeekend && sessionCount > 0 && (
                 <div className="text-xs text-gray-600 mt-1">
                   {sessionCount} session{sessionCount !== 1 ? 's' : ''}
+                </div>
+              )}
+
+              {/* Display calendar events */}
+              {events.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {events.slice(0, 2).map((event, idx) => (
+                    <div
+                      key={event.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEventClick?.(event);
+                      }}
+                      className="text-xs px-1 py-0.5 rounded cursor-pointer hover:opacity-80"
+                      style={{
+                        backgroundColor: 
+                          event.event_type === 'meeting' ? '#DBEAFE' : 
+                          event.event_type === 'assessment' ? '#FEF3C7' :
+                          event.event_type === 'activity' ? '#D1FAE5' :
+                          '#F3F4F6',
+                        color:
+                          event.event_type === 'meeting' ? '#1E40AF' : 
+                          event.event_type === 'assessment' ? '#92400E' :
+                          event.event_type === 'activity' ? '#065F46' :
+                          '#374151'
+                      }}
+                      title={event.title}
+                    >
+                      {event.all_day ? '' : event.start_time?.slice(0, 5) + ' '}
+                      {event.title.length > 15 ? event.title.slice(0, 15) + '...' : event.title}
+                    </div>
+                  ))}
+                  {events.length > 2 && (
+                    <div className="text-xs text-gray-500 pl-1">
+                      +{events.length - 2} more
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -38,6 +38,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<any>(null);
@@ -156,6 +157,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             if (holidayData) {
               setHolidays(holidayData);
             }
+          }
+          
+          // Fetch calendar events for the week
+          const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+          const weekEndStr = format(addDays(weekStart, 4), 'yyyy-MM-dd');
+          
+          const { data: eventsData } = await supabase
+            .from('calendar_events')
+            .select('*')
+            .eq('provider_id', user.id)
+            .gte('date', weekStartStr)
+            .lte('date', weekEndStr)
+            .order('date')
+            .order('start_time');
+          
+          if (eventsData && isMounted) {
+            setCalendarEvents(eventsData);
           }
         }
       } catch (error) {
@@ -496,7 +514,19 @@ return (
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            if (sessionsInSlot.length === 0) {
+                            
+                            // Check for calendar events at this time
+                            const dateStr = format(currentDate, 'yyyy-MM-dd');
+                            const timeEvents = calendarEvents.filter(event => {
+                              if (event.date !== dateStr) return false;
+                              if (event.all_day) return true;
+                              if (!event.start_time) return false;
+                              
+                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
+                              return eventTimeIndex === timeIndex;
+                            });
+                            
+                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
                               // Show preview if this is the drop target
                               if (dropTarget === sessionKey && draggedSession) {
                                 return (
@@ -507,7 +537,31 @@ return (
                               }
                               return <span className="text-gray-400">-</span>;
                             }
-                            return sessionsInSlot.map((session) => (
+                            // Display both sessions and calendar events
+                            const allItems = [...sessionsInSlot];
+                            
+                            return (
+                              <>
+                                {timeEvents.map((event) => (
+                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
+                                    style={{
+                                      backgroundColor: 
+                                        event.event_type === 'meeting' ? '#DBEAFE' : 
+                                        event.event_type === 'assessment' ? '#FEF3C7' :
+                                        event.event_type === 'activity' ? '#D1FAE5' :
+                                        '#F3F4F6',
+                                      color:
+                                        event.event_type === 'meeting' ? '#1E40AF' : 
+                                        event.event_type === 'assessment' ? '#92400E' :
+                                        event.event_type === 'activity' ? '#065F46' :
+                                        '#374151'
+                                    }}
+                                    title={event.description || event.title}
+                                  >
+                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
+                                  </span>
+                                ))}
+                                {sessionsInSlot.map((session) => (
                               <DraggableSessionBox
                                 key={session.id}
                                 session={session}
@@ -524,7 +578,9 @@ return (
                                 variant="pill"
                                 hasConflict={sessionConflicts[session.id] || false}
                               />
-                            ));
+                            ))}
+                              </>
+                            );
                           })()}
                         </span>
                         </div>
@@ -560,7 +616,19 @@ return (
                             if (holidayCheck.isHoliday) {
                               return <span className="text-red-600 font-medium">Holiday!</span>;
                             }
-                            if (sessionsInSlot.length === 0) {
+                            
+                            // Check for calendar events at this time
+                            const dateStr = format(currentDate, 'yyyy-MM-dd');
+                            const timeEvents = calendarEvents.filter(event => {
+                              if (event.date !== dateStr) return false;
+                              if (event.all_day) return true;
+                              if (!event.start_time) return false;
+                              
+                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
+                              return eventTimeIndex === timeIndex;
+                            });
+                            
+                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
                               // Show preview if this is the drop target
                               if (dropTarget === sessionKey && draggedSession) {
                                 return (
@@ -571,7 +639,31 @@ return (
                               }
                               return <span className="text-gray-400">-</span>;
                             }
-                            return sessionsInSlot.map((session) => (
+                            // Display both sessions and calendar events
+                            const allItems = [...sessionsInSlot];
+                            
+                            return (
+                              <>
+                                {timeEvents.map((event) => (
+                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
+                                    style={{
+                                      backgroundColor: 
+                                        event.event_type === 'meeting' ? '#DBEAFE' : 
+                                        event.event_type === 'assessment' ? '#FEF3C7' :
+                                        event.event_type === 'activity' ? '#D1FAE5' :
+                                        '#F3F4F6',
+                                      color:
+                                        event.event_type === 'meeting' ? '#1E40AF' : 
+                                        event.event_type === 'assessment' ? '#92400E' :
+                                        event.event_type === 'activity' ? '#065F46' :
+                                        '#374151'
+                                    }}
+                                    title={event.description || event.title}
+                                  >
+                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
+                                  </span>
+                                ))}
+                                {sessionsInSlot.map((session) => (
                               <DraggableSessionBox
                                 key={session.id}
                                 session={session}
@@ -588,7 +680,9 @@ return (
                                 variant="pill"
                                 hasConflict={sessionConflicts[session.id] || false}
                               />
-                            ));
+                            ))}
+                              </>
+                            );
                           })()}
                         </span>
                         </div>

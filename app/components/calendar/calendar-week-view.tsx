@@ -14,6 +14,7 @@ import { cn } from '@/src/utils/cn';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
+type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
 
 interface CalendarWeekViewProps {
   sessions: ScheduleSession[];
@@ -24,6 +25,9 @@ interface CalendarWeekViewProps {
   onSessionClick?: (session: ScheduleSession) => void;
   weekOffset?: number;
   holidays?: Array<{ date: string; name?: string }>;
+  calendarEvents?: CalendarEvent[];
+  onAddEvent?: (date: Date) => void;
+  onEventClick?: (event: CalendarEvent) => void;
 }
 
 
@@ -32,7 +36,10 @@ export function CalendarWeekView({
   students,
   onSessionClick,
   weekOffset = 0,
-  holidays = [] // Add holiday feature
+  holidays = [], // Add holiday feature
+  calendarEvents = [],
+  onAddEvent,
+  onEventClick
   }: CalendarWeekViewProps) {
   const getWeekDates = () => {
     const today = new Date();
@@ -783,6 +790,46 @@ export function CalendarWeekView({
                     ))}
                   </div>
                 )}
+
+                {/* Calendar Events */}
+                {(() => {
+                  const dayEvents = calendarEvents.filter(e => e.date === dateStr);
+                  if (dayEvents.length > 0) {
+                    return (
+                      <div className="mb-2">
+                        <div className="text-xs font-medium text-gray-600 mb-1">Events</div>
+                        {dayEvents.map((event) => (
+                          <div
+                            key={event.id}
+                            onClick={() => onEventClick?.(event)}
+                            className="mb-1 p-2 rounded text-xs cursor-pointer hover:opacity-80"
+                            style={{
+                              backgroundColor: 
+                                event.event_type === 'meeting' ? '#DBEAFE' : 
+                                event.event_type === 'assessment' ? '#FEF3C7' :
+                                event.event_type === 'activity' ? '#D1FAE5' :
+                                '#F3F4F6',
+                              color:
+                                event.event_type === 'meeting' ? '#1E40AF' : 
+                                event.event_type === 'assessment' ? '#92400E' :
+                                event.event_type === 'activity' ? '#065F46' :
+                                '#374151'
+                            }}
+                          >
+                            <div className="font-medium">
+                              {event.all_day ? 'All Day' : formatTime(event.start_time || '')}
+                              {event.title && ` - ${event.title}`}
+                            </div>
+                            {event.location && (
+                              <div className="text-xs opacity-75">📍 {event.location}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Sessions */}
                 {isHolidayDay ? (
