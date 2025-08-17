@@ -11,8 +11,8 @@ interface CalendarEventModalProps {
   selectedDate: Date;
   event?: CalendarEvent | null;
   providerId: string;
-  schoolSiteId?: string;
-  schoolDistrictId?: string;
+  schoolSite?: string;
+  schoolDistrict?: string;
 }
 
 export function CalendarEventModal({
@@ -22,8 +22,8 @@ export function CalendarEventModal({
   selectedDate,
   event,
   providerId,
-  schoolSiteId,
-  schoolDistrictId
+  schoolSite,
+  schoolDistrict
 }: CalendarEventModalProps) {
   const [title, setTitle] = useState(event?.title || '');
   const [description, setDescription] = useState(event?.description || '');
@@ -90,8 +90,8 @@ export function CalendarEventModal({
         event_type: eventType,
         location: location.trim() || null,
         attendees: attendees.trim() ? attendees.split(',').map(a => a.trim()) : null,
-        school_site_id: schoolSiteId || null,
-        school_district_id: schoolDistrictId || null,
+        school_site: schoolSite || null,
+        school_district: schoolDistrict || null,
       };
 
       let result;

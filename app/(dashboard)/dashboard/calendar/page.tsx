@@ -488,8 +488,8 @@ export default function CalendarPage() {
           selectedDate={selectedEventDate}
           event={selectedEvent}
           providerId={providerId}
-          schoolSiteId={undefined}
-          schoolDistrictId={undefined}
+          schoolSite={currentSchool?.school_site}
+          schoolDistrict={currentSchool?.school_district}
         />
       )}
 

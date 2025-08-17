@@ -1069,8 +1069,8 @@ export interface Database {
           event_type: 'meeting' | 'assessment' | 'activity' | 'other' | null
           location: string | null
           attendees: string[] | null
-          school_site_id: string | null
-          school_district_id: string | null
+          school_site: string | null
+          school_district: string | null
           created_at: string
           updated_at: string
         }
