@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   event_type TEXT CHECK (event_type IN ('meeting', 'assessment', 'activity', 'other')),
   location TEXT,
   attendees TEXT[], -- Array of student IDs or teacher names
-  school_site TEXT,
-  school_district TEXT,
+  school_id TEXT,
+  district_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -55,9 +55,9 @@ CREATE POLICY "SEAs can view provider calendar events" ON calendar_events
       WHERE profiles.id = auth.uid()
       AND profiles.role = 'sea'
       AND (
-        (profiles.school_site = calendar_events.school_site AND calendar_events.school_site IS NOT NULL)
+        (profiles.school_id = calendar_events.school_id AND calendar_events.school_id IS NOT NULL)
         OR
-        (profiles.school_district = calendar_events.school_district AND calendar_events.school_district IS NOT NULL)
+        (profiles.district_id = calendar_events.district_id AND calendar_events.district_id IS NOT NULL)
       )
     )
   );

@@ -14,6 +14,24 @@ interface Holiday {
   name?: string;
 }
 
+interface CalendarEvent {
+  id: string;
+  provider_id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  event_type: 'meeting' | 'assessment' | 'activity' | 'other' | null;
+  location: string | null;
+  attendees: string[] | null;
+  school_id: string | null;
+  district_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 // Compact time slots - only 30-minute intervals from 8 AM to 3 PM
 const TIME_SLOTS = [
@@ -38,7 +56,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<any>(null);
@@ -70,6 +88,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .eq('id', user.id)
           .single();
 
+        let hasSEAs = false;
         if (profile?.role === 'resource' && profile.school_site) {
           // Check if there are any SEAs at the same school
           const { data: seas, count: seaCount } = await supabase
@@ -78,7 +97,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             .eq('role', 'sea')
             .eq('school_site', profile.school_site);
            
-          setShowToggle((seaCount || 0) > 0);
+          hasSEAs = (seaCount || 0) > 0;
+          setShowToggle(hasSEAs);
         } else {
           setShowToggle(false);
         }
@@ -92,7 +112,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .order("day_of_week")
           .order("start_time");
 
-        if (showToggle && viewMode === 'sea') {
+        if (hasSEAs && viewMode === 'sea') {
           // Show sessions assigned to SEAs
           sessionQuery = sessionQuery
             .eq("provider_id", user.id)
@@ -208,20 +228,26 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   const getTimeSlotIndex = (timeString: string) => {
-    const time = parse(timeString, "HH:mm:ss", new Date());
-    const hours = time.getHours();
-    const minutes = time.getMinutes();
+    if (!timeString) return -1;
+    
+    // Handle both HH:mm and HH:mm:ss formats
+    const parts = timeString.split(':');
+    if (parts.length < 2) return -1;
+    
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    
+    if (isNaN(hours) || isNaN(minutes)) return -1;
 
-    // Find the 30-minute slot this time falls into (not rounding, but which window it starts in)
-    let slotHours = hours;
-    let slotMinutes = minutes < 30 ? 0 : 30;
+    // Find the 30-minute slot this time falls into
+    const slotMinutes = minutes < 30 ? 0 : 30;
 
     // Create a new date with the slot time
     const slotTime = new Date();
-    slotTime.setHours(slotHours, slotMinutes, 0);
+    slotTime.setHours(hours, slotMinutes, 0, 0);
     const formattedTime = format(slotTime, "h:mm a");
 
-    return TIME_SLOTS.findIndex((slot) => slot === formattedTime);
+    return TIME_SLOTS.indexOf(formattedTime);
   };
 
   const getSessionSpan = (startTime: string, endTime: string) => {

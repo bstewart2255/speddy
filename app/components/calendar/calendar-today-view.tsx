@@ -7,6 +7,7 @@ import { SessionGenerator } from '@/lib/services/session-generator';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
+import { toDateKeyLocal } from '../../utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -118,13 +119,13 @@ export function CalendarTodayView({
 
   // Check if current date is a holiday
   const isHoliday = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toDateKeyLocal(currentDate);
     return holidays.some(h => h.date === dateStr);
   };
 
   // Get holiday name for current date
   const getHolidayName = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toDateKeyLocal(currentDate);
     const holiday = holidays.find(h => h.date === dateStr);
     return holiday?.name || 'Holiday';
   };
@@ -299,7 +300,7 @@ export function CalendarTodayView({
 
       {/* Calendar Events */}
       {!isHoliday() && calendarEvents.length > 0 && (() => {
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dateStr = toDateKeyLocal(currentDate);
         const todayEvents = calendarEvents.filter(e => e.date === dateStr);
         
         if (todayEvents.length === 0) return null;

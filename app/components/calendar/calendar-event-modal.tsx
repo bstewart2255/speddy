@@ -11,8 +11,8 @@ interface CalendarEventModalProps {
   selectedDate: Date;
   event?: CalendarEvent | null;
   providerId: string;
-  schoolSite?: string;
-  schoolDistrict?: string;
+  schoolId?: string;
+  districtId?: string;
 }
 
 export function CalendarEventModal({
@@ -22,8 +22,8 @@ export function CalendarEventModal({
   selectedDate,
   event,
   providerId,
-  schoolSite,
-  schoolDistrict
+  schoolId,
+  districtId
 }: CalendarEventModalProps) {
   const [title, setTitle] = useState(event?.title || '');
   const [description, setDescription] = useState(event?.description || '');
@@ -90,8 +90,8 @@ export function CalendarEventModal({
         event_type: eventType,
         location: location.trim() || null,
         attendees: attendees.trim() ? attendees.split(',').map(a => a.trim()) : null,
-        school_site: schoolSite || null,
-        school_district: schoolDistrict || null,
+        school_id: schoolId || null,
+        district_id: districtId || null,
       };
 
       let result;
@@ -148,6 +148,11 @@ export function CalendarEventModal({
 
       if (deleteError) throw deleteError;
 
+      // Notify parent component about deletion
+      if (onSave) {
+        onSave(event); // Pass the deleted event so parent knows what was removed
+      }
+      
       handleClose();
     } catch (err) {
       console.error('Error deleting calendar event:', err);
