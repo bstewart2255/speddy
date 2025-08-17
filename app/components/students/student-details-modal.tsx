@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../../lib/supabase/queries/student-details';
 import { SkillsChecklist } from './skills-checklist';
+import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -386,11 +387,11 @@ export function StudentDetailsModal({
               <div className="space-y-1">
                 <h4 className="font-medium text-gray-900">Areas of Need</h4>
                 <p className="text-sm text-gray-600">
-                  Select the skills {student.initials} is currently working on
+                  Select the skills {student.initials} is currently working on. You can choose skills from different grade levels and trimesters.
                 </p>
               </div>
   
-              <SkillsChecklist
+              <AreasOfNeedDropdown
                 gradeLevel={studentInfo.grade_level}
                 selectedSkills={details.working_skills}
                 onSkillsChange={(skills) => setDetails({...details, working_skills: skills})}
