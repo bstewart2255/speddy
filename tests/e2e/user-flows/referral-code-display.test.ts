@@ -2,9 +2,14 @@ import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
 // Test configuration
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+// Skip tests if environment variables are not set
+test.skip(!supabaseUrl || !supabaseServiceKey, 'Supabase environment variables not configured');
+
+// Force this suite to run in serial mode to prevent conflicts
+test.describe.configure({ mode: 'serial' });
 
 // Test users
 const teacherUser = {
@@ -33,20 +38,116 @@ const seaUser = {
   }
 };
 
-// Cleanup function
+// Helper functions
+function createSupabaseClient() {
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
+
 async function cleanupTestUser(email: string) {
   try {
-    const { data: user } = await supabase.auth.admin.listUsers();
-    const testUser = user.users.find(u => u.email === email);
-    
-    if (testUser) {
-      await supabase.from('referral_codes').delete().eq('user_id', testUser.id);
-      await supabase.from('profiles').delete().eq('id', testUser.id);
-      await supabase.auth.admin.deleteUser(testUser.id);
+    const supabase = createSupabaseClient();
+    let page = 1;
+    const perPage = 1000;
+    let userId: string | null = null;
+
+    // Handle pagination when searching for user
+    while (!userId) {
+      const { data, error } = await supabase.auth.admin.listUsers({ 
+        page, 
+        perPage 
+      });
+      
+      if (error) throw error;
+      
+      const testUser = data.users.find(u => u.email === email);
+      if (testUser) {
+        userId = testUser.id;
+        break;
+      }
+      
+      // No more pages to check
+      if (data.users.length < perPage) break;
+      page++;
+    }
+
+    if (userId) {
+      // Remove any seeded subscriptions for this test user
+      await supabase.from('subscriptions').delete().eq('user_id', userId);
+      await supabase.from('referral_codes').delete().eq('user_id', userId);
+      await supabase.from('profiles').delete().eq('id', userId);
+      await supabase.auth.admin.deleteUser(userId);
     }
   } catch (error) {
     console.error(`Failed to cleanup user ${email}:`, error);
   }
+}
+
+async function createUserAndProfile(userData: typeof teacherUser) {
+  const supabase = createSupabaseClient();
+  
+  const { data: signUpData, error } = await supabase.auth.admin.createUser({
+    email: userData.email,
+    password: userData.password,
+    user_metadata: userData.metadata,
+    email_confirm: true
+  });
+
+  if (error || !signUpData?.user) {
+    throw new Error(`Failed to create test user: ${error?.message}`);
+  }
+
+  await supabase.from('profiles').insert({
+    id: signUpData.user.id,
+    email: userData.email,
+    full_name: userData.metadata.full_name,
+    role: userData.metadata.role,
+    school_district: userData.metadata.school_district,
+    school_site: userData.metadata.school_site,
+    works_at_multiple_schools: userData.metadata.works_at_multiple_schools || false,
+    district_domain: 'school.edu',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+
+  return signUpData.user.id;
+}
+
+async function seedActiveSubscriptionForUser(userId: string) {
+  const supabase = createSupabaseClient();
+
+  // Ensure idempotency for retries
+  await supabase.from('subscriptions').delete().eq('user_id', userId);
+
+  const now = Date.now();
+  const currentPeriodStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const currentPeriodEnd = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .insert({
+      user_id: userId,
+      stripe_customer_id: `test_c_${userId.substring(0, 12)}`,
+      stripe_subscription_id: `sub_test_${userId.substring(0, 12)}`,
+      status: 'active',
+      current_period_start: currentPeriodStart,
+      current_period_end: currentPeriodEnd,
+      trial_end: null,
+    });
+
+  if (error) throw error;
+}
+
+async function loginUser(page: any, userData: typeof teacherUser, expectedPath = /\/dashboard(\/|$)/) {
+  await page.goto('/login');
+  await page.fill('input[type="email"]', userData.email);
+  await page.fill('input[type="password"]', userData.password);
+  await page.click('button[type="submit"]');
+  
+  // Debug: Log current URL for troubleshooting
+  console.log('After login - Current URL:', page.url());
+  
+  // Increase timeout for URL check to handle slower redirects
+  await expect(page).toHaveURL(expectedPath, { timeout: 15000 });
 }
 
 test.describe('Referral Code Display', () => {
@@ -63,45 +164,15 @@ test.describe('Referral Code Display', () => {
   });
 
   test('Teacher dashboard should display referral code', async ({ page }) => {
-    // Create teacher user
-    const { data: signUpData } = await supabase.auth.admin.createUser({
-      email: teacherUser.email,
-      password: teacherUser.password,
-      user_metadata: teacherUser.metadata,
-      email_confirm: true
-    });
+    // Create teacher user and profile
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
-    if (!signUpData?.user) {
-      throw new Error('Failed to create test user');
-    }
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
-    // Create profile
-    await supabase.from('profiles').insert({
-      id: signUpData.user.id,
-      email: teacherUser.email,
-      full_name: teacherUser.metadata.full_name,
-      role: teacherUser.metadata.role,
-      school_district: teacherUser.metadata.school_district,
-      school_site: teacherUser.metadata.school_site,
-      works_at_multiple_schools: false,
-      district_domain: 'school.edu',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-
-    // Wait for referral code generation
-    await page.waitForTimeout(1000);
-
-    // Navigate to login page
-    await page.goto('/login');
-
-    // Login
-    await page.fill('input[type="email"]', teacherUser.email);
-    await page.fill('input[type="password"]', teacherUser.password);
-    await page.click('button[type="submit"]');
-
-    // Wait for navigation to dashboard
-    await page.waitForURL('/dashboard');
+    // Login as teacher
+    await loginUser(page, teacherUser);
 
     // Check for referral code display
     await expect(page.locator('text=Your referral code:')).toBeVisible();
@@ -121,42 +192,12 @@ test.describe('Referral Code Display', () => {
   });
 
   test('SEA dashboard should NOT display referral code', async ({ page }) => {
-    // Create SEA user
-    const { data: signUpData } = await supabase.auth.admin.createUser({
-      email: seaUser.email,
-      password: seaUser.password,
-      user_metadata: seaUser.metadata,
-      email_confirm: true
-    });
+    // Create SEA user and profile
+    const userId = await createUserAndProfile(seaUser);
+    console.log('Created SEA user with ID:', userId);
 
-    if (!signUpData?.user) {
-      throw new Error('Failed to create test user');
-    }
-
-    // Create profile
-    await supabase.from('profiles').insert({
-      id: signUpData.user.id,
-      email: seaUser.email,
-      full_name: seaUser.metadata.full_name,
-      role: seaUser.metadata.role,
-      school_district: seaUser.metadata.school_district,
-      school_site: seaUser.metadata.school_site,
-      works_at_multiple_schools: false,
-      district_domain: 'school.edu',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-
-    // Navigate to login page
-    await page.goto('/login');
-
-    // Login
-    await page.fill('input[type="email"]', seaUser.email);
-    await page.fill('input[type="password"]', seaUser.password);
-    await page.click('button[type="submit"]');
-
-    // Should redirect to SEA dashboard
-    await page.waitForURL('/dashboard/sea');
+    // Login as SEA
+    await loginUser(page, seaUser, /\/dashboard\/sea(\/|$)/);
 
     // Verify NO referral code is displayed
     await expect(page.locator('text=Your referral code:')).not.toBeVisible();
@@ -167,41 +208,15 @@ test.describe('Referral Code Display', () => {
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
-    // Create teacher user
-    const { data: signUpData } = await supabase.auth.admin.createUser({
-      email: teacherUser.email,
-      password: teacherUser.password,
-      user_metadata: teacherUser.metadata,
-      email_confirm: true
-    });
+    // Create teacher user and profile
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
-    if (!signUpData?.user) {
-      throw new Error('Failed to create test user');
-    }
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
-    // Create profile
-    await supabase.from('profiles').insert({
-      id: signUpData.user.id,
-      email: teacherUser.email,
-      full_name: teacherUser.metadata.full_name,
-      role: teacherUser.metadata.role,
-      school_district: teacherUser.metadata.school_district,
-      school_site: teacherUser.metadata.school_site,
-      works_at_multiple_schools: false,
-      district_domain: 'school.edu',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-
-    // Wait for referral code generation
-    await page.waitForTimeout(1000);
-
-    // Navigate and login
-    await page.goto('/login');
-    await page.fill('input[type="email"]', teacherUser.email);
-    await page.fill('input[type="password"]', teacherUser.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    // Login as teacher
+    await loginUser(page, teacherUser);
 
     // Get the referral code
     const referralCode = await page.locator('.font-mono.font-bold.text-lg').textContent();
@@ -218,41 +233,15 @@ test.describe('Referral Code Display', () => {
   });
 
   test('Referral code expansion shows full details', async ({ page }) => {
-    // Create teacher user with some referral data
-    const { data: signUpData } = await supabase.auth.admin.createUser({
-      email: teacherUser.email,
-      password: teacherUser.password,
-      user_metadata: teacherUser.metadata,
-      email_confirm: true
-    });
+    // Create teacher user and profile
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
-    if (!signUpData?.user) {
-      throw new Error('Failed to create test user');
-    }
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
-    // Create profile
-    await supabase.from('profiles').insert({
-      id: signUpData.user.id,
-      email: teacherUser.email,
-      full_name: teacherUser.metadata.full_name,
-      role: teacherUser.metadata.role,
-      school_district: teacherUser.metadata.school_district,
-      school_site: teacherUser.metadata.school_site,
-      works_at_multiple_schools: false,
-      district_domain: 'school.edu',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-
-    // Wait for referral code generation
-    await page.waitForTimeout(1000);
-
-    // Navigate and login
-    await page.goto('/login');
-    await page.fill('input[type="email"]', teacherUser.email);
-    await page.fill('input[type="password"]', teacherUser.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    // Login as teacher
+    await loginUser(page, teacherUser);
 
     // Click view details button
     await page.click('button:has-text("View details")');
@@ -287,41 +276,15 @@ test.describe('Billing Page Referral Display', () => {
   });
 
   test('Billing page should display referral code for teachers', async ({ page }) => {
-    // Create teacher user
-    const { data: signUpData } = await supabase.auth.admin.createUser({
-      email: teacherUser.email,
-      password: teacherUser.password,
-      user_metadata: teacherUser.metadata,
-      email_confirm: true
-    });
+    // Create teacher user and profile
+    const userId = await createUserAndProfile(teacherUser);
+    console.log('Created teacher user with ID:', userId);
 
-    if (!signUpData?.user) {
-      throw new Error('Failed to create test user');
-    }
+    // Seed active subscription so login does not redirect to payment
+    await seedActiveSubscriptionForUser(userId);
 
-    // Create profile
-    await supabase.from('profiles').insert({
-      id: signUpData.user.id,
-      email: teacherUser.email,
-      full_name: teacherUser.metadata.full_name,
-      role: teacherUser.metadata.role,
-      school_district: teacherUser.metadata.school_district,
-      school_site: teacherUser.metadata.school_site,
-      works_at_multiple_schools: false,
-      district_domain: 'school.edu',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-
-    // Wait for referral code generation
-    await page.waitForTimeout(1000);
-
-    // Navigate and login
-    await page.goto('/login');
-    await page.fill('input[type="email"]', teacherUser.email);
-    await page.fill('input[type="password"]', teacherUser.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('/dashboard');
+    // Login as teacher
+    await loginUser(page, teacherUser);
 
     // Navigate to billing page
     await page.goto('/billing');
@@ -330,7 +293,7 @@ test.describe('Billing Page Referral Display', () => {
     await expect(page.locator('text=Your referral code')).toBeVisible();
     
     // Verify the referral code is displayed
-    const referralCodeElement = await page.locator('.font-mono').first();
+    const referralCodeElement = page.locator('.font-mono').first();
     const codeText = await referralCodeElement.textContent();
     expect(codeText).toMatch(/^[A-Z0-9]{6}$/);
   });

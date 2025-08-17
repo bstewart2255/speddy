@@ -1,9 +1,8 @@
-```markdown
 # E2E Testing Infrastructure Documentation
 
 ## Overview
 
-This project implements an AI-powered end-to-end (E2E) testing system using Puppeteer for browser automation and Anthropic's Claude API for intelligent test generation and validation. The system includes automated testing, continuous monitoring, and pre-deployment checks.
+This project implements an AI-powered end-to-end (E2E) testing system using Playwright for browser automation and Anthropic's Claude API for intelligent test generation and validation. The system includes automated testing, continuous monitoring, and pre-deployment checks.
 
 ## Architecture
 
@@ -12,7 +11,11 @@ tests/e2e/
 ├── helpers/
 │   └── ai-test-helper.js        # AI-powered test utilities
 ├── user-flows/
-│   └── auth-flow.test.js        # Example test suite
+│   ├── auth-flow.test.js        # Authentication tests
+│   ├── basic.test.js            # Basic configuration tests
+│   ├── homepage.test.js         # Homepage tests
+│   ├── kindergarten-schedule.test.js  # Schedule tests
+│   └── referral-code-display.test.ts  # Referral code tests
 ├── runner/
 │   └── test-runner.js           # Test execution orchestrator
 ├── monitor/
@@ -34,54 +37,46 @@ Add these to Replit Secrets (or `.env.local`):
 ANTHROPIC_API_KEY=your_claude_api_key
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_key
 BASE_URL=http://localhost:3000  # or your deployment URL
 ```
 
 ### 2. Installation
 
-All dependencies should already be installed, but if needed:
+Install dependencies and Playwright browsers:
 
 ```bash
-npm install puppeteer @anthropic-ai/sdk node-cron nodemailer recharts
+npm install
+npx playwright install --with-deps chromium
 ```
 
 ### 3. Configuration Files
 
-#### `.puppeteerrc.json`
-```json
-{
-  "args": [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-accelerated-2d-canvas",
-    "--no-first-run",
-    "--no-zygote",
-    "--single-process",
-    "--disable-gpu"
-  ]
-}
-```
+#### `playwright.config.js`
 
-#### `jest.e2e.config.js`
-Separate Jest configuration for E2E tests with 30-second timeout and Node environment.
+Main Playwright configuration with:
+
+- Test directory: `./tests/e2e`
+- Timeout: 30 seconds
+- Parallel execution
+- Multiple reporters (HTML, JSON, blob)
+- Web server auto-start for local development
 
 ## Available Scripts
 
 ### Testing Commands
 
 ```bash
-# Run E2E tests once
+# Run E2E tests with Playwright
 npm run test:e2e
 
-# Run E2E tests in watch mode
+# Run E2E tests in UI mode (interactive)
 npm run test:e2e:watch
 
 # Run AI-powered test suite with reporting
 npm run test:e2e:ai
 
-# Debug mode - runs with visible browser
+# Debug mode - runs with browser UI
 npm run test:e2e:debug
 
 # Pre-deployment checks
@@ -100,9 +95,34 @@ npm run deploy:replit
 
 ## Core Features
 
-### 1. AI Test Helper (`ai-test-helper.js`)
+### 1. Writing Playwright Tests
 
-The AI Test Helper provides intelligent testing capabilities:
+Example test structure:
+
+```javascript
+import { test, expect } from '@playwright/test';
+
+test.describe('Feature Tests', () => {
+  test('critical user path', async ({ page }) => {
+    await page.goto('/login');
+
+    // Fill form
+    await page.fill('input[type="email"]', 'test@example.com');
+    await page.fill('input[type="password"]', 'password');
+    await page.click('button[type="submit"]');
+
+    // Verify navigation
+    await expect(page).toHaveURL(/\/dashboard/);
+
+    // Check for elements
+    await expect(page.locator('h1')).toContainText('Dashboard');
+  });
+});
+```
+
+### 2. AI Test Helper Integration
+
+The AI Test Helper can be used with Playwright for intelligent testing:
 
 ```javascript
 const aiHelper = new AITestHelper(page);
@@ -116,7 +136,7 @@ const testData = await aiHelper.generateTestData('form#login');
 // Find elements with self-healing selectors
 const element = await aiHelper.findElement('login button', [
   'button[type="submit"]',
-  'button.login-btn'
+  'button.login-btn',
 ]);
 
 // Validate user flows
@@ -126,45 +146,10 @@ const validation = await aiHelper.validateUserFlow(
 );
 ```
 
-### 2. Writing E2E Tests
-
-Example test structure:
-
-```javascript
-describe('Feature Tests', () => {
-  let browser, page, aiHelper;
-
-  beforeEach(async () => {
-    browser = global.__BROWSER__;
-    page = await browser.newPage();
-    aiHelper = new AITestHelper(page);
-  });
-
-  test('critical user path', async () => {
-    await page.goto(`${BASE_URL}/login`);
-
-    // Let AI generate test data
-    const credentials = await aiHelper.generateTestData('form');
-
-    // Fill and submit
-    await page.type('input[type="email"]', credentials.email);
-    await page.type('input[type="password"]', credentials.password);
-    await page.click('button[type="submit"]');
-
-    // AI validates the result
-    const result = await aiHelper.validateUserFlow(
-      'Login flow',
-      'User should see dashboard'
-    );
-
-    expect(result.success).toBe(true);
-  });
-});
-```
-
 ### 3. Continuous Monitoring
 
 The monitoring system runs automatically and:
+
 - Executes tests every hour
 - Stores results in Supabase
 - Sends alerts after 3 consecutive failures
@@ -174,6 +159,7 @@ The monitoring system runs automatically and:
 ### 4. Monitoring Dashboard
 
 Access at `/admin/e2e-dashboard` to view:
+
 - Real-time test status
 - Success rate trends
 - Performance metrics
@@ -199,21 +185,44 @@ CREATE TABLE e2e_test_results (
 );
 ```
 
+## Migration from Jest to Playwright
+
+We've recently migrated from Jest to Playwright for E2E testing. Key changes:
+
+1. **Removed Files:**
+   - `jest.e2e.config.js`
+   - `jest.e2e.setup.js`
+   - Old Puppeteer-based tests
+
+2. **Updated Syntax:**
+   - `describe` → `test.describe`
+   - `it/test` → `test`
+   - Jest matchers → Playwright assertions
+
+3. **New Features:**
+   - Auto-waiting for elements
+   - Built-in test retry
+   - Parallel test execution
+   - Better debugging tools
+
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Puppeteer fails to start**
-   - Ensure `.puppeteerrc.json` exists with Replit-compatible args
-   - Check that Chrome dependencies are installed
+1. **Playwright browsers not installed**
+
+   ```bash
+   npx playwright install --with-deps
+   ```
 
 2. **Tests timeout**
-   - Increase timeout in `jest.e2e.config.js`
+   - Increase timeout in `playwright.config.js`
    - Check if app is running on expected port
+   - Use `await expect(element).toBeVisible()` for auto-waiting
 
-3. **AI responses fail to parse**
-   - Claude returns text, not JSON - use `JSON.parse(message.content[0].text)`
-   - Add error handling for malformed responses
+3. **Environment variables missing**
+   - Tests will skip when required env vars are not set
+   - Check your `.env.local` or Replit Secrets
 
 4. **Screenshots not saving**
    - Create directories: `mkdir -p tests/e2e/screenshots tests/e2e/reports`
@@ -221,96 +230,95 @@ CREATE TABLE e2e_test_results (
 ### Debug Mode
 
 Run tests with visible browser:
+
 ```bash
-HEADLESS=false npm run test:e2e:debug
+npx playwright test --headed
+# or
+npm run test:e2e:debug
 ```
 
-### Viewing Logs
+Use Playwright Inspector:
 
-Test execution logs are saved to:
-- `tests/e2e/reports/last-run.json`
-- `deployment-check-results.json`
+```bash
+npx playwright test --debug
+```
+
+### Viewing Test Reports
+
+```bash
+# Open HTML report
+npx playwright show-report
+
+# View trace files
+npx playwright show-trace trace.zip
+```
 
 ## Best Practices
 
 1. **Test Organization**
    - Group related tests in describe blocks
    - Use descriptive test names
-   - Clean up resources in afterEach
+   - Use Page Object Model for complex pages
 
-2. **AI Usage**
-   - Cache AI responses when possible
-   - Use specific prompts for better results
-   - Always validate AI-generated data
+2. **Playwright Specific**
+   - Use `data-testid` attributes for reliable selectors
+   - Prefer `getByRole`, `getByText` over CSS selectors
+   - Use `expect` with auto-waiting assertions
+   - Configure tests to run in serial mode when needed
 
 3. **Performance**
-   - Reuse browser instances
-   - Parallelize independent tests
+   - Use test.describe.configure({ mode: 'parallel' }) for independent tests
+   - Use test.describe.configure({ mode: 'serial' }) for dependent tests
    - Set appropriate timeouts
 
-4. **Monitoring**
-   - Review AI insights daily
-   - Adjust alert thresholds based on app stability
-   - Archive old test results periodically
+4. **CI/CD**
+   - Use GitHub Actions workflows for automated testing
+   - Configure test sharding for faster execution
+   - Upload artifacts for debugging failures
 
-## Deployment Integration
+## GitHub Actions Integration
 
-### Replit Deployment
+We have two Playwright workflows:
 
-1. Ensure `.replit` file has correct deployment configuration
-2. Run pre-deployment checks: `npm run test:e2e:ci`
-3. Deploy using Replit's Deploy button
-4. Monitor post-deployment: `npm run monitor:start`
+1. **Main Workflow** (`playwright.yml`)
+   - Runs on push to main and all PRs
+   - Uses test sharding for parallel execution
+   - Generates HTML reports
+   - Uploads test artifacts
 
-### CI/CD Integration
-
-For GitHub Actions or other CI/CD:
-```yaml
-- name: Run E2E Tests
-  run: |
-    npm run build
-    npm run start &
-    sleep 10
-    npm run test:e2e:ci
-```
+2. **PR Workflow** (`playwright-pr.yml`)
+   - Lightweight checks for pull requests
+   - Only runs affected tests when possible
+   - Posts results as PR comments
 
 ## Extending the System
 
 ### Adding New Test Flows
 
 1. Create new test file in `tests/e2e/user-flows/`
-2. Import and use AITestHelper
+2. Use Playwright test structure
 3. Follow existing patterns for consistency
 
-### Custom AI Validations
+### Custom Test Helpers
 
-Extend `AITestHelper` class:
+Create reusable functions:
+
 ```javascript
-async validateCustomFlow(customData) {
-  const message = await anthropic.messages.create({
-    model: "claude-3-opus-20240229",
-    max_tokens: 500,
-    messages: [{
-      role: "user",
-      content: `Custom validation prompt: ${customData}`
-    }]
-  });
-
-  return JSON.parse(message.content[0].text);
+export async function loginUser(page, email, password) {
+  await page.goto('/login');
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
+  await page.click('button[type="submit"]');
+  await expect(page).toHaveURL(/\/dashboard/);
 }
 ```
-
-### Adding Metrics
-
-Update `collectPerformanceMetrics()` in monitoring system to track additional metrics.
 
 ## Support
 
 For issues or questions:
-1. Check test logs in `tests/e2e/reports/`
-2. Review AI insights in the monitoring dashboard
+
+1. Check test logs in `playwright-report/`
+2. Review trace files for failed tests
 3. Run tests in debug mode for visual debugging
 4. Ensure all environment variables are set correctly
-```
-
-This README provides comprehensive documentation for your E2E testing setup that Claude Code can reference when helping with issues or extending the system.
+5. Check the [Playwright documentation](https://playwright.dev)

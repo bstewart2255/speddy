@@ -5,7 +5,7 @@ modules = ["nodejs-22"]
 
 [nix]
 channel = "stable-24_11"
-packages = ["nano", "supabase-cli", "gh"]
+packages = ["nano", "supabase-cli", "gh", "which"]
 
 [env]
 NEXT_TELEMETRY_DISABLED = "1"
@@ -27,3 +27,8 @@ externalPort = 3001
 [[ports]]
 localPort = 3002
 externalPort = 3002
+
+[[ports]]
+localPort = 16272
+externalPort = 3000
+exposeLocalhost = true

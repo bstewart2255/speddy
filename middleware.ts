@@ -21,6 +21,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // BYPASS AUTH FOR E2E TESTS - ONLY IN CI ENVIRONMENT
+  // Multiple safety checks to prevent accidental exposure
+  // Note: Next.js always sets NODE_ENV=production when built, so we use a custom env var
+  if (
+    process.env.CI === 'true' && // Only in CI environment
+    process.env.ENABLE_TEST_AUTH_BYPASS === 'true' && // Explicit opt-in
+    request.headers.get('x-test-auth-bypass') === 'true'
+  ) {
+    console.warn('⚠️ Test auth bypass active - this should only happen in CI tests');
+    const response = NextResponse.next()
+    response.headers.set('x-user-id', 'test-user-id')
+    response.headers.set('x-user-email', 'test@example.com')
+    return response
+  }
+
   // Create a Supabase client to verify the session
   let response = NextResponse.next({
     request: {

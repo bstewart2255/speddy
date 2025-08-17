@@ -1,5 +1,6 @@
-// tests/e2e/user-flows/auth-flow.test.js
-describe('Authentication Flow', () => {
+import { test, expect } from '@playwright/test';
+
+test.describe('Authentication Flow', () => {
   test('placeholder test', () => {
     expect(true).toBe(true);
   });

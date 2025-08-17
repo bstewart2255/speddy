@@ -22,7 +22,15 @@
       "Bash(gh pr view:*)",
       "Bash(gh issue:*)",
       "Bash(npm install openai)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx playwright test --reporter=list)",
+      "Bash(npx playwright test --reporter=list --grep-invert \"Referral Code Display|Billing Page\")",
+      "Bash(gh pr checks 103)",
+      "Bash(gh run view 17012559764 --log)",
+      "Bash(gh run view 17012559764 --job 48230548253 --log)",
+      "Bash(gh pr checks 103 --watch=false)",
+      "Bash(npx playwright test:*)",
+      "Bash(gh run view:*)"
     ],
     "deny": []
   }
