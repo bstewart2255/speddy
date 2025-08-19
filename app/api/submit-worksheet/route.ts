@@ -191,11 +191,41 @@ export async function POST(request: NextRequest) {
       .eq('qr_code', qrCode)
       .single();
 
+    let finalWorksheet = worksheet;
+
     if (worksheetError || !worksheet) {
-      return NextResponse.json(
-        { error: 'Worksheet not found. This QR code may be invalid or expired.' },
-        { status: 404 }
-      );
+      // Check if this is a legacy worksheet code (old format: WS-timestamp)
+      const isLegacyFormat = /^WS-\d{13}$/.test(qrCode);
+      
+      if (isLegacyFormat) {
+        // For legacy worksheets, create a minimal worksheet record for tracking
+        // We'll create it without a specific student since we don't know which one
+        const legacyWorksheet = {
+          id: `legacy-${qrCode}`,
+          lesson_id: 'legacy-lesson',
+          student_id: 'legacy-student',
+          worksheet_type: 'legacy',
+          content: { title: 'Legacy Worksheet', instructions: 'Scanned from printed worksheet' },
+          answer_key: null,
+          qr_code: qrCode,
+          uploaded_file_path: null,
+          uploaded_at: null,
+          created_at: new Date().toISOString(),
+          students: [{
+            id: 'legacy-student',
+            initials: 'Legacy Student',
+            grade_level: 'Unknown',
+            provider_id: 'legacy-provider'
+          }]
+        };
+        
+        finalWorksheet = legacyWorksheet;
+      } else {
+        return NextResponse.json(
+          { error: 'Worksheet not found. This QR code may be invalid or expired.' },
+          { status: 404 }
+        );
+      }
     }
 
     // Verify QR code in image matches the worksheet being submitted
@@ -209,7 +239,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload image to Supabase Storage
-    const fileName = `worksheets/${worksheet.id}/${Date.now()}.jpg`;
+    const fileName = `worksheets/${finalWorksheet.id}/${Date.now()}.jpg`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('worksheet-submissions')
       .upload(fileName, imageBuffer, {
@@ -263,8 +293,8 @@ export async function POST(request: NextRequest) {
                 text: `Analyze this completed student worksheet carefully.
 
                 Worksheet details:
-                - Type: ${worksheet.worksheet_type}
-                - Questions and answers: ${JSON.stringify(worksheet.content)}
+                - Type: ${finalWorksheet.worksheet_type}
+                - Questions and answers: ${JSON.stringify(finalWorksheet.content)}
 
                 For each question in the worksheet:
                 1. Identify what the student wrote or selected
@@ -319,12 +349,12 @@ export async function POST(request: NextRequest) {
     const { data: submission, error: submissionError } = await supabase
       .from('worksheet_submissions')
       .insert({
-        worksheet_id: worksheet.id,
-        submitted_by: worksheet.students.provider_id,
+        worksheet_id: finalWorksheet.id,
+        submitted_by: finalWorksheet.students[0].provider_id,
         image_url: publicUrl,
         student_responses: analysisResult?.responses || null,
         accuracy_percentage: analysisResult?.accuracy ? analysisResult.accuracy * 100 : null,
-        skills_assessed: extractSkillsAssessed(worksheet, analysisResult),
+        skills_assessed: extractSkillsAssessed(finalWorksheet, analysisResult),
         ai_analysis: analysisResult?.observations || null
       })
       .select()
@@ -343,7 +373,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update IEP goal progress if applicable
-    await updateIEPProgress(worksheet, analysisResult, supabase);
+    await updateIEPProgress(finalWorksheet, analysisResult, supabase);
 
     // Record upload for rate limiting (only for QR scan uploads)
     if (source === 'qr_scan_upload') {
@@ -360,11 +390,11 @@ export async function POST(request: NextRequest) {
       fileSize: imageSize,
       processingTime: processingTime,
       uploadSource: source || 'unknown',
-      userId: worksheet.students.provider_id,
+      userId: finalWorksheet.students[0].provider_id,
       ipAddress: ip || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
       metadata: {
-        worksheetType: worksheet.worksheet_type,
+        worksheetType: finalWorksheet.worksheet_type,
         accuracy: analysisResult?.accuracy,
         submissionId: submission.id,
         storageSize: imageBuffer.length,
@@ -376,9 +406,9 @@ export async function POST(request: NextRequest) {
     const responseData = {
       success: true,
       submission: submission,
-      studentInitials: worksheet.students.initials,
+      studentInitials: finalWorksheet.students[0].initials,
       accuracy: analysisResult?.accuracy ? parseFloat((analysisResult.accuracy * 100).toFixed(1)) : '0',
-      worksheetType: worksheet.worksheet_type,
+      worksheetType: finalWorksheet.worksheet_type,
       message: 'Worksheet processed successfully!'
     };
 
@@ -446,7 +476,7 @@ function extractSkillsAssessed(worksheet: any, analysis: any): any {
     'practice': 'General Practice'
   };
 
-  const primarySkill = skillsMap[worksheet.worksheet_type] || 'General';
+  const primarySkill = skillsMap[finalWorksheet.worksheet_type] || 'General';
   const correct = analysis?.responses?.filter((r: any) => r.isCorrect).length || 0;
   const total = analysis?.responses?.length || 0;
 
@@ -484,6 +514,11 @@ function extractSkillsAssessed(worksheet: any, analysis: any): any {
 
 async function updateIEPProgress(worksheet: any, analysis: any, supabase: any): Promise<void> {
   try {
+    // Skip IEP progress updates for legacy worksheets since we don't have real student data
+    if (worksheet.student_id === 'legacy-student') {
+      return;
+    }
+
     // Get student's IEP goals
     const { data: studentDetails } = await supabase
       .from('student_details')
