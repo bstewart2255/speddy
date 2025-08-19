@@ -238,7 +238,7 @@ export default function CalendarPage() {
 
       if (error) {
         console.error('Error removing holiday:', error);
-        alert('Failed to remove holiday. Please try again.');
+        alert(`Failed to remove holiday: ${error.message || 'Unknown error'}. Please try again.`);
       } else {
         setHolidays(holidays.filter(h => h.id !== existingHoliday.id));
       }
