@@ -20,7 +20,7 @@ interface AuthContextType {
     password: string,
     metadata: SignUpMetadata,
   ) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  signOut: (isTimeoutLogout?: boolean) => Promise<void>;
   extendSession: () => void;
   keepAlive: (activityType: string) => void;
 }
@@ -186,39 +186,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = async (isTimeoutLogout = false) => {
-    // Clear sensitive data from memory
+  const signOut = useCallback(async (isTimeoutLogout = false) => {
     try {
-      // Clear any cached data
       if (typeof window !== 'undefined') {
-        // Clear localStorage items that might contain sensitive data
         localStorage.removeItem('lastActivity');
-        
-        // Clear any cached Supabase data
         await supabase.auth.signOut();
-        // Clear any other sensitive caches if needed
         if ('caches' in window) {
           const cacheNames = await caches.keys();
-          await Promise.all(
-            cacheNames.map(name => caches.delete(name))
-          );
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
         }
       }
     } catch (error) {
       console.error('Error during security cleanup:', error);
+    } finally {
+      setUser(null);
+      setInitialized(false);
+      setShowTimeoutWarning(false);
+      router.push(isTimeoutLogout ? "/login?timeout=true" : "/login");
     }
-    
-    setUser(null);
-    setInitialized(false);
-    setShowTimeoutWarning(false);
-    
-    // Show different messages for timeout vs manual logout
-    if (isTimeoutLogout) {
-      router.push("/login?timeout=true");
-    } else {
-      router.push("/login");
-    }
-  };
+  }, [router]);
 
   // Activity tracking handlers
   const handleActivity = useCallback(() => {
@@ -233,31 +219,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, pathname]);
 
   const handleTimeout = useCallback(() => {
-// … elsewhere in your component …
-
-const handleTimeout = useCallback(() => {
-  signOut(true); // Timeout logout
-}, [signOut]);
-
-// … elsewhere in your component …
-
-const signOut = useCallback(async (isTimeoutLogout = false) => {
-  // ... existing implementation ...
-}, [router]);
+    signOut(true);
+  }, [signOut]);
 
   const handleStaySignedIn = useCallback(() => {
-   const handleStaySignedIn = useCallback(() => {
-     setShowTimeoutWarning(false);
-     extendSession();
-   }, [extendSession]);
+    setShowTimeoutWarning(false);
+    extendSession();
+  }, [extendSession]);
 
-   const handleTimeoutLogout = useCallback(() => {
-     setShowTimeoutWarning(false);
-     signOut(true);
-   }, [signOut]);
+  const handleTimeoutLogout = useCallback(() => {
+    setShowTimeoutWarning(false);
+    signOut(true);
+  }, [signOut]);
 
   // Initialize activity tracker only for authenticated users on protected routes
-  const shouldTrackActivity = user && !isExemptRoute(pathname || '');
+  const shouldTrackActivity = !!user && !isExemptRoute(pathname || '');
   
   const { extendSession, keepAlive } = useActivityTracker({
     timeout: shouldTrackActivity ? SESSION_CONFIG.TIMEOUT_DURATION : 0,
