@@ -112,7 +112,7 @@ jobs:
           npm ci
           
           # Install MCP server dependencies
-          npm install -g claude-code@latest
+          npm install -g @anthropic-ai/claude-code@latest
           npm install -g @upstash/context7-mcp @playwright/mcp @missionsquad/mcp-github supabase-mcp
           
           # Install Python for Serena MCP using uv
