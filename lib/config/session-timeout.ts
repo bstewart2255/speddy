@@ -4,7 +4,20 @@ export const SESSION_CONFIG = {
   TIMEOUT_DURATION: parseInt(process.env.NEXT_PUBLIC_SESSION_TIMEOUT || '2700000', 10),
   
   // Warning time: 2 minutes before timeout (in milliseconds)
-  WARNING_TIME: parseInt(process.env.NEXT_PUBLIC_SESSION_WARNING_TIME || '120000', 10),
+
+// Helper to parse and validate positive integer environment variables
+function parsePositiveIntEnv(envVar: string | undefined, defaultValue: number): number {
+  const parsed = parseInt(envVar ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+// Session timeout configuration
+export const SESSION_CONFIG = {
+  // Default timeout: 45 minutes (in milliseconds)
+  TIMEOUT_DURATION: parsePositiveIntEnv(process.env.NEXT_PUBLIC_SESSION_TIMEOUT, 2700000),
+  
+  // Warning time: 2 minutes before timeout (in milliseconds)
+  WARNING_TIME: parsePositiveIntEnv(process.env.NEXT_PUBLIC_SESSION_WARNING_TIME, 120000),
   
   // Activities that should extend the session without user interaction
   KEEP_ALIVE_ACTIVITIES: [
