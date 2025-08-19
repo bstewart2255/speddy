@@ -242,6 +242,7 @@ export interface Database {
           upcoming_triennial_date: string | null
           iep_goals: string[] | null
           working_skills: string[] | null
+          reading_level: string | null
           created_at: string
           updated_at: string
         }
@@ -256,6 +257,7 @@ export interface Database {
           upcoming_triennial_date?: string | null
           iep_goals?: string[] | null
           working_skills?: string[] | null
+          reading_level?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -270,6 +272,7 @@ export interface Database {
           upcoming_triennial_date?: string | null
           iep_goals?: string[] | null
           working_skills?: string[] | null
+          reading_level?: string | null
           created_at?: string
           updated_at?: string
         }
