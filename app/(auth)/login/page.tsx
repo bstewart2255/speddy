@@ -1,5 +1,7 @@
+import { Suspense } from 'react';
 import LoginForm from './login-form';
 import { ReferralProgramModal } from '../../components/referral-program-modal';
+import { TimeoutMessage } from '../../components/auth/timeout-message';
 
 export default function LoginPage() {
   return (
@@ -19,6 +21,11 @@ export default function LoginPage() {
               Sign in (or up) to make your SpEd life easier!
             </p>
           </div>
+          
+          <Suspense>
+            <TimeoutMessage />
+          </Suspense>
+          
           <LoginForm />
         </div>
       </div>
