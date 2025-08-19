@@ -246,14 +246,15 @@ const signOut = useCallback(async (isTimeoutLogout = false) => {
 }, [router]);
 
   const handleStaySignedIn = useCallback(() => {
-    setShowTimeoutWarning(false);
-    extendSession();
-  }, []);
+   const handleStaySignedIn = useCallback(() => {
+     setShowTimeoutWarning(false);
+     extendSession();
+   }, [extendSession]);
 
-  const handleTimeoutLogout = useCallback(() => {
-    setShowTimeoutWarning(false);
-    signOut(true);
-  }, []);
+   const handleTimeoutLogout = useCallback(() => {
+     setShowTimeoutWarning(false);
+     signOut(true);
+   }, [signOut]);
 
   // Initialize activity tracker only for authenticated users on protected routes
   const shouldTrackActivity = user && !isExemptRoute(pathname || '');
