@@ -170,7 +170,7 @@ export function StudentDetailsModal({
                   <Input
                     id="initials"
                     type="text"
-                    value={studentInfo.initials}
+                    value={studentInfo.initials || ''}
                     onChange={(e) => setStudentInfo({...studentInfo, initials: e.target.value})}
                     placeholder="Enter student initials"
                     maxLength={10}
