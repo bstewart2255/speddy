@@ -223,7 +223,7 @@ export default function CalendarPage() {
       
       // Only admins can delete past holidays
       if (isPastDate && userRole !== 'admin') {
-        alert('Only administrators can modify past holidays.');
+        alert('Only administrators can delete past holidays.');
         return;
       }
       
