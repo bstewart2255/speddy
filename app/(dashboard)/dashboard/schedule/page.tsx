@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -45,7 +45,13 @@ export default function SchedulePage() {
   // Track if this is the first render to avoid saving on mount
   const isFirstRender = useRef(true);
   
-  // Visual filter state (persisted to localStorage)
+  // Helper function to generate school-specific localStorage keys
+  const getSchoolSpecificKey = (key: string, schoolId?: string) => {
+    if (!schoolId) return key; // fallback for no school
+    return `${key}-${schoolId}`;
+  };
+
+  // Visual filter state (persisted to localStorage with school-specific keys)
   const [visualFilters, setVisualFilters] = useState(() => {
     if (typeof window === 'undefined') {
       return {
@@ -54,7 +60,9 @@ export default function SchedulePage() {
       };
     }
     
-    const savedFilters = localStorage.getItem('speddy-visual-filters');
+    const savedFilters = localStorage.getItem(
+      getSchoolSpecificKey('speddy-visual-filters', currentSchool?.school_id)
+    );
     if (savedFilters) {
       try {
         return JSON.parse(savedFilters);
@@ -72,12 +80,45 @@ export default function SchedulePage() {
     };
   });
   
-  // Save visual filters to localStorage
+  // Debounced save function to avoid excessive localStorage writes
+  const debouncedSaveFilters = useMemo(() => {
+    let timeoutId: number;
+    return (filters: typeof visualFilters, schoolId?: string) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          const key = getSchoolSpecificKey('speddy-visual-filters', schoolId);
+          localStorage.setItem(key, JSON.stringify(filters));
+        }
+      }, 300); // 300ms debounce delay
+    };
+  }, []);
+
+  // Save visual filters to localStorage with school-specific key (debounced)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('speddy-visual-filters', JSON.stringify(visualFilters));
+    debouncedSaveFilters(visualFilters, currentSchool?.school_id);
+  }, [visualFilters, currentSchool?.school_id, debouncedSaveFilters]);
+
+  // Clear visual filters when switching schools if teacher is not valid
+  useEffect(() => {
+    if (currentSchool?.school_id && visualFilters.specialActivityTeacher) {
+      // Check if the selected teacher exists in the current school's teacher list
+      const teacherExists = teachers.some(teacher => {
+        // Handle both string format and object format
+        const teacherName = typeof teacher === 'string' ? teacher : 
+          `${teacher.first_name} ${teacher.last_name}`.trim();
+        return teacherName === visualFilters.specialActivityTeacher;
+      });
+      
+      if (!teacherExists) {
+        console.log('[SchedulePage] Clearing teacher filter - teacher not found in current school:', visualFilters.specialActivityTeacher);
+        setVisualFilters(prev => ({
+          ...prev,
+          specialActivityTeacher: null,
+        }));
+      }
     }
-  }, [visualFilters]);
+  }, [currentSchool?.school_id, teachers, visualFilters.specialActivityTeacher]);
   
   // Fetch teachers from the teachers table filtered by current school
   useEffect(() => {

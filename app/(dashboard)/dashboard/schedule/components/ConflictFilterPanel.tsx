@@ -81,6 +81,13 @@ export function ConflictFilterPanel({
   };
 
   const handleTeacherChange = (teacher: string | null) => {
+    // Validate teacher exists in current school's teacher list
+    if (teacher && !teachers.includes(teacher)) {
+      // Teacher not found in current school, clear selection
+      console.log('[ConflictFilterPanel] Teacher not found in current school, clearing selection:', teacher);
+      teacher = null;
+    }
+    
     onFilterChange({
       ...selectedFilters,
       specialActivityTeacher: teacher,
