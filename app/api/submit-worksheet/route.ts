@@ -408,7 +408,7 @@ export async function POST(request: NextRequest) {
     const responseData = {
       success: true,
       submission: submission,
-      studentInitials: finalWorksheet.students[0].initials,
+      studentInitials: finalWorksheet.students.initials,
       accuracy: analysisResult?.accuracy ? parseFloat((analysisResult.accuracy * 100).toFixed(1)) : '0',
       worksheetType: finalWorksheet.worksheet_type,
       message: 'Worksheet processed successfully!'
