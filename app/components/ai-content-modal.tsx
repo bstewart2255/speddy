@@ -401,7 +401,60 @@ export function AIContentModal({
     return [timeoutId, () => {
       if (document.body.contains(loadingElement)) {
         document.body.removeChild(loadingElement);
-      }
+  // Printing progress indicator state
+  const [printingProgressVisible, setPrintingProgressVisible] = React.useState(false);
+  const [printingProgressTimeoutId, setPrintingProgressTimeoutId] = React.useState<NodeJS.Timeout | null>(null);
+
+  // Printing progress indicator component
+  const PrintingProgressIndicator = () => (
+    <div className="printing-progress-indicator">
+      <div className="printing-progress-content">
+        <div className="printing-progress-spinner" />
+        Generating all worksheets...
+      </div>
+      <style jsx>{`
+        .printing-progress-indicator {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #4f46e5;
+          color: white;
+          padding: 12px 20px;
+          border-radius: 8px;
+          z-index: 10000;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .printing-progress-content {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .printing-progress-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid #ffffff40;
+          border-top: 2px solid #ffffff;
+          border-radius: 50%;
+          animation: printing-spin 1s linear infinite;
+        }
+        @keyframes printing-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+
+  // Helper function to show printing progress
+  const showPrintingProgress = () => {
+    setPrintingProgressVisible(true);
+    const timeoutId = setTimeout(() => {
+      setPrintingProgressVisible(false);
+    }, 30000); // 30 second timeout
+    setPrintingProgressTimeoutId(timeoutId);
+    return [timeoutId, () => {
+      setPrintingProgressVisible(false);
+      if (timeoutId) clearTimeout(timeoutId);
     }];
   };
 
