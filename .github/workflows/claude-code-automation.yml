@@ -85,11 +85,11 @@ jobs:
           ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
           BRANCH_NAME="claude-auto/${ISSUE_NUMBER}"
           
-          # Check if branch already exists
+          # Check if branch already exists on remote
           if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
-            echo "Branch $BRANCH_NAME already exists, checking out..."
+            echo "Branch $BRANCH_NAME already exists on remote, checking out..."
             git fetch origin "$BRANCH_NAME"
-            git checkout "$BRANCH_NAME"
+            git checkout --track "origin/$BRANCH_NAME" || git checkout "$BRANCH_NAME"
             git pull origin "$BRANCH_NAME"
           else
             echo "Creating new branch $BRANCH_NAME..."
