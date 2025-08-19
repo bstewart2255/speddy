@@ -122,8 +122,8 @@ jobs:
 
       - name: 'Setup MCP Configuration'
         run: |
-          # Create MCP configuration for Claude Code
-          cat > .mcp.json << EOF
+          # Create temporary MCP configuration for Claude Code
+          cat > .mcp-temp.json << EOF
           {
             "mcpServers": {
               "context7": {
@@ -254,6 +254,7 @@ jobs:
           claude code \
             --model claude-3-5-sonnet-20241022 \
             --mcp \
+            --mcp-config .mcp-temp.json \
             --max-tokens 8192 \
             --temperature 0.3 \
             --prompt "$(cat claude-implementation-prompt.md)" \
@@ -283,6 +284,19 @@ jobs:
           
           # Stage all changes
           git add -A
+          
+          # Un-stage ephemeral files that shouldn't be committed
+          git reset HEAD .mcp-temp.json || true
+          git reset HEAD claude-implementation-prompt.md || true
+          git reset HEAD "*.log" || true
+          git reset HEAD "claude-implementation-*.log" || true
+          
+          # Verify there are still changes to commit
+          if [ -z "$(git diff --cached --name-only)" ]; then
+            echo "⚠️ No changes to commit after excluding ephemeral files" >> $GITHUB_STEP_SUMMARY
+            echo "implementation_complete=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # Create commit message
           COMMIT_MSG="feat: implement issue #${{ steps.issue.outputs.number }}
