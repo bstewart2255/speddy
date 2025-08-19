@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -80,15 +80,24 @@ export default function SchedulePage() {
     };
   });
   
-  // Save visual filters to localStorage with school-specific key
+  // Debounced save function to avoid excessive localStorage writes
+  const debouncedSaveFilters = useMemo(() => {
+    let timeoutId: number;
+    return (filters: typeof visualFilters, schoolId?: string) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          const key = getSchoolSpecificKey('speddy-visual-filters', schoolId);
+          localStorage.setItem(key, JSON.stringify(filters));
+        }
+      }, 300); // 300ms debounce delay
+    };
+  }, []);
+
+  // Save visual filters to localStorage with school-specific key (debounced)
   useEffect(() => {
-    if (typeof window !== 'undefined' && currentSchool?.school_id) {
-      localStorage.setItem(
-        getSchoolSpecificKey('speddy-visual-filters', currentSchool.school_id), 
-        JSON.stringify(visualFilters)
-      );
-    }
-  }, [visualFilters, currentSchool?.school_id]);
+    debouncedSaveFilters(visualFilters, currentSchool?.school_id);
+  }, [visualFilters, currentSchool?.school_id, debouncedSaveFilters]);
 
   // Clear visual filters when switching schools if teacher is not valid
   useEffect(() => {
