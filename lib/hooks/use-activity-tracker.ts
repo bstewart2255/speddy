@@ -124,7 +124,10 @@ export function useActivityTracker({
     const channel = new BroadcastChannel('user-activity');
     const handleChannelMessage = (event: MessageEvent) => {
       if (event.data.type === 'activity') {
-        updateActivity();
+        updateActivity({
+          activityType: event.data.activityType,
+          fromCrossTab: true
+        });
       }
     };
     
