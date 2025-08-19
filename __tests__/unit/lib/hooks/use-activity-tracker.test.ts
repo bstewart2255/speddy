@@ -111,7 +111,8 @@ describe('useActivityTracker', () => {
     });
     
     // Should only call onActivity once due to throttling
-    expect(mockConfig.onActivity).toHaveBeenCalledTimes(3); // Initial + 1 extend (first call not throttled)
+    // All extendSession calls should bypass throttling with skipThrottle: true
+    expect(mockConfig.onActivity).toHaveBeenCalledTimes(4); // Initial + 3 extends
   });
 
   it('should skip throttling with keepAlive', () => {
