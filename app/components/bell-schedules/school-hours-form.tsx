@@ -6,6 +6,7 @@ import { upsertSchoolHours, getSchoolHours, cleanupKindergartenSchedules, cleanu
 import { useSchool } from '../providers/school-context';
 import { LastSaved } from '../ui/last-saved';
 import { getLastSavedSchoolHours } from '../../../lib/supabase/queries/last-saved';
+import { generateSchoolHoursTimeOptions } from '../../../lib/utils/time-options';
 
 type TimeSlot = {
   start: string;
@@ -361,16 +362,8 @@ export default function SchoolHoursForm({ onSuccess }: { onSuccess: () => void }
     }
   };
 
-  const timeOptions: Array<{ value: string; label: string }> = [];
-  for (let hour = 6; hour <= 18; hour++) {
-    for (let minute = 0; minute < 60; minute += 15) {
-      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const amPm = hour >= 12 ? 'PM' : 'AM';
-      const label = `${displayHour}:${minute.toString().padStart(2, '0')} ${amPm}`;
-      timeOptions.push({ value: time, label });
-    }
-  }
+  // Generate time options (6 AM to 6 PM in 5-minute increments)
+  const timeOptions = generateSchoolHoursTimeOptions();
 
   const renderScheduleGrid = (
     schedule: DaySchedule,
