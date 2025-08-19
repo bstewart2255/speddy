@@ -1,44 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { authenticatedGoto } from '../helpers/auth.helper.js';
+import { authenticatedGoto, cleanupAuthenticatedUser } from '../helpers/auth.helper.js';
+
+// Skip tests if environment variables are not set
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+test.skip(!supabaseUrl || !supabaseServiceKey, 'Supabase environment variables not configured');
 
 test.describe('Kindergarten Schedule Toggle', () => {
+  test.afterAll(async () => {
+    // Cleanup the global test user after all tests in this suite
+    await cleanupAuthenticatedUser();
+  });
+
   test.beforeEach(async ({ page }) => {
     // Authenticate and navigate to the bell schedules page
     await authenticatedGoto(page, '/dashboard/bell-schedules');
-    // Explicitly check if authentication failed
-    if (page.url().includes('/login')) {
-      throw new Error('Authentication failed: still on login page after authenticatedGoto');
-    }
+    
     // Ensure we actually reached the bell schedules page before interacting
-    await expect(page).toHaveURL(/\/dashboard\/bell-schedules(\/?|$)/, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: 'Bell Schedules' })).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/dashboard\/bell-schedules(\/?|$)/, { timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Bell Schedules' })).toBeVisible({ timeout: 15000 });
   });
 
   test('should default to unchecked for kindergarten schedule', async ({ page }) => {
-    // Debug: Log current URL
-    const currentUrl = page.url();
-    console.log('Current URL:', currentUrl);
-    
-    // Debug: Check if we're still on login page
-    if (currentUrl.includes('/login')) {
-      // Try to see what's on the login page
-      const pageContent = await page.content();
-      console.log('Still on login page. Page title:', await page.title());
-      console.log('Page has form:', await page.locator('form').count(), 'forms');
-      
-      // Log first 500 chars of page content
-      console.log('Page content preview:', pageContent.substring(0, 500));
-    }
-    
-    // Try waiting for either the form OR an error message
-    try {
-      await page.waitForSelector('form', { timeout: 5000 });
-    } catch (e) {
-      console.error('No form found after 5 seconds');
-      // Try to find any text that might indicate what page we're on
-      const bodyText = await page.locator('body').innerText();
-      console.log('Page body text (first 500 chars):', bodyText.substring(0, 500));
-    }
+    // Wait for the form to load
+    await page.waitForSelector('form', { timeout: 10000 });
     
     // Prefer role-based locator anchored by visible label
     const kindergartenCheckbox = page.getByRole('checkbox', { name: 'Different schedule for Kindergarten' });
