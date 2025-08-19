@@ -117,10 +117,7 @@ export default function SchedulePage() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedSession, setSelectedSession] =
     useState<ScheduleSession | null>(null);
-  const [popupPosition, setPopupPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const [popupPosition, setPopupPosition] = useState<DOMRect | null>(null);
   const [sessionFilter, setSessionFilter] = useState<"all" | "mine" | "sea">(
     "all",
   );
@@ -1329,10 +1326,7 @@ export default function SchedulePage() {
                               // Show popup for session assignment
                               const rect =
                                 e.currentTarget.getBoundingClientRect();
-                              setPopupPosition({
-                                x: rect.right + 10,
-                                y: rect.top,
-                              });
+                              setPopupPosition(rect);
                               setSelectedSession(session);
                             }}
                           >
@@ -1391,7 +1385,7 @@ export default function SchedulePage() {
           <SessionAssignmentPopup
             session={selectedSession}
             student={students.find((s) => s.id === selectedSession.student_id)}
-            position={popupPosition}
+            triggerRect={popupPosition}
             seaProfiles={seaProfiles}
             sessionTags={sessionTags}
             setSessionTags={setSessionTags}

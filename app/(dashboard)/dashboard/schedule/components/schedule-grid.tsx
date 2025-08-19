@@ -42,7 +42,7 @@ interface ScheduleGridProps {
   onDrop: (e: React.DragEvent, day: number) => void;
   onTimeSlotClick: (time: string) => void;
   onDayClick: (day: number) => void;
-  onSessionClick: (session: any, position: { x: number; y: number }) => void;
+  onSessionClick: (session: any, triggerRect: DOMRect) => void;
   onHighlightToggle: (studentId: string) => void;
   onPopupClose: () => void;
   onPopupUpdate: () => void;
@@ -399,7 +399,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           onClick={(e) => {
                             onHighlightToggle(session.student_id);
                             const rect = e.currentTarget.getBoundingClientRect();
-                            onSessionClick(session, { x: rect.right + 10, y: rect.top });
+                            onSessionClick(session, rect);
                           }}
                         >
                           <div className="flex flex-col h-full relative overflow-hidden">
@@ -436,7 +436,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
         <SessionAssignmentPopup
           session={selectedSession}
           student={students.find((s: any) => s.id === selectedSession.student_id)}
-          position={popupPosition}
+          triggerRect={popupPosition}
           seaProfiles={seaProfiles}
           sessionTags={sessionTags}
           setSessionTags={setSessionTags}
