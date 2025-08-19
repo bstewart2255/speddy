@@ -17,7 +17,7 @@ export const generateTimeOptions = (
       const displayHour = hour % 12 === 0 ? 12 : hour % 12;
       const amPm = hour >= 12 ? 'PM' : 'AM';
       const hourStr = hour.toString().padStart(2, '0');
-      const minuteStr = minute < 10 ? `0${minute}` : `${minute}`;
+      const minuteStr = minute.toString().padStart(2, '0');
       const time = `${hourStr}:${minuteStr}`;
       const label = `${displayHour}:${minuteStr} ${amPm}`;
       timeOptions.push({ value: time, label });
