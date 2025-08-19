@@ -322,7 +322,7 @@ export function AIContentModal({
       return await generator.generateWorksheet({
         studentName: studentInitials,
         subject: subject,
-        gradeLevel: gradeLevel as any,
+        gradeLevel: gradeLevel,
         sessionDate: sessionDate,
         sessionTime: sessionTime
       });
