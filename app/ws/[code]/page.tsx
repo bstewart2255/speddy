@@ -109,6 +109,34 @@ export default function WorksheetUploadPage() {
         .single();
 
       if (error || !data) {
+        // Check if this might be a legacy worksheet code (old format: WS-timestamp)
+        const isLegacyFormat = /^WS-\d{13}$/.test(code);
+        
+        if (isLegacyFormat) {
+          // Create a placeholder worksheet record for legacy codes
+          const placeholderWorksheet: WorksheetWithStudent = {
+            id: `legacy-${code}`,
+            lesson_id: 'legacy-lesson',
+            student_id: 'legacy-student',
+            worksheet_type: 'legacy',
+            content: { title: 'Legacy Worksheet', instructions: 'Scanned worksheet' },
+            answer_key: null,
+            qr_code: code,
+            uploaded_file_path: null,
+            uploaded_at: null,
+            created_at: new Date().toISOString(),
+            students: {
+              initials: 'Legacy Student',
+              grade_level: 'Unknown'
+            }
+          };
+          
+          setWorksheet(placeholderWorksheet);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+        
         setError('This QR code is invalid. Please check you\'re scanning a Speddy worksheet.');
         setLoading(false);
         return;
