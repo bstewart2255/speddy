@@ -350,7 +350,9 @@ export async function POST(request: NextRequest) {
       .from('worksheet_submissions')
       .insert({
         worksheet_id: finalWorksheet.id,
-        submitted_by: finalWorksheet.students[0].provider_id,
+        submitted_by: Array.isArray(finalWorksheet.students)
+          ? finalWorksheet.students[0]?.provider_id
+          : finalWorksheet.students?.provider_id,
         image_url: publicUrl,
         student_responses: analysisResult?.responses || null,
         accuracy_percentage: analysisResult?.accuracy ? analysisResult.accuracy * 100 : null,
