@@ -160,8 +160,9 @@ export async function getStudents(school?: SchoolIdentifier) {
       // Apply intelligent school filter for optimal performance
       if (school) {
         if (school.school_id) {
-          // Use indexed school_id for optimal performance
-          query = query.eq('school_id', school.school_id);
+          // Include both records matching school_id AND legacy records with NULL school_id
+          // This ensures legacy students show up alongside new structured records
+          query = query.or(`school_id.eq.${school.school_id},school_id.is.null`);
         } else {
           // Fall back to text-based filtering for legacy data
           if (school.school_site) {
