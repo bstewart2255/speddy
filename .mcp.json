@@ -6,7 +6,7 @@
       "env": {}
     },
     "serena": {
-      "command": "/home/runner/workspace/.local/bin/uvx",
+      "command": "${HOME}/.local/bin/uvx",
       "args": [
         "--from",
         "git+https://github.com/oraios/serena",
@@ -15,7 +15,7 @@
         "--context",
         "ide-assistant",
         "--project",
-        "/home/runner/workspace"
+        "${GITHUB_WORKSPACE}"
       ],
       "env": {}
     },

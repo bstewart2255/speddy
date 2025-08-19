@@ -114,18 +114,16 @@ jobs:
           npm install -g @anthropic/claude-code-cli@latest
           npm install -g @upstash/context7-mcp @playwright/mcp
           
-          # Install Python for Serena MCP
-          python3 -m pip install --user pipx
-          python3 -m pipx ensurepath
+          # Install Python for Serena MCP using uv
+          python3 -m pip install --user uv
           export PATH="$HOME/.local/bin:$PATH"
-          pipx install git+https://github.com/oraios/serena
           
           echo "✅ Dependencies installed" >> $GITHUB_STEP_SUMMARY
 
       - name: 'Setup MCP Configuration'
         run: |
           # Create MCP configuration for Claude Code
-          cat > .mcp.json << 'EOF'
+          cat > .mcp.json << EOF
           {
             "mcpServers": {
               "context7": {
@@ -134,8 +132,17 @@ jobs:
                 "env": {}
               },
               "serena": {
-                "command": "$HOME/.local/bin/serena",
-                "args": ["start-mcp-server", "--context", "ide-assistant", "--project", "${{ github.workspace }}"],
+                "command": "${HOME}/.local/bin/uvx",
+                "args": [
+                  "--from",
+                  "git+https://github.com/oraios/serena",
+                  "serena",
+                  "start-mcp-server",
+                  "--context",
+                  "ide-assistant",
+                  "--project",
+                  "${{ github.workspace }}"
+                ],
                 "env": {}
               },
               "playwright": {
