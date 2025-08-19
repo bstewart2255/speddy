@@ -392,7 +392,9 @@ export async function POST(request: NextRequest) {
       fileSize: imageSize,
       processingTime: processingTime,
       uploadSource: source || 'unknown',
-      userId: Object.values(finalWorksheet.students)[0]?.provider_id,
+      userId: Array.isArray(finalWorksheet.students)
+        ? finalWorksheet.students[0]?.provider_id
+        : finalWorksheet.students?.provider_id,
       ipAddress: ip || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
       metadata: {
@@ -408,7 +410,9 @@ export async function POST(request: NextRequest) {
     const responseData = {
       success: true,
       submission: submission,
-      studentInitials: finalWorksheet.students.initials,
+      studentInitials: Array.isArray(finalWorksheet.students)
+        ? finalWorksheet.students[0]?.initials
+        : finalWorksheet.students?.initials,
       accuracy: analysisResult?.accuracy ? parseFloat((analysisResult.accuracy * 100).toFixed(1)) : '0',
       worksheetType: finalWorksheet.worksheet_type,
       message: 'Worksheet processed successfully!'
@@ -478,7 +482,7 @@ function extractSkillsAssessed(worksheet: any, analysis: any): any {
     'practice': 'General Practice'
   };
 
-  const primarySkill = skillsMap[worksheet.worksheet_type] || 'General';
+  const primarySkill = skillsMap[worksheet?.worksheet_type] || 'General';
   const correct = analysis?.responses?.filter((r: any) => r.isCorrect).length || 0;
   const total = analysis?.responses?.length || 0;
 
