@@ -17,7 +17,7 @@ export function TimeoutWarningModal({
   remainingSeconds: initialSeconds,
 }: TimeoutWarningModalProps) {
   const [seconds, setSeconds] = useState(initialSeconds);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stayButtonRef = useRef<HTMLButtonElement>(null);
   const ariaLiveRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +30,11 @@ export function TimeoutWarningModal({
         setSeconds(prev => {
           const newSeconds = prev - 1;
           if (newSeconds <= 0) {
+            // Clear interval immediately to prevent repeated logout calls
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
             onLogout();
             return 0;
           }
@@ -41,6 +46,7 @@ export function TimeoutWarningModal({
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
   }, [isOpen, initialSeconds, onLogout]);
@@ -157,7 +163,7 @@ export function TimeoutWarningModal({
         aria-atomic="true"
         className="sr-only"
       >
-        {ariaLiveMessage}
+        {isOpen && `Session timeout warning. ${formatTime(seconds)} remaining before automatic logout.`}
       </div>
     </>
   );
