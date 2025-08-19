@@ -196,7 +196,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         // Clear any cached Supabase data
         await supabase.auth.signOut();
-        
         // Clear any other sensitive caches if needed
         if ('caches' in window) {
           const cacheNames = await caches.keys();
