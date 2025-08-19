@@ -209,7 +209,8 @@ export function GroupSessionsWidget() {
     // For slots with sessions, calculate time until first session in this slot
     const minutesUntilFirstSession = getMinutesUntilFirstSession(slotSessions, currentTime);
     
-    if (minutesUntilFirstSession === null || minutesUntilFirstSession < 0) {
+    // getMinutesUntilFirstSession only returns null or a non-negative number
+    if (minutesUntilFirstSession === null) {
       return "now";
     } else if (minutesUntilFirstSession === 0) {
       return "starting now";
