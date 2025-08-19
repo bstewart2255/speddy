@@ -140,7 +140,9 @@ export async function loginUser(page, userData, expectedPath = /\/dashboard(\/|$
   await page.click('button[type="submit"]');
   
   // Debug: Log current URL for troubleshooting
-  console.log('After login - Current URL:', page.url());
+  if (process.env.E2E_DEBUG) {
+    console.log('After login - Current URL:', page.url());
+  }
   
   // Increase timeout for URL check to handle slower redirects
   await page.waitForURL(expectedPath, { timeout: 15000 });
