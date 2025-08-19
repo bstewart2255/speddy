@@ -63,6 +63,9 @@ export async function createUserAndProfile(userData) {
     updated_at: new Date().toISOString()
   });
 
+  if (profileError) {
+    throw new Error(`Failed to create profile for test user: ${profileError.message}`);
+  }
   return signUpData.user.id;
 }
 
