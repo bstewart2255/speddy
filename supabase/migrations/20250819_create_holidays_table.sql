@@ -153,4 +153,4 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER set_holidays_created_by
   BEFORE INSERT ON holidays
   FOR EACH ROW
-  EXECUTE FUNCTION set_holidays_created_by();
+-- (set_holidays_created_by trigger and function removed; created_by now uses DEFAULT auth.uid())
