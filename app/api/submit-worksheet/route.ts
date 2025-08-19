@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
             id: 'legacy-student',
             initials: 'Legacy Student',
             grade_level: 'Unknown',
-            provider_id: 'legacy-provider'
+            provider_id: null
           }]
         };
         
