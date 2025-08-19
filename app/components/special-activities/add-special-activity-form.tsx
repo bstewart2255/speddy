@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
+import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 
 interface Props {
   teacherName: string;
@@ -83,17 +84,8 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
     }
   };
 
-  // Generate time options (7 AM to 3 PM in 15-minute increments)
-  const timeOptions: Array<{ value: string; label: string }> = [];
-  for (let hour = 7; hour <= 15; hour++) {
-    for (let minute = 0; minute < 60; minute += 15) {
-      const displayHour = hour > 12 ? hour - 12 : hour;
-      const amPm = hour >= 12 ? 'PM' : 'AM';
-      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      const label = `${displayHour}:${minute.toString().padStart(2, '0')} ${amPm}`;
-      timeOptions.push({ value: time, label });
-    }
-  }
+  // Generate time options (7 AM to 3 PM in 5-minute increments)
+  const timeOptions = generateActivityTimeOptions();
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
