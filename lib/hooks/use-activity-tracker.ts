@@ -159,7 +159,14 @@ export function useActivityTracker({
       timestamp: Date.now(),
       activityType: options.activityType 
     });
-    channel.close();
+    // Broadcast to other tabs using the shared channel
+    if (channelRef.current) {
+      channelRef.current.postMessage({ 
+        type: 'activity', 
+        timestamp: Date.now(),
+        activityType: options.activityType 
+      });
+    }
   }, [updateActivity]);
 
   // Keep-alive method for long-running operations
