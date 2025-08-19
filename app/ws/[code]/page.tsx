@@ -132,6 +132,7 @@ export default function WorksheetUploadPage() {
           };
           
           setWorksheet(placeholderWorksheet);
+          setError(null);
           setLoading(false);
           return;
         }
