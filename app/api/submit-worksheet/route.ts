@@ -392,7 +392,7 @@ export async function POST(request: NextRequest) {
       fileSize: imageSize,
       processingTime: processingTime,
       uploadSource: source || 'unknown',
-      userId: finalWorksheet.students[0].provider_id,
+      userId: Object.values(finalWorksheet.students)[0]?.provider_id,
       ipAddress: ip || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
       metadata: {
