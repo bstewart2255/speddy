@@ -30,7 +30,7 @@ jobs:
     # Security: Only runs on issues, not PRs from external sources
     if: |
       (github.event_name == 'issues' && github.event.label.name == 'claude-build') ||
-      (github.event_name == 'workflow_dispatch' && inputs.force_run == true)
+      (github.event_name == 'workflow_dispatch' && inputs.force_run == 'true')
     
     steps:
       - name: 'Setup Environment'
