@@ -233,8 +233,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, pathname]);
 
   const handleTimeout = useCallback(() => {
-    signOut(true); // Timeout logout
-  }, []);
+// … elsewhere in your component …
+
+const handleTimeout = useCallback(() => {
+  signOut(true); // Timeout logout
+}, [signOut]);
+
+// … elsewhere in your component …
+
+const signOut = useCallback(async (isTimeoutLogout = false) => {
+  // ... existing implementation ...
+}, [router]);
 
   const handleStaySignedIn = useCallback(() => {
     setShowTimeoutWarning(false);
