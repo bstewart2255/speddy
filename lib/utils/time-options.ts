@@ -14,7 +14,7 @@ export const generateTimeOptions = (
   
   for (let hour = startHour; hour <= endHour; hour++) {
     for (let minute = 0; minute < 60; minute += increment) {
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
       const amPm = hour >= 12 ? 'PM' : 'AM';
       const hourStr = hour < 10 ? `0${hour}` : `${hour}`;
       const minuteStr = minute < 10 ? `0${minute}` : `${minute}`;
