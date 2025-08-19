@@ -379,13 +379,115 @@ export function CalendarWeekView({
     return "bg-white border-gray-200";
   };
 
-  const handleGenerateDailyAILesson = (
+  const handleGenerateDailyAILesson = async (
     date: Date,
     daySessions: ScheduleSession[],
   ) => {
+    if (!currentUser) {
+      showToast('Please log in to generate AI lessons', 'error');
+      return;
+    }
+    
+    if (daySessions.length === 0) {
+      showToast('No sessions scheduled for this day', 'warning');
+      return;
+    }
+    
     setSelectedDate(date);
     setSelectedDaySessions(daySessions);
     setModalOpen(true);
+    
+    // Auto-generate content after state is set
+    setTimeout(() => {
+      generateAIContentForDate(date, daySessions);
+    }, 100);
+  };
+
+  const generateAIContentForDate = async (date: Date, daySessions: ScheduleSession[]) => {
+    if (!currentUser) {
+      return;
+    }
+    
+    // Extract unique students from the sessions
+    const sessionStudents = new Set<string>();
+    daySessions.forEach(session => {
+      if (session.student_id) {
+        sessionStudents.add(session.student_id);
+      }
+    });
+    
+    // Get student details for the API
+    const studentList = Array.from(sessionStudents).map(studentId => {
+      const student = students.get(studentId);
+      return {
+        id: studentId,
+        initials: student?.initials || 'Unknown',
+        grade_level: student?.grade_level || 'Unknown'
+      };
+    });
+    
+    if (studentList.length === 0) {
+      showToast('No students found for this day', 'warning');
+      setModalOpen(false);
+      return;
+    }
+    
+    setGeneratingContent(true);
+    try {
+      const response = await fetch('/api/generate-lesson', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          students: studentList,
+          timeSlot: `Daily Lessons - ${formatDate(date)}`,
+          duration: 30, // Default duration
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error('Failed to generate content');
+      }
+
+      const data = await response.json();
+      setAiContent(data.content);
+
+      // Save the generated lesson
+      const { error } = await supabase
+        .from('ai_generated_lessons')
+        .upsert({
+          provider_id: currentUser.id,
+          lesson_date: date.toISOString().split('T')[0],
+          content: data.content,
+          prompt: '',
+          session_data: daySessions,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      // Update saved lessons
+      setSavedLessons(prev => {
+        const newMap = new Map(prev);
+        newMap.set(date.toISOString().split('T')[0], {
+          content: data.content,
+          prompt: ''
+        });
+        return newMap;
+      });
+
+      showToast('AI lesson generated and saved successfully', 'success');
+    } catch (error) {
+      console.error('Error generating content:', error);
+      showToast('Failed to generate AI content', 'error');
+    } finally {
+      setGeneratingContent(false);
+    }
   };
 
   const generateAIContent = async (prompt: string) => {
