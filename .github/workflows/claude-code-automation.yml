@@ -1,0 +1,540 @@
+name: 'Claude Code Issue Implementation'
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to implement'
+        required: true
+        type: string
+      force_run:
+        description: 'Force run even without claude-build label'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  implement-issue:
+    name: 'Implement Issue with Claude Code'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    
+    # Only run if claude-build label added OR manual trigger with force_run
+    # Security: Only runs on issues, not PRs from external sources
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'claude-build') ||
+      (github.event_name == 'workflow_dispatch' && inputs.force_run == 'true')
+    
+    steps:
+      - name: 'Setup Environment'
+        run: |
+          echo "## Claude Code Automation Started" >> $GITHUB_STEP_SUMMARY
+          echo "🤖 Processing issue for implementation..." >> $GITHUB_STEP_SUMMARY
+          
+      - name: 'Get Issue Details'
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = context.payload.issue?.number || '${{ inputs.issue_number }}';
+            
+            if (!issueNumber) {
+              core.setFailed('No issue number provided');
+              return;
+            }
+            
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issueNumber)
+            });
+            
+            // Check if issue has specification
+            const hasSpec = issue.labels.some(label => 
+              label.name === 'spec-complete' || 
+              label.name === 'ready-for-implementation'
+            );
+            
+            if (!hasSpec && '${{ inputs.force_run }}' !== 'true') {
+              core.warning('Issue does not have spec-complete label. Consider running spec-automation first.');
+            }
+            
+            core.setOutput('number', issue.number);
+            core.setOutput('title', issue.title);
+            core.setOutput('body', issue.body || '');
+            core.setOutput('labels', JSON.stringify(issue.labels.map(l => l.name)));
+            
+            return issue;
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Create Feature Branch'
+        id: branch
+        run: |
+          ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
+          BRANCH_NAME="claude-auto/${ISSUE_NUMBER}"
+          
+          # Check if branch already exists on remote
+          if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "Branch $BRANCH_NAME already exists on remote, checking out..."
+            git fetch origin "$BRANCH_NAME"
+            git checkout --track "origin/$BRANCH_NAME" || git checkout "$BRANCH_NAME"
+            git pull origin "$BRANCH_NAME"
+          else
+            echo "Creating new branch $BRANCH_NAME..."
+            git checkout -b "$BRANCH_NAME"
+          fi
+          
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "📌 Branch: $BRANCH_NAME" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: 'Install Dependencies'
+        run: |
+          # Install project dependencies
+          npm ci
+          
+          # Install MCP server dependencies
+          npm install -g @anthropic/claude-code-cli@latest
+          npm install -g @upstash/context7-mcp @playwright/mcp @missionsquad/mcp-github supabase-mcp
+          
+          # Install Python for Serena MCP using uv
+          python3 -m pip install --user uv
+          export PATH="$HOME/.local/bin:$PATH"
+          
+          echo "✅ Dependencies installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Setup MCP Configuration'
+        run: |
+          # Create temporary MCP configuration for Claude Code
+          cat > .mcp-temp.json << EOF
+          {
+            "mcpServers": {
+              "github": {
+                "command": "npx",
+                "args": ["@missionsquad/mcp-github"],
+                "env": {
+                  "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                }
+              },
+              "context7": {
+                "command": "npx",
+                "args": ["-y", "@upstash/context7-mcp"],
+                "env": {}
+              },
+              "serena": {
+                "command": "${HOME}/.local/bin/uvx",
+                "args": [
+                  "--from",
+                  "git+https://github.com/oraios/serena",
+                  "serena",
+                  "start-mcp-server",
+                  "--context",
+                  "ide-assistant",
+                  "--project",
+                  "${{ github.workspace }}"
+                ],
+                "env": {}
+              },
+              "playwright": {
+                "command": "npx",
+                "args": ["-y", "@playwright/mcp"],
+                "env": {}
+              },
+              "supabase": {
+                "command": "npx",
+                "args": ["-y", "supabase-mcp"],
+                "env": {
+                  "SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
+                  "SUPABASE_ANON_KEY": "${{ secrets.SUPABASE_ANON_KEY }}"
+                }
+              }
+            }
+          }
+          EOF
+          
+          echo "✅ MCP servers configured" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Prepare Implementation Prompt'
+        id: prompt
+        run: |
+          cat > claude-implementation-prompt.md << 'EOF'
+          # Issue Implementation Task
+          
+          ## Issue #${{ steps.issue.outputs.number }}: ${{ steps.issue.outputs.title }}
+          
+          ### Issue Description:
+          ${{ steps.issue.outputs.body }}
+          
+          ### Labels:
+          ${{ steps.issue.outputs.labels }}
+          
+          ## Implementation Instructions:
+          
+          You have access to powerful MCP servers to help with this implementation:
+          
+          1. **GitHub MCP Server**: Use to read issue details and PR information
+             - Read issue comments and discussions
+             - Access PR reviews and feedback
+             - Get repository metadata
+             - Track related issues and PRs
+          
+          2. **Serena MCP Server**: Use for intelligent code analysis and modification
+             - Use `find_symbol` to locate classes, methods, and functions
+             - Use `get_symbols_overview` to understand file structure
+             - Use `replace_symbol_body` for precise code modifications
+             - Use `search_for_pattern` to find code patterns across the codebase
+             - Always prefer symbolic operations over raw file edits
+          
+          3. **Context7 MCP Server**: Use for library documentation
+             - Use `resolve-library-id` to find library documentation
+             - Use `get-library-docs` to retrieve up-to-date docs for Next.js, React, Supabase, etc.
+          
+          4. **Playwright MCP Server**: Use if browser testing is needed
+             - Can navigate pages, interact with elements, and verify UI behavior
+          
+          5. **Supabase MCP Server**: Use for reference and database operations (READ-ONLY)
+             - IMPORTANT: This server is for REFERENCE ONLY
+             - DO NOT use this server to make direct database changes
+             - Any database schema changes MUST be done through migration files
+             - Use this to understand current database structure and data
+             - If changes are needed, create proper migration files in supabase/migrations/
+          
+          ## Implementation Process:
+          
+          1. **Analyze the Codebase with Serena**:
+             - Use Serena's symbolic tools to understand existing patterns
+             - Find relevant files and symbols efficiently
+             - Avoid reading entire files - use symbolic search instead
+          
+          2. **Get Documentation with Context7**:
+             - Retrieve relevant docs for Next.js 14, TypeScript, Supabase
+             - Check library-specific patterns and best practices
+          
+          3. **Plan the Implementation**:
+             - Break down the task into logical steps
+             - Identify symbols that need modification
+             - Check if database changes are needed using Supabase MCP for reference
+             - If database changes are required:
+               * Create migration files in supabase/migrations/
+               * Use proper naming convention: YYYYMMDDHHMMSS_descriptive_name.sql
+               * Include both up and down migrations if possible
+               * Document the migration in PR description
+          
+          4. **Implement with Serena's Symbolic Tools**:
+             - Use `replace_symbol_body` for method/class modifications
+             - Use `insert_before_symbol` or `insert_after_symbol` for new code
+             - Follow existing code patterns found via symbolic search
+             - Write clean, maintainable TypeScript code
+             - Use Tailwind CSS for styling
+          
+          5. **Testing**:
+             - Run existing tests: npm test
+             - Use Playwright MCP if UI testing is needed
+             - Verify implementation with: npm run build
+          
+          6. **Quality Checks**:
+             - Run linting: npm run lint
+             - Run type checking: npm run typecheck
+          
+          ## Tech Stack Context:
+          - Next.js 14 (App Router)
+          - TypeScript (strict mode)
+          - Tailwind CSS for styling
+          - Supabase for backend
+          - React Hook Form for forms
+          - Zod for validation
+          
+          IMPORTANT: 
+          - Use MCP servers for efficient code analysis and modification
+          - Prefer symbolic operations over raw file operations
+          - Follow existing patterns found via Serena's search tools
+          - Follow workflow: implement changes locally for CI to commit and push
+          EOF
+          
+          echo "✅ Implementation prompt prepared with MCP instructions" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Execute Claude Code Implementation'
+        id: claude_implementation
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🤖 Starting Claude Code implementation with MCP servers..." >> $GITHUB_STEP_SUMMARY
+          
+          # Export PATH for Serena
+          export PATH="$HOME/.local/bin:$PATH"
+          
+          # Create a log file for Claude's output
+          LOG_FILE="claude-implementation-${{ steps.issue.outputs.number }}.log"
+          
+          # Execute Claude Code with MCP support
+          claude code \
+            --model claude-3-5-sonnet-20241022 \
+            --mcp \
+            --mcp-config .mcp-temp.json \
+            --max-tokens 8192 \
+            --temperature 0.3 \
+            --prompt "$(cat claude-implementation-prompt.md)" \
+            --output "$LOG_FILE" 2>&1 || {
+              echo "⚠️ Claude Code execution completed with warnings" >> $GITHUB_STEP_SUMMARY
+              cat "$LOG_FILE" >> $GITHUB_STEP_SUMMARY
+            }
+          
+          # Check if any real files were modified (excluding ephemeral files)
+          REAL_CHANGES=$(git status --porcelain | \
+            grep -vE '(\.mcp-temp\.json|\.mcp-.*\.json|claude-implementation-prompt\.md|.*\.log)' || true)
+          
+          if [ -n "$REAL_CHANGES" ]; then
+            echo "✅ Implementation completed - files modified" >> $GITHUB_STEP_SUMMARY
+            echo "implementation_complete=true" >> $GITHUB_OUTPUT
+            
+            # Log the actual files modified (excluding ephemeral)
+            echo "### Files Modified:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$REAL_CHANGES" | awk '{print $2}' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            
+            # Log which MCP servers were utilized
+            echo "### MCP Servers Used:" >> $GITHUB_STEP_SUMMARY
+            grep -E "(serena|context7|playwright)" "$LOG_FILE" | head -20 >> $GITHUB_STEP_SUMMARY || true
+          else
+            echo "⚠️ No real files were modified (only ephemeral files detected)" >> $GITHUB_STEP_SUMMARY
+            echo "implementation_complete=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 'Commit Changes'
+        if: steps.claude_implementation.outputs.implementation_complete == 'true'
+        run: |
+          git config --local user.email "claude-automation[bot]@users.noreply.github.com"
+          git config --local user.name "Claude Automation Bot"
+          
+          # Stage all changes
+          git add -A
+          
+          # Un-stage ephemeral files that shouldn't be committed
+          git reset HEAD .mcp-temp.json || true
+          git reset HEAD claude-implementation-prompt.md || true
+          git reset HEAD "*.log" || true
+          git reset HEAD "claude-implementation-*.log" || true
+          
+          # Verify there are still changes to commit
+          if [ -z "$(git diff --cached --name-only)" ]; then
+            echo "⚠️ No changes to commit after excluding ephemeral files" >> $GITHUB_STEP_SUMMARY
+            echo "implementation_complete=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Create commit message
+          COMMIT_MSG="feat: implement issue #${{ steps.issue.outputs.number }}
+
+          Automated implementation for: ${{ steps.issue.outputs.title }}
+          
+          This commit was automatically generated by Claude Code based on the issue specification.
+          
+          Issue: #${{ steps.issue.outputs.number }}
+          Branch: ${{ steps.branch.outputs.branch_name }}"
+          
+          git commit -m "$COMMIT_MSG" || {
+            echo "⚠️ No changes to commit" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          
+          echo "✅ Changes committed" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Push Changes'
+        if: steps.claude_implementation.outputs.implementation_complete == 'true'
+        run: |
+          git push origin "${{ steps.branch.outputs.branch_name }}" || {
+            git push --set-upstream origin "${{ steps.branch.outputs.branch_name }}"
+          }
+          echo "✅ Changes pushed to branch: ${{ steps.branch.outputs.branch_name }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: 'Create Pull Request'
+        if: steps.claude_implementation.outputs.implementation_complete == 'true'
+        id: create_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = '${{ steps.issue.outputs.number }}';
+            const branchName = '${{ steps.branch.outputs.branch_name }}';
+            const issueTitle = '${{ steps.issue.outputs.title }}';
+            
+            // Check if PR already exists
+            const { data: existingPRs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${branchName}`,
+              state: 'open'
+            });
+            
+            if (existingPRs.length > 0) {
+              console.log(`PR already exists: #${existingPRs[0].number}`);
+              core.setOutput('pr_number', existingPRs[0].number);
+              core.setOutput('pr_url', existingPRs[0].html_url);
+              return existingPRs[0];
+            }
+            
+            // Create new PR
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Claude Auto] ${issueTitle}`,
+              body: `## 🤖 Automated Implementation
+              
+              This pull request was automatically generated by Claude Code to implement issue #${issueNumber}.
+              
+              ### Issue Details
+              - **Issue**: #${issueNumber}
+              - **Title**: ${issueTitle}
+              
+              ### Implementation Summary
+              This implementation was created based on the issue specification and follows the project's coding standards.
+              
+              ### Database Migrations
+              ⚠️ **IMPORTANT**: If this PR includes database changes:
+              - [ ] Migration files have been created in \`supabase/migrations/\`
+              - [ ] Migration files follow naming convention: \`YYYYMMDDHHMMSS_descriptive_name.sql\`
+              - [ ] Migrations have been tested locally
+              - [ ] Breaking changes are documented
+              
+              ### Checklist
+              - [ ] Code follows project conventions
+              - [ ] TypeScript types are properly defined
+              - [ ] Tailwind CSS is used for styling
+              - [ ] Error handling is implemented
+              - [ ] Tests pass (if applicable)
+              - [ ] No console errors or warnings
+              - [ ] Database migrations included (if needed)
+              
+              ### Review Instructions
+              Please review the implementation to ensure:
+              1. It correctly addresses the requirements in issue #${issueNumber}
+              2. Code quality meets project standards
+              3. No unintended side effects
+              4. Performance is acceptable
+              5. Database migrations are correct (if applicable)
+              
+              ---
+              *This PR was automatically created by the Claude Code GitHub Action*
+              
+              Closes #${issueNumber}`,
+              head: branchName,
+              base: 'main',
+              draft: false
+            });
+            
+            // Add labels to PR
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['claude-generated', 'needs-review']
+            });
+            
+            // Link PR to issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issueNumber),
+              body: `🤖 Claude Code has created a pull request for this issue: #${pr.number}`
+            });
+            
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_url', pr.html_url);
+            
+            return pr;
+
+      - name: 'Update Issue Status'
+        if: steps.claude_implementation.outputs.implementation_complete == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = '${{ steps.issue.outputs.number }}';
+            
+            // Add implementation label and remove claude-build label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issueNumber),
+              labels: ['implementation-complete', 'pr-created']
+            });
+            
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issueNumber),
+              name: 'claude-build'
+            }).catch(() => {}); // Ignore if label doesn't exist
+
+      - name: 'Final Summary'
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Automation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.claude_implementation.outputs.implementation_complete }}" == "true" ]; then
+            echo "✅ **Implementation Status**: SUCCESS" >> $GITHUB_STEP_SUMMARY
+            echo "📌 **Branch**: ${{ steps.branch.outputs.branch_name }}" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ steps.create_pr.outputs.pr_url }}" ]; then
+              echo "🔗 **Pull Request**: [#${{ steps.create_pr.outputs.pr_number }}](${{ steps.create_pr.outputs.pr_url }})" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **Implementation Status**: No changes made" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Automated by Claude Code GitHub Action*" >> $GITHUB_STEP_SUMMARY
+
+  error-handler:
+    name: 'Handle Errors'
+    runs-on: ubuntu-latest
+    needs: implement-issue
+    if: failure()
+    permissions:
+      issues: write
+    steps:
+      - name: 'Report Error'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = context.payload.issue?.number || '${{ inputs.issue_number }}';
+            
+            if (issueNumber) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parseInt(issueNumber),
+                body: `⚠️ Claude Code automation encountered an error. Please check the [workflow logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`
+              });
+              
+              // Add error label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parseInt(issueNumber),
+                labels: ['automation-error']
+              }).catch(() => {});
+            }
