@@ -5,6 +5,9 @@ import { User } from "@supabase/supabase-js";
 import { supabase } from "../../../lib/supabase/client";
 import { useRouter, usePathname } from "next/navigation";
 import { validatePassword } from "../../../lib/utils/password-validation";
+import { useActivityTracker } from "../../../lib/hooks/use-activity-tracker";
+import { TimeoutWarningModal } from "../auth/timeout-warning-modal";
+import { SESSION_CONFIG, isExemptRoute } from "../../../lib/config/session-timeout";
 
 interface AuthContextType {
   user: User | null;
@@ -17,7 +20,9 @@ interface AuthContextType {
     password: string,
     metadata: SignUpMetadata,
   ) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  signOut: (isTimeoutLogout?: boolean) => Promise<void>;
+  extendSession: () => void;
+  keepAlive: (activityType: string) => void;
 }
 
 interface SignUpMetadata {
@@ -39,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const [warningRemainingTime, setWarningRemainingTime] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -179,12 +186,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setInitialized(false);
-    router.push("/login");
-  };
+  const signOut = useCallback(async (isTimeoutLogout = false) => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('lastActivity');
+        await supabase.auth.signOut();
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        }
+      }
+    } catch (error) {
+      console.error('Error during security cleanup:', error);
+    } finally {
+      setUser(null);
+      setInitialized(false);
+      setShowTimeoutWarning(false);
+      router.push(isTimeoutLogout ? "/login?timeout=true" : "/login");
+    }
+  }, [router]);
+
+  // Activity tracking handlers
+  const handleActivity = useCallback(() => {
+    // Activity detected - session is still active
+  }, []);
+
+  const handleTimeoutWarning = useCallback(() => {
+    if (user && !isExemptRoute(pathname || '')) {
+      setWarningRemainingTime(SESSION_CONFIG.WARNING_TIME / 1000); // Convert to seconds
+      setShowTimeoutWarning(true);
+    }
+  }, [user, pathname]);
+
+  const handleTimeout = useCallback(() => {
+    signOut(true);
+  }, [signOut]);
+
+  const handleStaySignedIn = useCallback(() => {
+    setShowTimeoutWarning(false);
+    extendSession();
+  }, [extendSession]);
+
+  const handleTimeoutLogout = useCallback(() => {
+    setShowTimeoutWarning(false);
+    signOut(true);
+  }, [signOut]);
+
+  // Initialize activity tracker only for authenticated users on protected routes
+  const shouldTrackActivity = !!user && !isExemptRoute(pathname || '');
+  
+  const { extendSession, keepAlive } = useActivityTracker({
+    timeout: shouldTrackActivity ? SESSION_CONFIG.TIMEOUT_DURATION : 0,
+    warningTime: SESSION_CONFIG.WARNING_TIME,
+    throttleInterval: SESSION_CONFIG.ACTIVITY_THROTTLE,
+    onActivity: handleActivity,
+    onWarning: handleTimeoutWarning,
+    onTimeout: handleTimeout,
+  });
 
   const value = {
     user,
@@ -194,9 +252,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
+    extendSession,
+    keepAlive,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <TimeoutWarningModal
+        isOpen={showTimeoutWarning}
+        onStaySignedIn={handleStaySignedIn}
+        onLogout={handleTimeoutLogout}
+        remainingSeconds={warningRemainingTime}
+      />
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
