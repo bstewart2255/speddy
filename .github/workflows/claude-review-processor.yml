@@ -78,17 +78,21 @@ jobs:
         if: github.event_name == 'workflow_run'
         id: extract_metadata
         run: |
-          # Extract artifacts
-          unzip -d pr_artifacts pr-artifacts.zip
+          # Create secure temporary directory for artifact extraction
+          ARTIFACT_DIR="${{ runner.temp }}/artifacts"
+          mkdir -p "$ARTIFACT_DIR"
           
-          # Verify checksums
-          cd pr_artifacts
+          # Extract artifacts into secure temporary directory
+          unzip -d "$ARTIFACT_DIR" pr-artifacts.zip
+          
+          # Verify checksums in the secure directory
+          cd "$ARTIFACT_DIR"
           if ! sha256sum -c checksums.txt; then
             echo "::error::Artifact checksum verification failed!"
             exit 1
           fi
           
-          # Read metadata (sanitized)
+          # Read metadata (sanitized) from secure directory
           PR_NUMBER=$(grep "^pr_number=" pr_metadata.txt | cut -d= -f2 | grep -E '^[0-9]+$')
           PR_BRANCH=$(grep "^pr_branch=" pr_metadata.txt | cut -d= -f2 | tr -cd '[:alnum:]/_-')
           PR_TRUSTED=$(grep "^trusted=" pr_metadata.txt | cut -d= -f2)
