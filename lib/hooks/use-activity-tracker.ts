@@ -74,7 +74,7 @@ export function useActivityTracker({
       const storedTime = parseInt(stored, 10);
       if (!Number.isNaN(storedTime) && storedTime > lastActivityRef.current) {
         lastActivityRef.current = storedTime;
-        updateActivity();
+        updateActivity({ suppressStorageUpdate: true });
       }
     }
   }, [updateActivity]);
