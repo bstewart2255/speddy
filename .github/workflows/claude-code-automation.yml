@@ -278,8 +278,15 @@ jobs:
         run: |
           echo "🤖 Starting Claude Code implementation with MCP servers..." >> $GITHUB_STEP_SUMMARY
           
-          # Export PATH for Serena
-          export PATH="$HOME/.local/bin:$PATH"
+          # Export PATH for Serena and npm global binaries
+          export PATH="$HOME/.local/bin:$(npm bin -g):$PATH"
+          
+          # Verify claude command is available
+          which claude || {
+            echo "❌ Claude command not found in PATH" >> $GITHUB_STEP_SUMMARY
+            echo "PATH: $PATH" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
           
           # Create a log file for Claude's output
           LOG_FILE="claude-implementation-${{ steps.issue.outputs.number }}.log"
