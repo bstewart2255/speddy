@@ -16,7 +16,7 @@ export const generateTimeOptions = (
     for (let minute = 0; minute < 60; minute += increment) {
       const displayHour = hour % 12 === 0 ? 12 : hour % 12;
       const amPm = hour >= 12 ? 'PM' : 'AM';
-      const hourStr = hour < 10 ? `0${hour}` : `${hour}`;
+      const hourStr = hour.toString().padStart(2, '0');
       const minuteStr = minute < 10 ? `0${minute}` : `${minute}`;
       const time = `${hourStr}:${minuteStr}`;
       const label = `${displayHour}:${minuteStr} ${amPm}`;
