@@ -15,14 +15,7 @@ type ViewType = 'today' | 'week' | 'month';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
-
-interface Holiday {
-  id: string;
-  date: string;
-  name?: string;
-  school_site: string;
-  school_district: string;
-}
+type Holiday = Database['public']['Tables']['holidays']['Row'];
 
 interface Student {
   id: string;
@@ -216,20 +209,37 @@ export default function CalendarPage() {
   };
 
   const handleDayClick = async (date: Date) => {
-    // Only allow non-SEA users to mark holidays
-    if (userRole === 'sea') return;
+    // Allow resource, SEA, and admin roles to mark holidays
+    const eligibleRoles = ['resource', 'sea', 'admin'];
+    if (!eligibleRoles.includes(userRole)) return;
 
     const dateStr = date.toISOString().split('T')[0];
     const existingHoliday = holidays.find(h => h.date === dateStr);
 
     if (existingHoliday) {
-      // Remove holiday
+      // Confirm before removing holiday
+      const isPastDate = new Date(dateStr) < new Date();
+      const holidayDisplayName = existingHoliday.name || 'Unnamed Holiday';
+      
+      // Only admins can delete past holidays
+      if (isPastDate && userRole !== 'admin') {
+        alert('Only administrators can delete past holidays.');
+        return;
+      }
+      
+      const confirmMessage = `Are you sure you want to remove "${holidayDisplayName}" on ${date.toLocaleDateString()}?${isPastDate ? ' This is a past date.' : ''}`;
+      
+      if (!confirm(confirmMessage)) return;
+
       const { error } = await supabase
         .from('holidays')
         .delete()
         .eq('id', existingHoliday.id);
 
-      if (!error) {
+      if (error) {
+        console.error('Error removing holiday:', error);
+        alert(`Failed to remove holiday: ${error.message || 'Unknown error'}. Please try again.`);
+      } else {
         setHolidays(holidays.filter(h => h.id !== existingHoliday.id));
       }
     } else {
@@ -260,7 +270,9 @@ export default function CalendarPage() {
         date: dateStr,
         name: holidayName || null,
         school_site: currentSchool.school_site,
-        school_district: currentSchool.school_district
+        school_district: currentSchool.school_district,
+        school_id: currentSchool.school_id || null,
+        district_id: currentSchool.district_id || null
       })
       .select()
       .single();
@@ -438,7 +450,7 @@ export default function CalendarPage() {
                   students={students}
                   onSessionClick={handleSessionClick}
                   currentDate={currentDate}
-                  holidays={holidays}
+                  holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
@@ -452,7 +464,7 @@ export default function CalendarPage() {
                   students={students}
                   onSessionClick={handleSessionClick}
                   weekOffset={weekOffset}
-                  holidays={holidays}  // Add this line
+                  holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
@@ -462,7 +474,7 @@ export default function CalendarPage() {
             {currentView === 'month' && (
               <CalendarMonthView 
                 sessions={sessions} 
-                holidays={holidays}
+                holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                 onDayClick={handleDayClick}
                 userRole={userRole}
                 monthOffset={monthOffset}
@@ -476,9 +488,14 @@ export default function CalendarPage() {
         </Card>
 
         {/* Instructions for month view */}
-        {currentView === 'month' && userRole !== 'sea' && (
+        {currentView === 'month' && ['resource', 'sea', 'admin'].includes(userRole) && (
           <div className="mt-4 text-sm text-gray-600">
             <p>Click the checkbox to mark the day as a holiday.</p>
+            {userRole !== 'admin' && (
+              <p className="text-xs text-gray-500 mt-1">
+                Note: Only administrators can modify past holidays.
+              </p>
+            )}
           </div>
         )}
       </div>
