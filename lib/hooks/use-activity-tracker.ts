@@ -29,9 +29,15 @@ export function useActivityTracker({
   const lastActivityRef = useRef<number>(Date.now());
   const lastThrottledUpdate = useRef<number>(0);
   const isWarningShownRef = useRef<boolean>(false);
+  const isEnabledRef = useRef<boolean>(timeout > 0);
 
   // Update activity timestamp across tabs
   const updateActivity = useCallback((options: KeepAliveOptions = {}) => {
+    // Skip if timeout is disabled (0 or negative)
+    if (!isEnabledRef.current || timeout <= 0) {
+      return;
+    }
+    
     const now = Date.now();
     const { skipThrottle = false } = options;
     
@@ -93,6 +99,14 @@ export function useActivityTracker({
   }, [updateActivity]);
 
   useEffect(() => {
+    // Update enabled state when timeout changes
+    isEnabledRef.current = timeout > 0;
+    
+    // Skip initialization if disabled
+    if (!isEnabledRef.current) {
+      return;
+    }
+    
     // Activity events to monitor
     const events = [
       'mousedown',
@@ -149,7 +163,7 @@ export function useActivityTracker({
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (warningRef.current) clearTimeout(warningRef.current);
     };
-  }, [handleActivity, checkCrossTabActivity, updateActivity]);
+  }, [handleActivity, checkCrossTabActivity, updateActivity, timeout]);
 
   // Method to manually extend session
   const extendSession = useCallback((options: KeepAliveOptions = {}) => {
@@ -162,14 +176,7 @@ export function useActivityTracker({
       timestamp: Date.now(),
       activityType: options.activityType 
     });
-    // Broadcast to other tabs using the shared channel
-    if (channelRef.current) {
-      channelRef.current.postMessage({ 
-        type: 'activity', 
-        timestamp: Date.now(),
-        activityType: options.activityType 
-      });
-    }
+    channel.close();
   }, [updateActivity]);
 
   // Keep-alive method for long-running operations
@@ -179,6 +186,9 @@ export function useActivityTracker({
 
   // Method to get remaining time
   const getRemainingTime = useCallback(() => {
+    if (!isEnabledRef.current || timeout <= 0) {
+      return Number.MAX_SAFE_INTEGER; // Return a large number when disabled
+    }
     const elapsed = Date.now() - lastActivityRef.current;
     const remaining = timeout - elapsed;
     return Math.max(0, remaining);

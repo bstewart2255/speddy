@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
-import { getSanitizedHTML } from '@/lib/sanitize-html';
+import { getSanitizedHTML } from '../../lib/sanitize-html';
 
 interface Student {
   id: string;
@@ -260,11 +260,13 @@ export function AIContentModal({
   };
 
   const handlePrintAllWorksheets = async () => {
-    const [timeoutId, cleanupFn] = showPrintingProgress();
+    const result = showPrintingProgress();
+    const timeoutId = result[0] as NodeJS.Timeout;
+    const cleanupFn = result[1] as () => void;
     
     try {
       // Generate all worksheets concurrently
-      const worksheetPromises = [];
+      const worksheetPromises: Promise<string | null>[] = [];
       
       for (const student of students) {
         // Math worksheet
@@ -322,7 +324,7 @@ export function AIContentModal({
       return await generator.generateWorksheet({
         studentName: studentInitials,
         subject: subject,
-        gradeLevel: gradeLevel,
+        gradeLevel: gradeLevel as any,
         sessionDate: sessionDate,
         sessionTime: sessionTime
       });
@@ -401,62 +403,11 @@ export function AIContentModal({
     return [timeoutId, () => {
       if (document.body.contains(loadingElement)) {
         document.body.removeChild(loadingElement);
-  // Printing progress indicator state
-  const [printingProgressVisible, setPrintingProgressVisible] = React.useState(false);
-  const [printingProgressTimeoutId, setPrintingProgressTimeoutId] = React.useState<NodeJS.Timeout | null>(null);
-
-  // Printing progress indicator component
-  const PrintingProgressIndicator = () => (
-    <div className="printing-progress-indicator">
-      <div className="printing-progress-content">
-        <div className="printing-progress-spinner" />
-        Generating all worksheets...
-      </div>
-      <style jsx>{`
-        .printing-progress-indicator {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #4f46e5;
-          color: white;
-          padding: 12px 20px;
-          border-radius: 8px;
-          z-index: 10000;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .printing-progress-content {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .printing-progress-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid #ffffff40;
-          border-top: 2px solid #ffffff;
-          border-radius: 50%;
-          animation: printing-spin 1s linear infinite;
-        }
-        @keyframes printing-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
-
-  // Helper function to show printing progress
-  const showPrintingProgress = () => {
-    setPrintingProgressVisible(true);
-    const timeoutId = setTimeout(() => {
-      setPrintingProgressVisible(false);
-    }, 30000); // 30 second timeout
-    setPrintingProgressTimeoutId(timeoutId);
-    return [timeoutId, () => {
-      setPrintingProgressVisible(false);
-      if (timeoutId) clearTimeout(timeoutId);
+      }
     }];
   };
+
+
 
   if (!isOpen) return null;
 
@@ -488,47 +439,49 @@ export function AIContentModal({
               <p className="text-sm text-gray-500 mt-2">This may take a few moments...</p>
             </div>
           ) : content ? (
-      <>
-        <div className="prose max-w-none">
-          <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
-        </div>
-        {/* Add worksheet buttons for each student */}
-        <div className="mt-6 border-t pt-4">
-          <div className="flex justify-between items-center mb-3">
-            <h4 className="text-lg font-semibold">Print Worksheets</h4>
-            {students.length > 1 && (
-              <button
-                onClick={handlePrintAllWorksheets}
-                className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded-md transition-colors flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4" />
-                Print All Worksheets
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {students.map((student) => (
-              <div key={student.id} className="border rounded-lg p-3 bg-gray-50">
-                <p className="font-medium mb-2">{student.initials} (Grade {student.grade_level})</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'math')}
-                    className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-colors"
-                  >
-                    Math Worksheet
-                  </button>
-                  <button
-                    onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'ela')}
-                    className="flex-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded transition-colors"
-                  >
-                    ELA Worksheet
-                  </button>
-                </div>
+            <>
+              <div className="prose max-w-none">
+                <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
               </div>
-            ))}
-          </div>
-        </div>
-      </>
+              {/* Add worksheet buttons for each student */}
+              {!isViewingSaved && students.length > 0 && (
+                <div className="mt-6 border-t pt-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-lg font-semibold">Print Worksheets</h4>
+                    {students.length > 1 && (
+                      <button
+                        onClick={handlePrintAllWorksheets}
+                        className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded-md transition-colors flex items-center gap-2"
+                      >
+                        <Printer className="w-4 h-4" />
+                        Print All Worksheets
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {students.map((student) => (
+                      <div key={student.id} className="border rounded-lg p-3 bg-gray-50">
+                        <p className="font-medium mb-2">{student.initials} (Grade {student.grade_level})</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'math')}
+                            className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-colors"
+                          >
+                            Math Worksheet
+                          </button>
+                          <button
+                            onClick={() => handlePrintWorksheet(student.id, student.initials, student.grade_level, 'ela')}
+                            className="flex-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded transition-colors"
+                          >
+                            ELA Worksheet
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-12 text-gray-500">
               No content generated yet.

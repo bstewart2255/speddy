@@ -42,9 +42,11 @@
       "Bash(git clone https://github.com/oraios/serena.git /tmp/serena-mcp)",
       "Bash(npm search @modelcontextprotocol/server-playwright)",
       "mcp__context7__resolve-library-id",
-      "mcp__context7__get-library-docs"
+      "mcp__context7__get-library-docs",
+      "Bash(psql:*)"
     ],
     "deny": []
   },
-  "enabledMcpjsonServers": ["context7", "serena", "playwright"]
+  "enabledMcpjsonServers": ["github", "context7", "playwright"],
+  "enableAllProjectMcpServers": true
 }

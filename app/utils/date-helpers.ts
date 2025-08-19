@@ -50,12 +50,6 @@ export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string
 
   if (!upcomingSessions.length) return null;
 
-    .filter(isNonNullSession)
-    .filter(session => session.sessionMinutes > currentMinutes)
-    .sort((a, b) => a.sessionMinutes - b.sessionMinutes);
-
-  if (!upcomingSessions.length) return null;
-
   const nextSession = upcomingSessions[0];
   return nextSession.sessionMinutes - currentMinutes;
 }

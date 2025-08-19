@@ -53,8 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkSession = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user ?? null);
       setInitialized(true);
     } catch (error) {
       console.error('Session check error:', error);
@@ -206,21 +206,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  // Activity tracking handlers
-  const handleActivity = useCallback(() => {
-    // Activity detected - session is still active
-  }, []);
-
-  const handleTimeoutWarning = useCallback(() => {
-    if (user && !isExemptRoute(pathname || '')) {
-      setWarningRemainingTime(SESSION_CONFIG.WARNING_TIME / 1000); // Convert to seconds
-      setShowTimeoutWarning(true);
-    }
-  }, [user, pathname]);
-
-  const handleTimeout = useCallback(() => {
-    signOut(true);
-  }, [signOut]);
+  // Initialize activity tracker only for authenticated users on protected routes
+  const shouldTrackActivity = !!user && !isExemptRoute(pathname || '');
+  
+  const { extendSession, keepAlive } = useActivityTracker({
+    timeout: shouldTrackActivity ? SESSION_CONFIG.TIMEOUT_DURATION : 0,
+    warningTime: SESSION_CONFIG.WARNING_TIME,
+    throttleInterval: SESSION_CONFIG.ACTIVITY_THROTTLE,
+    onActivity: useCallback(() => {
+      // Activity detected - session is still active
+    }, []),
+    onWarning: useCallback(() => {
+      if (user && !isExemptRoute(pathname || '')) {
+        setWarningRemainingTime(SESSION_CONFIG.WARNING_TIME / 1000); // Convert to seconds
+        setShowTimeoutWarning(true);
+      }
+    }, [user, pathname]),
+    onTimeout: useCallback(() => {
+      signOut(true);
+    }, [signOut]),
+  });
 
   const handleStaySignedIn = useCallback(() => {
     setShowTimeoutWarning(false);
@@ -231,18 +236,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setShowTimeoutWarning(false);
     signOut(true);
   }, [signOut]);
-
-  // Initialize activity tracker only for authenticated users on protected routes
-  const shouldTrackActivity = !!user && !isExemptRoute(pathname || '');
-  
-  const { extendSession, keepAlive } = useActivityTracker({
-    timeout: shouldTrackActivity ? SESSION_CONFIG.TIMEOUT_DURATION : 0,
-    warningTime: SESSION_CONFIG.WARNING_TIME,
-    throttleInterval: SESSION_CONFIG.ACTIVITY_THROTTLE,
-    onActivity: handleActivity,
-    onWarning: handleTimeoutWarning,
-    onTimeout: handleTimeout,
-  });
 
   const value = {
     user,

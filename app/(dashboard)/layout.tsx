@@ -22,15 +22,15 @@ export default function DashboardLayout({
   useEffect(() => {
     const checkUser = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { user }, error } = await supabase.auth.getUser();
         
         if (error) {
-          log.error('Error fetching session in dashboard layout', error);
+          log.error('Error fetching user in dashboard layout', error);
           router.push('/login');
           return;
         }
         
-        if (!session) {
+        if (!user) {
           router.push('/login');
         } else {
           setLoading(false);
