@@ -6,6 +6,15 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
 import { compressImage, validateImageFile, extractImageMetadata } from '@/lib/image-utils';
 import { trackEvent, getDeviceType } from '@/lib/analytics-client';
+import { 
+  testConnectivity, 
+  analyzeNetworkError, 
+  fetchWithRetry, 
+  logConnectivityDebugInfo,
+  getErrorMessageWithTips,
+  type ConnectivityTestResult,
+  type DetailedNetworkError 
+} from '@/lib/connectivity-utils';
 
 type Worksheet = Database['public']['Tables']['worksheets']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];
@@ -19,6 +28,8 @@ type ErrorType = 'network' | 'rate_limit' | 'qr_mismatch' | 'not_found' | 'gener
 interface UploadError {
   type: ErrorType;
   message: string;
+  details?: DetailedNetworkError;
+  showTroubleshooting?: boolean;
 }
 
 export default function WorksheetUploadPage() {
@@ -39,6 +50,8 @@ export default function WorksheetUploadPage() {
   const [remainingUploads, setRemainingUploads] = useState<number | null>(null);
   const [processingImage, setProcessingImage] = useState(false);
   const [progressMessage, setProgressMessage] = useState('Processing worksheet...');
+  const [connectivityStatus, setConnectivityStatus] = useState<ConnectivityTestResult | null>(null);
+  const [showConnectivityTest, setShowConnectivityTest] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -186,11 +199,11 @@ export default function WorksheetUploadPage() {
         });
       }, 200);
 
-      // Upload via API route
-      const response = await fetch('/api/submit-worksheet', {
+      // Upload via API route with enhanced error handling
+      const response = await fetchWithRetry('/api/submit-worksheet', {
         method: 'POST',
         body: formData,
-      });
+      }, 2, 1000);
 
       clearInterval(messageInterval);
       setUploadProgress(100);
@@ -244,34 +257,40 @@ export default function WorksheetUploadPage() {
     } catch (err: any) {
       console.error('Upload error:', err);
       
-      // Track failed upload
+      // Analyze the error for detailed debugging
+      const detailedError = analyzeNetworkError(err, '/api/submit-worksheet');
+      logConnectivityDebugInfo(detailedError, { 
+        worksheetCode: code, 
+        fileSize: selectedImage.size,
+        userAgent: navigator.userAgent
+      });
+      
+      // Track failed upload with enhanced error info
       const processingTime = Date.now() - startTime;
-      const errorType = uploadError?.type || (err.name === 'TypeError' && err.message === 'Failed to fetch' ? 'network' : 'generic');
       
       trackEvent({
         event: 'qr_upload_failed',
         worksheetCode: code,
         fileSize: selectedImage.size,
         processingTime: processingTime,
-        errorCode: errorType,
-        errorMessage: err.message || 'Unknown error',
+        errorCode: detailedError.type,
+        errorMessage: detailedError.message,
         deviceType: getDeviceType(navigator.userAgent),
         metadata: {
-          statusCode: err.status || null
+          statusCode: detailedError.details.statusCode,
+          retryable: detailedError.retryable,
+          networkType: detailedError.details.networkInfo?.effectiveType || 'unknown',
+          isOnline: navigator.onLine
         }
       });
       
-      // Handle network errors
-      if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+      // Set detailed error information
+      if (!uploadError) {
         setUploadError({
-          type: 'network',
-          message: 'Upload failed. Please check your connection and try again.'
-        });
-      } else if (!uploadError) {
-        // If no specific error was set, use a generic one
-        setUploadError({
-          type: 'generic',
-          message: err.message || 'Failed to upload worksheet. Please try again.'
+          type: detailedError.type === 'timeout' ? 'network' : detailedError.type,
+          message: detailedError.userFriendlyMessage,
+          details: detailedError,
+          showTroubleshooting: true
         });
       }
     } finally {
@@ -292,8 +311,25 @@ export default function WorksheetUploadPage() {
     clearSelection();
     setUploadSuccess(false);
     setUploadError(null);
+    setConnectivityStatus(null);
+    setShowConnectivityTest(false);
     if (redirectTimerRef.current) {
       clearTimeout(redirectTimerRef.current);
+    }
+  };
+
+  const runConnectivityTest = async () => {
+    setShowConnectivityTest(true);
+    try {
+      const result = await testConnectivity();
+      setConnectivityStatus(result);
+    } catch (error) {
+      console.error('Connectivity test failed:', error);
+      setConnectivityStatus({
+        isOnline: false,
+        error: 'Failed to run connectivity test',
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
@@ -517,9 +553,87 @@ export default function WorksheetUploadPage() {
                       <div className="flex-1">
                         <p className="text-red-800 font-medium">Upload Failed</p>
                         <p className="text-red-700 text-sm mt-1">{uploadError.message}</p>
+                        
+                        {/* Show troubleshooting info for network errors */}
+                        {uploadError.showTroubleshooting && uploadError.details && (
+                          <details className="mt-3">
+                            <summary className="text-red-600 text-sm cursor-pointer hover:text-red-800">
+                              Show troubleshooting tips
+                            </summary>
+                            <div className="mt-2 text-sm text-red-700 whitespace-pre-line">
+                              {getErrorMessageWithTips(uploadError.details)}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     </div>
                   </div>
+
+                  {/* Connectivity test for network errors */}
+                  {(uploadError.type === 'network' || uploadError.type === 'unknown') && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-blue-800 font-medium">Connection Test</p>
+                          <p className="text-blue-700 text-sm">Check if the server is reachable</p>
+                        </div>
+                        <button
+                          onClick={runConnectivityTest}
+                          disabled={showConnectivityTest}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          {showConnectivityTest ? 'Testing...' : 'Test Connection'}
+                        </button>
+                      </div>
+                      
+                      {/* Connectivity test results */}
+                      {connectivityStatus && (
+                        <div className="mt-3 p-3 bg-white rounded border text-sm">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Device Status:</span>
+                              <span className={connectivityStatus.isOnline ? 'text-green-600' : 'text-red-600'}>
+                                {connectivityStatus.isOnline ? 'Online' : 'Offline'}
+                              </span>
+                            </div>
+                            {connectivityStatus.apiReachable !== undefined && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">API Server:</span>
+                                <span className={connectivityStatus.apiReachable ? 'text-green-600' : 'text-red-600'}>
+                                  {connectivityStatus.apiReachable ? 'Reachable' : 'Unreachable'}
+                                </span>
+                              </div>
+                            )}
+                            {connectivityStatus.supabaseReachable !== undefined && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Database:</span>
+                                <span className={connectivityStatus.supabaseReachable ? 'text-green-600' : 'text-red-600'}>
+                                  {connectivityStatus.supabaseReachable ? 'Reachable' : 'Unreachable'}
+                                </span>
+                              </div>
+                            )}
+                            {connectivityStatus.latency && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Response Time:</span>
+                                <span className="text-gray-800">{connectivityStatus.latency}ms</span>
+                              </div>
+                            )}
+                            {connectivityStatus.networkType && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Connection:</span>
+                                <span className="text-gray-800">{connectivityStatus.networkType}</span>
+                              </div>
+                            )}
+                            {connectivityStatus.error && (
+                              <div className="text-red-600 text-xs mt-2">
+                                {connectivityStatus.error}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Retry buttons based on error type */}
                   <div className="space-y-3">
