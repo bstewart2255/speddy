@@ -2,7 +2,7 @@
 
 ## Overview
 
-This enhanced workflow leverages Claude Code with Model Context Protocol (MCP) servers to provide intelligent, context-aware issue implementation. The workflow uses three specialized MCP servers to deliver superior code generation and testing capabilities.
+This enhanced workflow leverages Claude Code with Model Context Protocol (MCP) servers to provide intelligent, context-aware issue implementation. The workflow uses four specialized MCP servers to deliver superior code generation and testing capabilities, including database schema reference through the Supabase MCP server.
 
 ## MCP Servers Integration
 
@@ -51,6 +51,34 @@ This enhanced workflow leverages Claude Code with Model Context Protocol (MCP) s
 - `browser_snapshot`: Capture page state
 - `browser_evaluate`: Execute JavaScript in browser context
 
+### 4. Supabase MCP Server
+
+**Purpose**: Database reference and schema understanding (READ-ONLY)
+
+⚠️ **IMPORTANT**: This server is for REFERENCE ONLY and should NOT be used for direct database modifications.
+
+- **Schema Inspection**: View current database structure and relationships
+- **Data Reference**: Query existing data for context
+- **Migration Planning**: Understand what changes are needed
+- **Type Generation**: Reference for TypeScript types from database
+
+**Key Usage Guidelines**:
+
+- **NEVER** use this server to make direct database changes
+- **ALWAYS** create migration files in `supabase/migrations/` for schema changes
+- **USE** for understanding current database state only
+- **DOCUMENT** any required migrations in PR description
+
+**Migration Requirements**:
+
+When database changes are needed:
+
+1. Create migration files with naming: `YYYYMMDDHHMMSS_descriptive_name.sql`
+2. Place migrations in `supabase/migrations/` directory
+3. Include both up and down migrations when possible
+4. Document breaking changes in PR description
+5. Test migrations locally before committing
+
 ## Workflow Process
 
 ```mermaid
@@ -76,6 +104,8 @@ graph TD
    ```yaml
    ANTHROPIC_API_KEY: Your Anthropic API key
    GITHUB_TOKEN: Automatically provided
+   SUPABASE_URL: Your Supabase project URL (for reference only)
+   SUPABASE_ANON_KEY: Your Supabase anon key (for reference only)
    ```
 
 2. **Issue Preparation**:
@@ -159,11 +189,21 @@ Users cannot filter calendar events by skill area
 - Database: `calendar_events` table with `skill_area_id`
 - State management: React Context
 
+## Database Changes Required
+
+⚠️ If this issue requires database changes:
+
+- New columns needed: [specify if any]
+- New tables needed: [specify if any]
+- Migrations will be created in `supabase/migrations/`
+- Breaking changes: [yes/no and details]
+
 ## MCP Hints
 
 - Serena: Look for `CalendarView` component and `useCalendarEvents` hook
 - Context7: Check Next.js 14 App Router patterns for client components
 - Playwright: Test filter interaction on `/calendar` route
+- Supabase: Reference `calendar_events` table structure (READ-ONLY)
 
 ## Acceptance Criteria
 
@@ -191,6 +231,14 @@ Users cannot filter calendar events by skill area
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp"]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "supabase-mcp"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
+      }
     }
   }
 }

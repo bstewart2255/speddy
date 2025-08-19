@@ -30,6 +30,14 @@
       "command": "npx",
       "args": ["-y", "@playwright/mcp"],
       "env": {}
+    },
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "supabase-mcp"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_ANON_KEY": "${SUPABASE_ANON_KEY}"
+      }
     }
   }
 }

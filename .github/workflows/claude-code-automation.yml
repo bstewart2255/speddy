@@ -113,7 +113,7 @@ jobs:
           
           # Install MCP server dependencies
           npm install -g @anthropic/claude-code-cli@latest
-          npm install -g @upstash/context7-mcp @playwright/mcp @missionsquad/mcp-github
+          npm install -g @upstash/context7-mcp @playwright/mcp @missionsquad/mcp-github supabase-mcp
           
           # Install Python for Serena MCP using uv
           python3 -m pip install --user uv
@@ -157,6 +157,14 @@ jobs:
                 "command": "npx",
                 "args": ["-y", "@playwright/mcp"],
                 "env": {}
+              },
+              "supabase": {
+                "command": "npx",
+                "args": ["-y", "supabase-mcp"],
+                "env": {
+                  "SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
+                  "SUPABASE_ANON_KEY": "${{ secrets.SUPABASE_ANON_KEY }}"
+                }
               }
             }
           }
@@ -202,6 +210,13 @@ jobs:
           4. **Playwright MCP Server**: Use if browser testing is needed
              - Can navigate pages, interact with elements, and verify UI behavior
           
+          5. **Supabase MCP Server**: Use for reference and database operations (READ-ONLY)
+             - IMPORTANT: This server is for REFERENCE ONLY
+             - DO NOT use this server to make direct database changes
+             - Any database schema changes MUST be done through migration files
+             - Use this to understand current database structure and data
+             - If changes are needed, create proper migration files in supabase/migrations/
+          
           ## Implementation Process:
           
           1. **Analyze the Codebase with Serena**:
@@ -216,7 +231,12 @@ jobs:
           3. **Plan the Implementation**:
              - Break down the task into logical steps
              - Identify symbols that need modification
-             - Consider database migrations if needed
+             - Check if database changes are needed using Supabase MCP for reference
+             - If database changes are required:
+               * Create migration files in supabase/migrations/
+               * Use proper naming convention: YYYYMMDDHHMMSS_descriptive_name.sql
+               * Include both up and down migrations if possible
+               * Document the migration in PR description
           
           4. **Implement with Serena's Symbolic Tools**:
              - Use `replace_symbol_body` for method/class modifications
@@ -388,6 +408,13 @@ jobs:
               ### Implementation Summary
               This implementation was created based on the issue specification and follows the project's coding standards.
               
+              ### Database Migrations
+              ⚠️ **IMPORTANT**: If this PR includes database changes:
+              - [ ] Migration files have been created in \`supabase/migrations/\`
+              - [ ] Migration files follow naming convention: \`YYYYMMDDHHMMSS_descriptive_name.sql\`
+              - [ ] Migrations have been tested locally
+              - [ ] Breaking changes are documented
+              
               ### Checklist
               - [ ] Code follows project conventions
               - [ ] TypeScript types are properly defined
@@ -395,6 +422,7 @@ jobs:
               - [ ] Error handling is implemented
               - [ ] Tests pass (if applicable)
               - [ ] No console errors or warnings
+              - [ ] Database migrations included (if needed)
               
               ### Review Instructions
               Please review the implementation to ensure:
@@ -402,6 +430,7 @@ jobs:
               2. Code quality meets project standards
               3. No unintended side effects
               4. Performance is acceptable
+              5. Database migrations are correct (if applicable)
               
               ---
               *This PR was automatically created by the Claude Code GitHub Action*
