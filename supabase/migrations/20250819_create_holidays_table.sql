@@ -24,7 +24,15 @@ CREATE INDEX idx_holidays_created_by ON holidays(created_by);
 
 -- Unique constraint to prevent duplicate holidays for same date at same location
 CREATE UNIQUE INDEX idx_holidays_unique_date_location 
-ON holidays(date, school_site, school_district);
+-- Removed: CREATE INDEX idx_holidays_school_site ON holidays(school_site);
+-- Removed: CREATE INDEX idx_holidays_school_district ON holidays(school_district);
+CREATE INDEX idx_holidays_school_id ON holidays(school_id);
+CREATE INDEX idx_holidays_district_id ON holidays(district_id);
+CREATE INDEX idx_holidays_created_by ON holidays(created_by);
+
+-- Unique constraint to prevent duplicate holidays for same date at same location (now using IDs)
+CREATE UNIQUE INDEX idx_holidays_unique_date_location 
+ON holidays(date, school_id, district_id);
 
 -- Add RLS policies
 ALTER TABLE holidays ENABLE ROW LEVEL SECURITY;
