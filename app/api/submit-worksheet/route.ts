@@ -219,7 +219,11 @@ export async function POST(request: NextRequest) {
     if (uploadError) {
       console.error('Upload error:', uploadError);
       return NextResponse.json(
-        { error: 'Failed to upload image' },
+        { 
+          error: 'Failed to upload image to storage',
+          details: 'The image could not be saved. Please try again.',
+          retryable: true
+        },
         { status: 500 }
       );
     }
@@ -329,7 +333,11 @@ export async function POST(request: NextRequest) {
     if (submissionError) {
       console.error('Submission error:', submissionError);
       return NextResponse.json(
-        { error: 'Failed to save submission' },
+        { 
+          error: 'Failed to save worksheet submission',
+          details: 'The worksheet was processed but could not be saved. Please try again.',
+          retryable: true
+        },
         { status: 500 }
       );
     }
@@ -417,7 +425,11 @@ export async function POST(request: NextRequest) {
     });
     
     return NextResponse.json(
-      { error: 'Failed to process worksheet' },
+      { 
+        error: 'Failed to process worksheet',
+        details: 'An unexpected error occurred while processing your worksheet. Please try again.',
+        retryable: true
+      },
       { status: 500 }
     );
   }

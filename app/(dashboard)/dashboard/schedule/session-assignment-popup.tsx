@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
+import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
 
 interface SessionAssignmentPopupProps {
   session: any;
   student: any;
-  position: { x: number; y: number };
+  triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   sessionTags: Record<string, string>;
   setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -17,7 +18,7 @@ interface SessionAssignmentPopupProps {
 export function SessionAssignmentPopup({
   session,
   student,
-  position,
+  triggerRect,
   seaProfiles,
   sessionTags,
   setSessionTags,
@@ -26,7 +27,15 @@ export function SessionAssignmentPopup({
 }: SessionAssignmentPopupProps) {
   const supabase = createClient();
   const popupRef = useRef<HTMLDivElement>(null);
+  const [calculatedPosition, setCalculatedPosition] = useState<ModalPosition>({ x: 0, y: 0 });
   
+  // Calculate optimal position when component mounts or trigger rect changes
+  useLayoutEffect(() => {
+    const modalDimensions = getSessionModalDimensions();
+    const optimalPosition = calculateOptimalModalPosition(triggerRect, modalDimensions);
+    setCalculatedPosition(optimalPosition);
+  }, [triggerRect]);
+
   // Log session info when popup opens
   useEffect(() => {
     console.log('[SessionPopup] Opened for session:', {
@@ -113,8 +122,8 @@ export function SessionAssignmentPopup({
       id="session-assignment-popup"
       className="fixed bg-white rounded-lg shadow-lg border p-4 z-50 min-w-64"
       style={{ 
-        left: position.x, 
-        top: position.y,
+        left: calculatedPosition.x, 
+        top: calculatedPosition.y,
         maxWidth: '300px'
       }}
       onClick={(e) => e.stopPropagation()}

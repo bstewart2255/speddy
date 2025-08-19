@@ -17,7 +17,7 @@ export interface ScheduleUIState {
     pixelY: number;
   } | null;
   selectedSession: any | null;
-  popupPosition: { x: number; y: number } | null;
+  popupPosition: DOMRect | null;
 }
 
 export function useScheduleState() {
@@ -41,7 +41,7 @@ export function useScheduleState() {
 
   // Popup states
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
-  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const [popupPosition, setPopupPosition] = useState<DOMRect | null>(null);
 
   // Grid configuration from config
   const gridConfig = useMemo(() => ({
@@ -99,9 +99,9 @@ export function useScheduleState() {
 
 
   // Popup handlers
-  const openSessionPopup = useCallback((session: any, position: { x: number; y: number }) => {
+  const openSessionPopup = useCallback((session: any, triggerRect: DOMRect) => {
     setSelectedSession(session);
-    setPopupPosition(position);
+    setPopupPosition(triggerRect);
   }, []);
 
   const closeSessionPopup = useCallback(() => {
