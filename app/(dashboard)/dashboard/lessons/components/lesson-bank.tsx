@@ -63,6 +63,163 @@ function escapeHtml(str: string): string {
   });
 }
 
+// Print template generator functions
+function generateSingleLessonPrintTemplate(lesson: Lesson): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${escapeHtml(lesson.title)} - ${escapeHtml(lesson.grade)} ${escapeHtml(lesson.subject)}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          h1, h2, h3 {
+            color: #2c3e50;
+          }
+          .header {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+          }
+          .meta-info {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+          }
+          @media print {
+            body {
+              margin: 0;
+              padding: 20px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${escapeHtml(lesson.title)}</h1>
+          <div class="meta-info">
+            <strong>Grade:</strong> ${escapeHtml(lesson.grade)} | 
+            <strong>Subject:</strong> ${escapeHtml(lesson.subject)} | 
+            <strong>Duration:</strong> ${escapeHtml(lesson.time_duration)}
+          </div>
+        </div>
+        <div class="content">
+          ${lesson.content}
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function generateMultipleLessonsPrintTemplate(
+  lessons: Lesson[], 
+  filterSubject: string, 
+  filterGrade: string
+): string {
+  const headerSection = `
+    <div class="overall-header">
+      <h1>Complete Lesson Collection</h1>
+      <p><strong>${lessons.length} Lessons</strong> • Generated on ${new Date().toLocaleDateString()}</p>
+      ${filterSubject !== 'All Subjects' ? `<p>Subject: ${escapeHtml(filterSubject)}</p>` : ''}
+      ${filterGrade !== 'All Grades' ? `<p>Grade: ${escapeHtml(filterGrade)}</p>` : ''}
+    </div>
+  `;
+
+  const lessonsContent = lessons.map((lesson, index) => `
+    <div class="lesson">
+      <div class="header">
+        <h2>${escapeHtml(lesson.title)}</h2>
+        <div class="meta-info">
+          <strong>Lesson ${index + 1} of ${lessons.length}</strong> | 
+          <strong>Grade:</strong> ${escapeHtml(lesson.grade)} | 
+          <strong>Subject:</strong> ${escapeHtml(lesson.subject)} | 
+          <strong>Duration:</strong> ${escapeHtml(lesson.time_duration)} |
+          <strong>Created:</strong> ${new Date(lesson.created_at).toLocaleDateString()}
+        </div>
+      </div>
+      <div class="content">
+        ${lesson.content}
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>All Lessons - ${lessons.length} Lessons</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          h1, h2, h3 {
+            color: #2c3e50;
+          }
+          .lesson {
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            page-break-after: auto;
+          }
+          .lesson:last-child {
+            border-bottom: none;
+          }
+          .header {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+          }
+          .meta-info {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+          }
+          .overall-header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 4px solid #2c3e50;
+            padding-bottom: 20px;
+          }
+          @media print {
+            body {
+              margin: 0;
+              padding: 20px;
+            }
+            .lesson {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            .overall-header {
+              page-break-after: avoid;
+            }
+          }
+          @page {
+            margin: 1in;
+          }
+        </style>
+      </head>
+      <body>
+        ${headerSection}
+        ${lessonsContent}
+      </body>
+    </html>
+  `;
+}
+
 export default function LessonBank() {
   const { showToast } = useToast();
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -140,56 +297,7 @@ export default function LessonBank() {
       return;
     }
 
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${lesson.title} - ${lesson.grade} ${lesson.subject}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            h1, h2, h3 {
-              color: #2c3e50;
-            }
-            .header {
-              border-bottom: 2px solid #3498db;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-            }
-            .meta-info {
-              color: #666;
-              font-size: 14px;
-              margin-bottom: 20px;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 20px;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${lesson.title}</h1>
-            <div class="meta-info">
-              <strong>Grade:</strong> ${lesson.grade} | 
-              <strong>Subject:</strong> ${lesson.subject} | 
-              <strong>Duration:</strong> ${lesson.time_duration}
-            </div>
-          </div>
-          <div class="content">
-            ${lesson.content}
-          </div>
-        </body>
-      </html>
-    `;
+    const printContent = generateSingleLessonPrintTemplate(lesson);
 
     printWindow.document.write(printContent);
     printWindow.document.close();
@@ -210,97 +318,11 @@ export default function LessonBank() {
       return;
     }
 
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>All Lessons - ${filteredLessons.length} Lessons</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            h1, h2, h3 {
-              color: #2c3e50;
-            }
-            .lesson {
-              border-bottom: 3px solid #3498db;
-              padding-bottom: 20px;
-              margin-bottom: 30px;
-              page-break-after: auto;
-            }
-            .lesson:last-child {
-              border-bottom: none;
-            }
-            .header {
-              border-bottom: 2px solid #3498db;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-            }
-            .meta-info {
-              color: #666;
-              font-size: 14px;
-              margin-bottom: 20px;
-              background: #f8f9fa;
-              padding: 10px;
-              border-radius: 5px;
-            }
-            .overall-header {
-              text-align: center;
-              margin-bottom: 40px;
-              border-bottom: 4px solid #2c3e50;
-              padding-bottom: 20px;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 20px;
-              }
-              .lesson {
-                page-break-inside: avoid;
-                page-break-after: auto;
-              }
-              .overall-header {
-                page-break-after: avoid;
-              }
-            }
-            @page {
-              margin: 1in;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="overall-header">
-            <h1>Complete Lesson Collection</h1>
-            <p><strong>${filteredLessons.length} Lessons</strong> • Generated on ${new Date().toLocaleDateString()}</p>
-            ${filterSubject !== 'All Subjects' ? `<p>Subject: ${escapeHtml(filterSubject)}</p>` : ''}
-            ${filterGrade !== 'All Grades' ? `<p>Grade: ${escapeHtml(filterGrade)}</p>` : ''}
-          </div>
-          
-          ${filteredLessons.map((lesson, index) => `
-            <div class="lesson">
-              <div class="header">
-                <h2>${lesson.title}</h2>
-                <div class="meta-info">
-                  <strong>Lesson ${index + 1} of ${filteredLessons.length}</strong> | 
-                  <strong>Grade:</strong> ${lesson.grade} | 
-                  <strong>Subject:</strong> ${lesson.subject} | 
-                  <strong>Duration:</strong> ${lesson.time_duration} |
-                  <strong>Created:</strong> ${new Date(lesson.created_at).toLocaleDateString()}
-                </div>
-              </div>
-              <div class="content">
-                ${lesson.content}
-              </div>
-            </div>
-          `).join('')}
-        </body>
-      </html>
-    `;
+    const printContent = generateMultipleLessonsPrintTemplate(
+      filteredLessons,
+      filterSubject,
+      filterGrade
+    );
 
     printWindow.document.write(printContent);
     printWindow.document.close();
