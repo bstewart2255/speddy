@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { AIContentModal } from "./ai-content-modal";
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
+import { getMinutesUntilFirstSession } from '../utils/date-helpers';
 import type { Database } from '../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -158,34 +159,7 @@ export function GroupSessionsWidget() {
     return `${displayHour}:${minutes || "00"} ${period}`;
   };
 
-  // Get relative time display (e.g., "in 30 minutes")
-  const getRelativeTime = useCallback((timeSlot: string) => {
-    const now = currentTime;
-    const [slotHour, slotMin] = timeSlot.split(":").map(Number);
-    
-    const slotDate = new Date();
-    slotDate.setHours(slotHour, slotMin, 0, 0);
-    
-    const diffMs = slotDate.getTime() - now.getTime();
-    const diffMinutes = Math.round(diffMs / 60000);
-    
-    if (diffMinutes < 0) {
-      return "now";
-    } else if (diffMinutes === 0) {
-      return "starting now";
-    } else if (diffMinutes < 60) {
-      return `in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
-    } else {
-      const hours = Math.floor(diffMinutes / 60);
-      const mins = diffMinutes % 60;
-      if (mins === 0) {
-        return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
-      }
-      return `in ${hours}h ${mins}m`;
-    }
-  }, [currentTime]);
-
-  const getSessionsForSlot = (timeSlot: string) => {
+  const getSessionsForSlot = useCallback((timeSlot: string) => {
     const [slotHour, slotMin] = timeSlot.split(":").map(Number);
     const slotMinutes = slotHour * 60 + slotMin;
 
@@ -198,7 +172,58 @@ export function GroupSessionsWidget() {
       // Check if session starts within this 30-minute slot
       return sessionMinutes >= slotMinutes && sessionMinutes < slotMinutes + 30;
     });
-  };
+  }, [sessions]);
+
+  // Get relative time display (e.g., "in 30 minutes")
+  const getRelativeTime = useCallback((timeSlot: string) => {
+    // Get sessions for this specific slot to show accurate countdown
+    const slotSessions = getSessionsForSlot(timeSlot);
+    
+    if (slotSessions.length === 0) {
+      // No sessions in this slot, calculate time to slot start
+      const now = currentTime;
+      const [slotHour, slotMin] = timeSlot.split(":").map(Number);
+      
+      const slotDate = new Date();
+      slotDate.setHours(slotHour, slotMin, 0, 0);
+      
+      const diffMs = slotDate.getTime() - now.getTime();
+      const diffMinutes = Math.round(diffMs / 60000);
+      
+      if (diffMinutes < 0) {
+        return "now";
+      } else if (diffMinutes === 0) {
+        return "starting now";
+      } else if (diffMinutes < 60) {
+        return `in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+      } else {
+        const hours = Math.floor(diffMinutes / 60);
+        const mins = diffMinutes % 60;
+        if (mins === 0) {
+          return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+        }
+        return `in ${hours}h ${mins}m`;
+      }
+    }
+
+    // For slots with sessions, calculate time until first session in this slot
+    const minutesUntilFirstSession = getMinutesUntilFirstSession(slotSessions, currentTime);
+    
+    if (minutesUntilFirstSession === null || minutesUntilFirstSession < 0) {
+      return "now";
+    } else if (minutesUntilFirstSession === 0) {
+      return "starting now";
+    } else if (minutesUntilFirstSession < 60) {
+      return `in ${minutesUntilFirstSession} minute${minutesUntilFirstSession !== 1 ? 's' : ''}`;
+    } else {
+      const hours = Math.floor(minutesUntilFirstSession / 60);
+      const mins = minutesUntilFirstSession % 60;
+      if (mins === 0) {
+        return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+      }
+      return `in ${hours}h ${mins}m`;
+    }
+  }, [currentTime, sessions, getSessionsForSlot]);
 
   const generateAIContent = async (students: any[], timeSlot: string) => {
     setGeneratingContent(true);

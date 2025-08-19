@@ -25,3 +25,31 @@ export function parseTime(timeString: string): { hours: number; minutes: number 
   
   return { hours, minutes };
 }
+
+/**
+ * Get minutes until the first upcoming session from a list of sessions
+ */
+export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string }>, currentTime: Date): number | null {
+  if (!sessions.length) return null;
+
+  const now = currentTime;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // Find all upcoming sessions today
+  const upcomingSessions = sessions
+    .map(session => {
+      const parsed = parseTime(session.start_time);
+      if (!parsed) return null;
+      return {
+        ...session,
+        sessionMinutes: parsed.hours * 60 + parsed.minutes
+      };
+    })
+    .filter(session => session && session.sessionMinutes > currentMinutes)
+    .sort((a, b) => a!.sessionMinutes - b!.sessionMinutes);
+
+  if (!upcomingSessions.length) return null;
+
+  const nextSession = upcomingSessions[0]!;
+  return nextSession.sessionMinutes - currentMinutes;
+}
