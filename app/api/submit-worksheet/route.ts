@@ -476,7 +476,7 @@ function extractSkillsAssessed(worksheet: any, analysis: any): any {
     'practice': 'General Practice'
   };
 
-  const primarySkill = skillsMap[finalWorksheet.worksheet_type] || 'General';
+  const primarySkill = skillsMap[worksheet.worksheet_type] || 'General';
   const correct = analysis?.responses?.filter((r: any) => r.isCorrect).length || 0;
   const total = analysis?.responses?.length || 0;
 
