@@ -27,6 +27,7 @@ jobs:
       actions: read
     
     # Only run if claude-build label added OR manual trigger with force_run
+    # Security: Only runs on issues, not PRs from external sources
     if: |
       (github.event_name == 'issues' && github.event.label.name == 'claude-build') ||
       (github.event_name == 'workflow_dispatch' && inputs.force_run == true)
