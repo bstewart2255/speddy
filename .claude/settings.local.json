@@ -40,7 +40,9 @@
       "Bash(npm search serena)",
       "Bash(npm info serena)",
       "Bash(git clone https://github.com/oraios/serena.git /tmp/serena-mcp)",
-      "Bash(npm search @modelcontextprotocol/server-playwright)"
+      "Bash(npm search @modelcontextprotocol/server-playwright)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": []
   },
