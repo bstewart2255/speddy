@@ -232,7 +232,7 @@ jobs:
           - Use MCP servers for efficient code analysis and modification
           - Prefer symbolic operations over raw file operations
           - Follow existing patterns found via Serena's search tools
-          - Do NOT commit or push changes - just implement locally
+          - Follow workflow: implement changes locally for CI to commit and push
           EOF
           
           echo "✅ Implementation prompt prepared with MCP instructions" >> $GITHUB_STEP_SUMMARY
