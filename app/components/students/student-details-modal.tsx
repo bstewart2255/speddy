@@ -21,6 +21,7 @@ interface StudentDetailsModalProps {
   };
   onSave?: (studentId: string, details: StudentDetails) => void;
   onUpdateStudent?: (studentId: string, updates: {
+    initials?: string;
     grade_level: string;
     teacher_name: string;
     sessions_per_week: number;
@@ -49,6 +50,7 @@ export function StudentDetailsModal({
   const [loading, setLoading] = useState(false);
 
   const [studentInfo, setStudentInfo] = useState({
+    initials: student.initials,
     grade_level: student.grade_level,
     teacher_name: student.teacher_name,
     sessions_per_week: student.sessions_per_week,
@@ -60,6 +62,7 @@ export function StudentDetailsModal({
     if (isOpen && student.id) {
       // Reset student info to current values
       setStudentInfo({
+        initials: student.initials,
         grade_level: student.grade_level,
         teacher_name: student.teacher_name,
         sessions_per_week: student.sessions_per_week,
@@ -162,6 +165,18 @@ export function StudentDetailsModal({
               <h3 className="font-medium text-gray-900">Current Information</h3>
 
               <div className="grid grid-cols-2 gap-4">
+                <FormGroup>
+                  <Label htmlFor="initials">Student Initials</Label>
+                  <Input
+                    id="initials"
+                    type="text"
+                    value={studentInfo.initials || ''}
+                    onChange={(e) => setStudentInfo({...studentInfo, initials: e.target.value})}
+                    placeholder="Enter student initials"
+                    maxLength={10}
+                  />
+                </FormGroup>
+
                 <FormGroup>
                   <Label htmlFor="grade_level">Grade Level</Label>
                   <select
