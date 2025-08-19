@@ -157,7 +157,7 @@ export function TimeoutWarningModal({
         aria-atomic="true"
         className="sr-only"
       >
-        {isOpen && `Session timeout warning. ${formatTime(seconds)} remaining before automatic logout.`}
+        {ariaLiveMessage}
       </div>
     </>
   );
