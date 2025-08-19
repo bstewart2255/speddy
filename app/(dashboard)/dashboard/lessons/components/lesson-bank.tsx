@@ -48,6 +48,21 @@ const gradeOptions = [
   '12th Grade',
 ];
 
+// Utility function to escape HTML meta-characters
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>"'\/]/g, function (s) {
+    const entityMap: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+      '/': '&#x2F;',
+    };
+    return entityMap[s];
+  });
+}
+
 export default function LessonBank() {
   const { showToast } = useToast();
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -262,8 +277,8 @@ export default function LessonBank() {
           <div class="overall-header">
             <h1>Complete Lesson Collection</h1>
             <p><strong>${filteredLessons.length} Lessons</strong> • Generated on ${new Date().toLocaleDateString()}</p>
-            ${filterSubject !== 'All Subjects' ? `<p>Subject: ${filterSubject}</p>` : ''}
-            ${filterGrade !== 'All Grades' ? `<p>Grade: ${filterGrade}</p>` : ''}
+            ${filterSubject !== 'All Subjects' ? `<p>Subject: ${escapeHtml(filterSubject)}</p>` : ''}
+            ${filterGrade !== 'All Grades' ? `<p>Grade: ${escapeHtml(filterGrade)}</p>` : ''}
           </div>
           
           ${filteredLessons.map((lesson, index) => `
