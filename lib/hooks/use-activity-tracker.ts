@@ -72,7 +72,7 @@ export function useActivityTracker({
     const stored = localStorage.getItem('lastActivity');
     if (stored) {
       const storedTime = parseInt(stored, 10);
-      if (storedTime > lastActivityRef.current) {
+      if (!Number.isNaN(storedTime) && storedTime > lastActivityRef.current) {
         lastActivityRef.current = storedTime;
         updateActivity();
       }
