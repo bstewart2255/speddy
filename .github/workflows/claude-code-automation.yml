@@ -263,16 +263,25 @@ jobs:
               cat "$LOG_FILE" >> $GITHUB_STEP_SUMMARY
             }
           
-          # Check if any files were modified
-          if [ -n "$(git status --porcelain)" ]; then
+          # Check if any real files were modified (excluding ephemeral files)
+          REAL_CHANGES=$(git status --porcelain | \
+            grep -vE '(\.mcp-temp\.json|\.mcp-.*\.json|claude-implementation-prompt\.md|.*\.log)' || true)
+          
+          if [ -n "$REAL_CHANGES" ]; then
             echo "✅ Implementation completed - files modified" >> $GITHUB_STEP_SUMMARY
             echo "implementation_complete=true" >> $GITHUB_OUTPUT
+            
+            # Log the actual files modified (excluding ephemeral)
+            echo "### Files Modified:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$REAL_CHANGES" | awk '{print $2}' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             
             # Log which MCP servers were utilized
             echo "### MCP Servers Used:" >> $GITHUB_STEP_SUMMARY
             grep -E "(serena|context7|playwright)" "$LOG_FILE" | head -20 >> $GITHUB_STEP_SUMMARY || true
           else
-            echo "⚠️ No files were modified" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No real files were modified (only ephemeral files detected)" >> $GITHUB_STEP_SUMMARY
             echo "implementation_complete=false" >> $GITHUB_OUTPUT
           fi
 
