@@ -14,7 +14,7 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
+          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea' | 'admin'
           school_id: string
           district_id: string
           state_id: string
@@ -36,7 +36,7 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea'
+          role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea' | 'admin'
           school_id: string
           district_id: string
           state_id: string
@@ -53,7 +53,7 @@ export interface Database {
           id?: string
           email?: string
           full_name?: string
-          role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'| 'sea'
+          role?: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'sea' | 'admin'
           school_id?: string
           district_id?: string
           state_id?: string
@@ -1111,6 +1111,50 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+      },
+      holidays: {
+        Row: {
+          id: string
+          date: string
+          name: string | null
+          school_site: string
+          school_district: string
+          school_id: string | null
+          district_id: string | null
+          created_by: string | null
+          updated_by: string | null
+          reason: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          date: string
+          name?: string | null
+          school_site: string
+          school_district: string
+          school_id?: string | null
+          district_id?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          reason?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          date?: string
+          name?: string | null
+          school_site?: string
+          school_district?: string
+          school_id?: string | null
+          district_id?: string | null
+          created_by?: string | null
+          updated_by?: string | null
+          reason?: string | null
+          created_at?: string
+          updated_at?: string
+        }
       }
     }
   }
@@ -1129,6 +1173,7 @@ export type District = Tables<'districts'>;
 export type School = Tables<'schools'>;
 export type IEPGoalProgress = Tables<'iep_goal_progress'>;
 export type CalendarEvent = Tables<'calendar_events'>;
+export type Holiday = Tables<'holidays'>;
 export type Subscription = Tables<'subscriptions'>;
 export type ReferralCode = Tables<'referral_codes'>;
 export type ReferralRelationship = Tables<'referral_relationships'>;
