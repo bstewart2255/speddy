@@ -290,6 +290,7 @@ export async function deleteStudent(studentId: string) {
  * Update a student's session requirements if owned by the user.
  */
 export async function updateStudent(studentId: string, updates: {
+  initials?: string;
   grade_level?: string;
   teacher_name?: string;
   teacher_id?: string;
@@ -324,6 +325,7 @@ export async function updateStudent(studentId: string, updates: {
 
   // Build update object with only provided fields
   const updateData: any = {};
+  if (updates.initials !== undefined) updateData.initials = updates.initials;
   if (updates.grade_level !== undefined) updateData.grade_level = updates.grade_level;
   if (updates.teacher_name !== undefined) updateData.teacher_name = updates.teacher_name;
   if (teacherId !== undefined) updateData.teacher_id = teacherId;
