@@ -25,7 +25,8 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
         .from('student_details')
         .select('*')
         .eq('student_id', studentId)
-        .single();
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -37,11 +38,6 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   fetchPerf.end({ success: !fetchResult.error });
 
   if (fetchResult.error) {
-    // Check if it's a no rows error
-    if ((fetchResult.error as any).code === 'PGRST116' || 
-        fetchResult.error.message?.includes('No rows returned')) { // No rows returned
-      return null;
-    }
     console.error('Error fetching student details:', fetchResult.error);
     throw fetchResult.error;
   }
