@@ -23,7 +23,7 @@ interface WorksheetWithStudent extends Worksheet {
   students: Pick<Student, 'initials' | 'grade_level'> | null;
 }
 
-type ErrorType = 'network' | 'rate_limit' | 'qr_mismatch' | 'not_found' | 'generic';
+type ErrorType = 'network' | 'rate_limit' | 'qr_mismatch' | 'not_found' | 'generic' | 'unknown';
 
 interface UploadError {
   type: ErrorType;
@@ -31,6 +31,10 @@ interface UploadError {
   details?: DetailedNetworkError;
   showTroubleshooting?: boolean;
 }
+
+// Constants for retry logic
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 1000;
 
 export default function WorksheetUploadPage() {
   const params = useParams();
@@ -203,7 +207,7 @@ export default function WorksheetUploadPage() {
       const response = await fetchWithRetry('/api/submit-worksheet', {
         method: 'POST',
         body: formData,
-      }, 2, 1000);
+      }, MAX_RETRIES, BASE_DELAY_MS);
 
       clearInterval(messageInterval);
       setUploadProgress(100);
@@ -286,8 +290,14 @@ export default function WorksheetUploadPage() {
       
       // Set detailed error information
       if (!uploadError) {
+        const mappedType: ErrorType =
+          detailedError.details.statusCode === 404
+            ? 'not_found'
+            : detailedError.type === 'rate_limit'
+            ? 'rate_limit'
+            : (['network', 'timeout', 'cors', 'server'].includes(detailedError.type) ? 'network' : 'unknown') as ErrorType;
         setUploadError({
-          type: detailedError.type === 'timeout' ? 'network' : detailedError.type,
+          type: mappedType,
           message: detailedError.userFriendlyMessage,
           details: detailedError,
           showTroubleshooting: true
@@ -330,6 +340,8 @@ export default function WorksheetUploadPage() {
         error: 'Failed to run connectivity test',
         timestamp: new Date().toISOString()
       });
+    } finally {
+      setShowConnectivityTest(false);
     }
   };
 

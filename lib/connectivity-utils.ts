@@ -6,6 +6,15 @@
  * better error reporting for "can't connect to server" scenarios.
  */
 
+// Define NetworkInformation interface if not available
+interface NetworkInformation {
+  effectiveType?: string;
+  type?: string;
+  downlink?: number;
+  rtt?: number;
+  saveData?: boolean;
+}
+
 export interface ConnectivityTestResult {
   isOnline: boolean;
   latency?: number;
@@ -234,7 +243,9 @@ export async function fetchWithRetry(
 
       // Don't retry on client errors (400-499) except for specific cases
       if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const httpError: any = new Error(`HTTP ${response.status}: ${response.statusText}`);
+        httpError.status = response.status;
+        throw httpError;
       }
 
       // Don't retry on successful responses

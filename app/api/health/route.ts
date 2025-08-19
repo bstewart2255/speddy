@@ -11,11 +11,12 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Test database connectivity
+    // Test database connectivity with a lightweight query
     const supabase = await createClient();
-    const { data, error } = await supabase
+    // Use COUNT instead of selecting actual data for efficiency
+    const { count, error } = await supabase
       .from('worksheets')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .limit(1);
 
     const responseTime = Date.now() - startTime;
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
           database: 'unhealthy',
           error: error.message
         }
-      }, { status: 503 });
+      }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
     }
 
     return NextResponse.json({
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
         api: 'healthy',
         database: 'healthy'
       }
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
 
   } catch (error) {
     const responseTime = Date.now() - startTime;
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
         database: 'unhealthy'
       },
       error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 503 });
+    }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
 }
 
@@ -65,17 +66,18 @@ export async function GET(request: NextRequest) {
 export async function HEAD(request: NextRequest) {
   try {
     const supabase = await createClient();
+    // Use COUNT for a lightweight check
     const { error } = await supabase
       .from('worksheets')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .limit(1);
     
     if (error) {
-      return new NextResponse(null, { status: 503 });
+      return new NextResponse(null, { status: 503, headers: { 'Cache-Control': 'no-store' } });
     }
     
-    return new NextResponse(null, { status: 200 });
+    return new NextResponse(null, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    return new NextResponse(null, { status: 503 });
+    return new NextResponse(null, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
 }
