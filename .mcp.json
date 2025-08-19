@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["@missionsquad/mcp-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"],

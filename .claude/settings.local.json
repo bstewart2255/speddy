@@ -30,8 +30,19 @@
       "Bash(gh run view 17012559764 --job 48230548253 --log)",
       "Bash(gh pr checks 103 --watch=false)",
       "Bash(npx playwright test:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(npm search @modelcontextprotocol/server-context7)",
+      "Bash(npm search context7 mcp)",
+      "Bash(claude doctor)",
+      "Bash(npm search @modelcontextprotocol/server-serena)",
+      "Bash(npm search serena-mcp)",
+      "Bash(npm search \"serena mcp server\")",
+      "Bash(npm search serena)",
+      "Bash(npm info serena)",
+      "Bash(git clone https://github.com/oraios/serena.git /tmp/serena-mcp)",
+      "Bash(npm search @modelcontextprotocol/server-playwright)"
     ],
     "deny": []
-  }
+  },
+  "enabledMcpjsonServers": ["context7", "serena", "playwright"]
 }

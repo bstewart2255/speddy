@@ -112,7 +112,7 @@ jobs:
           
           # Install MCP server dependencies
           npm install -g @anthropic/claude-code-cli@latest
-          npm install -g @upstash/context7-mcp @playwright/mcp
+          npm install -g @upstash/context7-mcp @playwright/mcp @missionsquad/mcp-github
           
           # Install Python for Serena MCP using uv
           python3 -m pip install --user uv
@@ -126,6 +126,13 @@ jobs:
           cat > .mcp-temp.json << EOF
           {
             "mcpServers": {
+              "github": {
+                "command": "npx",
+                "args": ["@missionsquad/mcp-github"],
+                "env": {
+                  "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                }
+              },
               "context7": {
                 "command": "npx",
                 "args": ["-y", "@upstash/context7-mcp"],
@@ -174,18 +181,24 @@ jobs:
           
           You have access to powerful MCP servers to help with this implementation:
           
-          1. **Serena MCP Server**: Use for intelligent code analysis and modification
+          1. **GitHub MCP Server**: Use to read issue details and PR information
+             - Read issue comments and discussions
+             - Access PR reviews and feedback
+             - Get repository metadata
+             - Track related issues and PRs
+          
+          2. **Serena MCP Server**: Use for intelligent code analysis and modification
              - Use `find_symbol` to locate classes, methods, and functions
              - Use `get_symbols_overview` to understand file structure
              - Use `replace_symbol_body` for precise code modifications
              - Use `search_for_pattern` to find code patterns across the codebase
              - Always prefer symbolic operations over raw file edits
           
-          2. **Context7 MCP Server**: Use for library documentation
+          3. **Context7 MCP Server**: Use for library documentation
              - Use `resolve-library-id` to find library documentation
              - Use `get-library-docs` to retrieve up-to-date docs for Next.js, React, Supabase, etc.
           
-          3. **Playwright MCP Server**: Use if browser testing is needed
+          4. **Playwright MCP Server**: Use if browser testing is needed
              - Can navigate pages, interact with elements, and verify UI behavior
           
           ## Implementation Process:
