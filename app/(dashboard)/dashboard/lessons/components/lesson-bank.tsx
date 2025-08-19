@@ -183,6 +183,117 @@ export default function LessonBank() {
     };
   };
 
+  const handlePrintAll = () => {
+    if (filteredLessons.length === 0) {
+      showToast('No lessons to print', 'error');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('Please allow popups to print the lessons', 'error');
+      return;
+    }
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>All Lessons - ${filteredLessons.length} Lessons</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            h1, h2, h3 {
+              color: #2c3e50;
+            }
+            .lesson {
+              border-bottom: 3px solid #3498db;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+              page-break-after: auto;
+            }
+            .lesson:last-child {
+              border-bottom: none;
+            }
+            .header {
+              border-bottom: 2px solid #3498db;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+            }
+            .meta-info {
+              color: #666;
+              font-size: 14px;
+              margin-bottom: 20px;
+              background: #f8f9fa;
+              padding: 10px;
+              border-radius: 5px;
+            }
+            .overall-header {
+              text-align: center;
+              margin-bottom: 40px;
+              border-bottom: 4px solid #2c3e50;
+              padding-bottom: 20px;
+            }
+            @media print {
+              body {
+                margin: 0;
+                padding: 20px;
+              }
+              .lesson {
+                page-break-inside: avoid;
+                page-break-after: auto;
+              }
+              .overall-header {
+                page-break-after: avoid;
+              }
+            }
+            @page {
+              margin: 1in;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="overall-header">
+            <h1>Complete Lesson Collection</h1>
+            <p><strong>${filteredLessons.length} Lessons</strong> • Generated on ${new Date().toLocaleDateString()}</p>
+            ${filterSubject !== 'All Subjects' ? `<p>Subject: ${filterSubject}</p>` : ''}
+            ${filterGrade !== 'All Grades' ? `<p>Grade: ${filterGrade}</p>` : ''}
+          </div>
+          
+          ${filteredLessons.map((lesson, index) => `
+            <div class="lesson">
+              <div class="header">
+                <h2>${lesson.title}</h2>
+                <div class="meta-info">
+                  <strong>Lesson ${index + 1} of ${filteredLessons.length}</strong> | 
+                  <strong>Grade:</strong> ${lesson.grade} | 
+                  <strong>Subject:</strong> ${lesson.subject} | 
+                  <strong>Duration:</strong> ${lesson.time_duration} |
+                  <strong>Created:</strong> ${new Date(lesson.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div class="content">
+                ${lesson.content}
+              </div>
+            </div>
+          `).join('')}
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -193,7 +304,7 @@ export default function LessonBank() {
 
   return (
     <div>
-      {/* Filters */}
+      {/* Filters and Print All */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">
         <div className="flex items-center gap-2 text-gray-700">
           <FunnelIcon className="w-5 h-5" />
@@ -219,6 +330,18 @@ export default function LessonBank() {
             <option key={grade} value={grade}>{grade}</option>
           ))}
         </select>
+
+        {filteredLessons.length > 1 && (
+          <div className="ml-auto">
+            <button
+              onClick={handlePrintAll}
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-md transition-colors flex items-center gap-2"
+            >
+              <PrinterIcon className="w-4 h-4" />
+              Print All Lessons ({filteredLessons.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Lesson Grid */}

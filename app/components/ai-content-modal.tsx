@@ -259,6 +259,152 @@ export function AIContentModal({
     }
   };
 
+  const handlePrintAllWorksheets = async () => {
+    const [timeoutId, cleanupFn] = showPrintingProgress();
+    
+    try {
+      // Generate all worksheets concurrently
+      const worksheetPromises = [];
+      
+      for (const student of students) {
+        // Math worksheet
+        worksheetPromises.push(
+          generateWorksheetData(student.id, student.initials, student.grade_level, 'math')
+        );
+        // ELA worksheet  
+        worksheetPromises.push(
+          generateWorksheetData(student.id, student.initials, student.grade_level, 'ela')
+        );
+      }
+      
+      console.log(`Generating ${worksheetPromises.length} worksheets for ${students.length} students...`);
+      const worksheetDataArray = await Promise.all(worksheetPromises);
+      
+      // Filter out any failed generations
+      const validWorksheets = worksheetDataArray.filter(data => data !== null);
+      
+      if (validWorksheets.length === 0) {
+        throw new Error('Failed to generate any worksheets');
+      }
+      
+      // Create combined PDF or print each one
+      await printMultipleWorksheets(validWorksheets);
+      
+      console.log(`Successfully generated and printed ${validWorksheets.length} worksheets`);
+      
+    } catch (error) {
+      console.error('Error generating all worksheets:', error);
+      alert('Failed to generate some worksheets: ' + error.message);
+    } finally {
+      clearTimeout(timeoutId);
+      cleanupFn();
+    }
+  };
+
+  // Helper function to generate worksheet data
+  const generateWorksheetData = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
+    try {
+      const generator = new WorksheetGenerator();
+      
+      let sessionTime = '';
+      let sessionDate = new Date();
+
+      if (timeSlot.includes('Daily Lessons')) {
+        sessionTime = 'Daily Practice';
+        const dateMatch = timeSlot.match(/Daily Lessons - (.+)/);
+        if (dateMatch) {
+          sessionDate = new Date(dateMatch[1] + ', ' + new Date().getFullYear());
+        }
+      } else {
+        sessionTime = timeSlot;
+      }
+
+      return await generator.generateWorksheet({
+        studentName: studentInitials,
+        subject: subject,
+        gradeLevel: gradeLevel as any,
+        sessionDate: sessionDate,
+        sessionTime: sessionTime
+      });
+    } catch (error) {
+      console.error(`Failed to generate ${subject} worksheet for ${studentInitials}:`, error);
+      return null;
+    }
+  };
+
+  // Helper function to print multiple worksheets
+  const printMultipleWorksheets = async (worksheetDataArray: string[]) => {
+    for (let i = 0; i < worksheetDataArray.length; i++) {
+      const worksheetData = worksheetDataArray[i];
+      
+      // Convert data URI to blob
+      const base64Data = worksheetData.split(',')[1];
+      const binaryData = atob(base64Data);
+      const arrayBuffer = new ArrayBuffer(binaryData.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      for (let j = 0; j < binaryData.length; j++) {
+        uint8Array[j] = binaryData.charCodeAt(j);
+      }
+
+      const blob = new Blob([uint8Array], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Open each PDF in a new tab with a slight delay
+      const printWindow = window.open(blobUrl, '_blank');
+      
+      if (!printWindow) {
+        // If popup blocked, create download links
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `Worksheet_${i + 1}.pdf`;
+        link.click();
+      }
+
+      // Clean up blob URL after delay
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+      }, 2000);
+      
+      // Add small delay between opening tabs to prevent browser blocking
+      if (i < worksheetDataArray.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  };
+
+  // Helper function to show printing progress
+  const showPrintingProgress = () => {
+    const loadingElement = document.createElement('div');
+    loadingElement.innerHTML = `
+      <div style="position: fixed; top: 20px; right: 20px; background: #4f46e5; color: white; padding: 12px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 16px; height: 16px; border: 2px solid #ffffff40; border-top: 2px solid #ffffff; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          Generating all worksheets...
+        </div>
+      </div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+    document.body.appendChild(loadingElement);
+    
+    const timeoutId = setTimeout(() => {
+      if (document.body.contains(loadingElement)) {
+        document.body.removeChild(loadingElement);
+      }
+    }, 30000); // 30 second timeout
+    
+    return [timeoutId, () => {
+      if (document.body.contains(loadingElement)) {
+        document.body.removeChild(loadingElement);
+      }
+    }];
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -295,7 +441,18 @@ export function AIContentModal({
         </div>
         {/* Add worksheet buttons for each student */}
         <div className="mt-6 border-t pt-4">
-          <h4 className="text-lg font-semibold mb-3">Print Worksheets</h4>
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="text-lg font-semibold">Print Worksheets</h4>
+            {students.length > 1 && (
+              <button
+                onClick={handlePrintAllWorksheets}
+                className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded-md transition-colors flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                Print All Worksheets
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {students.map((student) => (
               <div key={student.id} className="border rounded-lg p-3 bg-gray-50">
