@@ -450,7 +450,7 @@ export default function CalendarPage() {
                   students={students}
                   onSessionClick={handleSessionClick}
                   currentDate={currentDate}
-                  holidays={holidays}
+                  holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
@@ -464,7 +464,7 @@ export default function CalendarPage() {
                   students={students}
                   onSessionClick={handleSessionClick}
                   weekOffset={weekOffset}
-                  holidays={holidays}  // Add this line
+                  holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
@@ -474,7 +474,7 @@ export default function CalendarPage() {
             {currentView === 'month' && (
               <CalendarMonthView 
                 sessions={sessions} 
-                holidays={holidays}
+                holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
                 onDayClick={handleDayClick}
                 userRole={userRole}
                 monthOffset={monthOffset}
