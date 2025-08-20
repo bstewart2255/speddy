@@ -14,6 +14,8 @@ export interface ActivityConfig {
 export interface KeepAliveOptions {
   activityType?: string;
   skipThrottle?: boolean;
+  suppressStorageUpdate?: boolean;
+  fromCrossTab?: boolean;
 }
 
 export function useActivityTracker({
@@ -24,8 +26,8 @@ export function useActivityTracker({
   onTimeout,
   throttleInterval = 30000, // 30 seconds default throttle
 }: ActivityConfig) {
-  const timeoutRef = useRef<NodeJS.Timeout>();
-  const warningRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const warningRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastActivityRef = useRef<number>(Date.now());
   const lastThrottledUpdate = useRef<number>(0);
   const isWarningShownRef = useRef<boolean>(false);

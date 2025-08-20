@@ -51,5 +51,6 @@ export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string
   if (!upcomingSessions.length) return null;
 
   const nextSession = upcomingSessions[0];
+  if (!nextSession) return null;
   return nextSession.sessionMinutes - currentMinutes;
 }

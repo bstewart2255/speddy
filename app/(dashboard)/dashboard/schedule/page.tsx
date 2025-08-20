@@ -82,7 +82,7 @@ export default function SchedulePage() {
   
   // Debounced save function to avoid excessive localStorage writes
   const debouncedSaveFilters = useMemo(() => {
-    let timeoutId: number;
+    let timeoutId: ReturnType<typeof setTimeout>;
     return (filters: typeof visualFilters, schoolId?: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
@@ -96,7 +96,7 @@ export default function SchedulePage() {
 
   // Save visual filters to localStorage with school-specific key (debounced)
   useEffect(() => {
-    debouncedSaveFilters(visualFilters, currentSchool?.school_id);
+    debouncedSaveFilters(visualFilters, currentSchool?.school_id || undefined);
   }, [visualFilters, currentSchool?.school_id, debouncedSaveFilters]);
 
   // Clear visual filters when switching schools if teacher is not valid

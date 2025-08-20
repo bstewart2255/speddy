@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
 import { saveScheduleSnapshot } from './undo-schedule';
+import { ManualPlacementModal } from './manual-placement-modal';
 
 interface ScheduleSessionsProps {
   onComplete?: () => void;
@@ -17,10 +18,45 @@ interface ScheduleSessionsProps {
 
 export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showManualPlacementModal, setShowManualPlacementModal] = useState(false);
+  const [unplacedStudents, setUnplacedStudents] = useState<any[]>([]);
+  const [isPlacingManually, setIsPlacingManually] = useState(false);
   // Set debug to true only in development mode
   const debug = process.env.NODE_ENV === 'development';
-  const { scheduleBatchStudents } = useAutoSchedule(debug);
+  const { scheduleBatchStudents, placeSessionsManually } = useAutoSchedule(debug);
   const supabase = createClient();
+
+  const handlePlaceAnyway = async () => {
+    setIsPlacingManually(true);
+    try {
+      const result = await placeSessionsManually(unplacedStudents);
+      
+      if (result.success) {
+        alert(`Successfully placed ${result.placedSessions.length} session${result.placedSessions.length !== 1 ? 's' : ''}. Please review the schedule for any conflicts that need manual adjustment.`);
+      } else {
+        alert(`Failed to place sessions: ${result.errors.join(', ')}`);
+      }
+      
+      // Call onComplete callback if provided
+      if (onComplete) {
+        onComplete();
+      }
+    } catch (error) {
+      console.error('Error placing sessions manually:', error);
+      alert('Failed to place sessions manually: ' + error.message);
+    } finally {
+      setIsPlacingManually(false);
+      setShowManualPlacementModal(false);
+    }
+  };
+
+  const handleKeepUnscheduled = () => {
+    // Just close the modal and refresh
+    setShowManualPlacementModal(false);
+    if (onComplete) {
+      onComplete();
+    }
+  };
 
   const handleScheduleSessions = async () => {
     if (unscheduledCount === 0) return;
@@ -115,15 +151,22 @@ Continue?`;
       const results = await scheduleBatchStudents(studentsNeedingScheduling);
 
       // Check if all sessions were successfully scheduled
-      if (results.totalFailed > 0) {
+      if (results.totalFailed > 0 && results.canManuallyPlace) {
+        // Show manual placement modal
+        setUnplacedStudents(results.unplacedStudents || []);
+        setShowManualPlacementModal(true);
+      } else if (results.totalFailed > 0) {
         alert(`Scheduling partially complete.\n\nScheduled: ${results.totalScheduled} students\nFailed: ${results.totalFailed} students\n\nThe system couldn't place all sessions due to conflicts. You may need to:\n- Adjust the number of sessions per student\n- Modify bell schedules or special activities\n\nErrors:\n${results.errors.slice(0, 5).join('\n')}`);
+        // Call onComplete callback if provided
+        if (onComplete) {
+          onComplete();
+        }
       } else {
         alert(`Successfully scheduled ${results.totalScheduled} students!`);
-      }
-
-      // Call onComplete callback if provided
-      if (onComplete) {
-        onComplete();
+        // Call onComplete callback if provided
+        if (onComplete) {
+          onComplete();
+        }
       }
     } catch (error) {
       if (debug) console.error('Error scheduling sessions:', error);
@@ -161,6 +204,15 @@ Continue?`;
           </div>
         </div>
       )}
+
+      <ManualPlacementModal
+        isOpen={showManualPlacementModal}
+        onClose={() => setShowManualPlacementModal(false)}
+        unplacedCount={unplacedStudents.length}
+        onPlaceAnyway={handlePlaceAnyway}
+        onKeepUnscheduled={handleKeepUnscheduled}
+        isPlacing={isPlacingManually}
+      />
     </>
   );
 }

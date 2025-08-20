@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { OptimizedScheduler } from '../../scheduling/optimized-scheduler';
+import { OptimizedScheduler, EnhancedSchedulingResult } from '../../scheduling/optimized-scheduler';
 import { SchedulingDataManager } from '../../scheduling/scheduling-data-manager';
 import type { Database } from '../../../src/types/database';
 
@@ -55,27 +55,32 @@ export function useAutoSchedule(debug: boolean = false) {
       return result;
     } catch (error) {
       if (debug) console.error('Auto-scheduling error:', error);
-      setSchedulingErrors([error.message]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
       return {
         success: false,
         scheduledSessions: [],
         unscheduledStudents: [student],
-        errors: [error.message]
+        errors: [errorMessage]
       };
     } finally {
       setIsScheduling(false);
     }
   };
-  const scheduleBatchStudents = async (students: Student[]) => {
+  const scheduleBatchStudents = async (students: Student[]): Promise<EnhancedSchedulingResult> => {
     setIsScheduling(true);
     setSchedulingErrors([]);
 
-    const results = {
+    const results: EnhancedSchedulingResult = {
       totalScheduled: 0,
       totalFailed: 0,
       errors: [] as string[],
-      lastSchool: null as string | null
+      unplacedStudents: [] as Student[],
+      canManuallyPlace: false,
+      availableSlots: undefined
     };
+    
+    let lastSchool: string | null = null;
 
     try {
       // Get current user and profile
@@ -115,9 +120,9 @@ export function useAutoSchedule(debug: boolean = false) {
         // Ensure data manager is initialized for this school
         // Get school_district from the first student in this school group
         const schoolDistrict = schoolStudents[0]?.school_district || '';
-        if (!dataManager.isInitialized() || schoolSite !== results.lastSchool) {
+        if (!dataManager.isInitialized() || schoolSite !== lastSchool) {
           await dataManager.initialize(user.id, schoolSite, schoolDistrict);
-          results.lastSchool = schoolSite;
+          lastSchool = schoolSite;
         } else if (dataManager.isCacheStale()) {
           await dataManager.refresh();
         }
@@ -134,17 +139,95 @@ export function useAutoSchedule(debug: boolean = false) {
         results.totalScheduled += schoolResults.totalScheduled;
         results.totalFailed += schoolResults.totalFailed;
         results.errors.push(...schoolResults.errors);
+        results.unplacedStudents.push(...(schoolResults.unplacedStudents || []));
+        results.canManuallyPlace = results.canManuallyPlace || schoolResults.canManuallyPlace;
+        if (schoolResults.availableSlots) {
+          results.availableSlots = schoolResults.availableSlots;
+        }
       }
 
       setSchedulingErrors(results.errors);
       return results;
     } catch (error) {
       if (debug) console.error('Batch scheduling error:', error);
-      setSchedulingErrors([error.message]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
       return {
         totalScheduled: 0,
         totalFailed: students.length,
-        errors: [error.message]
+        errors: [errorMessage],
+        unplacedStudents: students,
+        canManuallyPlace: false
+      };
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const placeSessionsManually = async (students: Student[]) => {
+    setIsScheduling(true);
+    setSchedulingErrors([]);
+
+    try {
+      // Get current user and profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile) throw new Error('Profile not found');
+
+      // Group students by school for manual placement
+      const studentsBySchool = new Map<string, Student[]>();
+      students.forEach(student => {
+        const school = student.school_site;
+        if (school) {
+          if (!studentsBySchool.has(school)) {
+            studentsBySchool.set(school, []);
+          }
+          studentsBySchool.get(school)!.push(student);
+        }
+      });
+
+      const allPlacedSessions: any[] = [];
+      const allFailedStudents: Student[] = [];
+      const allErrors: string[] = [];
+
+      // Place sessions for each school
+      for (const [schoolSite, schoolStudents] of studentsBySchool) {
+        const schoolDistrict = schoolStudents[0]?.school_district || '';
+        
+        // Create scheduler and initialize context
+        const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
+        await scheduler.initializeContext(schoolSite, schoolDistrict);
+
+        // Try manual placement with conflict tolerance
+        const result = await scheduler.tryManualPlacement(schoolStudents, true);
+        
+        allPlacedSessions.push(...result.placedSessions);
+        allFailedStudents.push(...result.failedStudents);
+        allErrors.push(...result.errors);
+      }
+
+      return {
+        success: allPlacedSessions.length > 0,
+        placedSessions: allPlacedSessions,
+        failedStudents: allFailedStudents,
+        errors: allErrors
+      };
+    } catch (error) {
+      if (debug) console.error('Manual placement error:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
+      return {
+        success: false,
+        placedSessions: [],
+        failedStudents: students,
+        errors: [errorMessage]
       };
     } finally {
       setIsScheduling(false);
@@ -154,6 +237,7 @@ export function useAutoSchedule(debug: boolean = false) {
   return {
     scheduleStudent,
     scheduleBatchStudents,
+    placeSessionsManually,
     isScheduling,
     schedulingErrors
   };
