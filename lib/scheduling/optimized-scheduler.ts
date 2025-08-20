@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
+import { ManualPlacementService } from '../services/manual-placement-service';
 import type {
   Student,
   ScheduleSession,
@@ -72,10 +73,20 @@ interface SchedulingResult {
   errors: string[];
 }
 
+export interface EnhancedSchedulingResult {
+  totalScheduled: number;
+  totalFailed: number;
+  errors: string[];
+  unplacedStudents: Student[];
+  canManuallyPlace: boolean;
+  availableSlots?: TimeSlot[];
+}
+
 export class OptimizedScheduler {
   private supabase = createClient();
   private context: SchedulingContext | null = null;
   private dataManager: SchedulingDataManager;
+  private manualPlacementService: ManualPlacementService | null = null;
   private debug: boolean;
   private performanceMetrics = {
     totalQueries: 0,
@@ -92,6 +103,7 @@ export class OptimizedScheduler {
     // Get or create the singleton data manager instance
     this.dataManager = SchedulingDataManager.getInstance();
     this.debug = debug;
+    this.manualPlacementService = new ManualPlacementService(this.supabase, this.dataManager);
   }
 
   /**
@@ -378,11 +390,7 @@ export class OptimizedScheduler {
   /**
    * Schedule multiple students efficiently
    */
-  async scheduleBatch(students: Student[]): Promise<{
-    totalScheduled: number;
-    totalFailed: number;
-    errors: string[];
-  }> {
+  async scheduleBatch(students: Student[]): Promise<EnhancedSchedulingResult> {
     if (!this.context) {
       throw new Error("Context not initialized. Call initializeContext first.");
     }
@@ -402,10 +410,12 @@ export class OptimizedScheduler {
     );
     this.log(`Available days: ${this.context.workDays.join(", ")}`);
 
-    const results = {
+    const results: EnhancedSchedulingResult = {
       totalScheduled: 0,
       totalFailed: 0,
       errors: [] as string[],
+      unplacedStudents: [] as Student[],
+      canManuallyPlace: false
     };
 
     // Populate student grade map for grade grouping optimization
@@ -454,6 +464,7 @@ export class OptimizedScheduler {
       } else {
         results.totalFailed++;
         results.errors.push(...result.errors);
+        results.unplacedStudents.push(student);
       }
     }
 
@@ -468,6 +479,30 @@ export class OptimizedScheduler {
       if (error) {
         results.errors.push(`Failed to save sessions: ${error.message}`);
         this.context.cacheMetadata.fetchErrors.push(error.message);
+      }
+    }
+    
+    // Check if manual placement is available for unplaced students
+    if (results.unplacedStudents.length > 0 && this.manualPlacementService) {
+      results.canManuallyPlace = true;
+      
+      // Get available slots that could be used for manual placement
+      const studentIds = results.unplacedStudents.map(s => s.id);
+      const availableSlots = await this.manualPlacementService.findAvailableSlots(
+        studentIds,
+        this.providerId,
+        { ignoreConflicts: true, preferEarliestSlot: true }
+      );
+      
+      if (availableSlots.length > 0) {
+        results.availableSlots = availableSlots.map(slot => ({
+          dayOfWeek: slot.day,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          available: true,
+          capacity: 1,
+          conflicts: []
+        }));
       }
     }
     
@@ -1070,6 +1105,65 @@ export class OptimizedScheduler {
    * Sort slots with preference for grade-level grouping
    * Prioritizes slots that already have sessions with the same grade level
    */
+  /**
+   * Attempt manual placement for unscheduled students
+   */
+  async tryManualPlacement(
+    students: Student[],
+    ignoreConflicts: boolean = true
+  ): Promise<{
+    success: boolean;
+    placedSessions: any[];
+    failedStudents: Student[];
+    errors: string[];
+  }> {
+    if (!this.manualPlacementService) {
+      return {
+        success: false,
+        placedSessions: [],
+        failedStudents: students,
+        errors: ['Manual placement service not initialized']
+      };
+    }
+
+    const studentIds = students.map(s => s.id);
+    const results = await this.manualPlacementService.placeSessionsWithConflicts(
+      studentIds,
+      this.providerId,
+      { ignoreConflicts, preferEarliestSlot: true }
+    );
+
+    const placedSessions: any[] = [];
+    const failedStudents: Student[] = [];
+    const errors: string[] = [];
+
+    for (const result of results) {
+      if (result.status === 'success') {
+        placedSessions.push({
+          studentId: result.studentId,
+          sessionId: result.sessionId,
+          timeSlot: result.timeSlot,
+          conflicts: result.conflicts
+        });
+      } else {
+        const student = students.find(s => s.id === result.studentId);
+        if (student) {
+          failedStudents.push(student);
+        }
+        if (result.error) {
+          errors.push(`${result.studentId}: ${result.error}`);
+        }
+      }
+    }
+
+    return {
+      success: placedSessions.length > 0,
+      placedSessions,
+      failedStudents,
+      errors
+    };
+  }
+
   /**
    * Get performance metrics for monitoring and optimization
    */
