@@ -1,6 +1,6 @@
 -- Add manually_placed column to schedule_sessions table
 ALTER TABLE schedule_sessions 
-ADD COLUMN IF NOT EXISTS manually_placed BOOLEAN DEFAULT FALSE;
+ADD COLUMN IF NOT EXISTS manually_placed BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Add comment for documentation
 COMMENT ON COLUMN schedule_sessions.manually_placed IS 'Indicates if this session was manually placed despite conflicts';
