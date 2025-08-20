@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
+    "test:e2e:simple": "playwright test --config=playwright.simple.config.js",
+    "test:basic": "node tests/simple-node-test.js",
     "test:e2e:watch": "playwright test --ui",
     "test:e2e:ai": "node tests/e2e/runner/test-runner.js",
     "test:e2e:debug": "playwright test --debug",

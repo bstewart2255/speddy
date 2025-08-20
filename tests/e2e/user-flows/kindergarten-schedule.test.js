@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { authenticatedGoto, cleanupAuthenticatedUser } from '../helpers/auth.helper.js';
 
-// Skip tests if environment variables are not set
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-test.skip(!supabaseUrl || !supabaseServiceKey, 'Supabase environment variables not configured');
+// Tests will use real auth if Supabase is configured, otherwise fallback to bypass
 
 test.describe('Kindergarten Schedule Toggle', () => {
   test.afterAll(async () => {

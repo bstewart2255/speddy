@@ -46,7 +46,7 @@ export default function SchedulePage() {
   const isFirstRender = useRef(true);
   
   // Helper function to generate school-specific localStorage keys
-  const getSchoolSpecificKey = (key: string, schoolId?: string) => {
+  const getSchoolSpecificKey = (key: string, schoolId?: string | null) => {
     if (!schoolId) return key; // fallback for no school
     return `${key}-${schoolId}`;
   };
