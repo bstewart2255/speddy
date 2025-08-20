@@ -13,6 +13,7 @@ export interface StudentAssessment {
   phoneme_segmentation_fluency?: number | null;
   sight_words_known?: number | null;
   sight_words_list_level?: string | null;
+  grade_month_reading_level?: number | null;
   
   // Math Assessments
   math_computation_addition_accuracy?: number | null;
@@ -98,6 +99,7 @@ export async function getStudentAssessment(studentId: string): Promise<StudentAs
     phoneme_segmentation_fluency: data.phoneme_segmentation_fluency,
     sight_words_known: data.sight_words_known,
     sight_words_list_level: data.sight_words_list_level,
+    grade_month_reading_level: data.grade_month_reading_level,
     math_computation_addition_accuracy: data.math_computation_addition_accuracy,
     math_computation_subtraction_accuracy: data.math_computation_subtraction_accuracy,
     math_computation_multiplication_accuracy: data.math_computation_multiplication_accuracy,
