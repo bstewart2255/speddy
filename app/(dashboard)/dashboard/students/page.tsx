@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -52,7 +52,7 @@ export default function StudentsPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading } = useSchool();
   const router = useRouter();
 
@@ -121,13 +121,12 @@ export default function StudentsPage() {
   useEffect(() => {
     console.log('Students page useEffect triggered');
     console.log('currentSchool in useEffect:', currentSchool);
-    console.log('schoolLoading:', schoolLoading);
     
     if (currentSchool) {
       fetchStudents();
       checkUnscheduledSessions();
     }
-  }, [currentSchool, fetchStudents, checkUnscheduledSessions, schoolLoading]);
+  }, [currentSchool, fetchStudents, checkUnscheduledSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
