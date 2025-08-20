@@ -50,7 +50,7 @@ export async function createUserAndProfile(userData) {
   }
 
   // Create profile using the same structure as referral-code-display.test.ts
-  await supabase.from('profiles').insert({
+  const { error: profileError } = await supabase.from('profiles').insert({
     id: signUpData.user.id,
     email: userData.email,
     full_name: userData.metadata.full_name,
