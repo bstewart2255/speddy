@@ -109,15 +109,13 @@ export default function StudentsPage() {
         console.log('Students data received:', data);
         setStudents(data);
       }
-
-      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error fetching students:', error);
       setStudents([]);
     } finally {
       setLoading(false);
     }
-  }, [currentSchool, checkUnscheduledSessions]);
+  }, [currentSchool]);
 
   // Fetch students
   useEffect(() => {
