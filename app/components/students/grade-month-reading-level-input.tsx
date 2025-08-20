@@ -27,6 +27,11 @@ export function GradeMonthReadingLevelInput({
 
   const handleMonthChange = (month: string) => {
     const monthNum = parseInt(month);
+    // Validate month is between 1-9
+    if (monthNum < 1 || monthNum > 9) {
+      console.error('Invalid month value:', monthNum);
+      return;
+    }
     const currentGrade = gradeValue ?? 0;
     onChange(currentGrade + (monthNum / 10));
   };
@@ -35,8 +40,10 @@ export function GradeMonthReadingLevelInput({
     if (value === null || value === undefined) return "Not assessed";
     const grade = Math.floor(value);
     const month = Math.round((value - grade) * 10);
+    // Ensure month is within valid range
+    const validMonth = Math.min(9, Math.max(1, month));
     const gradeLabel = grade === 0 ? 'Kindergarten' : `Grade ${grade}`;
-    return `${gradeLabel}, Month ${month} (${value.toFixed(1)})`;
+    return `${gradeLabel}, Month ${validMonth} (${value.toFixed(1)})`;
   };
 
   return (
@@ -85,7 +92,6 @@ export function GradeMonthReadingLevelInput({
             <SelectItem value="7">Month 7</SelectItem>
             <SelectItem value="8">Month 8</SelectItem>
             <SelectItem value="9">Month 9</SelectItem>
-            <SelectItem value="10">Month 10</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -93,7 +99,7 @@ export function GradeMonthReadingLevelInput({
         {formatDisplay()}
       </p>
       <p className="text-xs text-muted-foreground">
-        Example: 2nd grade, 5th month = 2.5 | Kindergarten, 3rd month = 0.3
+        Example: 2nd grade, 5th month = 2.5 | Kindergarten, 3rd month = 0.3 | Max: Grade.9
       </p>
     </div>
   );
