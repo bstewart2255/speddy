@@ -35,7 +35,8 @@ export function TimeoutWarningModal({
               clearInterval(intervalRef.current);
               intervalRef.current = null;
             }
-            onLogout();
+            // Schedule logout to happen after state update
+            setTimeout(() => onLogout(), 0);
             return 0;
           }
           return newSeconds;
