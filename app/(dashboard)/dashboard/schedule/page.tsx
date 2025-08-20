@@ -82,7 +82,7 @@ export default function SchedulePage() {
   
   // Debounced save function to avoid excessive localStorage writes
   const debouncedSaveFilters = useMemo(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: NodeJS.Timeout | number;
     return (filters: typeof visualFilters, schoolId?: string) => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {

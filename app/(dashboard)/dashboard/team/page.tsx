@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import type { Database } from "../../../../src/types/database";
 import { Card, CardBody } from "../../../components/ui/card";
 import { createClient } from '@/lib/supabase/client';
@@ -23,11 +23,7 @@ export default function TeamPage() {
   const [userSchool, setUserSchool] = useState<{ school_district: string; school_site: string } | null>(null);
   const supabase = createClient<Database>();
 
-  useEffect(() => {
-    fetchTeamData();
-  }, []);
-
-  const fetchTeamData = async () => {
+  const fetchTeamData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -81,7 +77,11 @@ export default function TeamPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchTeamData();
+  }, [fetchTeamData]);
 
   const handleRemoveSEA = async (seaId: string) => {
     if (!confirm('Are you sure you want to remove this SEA from your team? This will unassign them from all sessions.')) {
