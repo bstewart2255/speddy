@@ -1,32 +1,11 @@
--- Create holidays table with audit trail support
-CREATE TABLE IF NOT EXISTS holidays (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date DATE NOT NULL,
-  name TEXT,
-  school_site TEXT NOT NULL,
-  school_district TEXT NOT NULL,
-  school_id TEXT,
-  district_id TEXT,
-  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  updated_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  reason TEXT, -- Optional reason for adding/removing holiday
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create indexes for performance
-CREATE INDEX idx_holidays_date ON holidays(date);
-CREATE INDEX idx_holidays_school_site ON holidays(school_site);
-CREATE INDEX idx_holidays_school_district ON holidays(school_district);
-CREATE INDEX idx_holidays_school_id ON holidays(school_id);
-CREATE INDEX idx_holidays_district_id ON holidays(district_id);
-CREATE INDEX idx_holidays_created_by ON holidays(created_by);
-
--- Unique constraint to prevent duplicate holidays for same date at same location
-CREATE UNIQUE INDEX idx_holidays_unique_date_location ON holidays(date, school_id, district_id);
-
--- Add RLS policies
+-- Enable RLS if not already enabled
 ALTER TABLE holidays ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist (to avoid conflicts)
+DROP POLICY IF EXISTS "Users can view holidays for their school" ON holidays;
+DROP POLICY IF EXISTS "Eligible roles can create holidays" ON holidays;
+DROP POLICY IF EXISTS "Eligible roles can update holidays" ON holidays;
+DROP POLICY IF EXISTS "Eligible roles can delete holidays" ON holidays;
 
 -- Policy: Users can view holidays for their school/district
 CREATE POLICY "Users can view holidays for their school" ON holidays
@@ -98,7 +77,6 @@ CREATE POLICY "Eligible roles can update holidays" ON holidays
   );
 
 -- Policy: Resource, SEA, and Admin roles can delete holidays for their school/district
--- Only admins can delete past holidays (optional restriction)
 CREATE POLICY "Eligible roles can delete holidays" ON holidays
   FOR DELETE
   USING (
@@ -123,7 +101,7 @@ CREATE POLICY "Eligible roles can delete holidays" ON holidays
     )
   );
 
--- Create function to update updated_at timestamp and set updated_by
+-- Create function to update updated_at timestamp and set updated_by (if not exists)
 CREATE OR REPLACE FUNCTION update_holidays_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -133,13 +111,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to automatically update updated_at and updated_by
+-- Create trigger to automatically update updated_at and updated_by (if not exists)
+DROP TRIGGER IF EXISTS update_holidays_updated_at ON holidays;
 CREATE TRIGGER update_holidays_updated_at
   BEFORE UPDATE ON holidays
   FOR EACH ROW
   EXECUTE FUNCTION update_holidays_updated_at();
 
--- Create function to automatically set created_by on insert
+-- Create function to automatically set created_by on insert (if not exists)
 CREATE OR REPLACE FUNCTION set_holidays_created_by()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -148,7 +127,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to automatically set created_by
+-- Create trigger to automatically set created_by (if not exists)
+DROP TRIGGER IF EXISTS set_holidays_created_by ON holidays;
 CREATE TRIGGER set_holidays_created_by
   BEFORE INSERT ON holidays
   FOR EACH ROW
