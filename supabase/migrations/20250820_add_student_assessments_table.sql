@@ -1,6 +1,12 @@
 -- Add student_assessments table for comprehensive assessment data
 -- Migration: 20250820_add_student_assessments_table.sql
 
+-- This table stores the most recent assessment data for each student.
+-- The UNIQUE constraint on student_id ensures only one assessment record per student,
+-- which gets updated (upserted) with new data when assessments are updated.
+-- If historical assessment tracking is needed in the future, remove the UNIQUE constraint
+-- and modify the application logic to handle multiple assessment records per student.
+
 -- Create the student_assessments table
 CREATE TABLE student_assessments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -58,11 +64,13 @@ CREATE TABLE student_assessments (
   -- Metadata
   assessment_date DATE,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  
+  -- Add unique constraint to allow upsert on student_id
+  CONSTRAINT unique_student_assessment UNIQUE(student_id)
 );
 
 -- Create indexes for common queries
-CREATE INDEX idx_student_assessments_student_id ON student_assessments(student_id);
 CREATE INDEX idx_student_assessments_date ON student_assessments(assessment_date DESC);
 
 -- Add comments for documentation
