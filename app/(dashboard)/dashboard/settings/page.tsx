@@ -2,7 +2,7 @@
 
 import { WorkScheduleSettings } from '../../../components/settings/work-schedule';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TeamWidget } from '../../../components/team-widget';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
@@ -12,11 +12,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
-
-  const loadUserProfile = async () => {
+  const loadUserProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -33,7 +29,11 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   if (loading) {
     return (

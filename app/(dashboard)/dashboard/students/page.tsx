@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -52,7 +52,7 @@ export default function StudentsPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading } = useSchool();
   const router = useRouter();
 
@@ -74,21 +74,23 @@ export default function StudentsPage() {
     };
 
     checkMultipleSchools();
-  }, []);
+  }, [supabase]);
 
-  // Fetch students
-  useEffect(() => {
-    console.log('Students page useEffect triggered');
-    console.log('currentSchool in useEffect:', currentSchool);
-    console.log('schoolLoading:', schoolLoading);
-    
-    if (currentSchool) {
-      fetchStudents();
-      checkUnscheduledSessions();
+  const checkUnscheduledSessions = useCallback(async () => {
+    try {
+      if (!currentSchool) {
+        setUnscheduledCount(0);
+        return;
+      }
+      const count = await getUnscheduledSessionsCount(currentSchool.school_site);
+      setUnscheduledCount(count);
+    } catch (error) {
+      console.error('Error checking unscheduled sessions:', error);
+      setUnscheduledCount(0);
     }
   }, [currentSchool]);
 
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
     console.log('fetchStudents called');
     console.log('currentSchool:', currentSchool);
 
@@ -110,26 +112,22 @@ export default function StudentsPage() {
         console.log('Students data received:', data);
         setStudents(data);
       }
-
-      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error fetching students:', error);
       setStudents([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool]);
 
-  const checkUnscheduledSessions = async () => {
-    try {
-      if (!currentSchool) return;
-      const count = await getUnscheduledSessionsCount(currentSchool.school_site);
-      setUnscheduledCount(count);
-    } catch (error) {
-      console.error('Error checking unscheduled sessions:', error);
-      setUnscheduledCount(0);
-    }
-  };
+  // Fetch students
+  useEffect(() => {
+    console.log('Students page useEffect triggered');
+    console.log('currentSchool in useEffect:', currentSchool);
+    
+    fetchStudents();
+    checkUnscheduledSessions();
+  }, [currentSchool, fetchStudents, checkUnscheduledSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

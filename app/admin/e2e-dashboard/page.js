@@ -1,7 +1,7 @@
 // app/admin/e2e-dashboard/page.js
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -12,31 +12,7 @@ export default function E2EDashboard() {
   const [loading, setLoading] = useState(true);
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    loadDashboardData();
-
-    // Subscribe to real-time updates
-    const subscription = supabase
-      .channel('e2e-dashboard')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'e2e_test_results'
-      }, () => {
-        loadDashboardData();
-      })
-      .subscribe();
-
-    // Refresh every 5 minutes
-    const interval = setInterval(loadDashboardData, 5 * 60 * 1000);
-
-    return () => {
-      subscription.unsubscribe();
-      clearInterval(interval);
-    };
-  }, []);
-
-  async function loadDashboardData() {
+  const loadDashboardData = useCallback(async () => {
     try {
       // Get dashboard summary
       const { data: dashData } = await supabase
@@ -69,7 +45,31 @@ export default function E2EDashboard() {
       console.error('Error loading dashboard:', error);
       setLoading(false);
     }
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadDashboardData();
+
+    // Subscribe to real-time updates
+    const subscription = supabase
+      .channel('e2e-dashboard')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'e2e_test_results'
+      }, () => {
+        loadDashboardData();
+      })
+      .subscribe();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(loadDashboardData, 5 * 60 * 1000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(interval);
+    };
+  }, [loadDashboardData, supabase]);
 
   function processTrends(trends) {
     return trends.map(t => ({

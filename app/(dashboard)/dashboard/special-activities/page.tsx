@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -41,7 +41,7 @@ export default function SpecialActivitiesPage() {
   const [activityFilter, setActivityFilter] = useState('');
 
   // Fetch special activities from database
-  const fetchSpecialActivities = async () => {
+  const fetchSpecialActivities = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !currentSchool) return;
@@ -71,13 +71,13 @@ export default function SpecialActivitiesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool, supabase]);
   
   useEffect(() => {
     if (currentSchool) {
       fetchSpecialActivities();
     }
-  }, [currentSchool]);
+  }, [currentSchool, fetchSpecialActivities]);
 
   // Handle delete
   const handleDelete = async (id: string, activityName: string) => {
