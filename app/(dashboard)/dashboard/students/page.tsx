@@ -78,7 +78,10 @@ export default function StudentsPage() {
 
   const checkUnscheduledSessions = useCallback(async () => {
     try {
-      if (!currentSchool) return;
+      if (!currentSchool) {
+        setUnscheduledCount(0);
+        return;
+      }
       const count = await getUnscheduledSessionsCount(currentSchool.school_site);
       setUnscheduledCount(count);
     } catch (error) {
@@ -122,10 +125,8 @@ export default function StudentsPage() {
     console.log('Students page useEffect triggered');
     console.log('currentSchool in useEffect:', currentSchool);
     
-    if (currentSchool) {
-      fetchStudents();
-      checkUnscheduledSessions();
-    }
+    fetchStudents();
+    checkUnscheduledSessions();
   }, [currentSchool, fetchStudents, checkUnscheduledSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
