@@ -23,12 +23,12 @@ export function ManualPlacementModal({
 }: ManualPlacementModalProps) {
   const handlePlaceAnyway = async () => {
     await onPlaceAnyway();
-    onClose();
+    // onClose is handled by the parent component after successful placement
   };
 
   const handleKeepUnscheduled = () => {
     onKeepUnscheduled();
-    onClose();
+    // onClose is handled by the parent component
   };
 
   return (

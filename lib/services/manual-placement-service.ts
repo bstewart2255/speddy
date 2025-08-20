@@ -226,7 +226,7 @@ export class ManualPlacementService {
         };
       }
 
-      const existingSessions = await this.dataManager.getExistingSessions();
+      const existingSessions = this.dataManager.getExistingSessions();
       const conflicts = this.detectConflicts(timeSlot, existingSessions, providerId);
 
       return {

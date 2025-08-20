@@ -55,12 +55,13 @@ export function useAutoSchedule(debug: boolean = false) {
       return result;
     } catch (error) {
       if (debug) console.error('Auto-scheduling error:', error);
-      setSchedulingErrors([error.message]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
       return {
         success: false,
         scheduledSessions: [],
         unscheduledStudents: [student],
-        errors: [error.message]
+        errors: [errorMessage]
       };
     } finally {
       setIsScheduling(false);
@@ -149,11 +150,12 @@ export function useAutoSchedule(debug: boolean = false) {
       return results;
     } catch (error) {
       if (debug) console.error('Batch scheduling error:', error);
-      setSchedulingErrors([error.message]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
       return {
         totalScheduled: 0,
         totalFailed: students.length,
-        errors: [error.message],
+        errors: [errorMessage],
         unplacedStudents: students,
         canManuallyPlace: false
       };
@@ -219,12 +221,13 @@ export function useAutoSchedule(debug: boolean = false) {
       };
     } catch (error) {
       if (debug) console.error('Manual placement error:', error);
-      setSchedulingErrors([error.message]);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setSchedulingErrors([errorMessage]);
       return {
         success: false,
         placedSessions: [],
         failedStudents: students,
-        errors: [error.message]
+        errors: [errorMessage]
       };
     } finally {
       setIsScheduling(false);
