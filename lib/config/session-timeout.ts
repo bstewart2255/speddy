@@ -1,10 +1,3 @@
-// Session timeout configuration
-export const SESSION_CONFIG = {
-  // Default timeout: 45 minutes (in milliseconds)
-  TIMEOUT_DURATION: parseInt(process.env.NEXT_PUBLIC_SESSION_TIMEOUT || '2700000', 10),
-  
-  // Warning time: 2 minutes before timeout (in milliseconds)
-
 // Helper to parse and validate positive integer environment variables
 function parsePositiveIntEnv(envVar: string | undefined, defaultValue: number): number {
   const parsed = parseInt(envVar ?? '', 10);
