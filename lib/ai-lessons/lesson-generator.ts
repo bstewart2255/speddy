@@ -14,6 +14,7 @@ export interface LessonGenerationRequest {
   duration?: number;
   focusSkills?: string[];
   teacherId: string;
+  manualAdjustments?: Map<string, any>; // Optional manual adjustments for regeneration
 }
 
 export interface GeneratedLesson {
@@ -85,6 +86,14 @@ export class LessonGenerator {
     const performance = new Map<string, any>();
     const adjustments = new Map<string, any>();
 
+    // If manual adjustments are provided (e.g., from regeneration), use them
+    if (request.manualAdjustments && request.manualAdjustments.size > 0) {
+      // Merge manual adjustments with any automatic ones
+      request.manualAdjustments.forEach((value, key) => {
+        adjustments.set(key, value);
+      });
+    }
+
     for (const studentId of request.studentIds) {
       // Get assessments
       const studentAssessments = await assessmentRegistry.getStudentAssessments(studentId);
@@ -97,13 +106,15 @@ export class LessonGenerator {
       );
       performance.set(studentId, studentPerformance);
 
-      // Get adjustment recommendations
-      const adjustment = await performanceAnalyzer.getAdjustmentRecommendation(
-        studentId,
-        request.subject
-      );
-      if (adjustment) {
-        adjustments.set(studentId, adjustment);
+      // Get adjustment recommendations only if not manually provided
+      if (!adjustments.has(studentId)) {
+        const adjustment = await performanceAnalyzer.getAdjustmentRecommendation(
+          studentId,
+          request.subject
+        );
+        if (adjustment) {
+          adjustments.set(studentId, adjustment);
+        }
       }
     }
 
@@ -479,16 +490,17 @@ a: _____ e: _____ i: _____ o: _____ u: _____
       throw new Error('Lesson not found');
     }
 
-    // Apply adjustments and regenerate
+    // Build request with manual adjustments
     const request: LessonGenerationRequest = {
       studentIds: originalLesson.student_ids,
       lessonType: originalLesson.lesson_type,
       subject: originalLesson.lessons.subject || 'reading',
       duration: originalLesson.lessons.duration_minutes,
-      teacherId: originalLesson.lessons.provider_id
+      teacherId: originalLesson.lessons.provider_id,
+      manualAdjustments: adjustments // Pass the adjustments to be used in generation
     };
 
-    // Add adjustments to context
+    // Generate lesson with the provided adjustments
     return this.generateLesson(request);
   }
 }
