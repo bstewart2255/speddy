@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 interface Student {
@@ -21,9 +21,9 @@ export function LessonGeneratorForm() {
   const [error, setError] = useState('');
 
   // Load students on component mount
-  useState(() => {
+  useEffect(() => {
     loadStudents();
-  });
+  }, []);
 
   async function loadStudents() {
     const supabase = createClient();

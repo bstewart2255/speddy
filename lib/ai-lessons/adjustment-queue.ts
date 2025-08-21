@@ -1,5 +1,6 @@
 // lib/ai-lessons/adjustment-queue.ts
 import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface QueuedAdjustment {
   id: string;
@@ -31,14 +32,14 @@ export interface AdjustmentBatch {
 }
 
 export class AdjustmentQueueManager {
-  private supabase: any;
+  private supabase: SupabaseClient | null = null;
 
   constructor() {
     this.initialize();
   }
 
   private async initialize() {
-    this.supabase = await createClient();
+    this.supabase = await createClient() as unknown as SupabaseClient;
   }
 
   async getPendingAdjustments(

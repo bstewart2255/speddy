@@ -1,6 +1,7 @@
 // lib/ai-lessons/prompt-assembler.ts
 import { assessmentRegistry, StudentAssessmentData } from './assessment-registry';
 import { performanceAnalyzer, PerformanceData, AdjustmentRecommendation } from './performance-analyzer';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface PromptContext {
   studentIds: string[];
@@ -21,16 +22,46 @@ export interface AssembledPrompt {
 }
 
 export class PromptAssembler {
-  private readonly materialConstraints = [
-    'NEVER require cutting, laminating, or advance preparation',
-    'NEVER require apps, websites, or technology beyond printing',
-    'NEVER require physical manipulatives, dice, spinners, or cards',
-    'NEVER require movement around the room or special setup',
-    'ALL materials must be included directly on the worksheet',
-    'ONLY assume access to: printer, paper, pencils, crayons, student desks'
-  ];
+  private materialConstraints: string[] = [];
+  private supabase: SupabaseClient | null = null;
+
+  constructor() {
+    this.initialize();
+  }
+
+  private async initialize() {
+    const { createClient } = await import('@/lib/supabase/server');
+    this.supabase = await createClient() as unknown as SupabaseClient;
+    await this.loadMaterialConstraints();
+  }
+
+  private async loadMaterialConstraints() {
+    const { data: constraints } = await this.supabase
+      .from('material_constraints')
+      .select('description, constraint_type')
+      .eq('active', true)
+      .order('constraint_type');
+
+    if (constraints && constraints.length > 0) {
+      this.materialConstraints = constraints.map((c: any) => c.description);
+    } else {
+      // Fallback constraints if database is empty
+      this.materialConstraints = [
+        'NEVER require cutting, laminating, or advance preparation',
+        'NEVER require apps, websites, or technology beyond printing',
+        'NEVER require physical manipulatives, dice, spinners, or cards',
+        'NEVER require movement around the room or special setup',
+        'ALL materials must be included directly on the worksheet',
+        'ONLY assume access to: printer, paper, pencils, crayons, student desks'
+      ];
+    }
+  }
 
   async assemblePrompt(context: PromptContext): Promise<AssembledPrompt> {
+    // Ensure constraints are loaded
+    if (this.materialConstraints.length === 0) {
+      await this.loadMaterialConstraints();
+    }
     const dataUsed: string[] = [];
     let totalConfidence = 0;
     let confidenceCount = 0;

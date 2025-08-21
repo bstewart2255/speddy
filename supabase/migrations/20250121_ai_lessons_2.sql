@@ -122,7 +122,13 @@ BEGIN
     accuracy_trend = 
       CASE 
         WHEN jsonb_array_length(student_performance_metrics.accuracy_trend) >= 10
-        THEN jsonb_build_array(NEW.accuracy_percentage) || (student_performance_metrics.accuracy_trend - 0)
+        THEN jsonb_build_array(NEW.accuracy_percentage) || (
+          SELECT jsonb_agg(value) FROM (
+            SELECT value FROM jsonb_array_elements(student_performance_metrics.accuracy_trend) WITH ORDINALITY
+            WHERE ordinality <= 9
+            ORDER BY ordinality
+          ) sub
+        )
         ELSE jsonb_build_array(NEW.accuracy_percentage) || student_performance_metrics.accuracy_trend
       END,
     last_assessment_date = NOW(),

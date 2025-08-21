@@ -1,5 +1,6 @@
 // lib/ai-lessons/performance-analyzer.ts
 import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface PerformanceData {
   studentId: string;
@@ -31,14 +32,14 @@ export interface AdjustmentRecommendation {
 }
 
 export class PerformanceAnalyzer {
-  private supabase: any;
+  private supabase: SupabaseClient | null = null;
 
   constructor() {
     this.initialize();
   }
 
   private async initialize() {
-    this.supabase = await createClient();
+    this.supabase = await createClient() as unknown as SupabaseClient;
   }
 
   async analyzeStudentPerformance(

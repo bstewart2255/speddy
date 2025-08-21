@@ -1,5 +1,6 @@
 // lib/ai-lessons/assessment-registry.ts
 import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface AssessmentType {
   id: string;
@@ -27,7 +28,7 @@ export interface StudentAssessmentData {
 }
 
 export class AssessmentRegistry {
-  private supabase: any;
+  private supabase: SupabaseClient | null = null;
   private assessmentCache: Map<string, AssessmentType> = new Map();
 
   constructor() {
@@ -35,7 +36,7 @@ export class AssessmentRegistry {
   }
 
   private async initialize() {
-    this.supabase = await createClient();
+    this.supabase = await createClient() as unknown as SupabaseClient;
     await this.loadAssessmentTypes();
   }
 

@@ -1,5 +1,6 @@
 // lib/ai-lessons/lesson-generator.ts
 import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { assessmentRegistry } from './assessment-registry';
 import { performanceAnalyzer } from './performance-analyzer';
@@ -61,7 +62,7 @@ export interface DifferentiationData {
 }
 
 export class LessonGenerator {
-  private supabase: any;
+  private supabase: SupabaseClient | null = null;
   private anthropic: Anthropic | null = null;
 
   constructor() {
@@ -69,7 +70,7 @@ export class LessonGenerator {
   }
 
   private async initialize() {
-    this.supabase = await createClient();
+    this.supabase = await createClient() as unknown as SupabaseClient;
     
     if (process.env.ANTHROPIC_API_KEY) {
       this.anthropic = new Anthropic({
@@ -169,8 +170,12 @@ export class LessonGenerator {
 
   private async callAIForLesson(prompt: any): Promise<string> {
     if (!this.anthropic) {
-      // Return mock lesson for testing
-      return this.generateMockLesson(prompt);
+      // Only return mock lesson in non-production environments
+      if (process.env.NODE_ENV !== 'production') {
+        return this.generateMockLesson(prompt);
+      } else {
+        throw new Error('AI client not initialized and running in production. Cannot generate lesson.');
+      }
     }
 
     try {
