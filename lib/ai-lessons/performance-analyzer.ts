@@ -1,6 +1,7 @@
 // lib/ai-lessons/performance-analyzer.ts
 import { createClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 export interface PerformanceData {
   studentId: string;
@@ -274,15 +275,33 @@ export class PerformanceAnalyzer {
     return mapping[worksheetType] || 'reading';
   }
 
-  async markAdjustmentProcessed(adjustmentId: string): Promise<void> {
-    const supabase = await createClient() as unknown as SupabaseClient;
-    await supabase
-      .from('lesson_adjustment_queue')
-      .update({
-        processed: true,
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', adjustmentId);
+  async markAdjustmentProcessed(adjustmentId: string): Promise<boolean> {
+    try {
+      const supabase = await createClient() as unknown as SupabaseClient;
+      const { error } = await supabase
+        .from('lesson_adjustment_queue')
+        .update({
+          processed: true,
+          processed_at: new Date().toISOString()
+        })
+        .eq('id', adjustmentId);
+
+      if (error) {
+        logger.error('Failed to mark adjustment as processed', error, {
+          adjustmentId,
+          errorMessage: error.message,
+          errorCode: error.code
+        });
+        return false;
+      }
+
+      return true;
+    } catch (exception) {
+      logger.error('Exception while marking adjustment as processed', exception, {
+        adjustmentId
+      });
+      return false;
+    }
   }
 
   async getGroupCompatibility(studentIds: string[]): Promise<{

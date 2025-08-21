@@ -79,15 +79,16 @@ export class AdjustmentQueueManager {
 
   async processAdjustment(adjustmentId: string): Promise<boolean> {
     const supabase = await createClient() as unknown as SupabaseClient;
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('lesson_adjustment_queue')
       .update({
         processed: true,
         processed_at: new Date().toISOString()
       })
-      .eq('id', adjustmentId);
+      .eq('id', adjustmentId)
+      .select('id');
 
-    return !error;
+    return !error && data !== null && data.length === 1;
   }
 
   async processBatch(adjustmentIds: string[]): Promise<number> {
