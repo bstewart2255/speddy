@@ -127,7 +127,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const processed = await adjustmentQueue.processBatch(adjustmentIds);
+      // Get all student IDs belonging to this teacher
+      const { data: teacherStudents } = await supabase
+        .from('students')
+        .select('id')
+        .eq('provider_id', user.id);
+
+      if (!teacherStudents || teacherStudents.length === 0) {
+        return NextResponse.json(
+          { error: 'No students found for this teacher' },
+          { status: 404 }
+        );
+      }
+
+      const studentIds = teacherStudents.map(s => s.id);
+
+      // Verify that all adjustment IDs belong to this teacher's students
+      const { data: validAdjustments } = await supabase
+        .from('lesson_adjustment_queue')
+        .select('id')
+        .in('id', adjustmentIds)
+        .in('student_id', studentIds);
+
+      if (!validAdjustments || validAdjustments.length !== adjustmentIds.length) {
+        return NextResponse.json(
+          { 
+            error: 'Unauthorized: Some adjustments do not belong to your students',
+            requested: adjustmentIds.length,
+            authorized: validAdjustments?.length || 0
+          },
+          { status: 403 }
+        );
+      }
+
+      // Only process the validated adjustment IDs
+      const validatedIds = validAdjustments.map(a => a.id);
+      const processed = await adjustmentQueue.processBatch(validatedIds);
       
       return NextResponse.json({
         success: true,
@@ -138,12 +173,29 @@ export async function POST(request: NextRequest) {
 
     if (action === 'cleanup') {
       const daysOld = body.daysOld || 30;
-      const deleted = await adjustmentQueue.cleanupOldProcessedAdjustments(daysOld);
+      
+      // Get all student IDs belonging to this teacher
+      const { data: teacherStudents } = await supabase
+        .from('students')
+        .select('id')
+        .eq('provider_id', user.id);
+
+      if (!teacherStudents || teacherStudents.length === 0) {
+        return NextResponse.json(
+          { error: 'No students found for this teacher' },
+          { status: 404 }
+        );
+      }
+
+      const studentIds = teacherStudents.map(s => s.id);
+      
+      // Only cleanup adjustments for this teacher's students
+      const deleted = await adjustmentQueue.cleanupOldProcessedAdjustments(daysOld, studentIds);
       
       return NextResponse.json({
         success: true,
         deleted,
-        message: `Cleaned up ${deleted} old adjustments`
+        message: `Cleaned up ${deleted} old adjustments for your students`
       });
     }
 

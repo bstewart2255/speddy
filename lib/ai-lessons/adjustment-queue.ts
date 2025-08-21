@@ -356,15 +356,25 @@ export class AdjustmentQueueManager {
     }
   }
 
-  async cleanupOldProcessedAdjustments(daysOld: number = 30): Promise<number> {
+  async cleanupOldProcessedAdjustments(
+    daysOld: number = 30, 
+    studentIds?: string[]
+  ): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('lesson_adjustment_queue')
       .delete()
       .eq('processed', true)
       .lt('processed_at', cutoffDate.toISOString());
+
+    // If student IDs are provided, only cleanup adjustments for those students
+    if (studentIds && studentIds.length > 0) {
+      query = query.in('student_id', studentIds);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error cleaning up old adjustments:', error);
