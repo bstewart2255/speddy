@@ -7,7 +7,6 @@ import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../.
 import { getStudentAssessment, upsertStudentAssessment, StudentAssessment } from '../../../lib/supabase/queries/student-assessments';
 import { SkillsChecklist } from './skills-checklist';
 import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
-import { ReadingLevelDropdown } from './reading-level-dropdown';
 import { AssessmentInputs } from './assessment-inputs';
 
 interface StudentDetailsModalProps {
@@ -46,8 +45,7 @@ export function StudentDetailsModal({
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
     iep_goals: [],
-    working_skills: [],
-    reading_level: '',
+    working_skills: []
   });
   const [assessment, setAssessment] = useState<StudentAssessment>({});
   const [loading, setLoading] = useState(false);
@@ -89,9 +87,8 @@ export function StudentDetailsModal({
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
               iep_goals: [],
-              working_skills: [],
-              reading_level: '',
-            });
+              working_skills: []
+                      });
           }
 
           // Load assessment data
@@ -320,13 +317,6 @@ export function StudentDetailsModal({
                 </FormGroup>
               </div>
 
-              {/* Reading Level Section */}
-              <div className="grid grid-cols-2 gap-4">
-                <ReadingLevelDropdown
-                  value={details.reading_level}
-                  onChange={(value) => setDetails({...details, reading_level: value})}
-                />
-              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>

@@ -3,6 +3,7 @@
 import { Input, Label, FormGroup } from '../ui/form';
 import { StudentAssessment } from '../../../lib/supabase/queries/student-assessments';
 import { AssessmentSection } from './assessment-section';
+import { GradeMonthReadingLevelInput } from './grade-month-reading-level-input';
 
 interface AssessmentInputsProps {
   assessment: StudentAssessment;
@@ -30,32 +31,38 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
         <div className="space-y-3">
           <div>
             <h5 className="text-sm font-medium text-gray-700 mb-2">Decoding & Fluency</h5>
-            <div className="grid grid-cols-2 gap-3">
-              <FormGroup>
-                <Label htmlFor="dibels_wpm">DIBELS WPM Accuracy (%)</Label>
-                <Input
-                  id="dibels_wpm"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={assessment.dibels_wpm_accuracy ?? ''}
-                  onChange={(e) => updateField('dibels_wpm_accuracy', parseNumberInput(e.target.value))}
-                  placeholder="0-100"
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label htmlFor="nonsense_word">Nonsense Word Fluency</Label>
-                <Input
-                  id="nonsense_word"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={assessment.dibels_nonsense_word_fluency ?? ''}
-                  onChange={(e) => updateField('dibels_nonsense_word_fluency', parseNumberInput(e.target.value))}
-                  placeholder="Score"
-                />
-              </FormGroup>
+            <div className="space-y-3">
+              <GradeMonthReadingLevelInput
+                value={assessment.grade_month_reading_level}
+                onChange={(value) => updateField('grade_month_reading_level', value)}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <FormGroup>
+                  <Label htmlFor="dibels_wpm">DIBELS WPM Accuracy (%)</Label>
+                  <Input
+                    id="dibels_wpm"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={assessment.dibels_wpm_accuracy ?? ''}
+                    onChange={(e) => updateField('dibels_wpm_accuracy', parseNumberInput(e.target.value))}
+                    placeholder="0-100"
+                  />
+                </FormGroup>
+                <FormGroup>
+                  <Label htmlFor="nonsense_word">Nonsense Word Fluency</Label>
+                  <Input
+                    id="nonsense_word"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={assessment.dibels_nonsense_word_fluency ?? ''}
+                    onChange={(e) => updateField('dibels_nonsense_word_fluency', parseNumberInput(e.target.value))}
+                    placeholder="Score"
+                  />
+                </FormGroup>
+              </div>
             </div>
           </div>
 
