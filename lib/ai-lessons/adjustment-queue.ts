@@ -97,20 +97,21 @@ export class AdjustmentQueueManager {
   }
 
   async processBatch(adjustmentIds: string[]): Promise<number> {
-    const { data, error } = await this.supabase
+    const { data, error, count } = await this.supabase
       .from('lesson_adjustment_queue')
       .update({
         processed: true,
         processed_at: new Date().toISOString()
       })
-      .in('id', adjustmentIds);
+      .in('id', adjustmentIds)
+      .select('*', { count: 'exact' });
 
     if (error) {
       console.error('Error processing batch:', error);
       return 0;
     }
 
-    return data?.length || 0;
+    return count || data?.length || 0;
   }
 
   async createAdjustment(
@@ -374,14 +375,17 @@ export class AdjustmentQueueManager {
       query = query.in('student_id', studentIds);
     }
 
-    const { data, error } = await query;
+    // Add select with count to get the number of deleted rows
+    query = query.select('*', { count: 'exact' });
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Error cleaning up old adjustments:', error);
       return 0;
     }
 
-    return data?.length || 0;
+    return count || data?.length || 0;
   }
 }
 
