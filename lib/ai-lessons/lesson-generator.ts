@@ -410,7 +410,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
       .insert({
         provider_id: request.teacherId,
         title: lesson.content.title,
-        content: JSON.stringify(lesson.content),
+        content: lesson.content, // Pass object directly for JSONB column
         duration_minutes: lesson.content.duration,
         created_at: new Date().toISOString()
       })
