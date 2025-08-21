@@ -47,14 +47,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Set defaults
-    const request: LessonGenerationRequest = {
+    const lessonRequest: LessonGenerationRequest = {
       ...body,
       duration: body.duration || 30,
       teacherId: user.id
     };
 
     // Generate the lesson
-    const lesson = await lessonGenerator.generateLesson(request);
+    const lesson = await lessonGenerator.generateLesson(lessonRequest);
 
     // Process any pending adjustments for these students
     for (const studentId of body.studentIds) {

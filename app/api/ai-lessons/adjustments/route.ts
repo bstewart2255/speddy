@@ -17,8 +17,15 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get('view') || 'pending';
 
     if (view === 'high-priority') {
-      // Get high priority adjustments grouped by student
-      const batches = await adjustmentQueue.getHighPriorityAdjustments(5);
+      // Scope to the teacher's students
+      const { data: students } = await supabase
+        .from('students')
+        .select('id')
+        .eq('provider_id', user.id);
+      const studentIds = (students || []).map(s => s.id);
+      
+      // Get high priority adjustments grouped by student, scoped to teacher
+      const batches = await adjustmentQueue.getHighPriorityAdjustments(studentIds, 5);
       
       return NextResponse.json({
         view: 'high-priority',
@@ -57,7 +64,7 @@ export async function GET(request: NextRequest) {
     }
 
     const studentIds = students.map(s => s.id);
-    const allAdjustments = [];
+    const allAdjustments: any[] = [];
 
     for (const studentId of studentIds) {
       const adjustments = await adjustmentQueue.getPendingAdjustments(studentId);

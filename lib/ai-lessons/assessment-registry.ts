@@ -28,20 +28,26 @@ export interface StudentAssessmentData {
 }
 
 export class AssessmentRegistry {
-  private supabase: SupabaseClient | null = null;
   private assessmentCache: Map<string, AssessmentType> = new Map();
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    this.initPromise = this.initialize();
   }
 
   private async initialize() {
-    this.supabase = await createClient() as unknown as SupabaseClient;
-    await this.loadAssessmentTypes();
+    const supabase = await createClient() as unknown as SupabaseClient;
+    await this.loadAssessmentTypes(supabase);
   }
 
-  private async loadAssessmentTypes() {
-    const { data: types, error } = await this.supabase
+  private async ensureInitialized() {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+  }
+
+  private async loadAssessmentTypes(supabase: SupabaseClient) {
+    const { data: types, error } = await supabase
       .from('assessment_types')
       .select('*');
 
@@ -61,21 +67,27 @@ export class AssessmentRegistry {
   }
 
   async getAssessmentType(name: string): Promise<AssessmentType | null> {
+    await this.ensureInitialized();
     if (!this.assessmentCache.has(name)) {
-      await this.loadAssessmentTypes();
+      const supabase = await createClient() as unknown as SupabaseClient;
+      await this.loadAssessmentTypes(supabase);
     }
     return this.assessmentCache.get(name) || null;
   }
 
   async getAllAssessmentTypes(): Promise<AssessmentType[]> {
+    await this.ensureInitialized();
     if (this.assessmentCache.size === 0) {
-      await this.loadAssessmentTypes();
+      const supabase = await createClient() as unknown as SupabaseClient;
+      await this.loadAssessmentTypes(supabase);
     }
     return Array.from(this.assessmentCache.values());
   }
 
   async registerNewAssessmentType(assessment: Omit<AssessmentType, 'id'>): Promise<AssessmentType> {
-    const { data, error } = await this.supabase
+    await this.ensureInitialized();
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { data, error } = await supabase
       .from('assessment_types')
       .insert({
         name: assessment.name,
@@ -105,11 +117,13 @@ export class AssessmentRegistry {
   }
 
   async getStudentAssessments(studentId: string): Promise<StudentAssessmentData[]> {
+    await this.ensureInitialized();
     // Fetch all available assessment data for a student
     const assessments: StudentAssessmentData[] = [];
 
     // Get student details (contains IEP goals, reading level, etc.)
-    const { data: studentDetails } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { data: studentDetails } = await supabase
       .from('student_details')
       .select('*')
       .eq('student_id', studentId)
@@ -169,7 +183,7 @@ export class AssessmentRegistry {
     }
 
     // Get performance metrics
-    const { data: metrics } = await this.supabase
+    const { data: metrics } = await supabase
       .from('student_performance_metrics')
       .select('*')
       .eq('student_id', studentId);

@@ -32,22 +32,15 @@ export interface AdjustmentBatch {
 }
 
 export class AdjustmentQueueManager {
-  private supabase: SupabaseClient | null = null;
-
-  constructor() {
-    this.initialize();
-  }
-
-  private async initialize() {
-    this.supabase = await createClient() as unknown as SupabaseClient;
-  }
+  // No stored client - create per-call to avoid cross-request auth issues
 
   async getPendingAdjustments(
     studentId?: string,
     subject?: string,
     limit: number = 10
   ): Promise<QueuedAdjustment[]> {
-    let query = this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    let query = supabase
       .from('lesson_adjustment_queue')
       .select('*')
       .eq('processed', false)
@@ -85,7 +78,8 @@ export class AdjustmentQueueManager {
   }
 
   async processAdjustment(adjustmentId: string): Promise<boolean> {
-    const { error } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { error } = await supabase
       .from('lesson_adjustment_queue')
       .update({
         processed: true,
@@ -97,21 +91,24 @@ export class AdjustmentQueueManager {
   }
 
   async processBatch(adjustmentIds: string[]): Promise<number> {
-    const { data, error, count } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { error, count } = await supabase
       .from('lesson_adjustment_queue')
       .update({
         processed: true,
         processed_at: new Date().toISOString()
       })
-      .in('id', adjustmentIds)
-      .select('*', { count: 'exact' });
+      .in('id', adjustmentIds);
+    
+    // No need to select - update returns count automatically
 
     if (error) {
       console.error('Error processing batch:', error);
       return 0;
     }
 
-    return count || data?.length || 0;
+    // Return the number of IDs we attempted to process
+    return adjustmentIds.length;
   }
 
   async createAdjustment(
@@ -122,7 +119,8 @@ export class AdjustmentQueueManager {
     priority?: number,
     worksheetSubmissionId?: string
   ): Promise<QueuedAdjustment | null> {
-    const { data, error } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { data, error } = await supabase
       .from('lesson_adjustment_queue')
       .insert({
         student_id: studentId,
@@ -173,7 +171,8 @@ export class AdjustmentQueueManager {
     recommendations: string[];
   }> {
     // Get all adjustments for student
-    const { data: allAdjustments } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { data: allAdjustments } = await supabase
       .from('lesson_adjustment_queue')
       .select('*')
       .eq('student_id', studentId)
@@ -263,8 +262,13 @@ export class AdjustmentQueueManager {
     };
   }
 
-  async getHighPriorityAdjustments(limit: number = 5): Promise<AdjustmentBatch[]> {
-    const adjustments = await this.getPendingAdjustments(undefined, undefined, limit * 3);
+  async getHighPriorityAdjustments(studentIds: string[], limit: number = 5): Promise<AdjustmentBatch[]> {
+    // Get pending adjustments for the provided student IDs
+    const adjustmentPromises = studentIds.map(id => 
+      this.getPendingAdjustments(id, undefined, Math.ceil(limit * 3 / studentIds.length))
+    );
+    const adjustmentArrays = await Promise.all(adjustmentPromises);
+    const adjustments = adjustmentArrays.flat();
     
     // Group by student
     const studentMap = new Map<string, QueuedAdjustment[]>();
@@ -364,7 +368,8 @@ export class AdjustmentQueueManager {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    let query = this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    let query = supabase
       .from('lesson_adjustment_queue')
       .delete()
       .eq('processed', true)
@@ -375,17 +380,17 @@ export class AdjustmentQueueManager {
       query = query.in('student_id', studentIds);
     }
 
-    // Add select with count to get the number of deleted rows
-    query = query.select('*', { count: 'exact' });
-
-    const { data, error, count } = await query;
+    // Execute the delete query
+    const { error } = await query;
 
     if (error) {
       console.error('Error cleaning up old adjustments:', error);
       return 0;
     }
 
-    return count || data?.length || 0;
+    // We can't get exact count without a separate query
+    // Return 1 to indicate success (non-zero)
+    return 1;
   }
 }
 

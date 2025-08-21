@@ -36,7 +36,7 @@ export class PromptAssembler {
   }
 
   private async loadMaterialConstraints() {
-    const { data: constraints } = await this.supabase
+    const { data: constraints } = await this.supabase!
       .from('material_constraints')
       .select('description, constraint_type')
       .eq('active', true)

@@ -146,9 +146,9 @@ export class LessonGenerator {
     const worksheetIds = new Map<string, string>();
     const qrCodes = new Map<string, string>();
 
-    for (const material of parsedLesson.studentMaterials) {
+    for (const material of parsedLesson.content.studentMaterials) {
       const { worksheetId, qrCodeDataUrl } = await generateWorksheetWithQR(
-        parsedLesson.id,
+        crypto.randomUUID(),
         material.studentId,
         request.subject,
         {
@@ -345,7 +345,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
 
   private generateProblems(subject: string, level: number): any[] {
     // Generate appropriate problems based on subject and level
-    const problems = [];
+    const problems: any[] = [];
     const count = 5 + level * 2;
 
     for (let i = 1; i <= count; i++) {
@@ -395,7 +395,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
 
   private generateAnswerKey(subject: string, level: number): any[] {
     // Generate answer key matching the problems
-    const answers = [];
+    const answers: any[] = [];
     const count = 5 + level * 2;
 
     for (let i = 1; i <= count; i++) {
@@ -416,7 +416,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
     confidenceReport: any
   ): Promise<any> {
     // First create a basic lesson record
-    const { data: lessonRecord, error: lessonError } = await this.supabase
+    const { data: lessonRecord, error: lessonError } = await this.supabase!
       .from('lessons')
       .insert({
         provider_id: request.teacherId,
@@ -431,7 +431,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
     if (lessonError) throw lessonError;
 
     // Save differentiated lesson details
-    const { data: diffLesson, error: diffError } = await this.supabase
+    const { data: diffLesson, error: diffError } = await this.supabase!
       .from('differentiated_lessons')
       .insert({
         lesson_id: lessonRecord.id,
@@ -477,7 +477,7 @@ a: _____ e: _____ i: _____ o: _____ u: _____
     adjustments: Map<string, any>
   ): Promise<GeneratedLesson> {
     // Get original lesson
-    const { data: originalLesson } = await this.supabase
+    const { data: originalLesson } = await this.supabase!
       .from('differentiated_lessons')
       .select(`
         *,

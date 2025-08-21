@@ -32,22 +32,15 @@ export interface AdjustmentRecommendation {
 }
 
 export class PerformanceAnalyzer {
-  private supabase: SupabaseClient | null = null;
-
-  constructor() {
-    this.initialize();
-  }
-
-  private async initialize() {
-    this.supabase = await createClient() as unknown as SupabaseClient;
-  }
+  // No stored client - create per-call to avoid cross-request auth issues
 
   async analyzeStudentPerformance(
     studentId: string,
     subject?: string
   ): Promise<PerformanceData[]> {
     // Get performance metrics
-    const query = this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const query = supabase
       .from('student_performance_metrics')
       .select('*')
       .eq('student_id', studentId);
@@ -60,7 +53,7 @@ export class PerformanceAnalyzer {
     if (error || !metrics) return [];
 
     // Get recent worksheet submissions for detailed analysis
-    const { data: submissions } = await this.supabase
+    const { data: submissions } = await supabase
       .from('worksheet_submissions')
       .select(`
         *,
@@ -107,7 +100,8 @@ export class PerformanceAnalyzer {
     const latestAccuracy = performance.recentAccuracy[0] || 0;
     
     // Check adjustment queue for any pending adjustments
-    const { data: pendingAdjustments } = await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    const { data: pendingAdjustments } = await supabase
       .from('lesson_adjustment_queue')
       .select('*')
       .eq('student_id', studentId)
@@ -281,7 +275,8 @@ export class PerformanceAnalyzer {
   }
 
   async markAdjustmentProcessed(adjustmentId: string): Promise<void> {
-    await this.supabase
+    const supabase = await createClient() as unknown as SupabaseClient;
+    await supabase
       .from('lesson_adjustment_queue')
       .update({
         processed: true,
