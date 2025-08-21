@@ -17,33 +17,35 @@ export function GradeMonthReadingLevelInput({
   className 
 }: GradeMonthReadingLevelInputProps) {
   const gradeValue = value ? Math.floor(value) : null;
-  const monthValue = value ? Math.round((value - Math.floor(value)) * 10) : null;
+  const monthValue = value ? Math.round((value - Math.floor(value)) * 100) : null;
 
   const handleGradeChange = (grade: string) => {
     const gradeNum = grade === 'K' ? 0 : parseInt(grade);
     const currentMonth = monthValue || 1;
-    onChange(gradeNum + (currentMonth / 10));
+    onChange(gradeNum + (currentMonth / 100));
   };
 
   const handleMonthChange = (month: string) => {
     const monthNum = parseInt(month);
-    // Validate month is between 1-9
-    if (monthNum < 1 || monthNum > 9) {
+    // Validate month is between 1-12
+    if (monthNum < 1 || monthNum > 12) {
       console.error('Invalid month value:', monthNum);
       return;
     }
     const currentGrade = gradeValue ?? 0;
-    onChange(currentGrade + (monthNum / 10));
+    onChange(currentGrade + (monthNum / 100));
   };
 
   const formatDisplay = () => {
     if (value === null || value === undefined) return "Not assessed";
     const grade = Math.floor(value);
-    const month = Math.round((value - grade) * 10);
+    const month = Math.round((value - grade) * 100);
     // Ensure month is within valid range
-    const validMonth = Math.min(9, Math.max(1, month));
+    const validMonth = Math.min(12, Math.max(1, month));
     const gradeLabel = grade === 0 ? 'Kindergarten' : `Grade ${grade}`;
-    return `${gradeLabel}, Month ${validMonth} (${value.toFixed(1)})`;
+    // Format with two decimal places, padding month with leading zero if needed
+    const formattedValue = `${grade}.${validMonth.toString().padStart(2, '0')}`;
+    return `${gradeLabel}, Month ${validMonth} (${formattedValue})`;
   };
 
   return (
@@ -92,6 +94,9 @@ export function GradeMonthReadingLevelInput({
             <SelectItem value="7">Month 7</SelectItem>
             <SelectItem value="8">Month 8</SelectItem>
             <SelectItem value="9">Month 9</SelectItem>
+            <SelectItem value="10">Month 10</SelectItem>
+            <SelectItem value="11">Month 11</SelectItem>
+            <SelectItem value="12">Month 12</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -99,7 +104,7 @@ export function GradeMonthReadingLevelInput({
         {formatDisplay()}
       </p>
       <p className="text-xs text-muted-foreground">
-        Example: 2nd grade, 5th month = 2.5 | Kindergarten, 3rd month = 0.3 | Max: Grade.9
+        Example: 2nd grade, 5th month = 2.05 | 10th month = 2.10 | Kindergarten, 3rd month = 0.03
       </p>
     </div>
   );
