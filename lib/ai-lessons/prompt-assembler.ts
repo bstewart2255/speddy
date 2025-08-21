@@ -157,10 +157,13 @@ CRITICAL RULES:
     const compatibility = await performanceAnalyzer.getGroupCompatibility(context.studentIds);
     prompt += `\nGROUPING STRATEGY: ${compatibility.groupingStrategy || 'Mixed-ability grouping with peer support'}\n`;
 
+    // Calculate individual work minutes (ensure non-negative)
+    const individualWorkMinutes = Math.max(0, Math.round(context.duration - 10));
+
     // Add shared components guidance
     prompt += `\nSHARED COMPONENTS:
 - Opening: Whole group introduction (2-3 minutes) that naturally accommodates all levels
-- Individual Work: Each student works on their differentiated worksheet (${context.duration - 10} minutes)
+- Individual Work: Each student works on their differentiated worksheet (${individualWorkMinutes} minutes)
 - Closing: Share out where each student can participate at their level (5 minutes)\n`;
 
     // Add differentiation requirements
