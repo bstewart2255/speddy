@@ -569,11 +569,13 @@ export class OptimizedScheduler {
         end_time: slot.endTime,
         service_type: this.providerRole,
         assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
+        assigned_to_specialist_id: null,
         delivered_by: this.providerRole === "sea" ? "sea" : "provider",
         completed_at: null,
         completed_by: null,
         session_notes: null,
-        session_date: null
+        session_date: null,
+        manually_placed: false
       });
     }
 
@@ -1039,11 +1041,13 @@ export class OptimizedScheduler {
         end_time: session.end_time,
         service_type: session.service_type,
         assigned_to_sea_id: session.assigned_to_sea_id,
+        assigned_to_specialist_id: session.assigned_to_specialist_id || null,
         delivered_by: session.delivered_by,
         completed_at: session.completed_at,
         completed_by: session.completed_by,
         session_notes: session.session_notes,
         session_date: session.session_date,
+        manually_placed: session.manually_placed || false,
         created_at: new Date().toISOString(),
       });
     }

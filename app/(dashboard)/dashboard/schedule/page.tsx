@@ -215,6 +215,7 @@ export default function SchedulePage() {
     specialActivities,
     schoolHours,
     seaProfiles,
+    otherSpecialists,
     unscheduledCount,
     currentUserId,
     providerRole,
@@ -469,6 +470,7 @@ export default function SchedulePage() {
             selectedSession={selectedSession}
             popupPosition={popupPosition}
             seaProfiles={seaProfiles}
+            otherSpecialists={otherSpecialists}
             providerRole={providerRole}
             currentUserId={currentUserId}
             gridConfig={gridConfig}
@@ -490,6 +492,17 @@ export default function SchedulePage() {
           <div className="mt-4 flex justify-between items-center">
             <div className="text-sm text-gray-600">
               Total Sessions: {filteredSessionsCount}
+            </div>
+            {/* Legend for assignment indicators */}
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded ring-2 ring-orange-400 ring-inset"></div>
+                <span>SEA Assigned</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded ring-2 ring-purple-400 ring-inset"></div>
+                <span>Specialist Assigned</span>
+              </div>
             </div>
           </div>
         </div>

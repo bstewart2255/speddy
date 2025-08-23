@@ -25,6 +25,7 @@ interface ScheduleGridProps {
   selectedSession: any | null;
   popupPosition: any | null;
   seaProfiles: any[];
+  otherSpecialists: any[];
   providerRole: string;
   currentUserId: string | null;
   sessionTags: Record<string, string>;
@@ -76,6 +77,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   selectedSession,
   popupPosition,
   seaProfiles,
+  otherSpecialists,
   providerRole,
   currentUserId,
   sessionTags,
@@ -139,9 +141,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   const getFilteredSessions = (allSessions: any[]) => {
     switch (sessionFilter) {
       case 'mine':
-        return allSessions.filter(s => s.delivered_by !== 'sea');
+        return allSessions.filter(s => s.delivered_by === 'provider');
       case 'sea':
-        return allSessions.filter(s => s.delivered_by === 'sea');
+        return allSessions.filter(s => s.delivered_by === 'sea' || s.delivered_by === 'specialist');
       default:
         return allSessions;
     }
@@ -370,7 +372,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           ? GRADE_COLOR_MAP[student.grade_level] || 'bg-gray-400'
                           : 'bg-gray-400';
 
-                      const seaAssignmentClass = session.delivered_by === 'sea' ? 'ring-2 ring-orange-400 ring-inset' : '';
+                      const assignmentClass = 
+                        session.delivered_by === 'sea' ? 'ring-2 ring-orange-400 ring-inset' : 
+                        session.delivered_by === 'specialist' ? 'ring-2 ring-purple-400 ring-inset' : '';
                       const columnIndex = sessionColumns.get(session.id) ?? 0;
                       const fixedWidth = 25;
                       const gap = 1;
@@ -384,7 +388,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           draggable
                           onDragStart={(e) => onDragStart(e, session)}
                           onDragEnd={onDragEnd}
-                          className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${seaAssignmentClass} ${
+                          className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${assignmentClass} ${
                             draggedSession?.id === session.id ? 'opacity-50 cursor-grabbing' : 'cursor-grab'
                           }`}
                           style={{
@@ -438,6 +442,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
           student={students.find((s: any) => s.id === selectedSession.student_id)}
           triggerRect={popupPosition}
           seaProfiles={seaProfiles}
+          otherSpecialists={otherSpecialists}
           sessionTags={sessionTags}
           setSessionTags={setSessionTags}
           onClose={onPopupClose}

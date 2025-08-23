@@ -21,6 +21,7 @@ interface ScheduleData {
   specialActivities: SpecialActivity[];
   schoolHours: any[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: string }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -40,6 +41,7 @@ export function useScheduleData() {
     specialActivities: [],
     schoolHours: [],
     seaProfiles: [],
+    otherSpecialists: [],
     unscheduledCount: 0,
     currentUserId: null,
     providerRole: '',
@@ -147,6 +149,8 @@ export function useScheduleData() {
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
+      let otherSpecialists: Array<{ id: string; full_name: string; role: string }> = [];
+      
       if (profile.role === 'resource') {
         try {
           // Get SEAs supervised by this provider
@@ -168,8 +172,29 @@ export function useScheduleData() {
             
             console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
+
+          // Fetch other specialists at the same school
+          const { data: specialists, error: specialistsError } = await supabase
+            .from('profiles')
+            .select('id, full_name, role')
+            .eq('school_id', currentSchool.school_id)
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+            .neq('id', user.id)
+            .order('full_name', { ascending: true });
+
+          if (specialistsError) {
+            console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
+          } else if (specialists) {
+            otherSpecialists = specialists.map(specialist => ({
+              id: specialist.id,
+              full_name: specialist.full_name,
+              role: specialist.role
+            }));
+            
+            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+          }
         } catch (error) {
-          console.error('[useScheduleData] Exception fetching SEA profiles:', error);
+          console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
         }
       }
 
@@ -180,6 +205,7 @@ export function useScheduleData() {
         specialActivities: activitiesResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
+        otherSpecialists,
         unscheduledCount: unscheduledCountData,
         currentUserId: user.id,
         providerRole: profile.role,
