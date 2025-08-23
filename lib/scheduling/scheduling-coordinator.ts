@@ -145,7 +145,14 @@ export class SchedulingCoordinator {
       provider_id: this.providerId,
       service_type: this.providerRole,
       assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
-      delivered_by: this.providerRole === 'sea' ? 'sea' as const : 'provider' as const
+      assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+        ? this.providerId
+        : (session.assigned_to_specialist_id ?? null),
+      delivered_by: this.providerRole === 'sea'
+        ? 'sea' as const
+        : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+          ? 'specialist' as const
+          : 'provider' as const
     }));
     
     // Update context if successful

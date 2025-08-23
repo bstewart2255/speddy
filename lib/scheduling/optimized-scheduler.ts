@@ -569,8 +569,13 @@ export class OptimizedScheduler {
         end_time: slot.endTime,
         service_type: this.providerRole,
         assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
-        assigned_to_specialist_id: null,
-        delivered_by: this.providerRole === "sea" ? "sea" : "provider",
+        assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole) 
+          ? this.providerId : null,
+        delivered_by: this.providerRole === "sea" 
+          ? "sea" 
+          : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+            ? "specialist"
+            : "provider",
         completed_at: null,
         completed_by: null,
         session_notes: null,

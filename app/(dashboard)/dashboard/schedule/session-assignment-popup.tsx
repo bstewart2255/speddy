@@ -9,7 +9,7 @@ interface SessionAssignmentPopupProps {
   student: any;
   triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: string }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   sessionTags: Record<string, string>;
   setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onClose: () => void;
@@ -79,11 +79,21 @@ export function SessionAssignmentPopup({
       const updateData: any = {};
 
       if (isSeaAssignment) {
+        // Validate assignment ID
+        if (!assignmentId) {
+          alert('Invalid SEA selection.');
+          return;
+        }
         // Assigning to SEA
         updateData.delivered_by = 'sea';
         updateData.assigned_to_sea_id = assignmentId;
         updateData.assigned_to_specialist_id = null; // Clear specialist assignment
       } else if (isSpecialistAssignment) {
+        // Validate assignment ID
+        if (!assignmentId) {
+          alert('Invalid specialist selection.');
+          return;
+        }
         // Assigning to another specialist
         updateData.delivered_by = 'specialist';
         updateData.assigned_to_specialist_id = assignmentId;
@@ -101,11 +111,13 @@ export function SessionAssignmentPopup({
         .eq("id", session.id);
 
       if (error) {
-        // Check if it's a permission error
-        if (error.message?.includes('can_assign_sea_to_session') || 
-            error.message?.includes('can_assign_specialist_to_session') ||
-            error.message?.includes('policy')) {
-          throw new Error('You do not have permission to make this assignment. The person may need to be shared at your school first.');
+        // Check if it's a permission error and provide specific message
+        if (error.message?.includes('can_assign_sea_to_session')) {
+          throw new Error('You do not have permission to assign sessions to this SEA. They may need to be shared at your school first.');
+        } else if (error.message?.includes('can_assign_specialist_to_session')) {
+          throw new Error('You do not have permission to assign sessions to this specialist. Only Resource Specialists can assign to other specialists at the same school.');
+        } else if (error.message?.includes('policy')) {
+          throw new Error('You do not have permission to make this assignment.');
         }
         throw error;
       }

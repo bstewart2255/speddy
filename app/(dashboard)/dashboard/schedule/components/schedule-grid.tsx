@@ -24,8 +24,8 @@ interface ScheduleGridProps {
   dragPosition: any | null;
   selectedSession: any | null;
   popupPosition: any | null;
-  seaProfiles: any[];
-  otherSpecialists: any[];
+  seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   providerRole: string;
   currentUserId: string | null;
   sessionTags: Record<string, string>;
@@ -143,7 +143,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
       case 'mine':
         return allSessions.filter(s => s.delivered_by === 'provider');
       case 'sea':
-        return allSessions.filter(s => s.delivered_by === 'sea' || s.delivered_by === 'specialist');
+        return allSessions.filter(s => s.delivered_by === 'sea');
+      case 'specialist':
+        return allSessions.filter(s => s.delivered_by === 'specialist');
       default:
         return allSessions;
     }
@@ -373,8 +375,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           : 'bg-gray-400';
 
                       const assignmentClass = 
-                        session.delivered_by === 'sea' ? 'ring-2 ring-orange-400 ring-inset' : 
-                        session.delivered_by === 'specialist' ? 'ring-2 ring-purple-400 ring-inset' : '';
+                        session.delivered_by === 'sea' ? 'border-2 border-orange-400' : 
+                        session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
                       const columnIndex = sessionColumns.get(session.id) ?? 0;
                       const fixedWidth = 25;
                       const gap = 1;

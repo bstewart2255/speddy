@@ -2,8 +2,13 @@
 ALTER TABLE schedule_sessions 
 ADD COLUMN IF NOT EXISTS assigned_to_specialist_id UUID REFERENCES profiles(id);
 
--- Add comment for documentation
-COMMENT ON COLUMN schedule_sessions.assigned_to_specialist_id IS 'ID of the specialist (resource, speech, OT, counseling) assigned to deliver this session';
+-- Add manually_placed column with default value
+ALTER TABLE schedule_sessions
+ADD COLUMN IF NOT EXISTS manually_placed BOOLEAN DEFAULT false NOT NULL;
+
+-- Add comments for documentation
+COMMENT ON COLUMN schedule_sessions.assigned_to_specialist_id IS 'ID of the specialist (speech, OT, counseling) assigned to deliver this session';
+COMMENT ON COLUMN schedule_sessions.manually_placed IS 'Whether this session was manually placed by the user';
 
 -- Create index for performance
 CREATE INDEX IF NOT EXISTS idx_schedule_sessions_assigned_specialist 
@@ -49,8 +54,13 @@ BEGIN
   FROM profiles
   WHERE id = specialist_id;
   
-  -- Target must be a specialist role (not SEA or admin)
-  IF specialist_record.role NOT IN ('resource', 'speech', 'ot', 'counseling', 'specialist') THEN
+  -- Target must be a specialist role (not SEA, admin, or resource to avoid confusion)
+  IF specialist_record.role NOT IN ('speech', 'ot', 'counseling', 'specialist') THEN
+    RETURN FALSE;
+  END IF;
+  
+  -- Prevent self-assignment
+  IF provider_id = specialist_id THEN
     RETURN FALSE;
   END IF;
   
@@ -94,7 +104,7 @@ BEGIN
     FROM profiles 
     WHERE id = current_user_id
   )
-  AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist')
+  AND p.role IN ('speech', 'ot', 'counseling', 'specialist')
   AND p.id != current_user_id
   ORDER BY p.full_name;
 END;
