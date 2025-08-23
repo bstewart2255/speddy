@@ -78,11 +78,12 @@ export function CalendarWeekView({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDaySessions, setSelectedDaySessions] = useState<ScheduleSession[]>([]);
   const [aiContent, setAiContent] = useState<string | null>(null);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [savedLessons, setSavedLessons] = useState<Map<string, any>>(new Map());
-  const [loadingSavedLessons, setLoadingSavedLessons] = useState(true);
+  const [loadingSavedLessons, setLoadingSavedLessons] = useState(false);
   const [viewingSavedLesson, setViewingSavedLesson] = useState(false);
   
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -237,8 +238,6 @@ export function CalendarWeekView({
     // Skip if weekDates is not ready
     if (!weekDates || weekDates.length === 0) return;
 
-    // Skip if already loading
-    if (loadingSavedLessons) return;
 
     const loadSavedLessons = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -500,7 +499,7 @@ export function CalendarWeekView({
           session_data: slotSessions,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'provider_id,lesson_date,time_slot' });
 
       if (error) {
         throw error;
@@ -626,6 +625,7 @@ export function CalendarWeekView({
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons && dayLessons[timeSlot]) {
       setSelectedDate(date);
+      setSelectedTimeSlot(timeSlot);
       setAiContent(dayLessons[timeSlot].content);
       setViewingSavedLesson(true);
       setModalOpen(true);
@@ -637,6 +637,7 @@ export function CalendarWeekView({
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons && dayLessons[timeSlot]) {
       setSelectedDate(date);
+      setSelectedTimeSlot(timeSlot);
       const daySessions = sessionsState.filter((s) => {
         const sessionDate = new Date(weekDates[0]);
         sessionDate.setDate(
@@ -661,6 +662,7 @@ export function CalendarWeekView({
     }
     
     setSelectedDate(date);
+    setSelectedTimeSlot(timeSlot);
     setSelectedDaySessions(slotSessions);
     setModalOpen(true);
     setGeneratingContent(true);
@@ -1163,9 +1165,10 @@ export function CalendarWeekView({
         onClose={() => {
           setModalOpen(false);
           setAiContent(null);
+          setSelectedTimeSlot(null);
           setViewingSavedLesson(false);
         }}
-        timeSlot={selectedDate ? formatDate(selectedDate) : ''}
+        timeSlot={selectedTimeSlot ? formatTimeSlot(selectedTimeSlot) : ''}
         students={Array.from(students.entries()).map(([id, student]) => ({
           id,
           student_number: '',
