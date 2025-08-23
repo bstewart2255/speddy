@@ -27,8 +27,19 @@ SET time_slot =
     WHEN nl.slot_number = 7 THEN '11:30'
     WHEN nl.slot_number = 8 THEN '12:00'
     WHEN nl.slot_number = 9 THEN '12:30'
-    ELSE CONCAT(LPAD(CAST(8 + FLOOR(nl.slot_number / 2) AS TEXT), 2, '0'), ':', 
-                CASE WHEN nl.slot_number % 2 = 0 THEN '00' ELSE '30' END)
+    WHEN nl.slot_number = 10 THEN '13:00'
+    WHEN nl.slot_number = 11 THEN '13:30'
+    WHEN nl.slot_number = 12 THEN '14:00'
+    WHEN nl.slot_number = 13 THEN '14:30'
+    WHEN nl.slot_number = 14 THEN '15:00'
+    WHEN nl.slot_number = 15 THEN '15:30'
+    WHEN nl.slot_number = 16 THEN '16:00'
+    WHEN nl.slot_number = 17 THEN '16:30'
+    WHEN nl.slot_number = 18 THEN '17:00'
+    WHEN nl.slot_number = 19 THEN '17:30'
+    WHEN nl.slot_number = 20 THEN '18:00'
+    -- For any additional duplicates beyond 21, default to last reasonable slot
+    ELSE '18:00'
   END
 FROM numbered_lessons nl
 WHERE public.ai_generated_lessons.id = nl.id;
