@@ -25,7 +25,7 @@ interface ScheduleGridProps {
   selectedSession: any | null;
   popupPosition: any | null;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   providerRole: string;
   currentUserId: string | null;
   sessionTags: Record<string, string>;

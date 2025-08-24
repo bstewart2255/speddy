@@ -68,8 +68,8 @@ BEGIN
   FROM profiles
   WHERE id = specialist_id;
   
-  -- Target must be a specialist role (not SEA, admin, or resource to avoid confusion)
-  IF specialist_record.role NOT IN ('speech', 'ot', 'counseling', 'specialist') THEN
+  -- Target must be a specialist role (not SEA or admin)
+  IF specialist_record.role NOT IN ('resource', 'speech', 'ot', 'counseling', 'specialist') THEN
     RETURN FALSE;
   END IF;
   
@@ -118,7 +118,7 @@ BEGIN
     FROM profiles 
     WHERE id = current_user_id
   )
-  AND p.role IN ('speech', 'ot', 'counseling', 'specialist')
+  AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist')
   AND p.id != current_user_id
   ORDER BY p.full_name;
 END;

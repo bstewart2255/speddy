@@ -21,7 +21,7 @@ interface ScheduleData {
   specialActivities: SpecialActivity[];
   schoolHours: any[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -149,7 +149,7 @@ export function useScheduleData() {
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
-      let otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }> = [];
+      let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }> = [];
       
       if (profile.role === 'resource') {
         try {
@@ -173,12 +173,12 @@ export function useScheduleData() {
             console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
-          // Fetch other specialists at the same school (excluding resource role to avoid confusion)
+          // Fetch other specialists at the same school (including other resource specialists)
           const { data: specialists, error: specialistsError } = await supabase
             .from('profiles')
             .select('id, full_name, role')
             .eq('school_id', currentSchool.school_id)
-            .in('role', ['speech', 'ot', 'counseling', 'specialist'])
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
             .neq('id', user.id)
             .order('full_name', { ascending: true });
 

@@ -9,7 +9,7 @@ interface SessionAssignmentPopupProps {
   student: any;
   triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'speech' | 'ot' | 'counseling' | 'specialist' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   sessionTags: Record<string, string>;
   setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onClose: () => void;
