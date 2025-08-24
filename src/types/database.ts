@@ -521,12 +521,14 @@ export interface Database {
           end_time: string
           service_type: string
           assigned_to_sea_id: string | null
-          delivered_by: 'provider' | 'sea'
+          assigned_to_specialist_id: string | null
+          delivered_by: 'provider' | 'sea' | 'specialist'
           created_at: string
           completed_at: string | null
           completed_by: string | null
           session_date: string | null
           session_notes: string | null
+          manually_placed: boolean
         }
         Insert: {
           id?: string
@@ -537,12 +539,14 @@ export interface Database {
           end_time: string
           service_type: string
           assigned_to_sea_id?: string | null
-          delivered_by?: 'provider' | 'sea'
+          assigned_to_specialist_id?: string | null
+          delivered_by?: 'provider' | 'sea' | 'specialist'
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
           session_date?: string | null
           session_notes?: string | null
+          manually_placed?: boolean
         }
         Update: {
           id?: string
@@ -553,12 +557,14 @@ export interface Database {
           end_time?: string
           service_type?: string
           assigned_to_sea_id?: string | null
-          delivered_by?: 'provider' | 'sea'
+          assigned_to_specialist_id?: string | null
+          delivered_by?: 'provider' | 'sea' | 'specialist'
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
           session_date?: string | null
           session_notes?: string | null
+          manually_placed?: boolean
         }
       },
       lessons: {

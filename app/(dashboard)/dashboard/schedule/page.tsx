@@ -215,6 +215,7 @@ export default function SchedulePage() {
     specialActivities,
     schoolHours,
     seaProfiles,
+    otherSpecialists,
     unscheduledCount,
     currentUserId,
     providerRole,
@@ -414,11 +415,15 @@ export default function SchedulePage() {
   // Count filtered sessions
   const filteredSessionsCount = providerRole === 'sea' && currentUserId
     ? sessions.filter(s => s.assigned_to_sea_id === currentUserId).length
-    : sessionFilter === 'mine'
-      ? sessions.filter(s => s.delivered_by !== 'sea').length
-      : sessionFilter === 'sea'
-        ? sessions.filter(s => s.delivered_by === 'sea').length
-        : sessions.length;
+    : ['speech', 'ot', 'counseling', 'specialist'].includes(providerRole) && currentUserId
+      ? sessions.filter(s => s.assigned_to_specialist_id === currentUserId).length
+      : sessionFilter === 'mine'
+        ? sessions.filter(s => s.delivered_by === 'provider').length
+        : sessionFilter === 'sea'
+          ? sessions.filter(s => s.delivered_by === 'sea').length
+          : sessionFilter === 'specialist'
+            ? sessions.filter(s => s.delivered_by === 'specialist').length
+            : sessions.length;
 
   return (
     <ScheduleErrorBoundary>
@@ -446,6 +451,7 @@ export default function SchedulePage() {
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
+            showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
@@ -469,6 +475,7 @@ export default function SchedulePage() {
             selectedSession={selectedSession}
             popupPosition={popupPosition}
             seaProfiles={seaProfiles}
+            otherSpecialists={otherSpecialists}
             providerRole={providerRole}
             currentUserId={currentUserId}
             gridConfig={gridConfig}
@@ -490,6 +497,17 @@ export default function SchedulePage() {
           <div className="mt-4 flex justify-between items-center">
             <div className="text-sm text-gray-600">
               Total Sessions: {filteredSessionsCount}
+            </div>
+            {/* Legend for assignment indicators */}
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-orange-400"></div>
+                <span>SEA Assigned</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-purple-400"></div>
+                <span>Specialist Assigned</span>
+              </div>
             </div>
           </div>
         </div>
