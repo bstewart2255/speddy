@@ -173,25 +173,80 @@ export function useScheduleData() {
             console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
-          // Fetch other specialists at the same school (including other resource specialists)
-          const { data: specialists, error: specialistsError } = await supabase
-            .from('profiles')
-            .select('id, full_name, role')
-            .eq('school_id', currentSchool.school_id)
-            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
-            .neq('id', user.id)
-            .order('full_name', { ascending: true });
+          // Try using the database function first (it handles school_id matching internally)
+          const { data: functionSpecialists, error: functionError } = await supabase
+            .rpc('get_available_specialists', { current_user_id: user.id });
+          
+          if (functionError) {
+            console.error('[useScheduleData] Error calling get_available_specialists function:', functionError);
+            
+            // Fallback to direct query
+            console.log('[useScheduleData] Falling back to direct query...');
+            
+            // First, check the current user's school_id
+            const { data: currentUserProfile } = await supabase
+              .from('profiles')
+              .select('school_id')
+              .eq('id', user.id)
+              .single();
+            
+            console.log('[useScheduleData] Current user school_id:', currentUserProfile?.school_id);
+            console.log('[useScheduleData] Current school from context:', currentSchool.school_id);
 
-          if (specialistsError) {
-            console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
-          } else if (specialists) {
-            otherSpecialists = specialists.map(specialist => ({
+            // Build the query for other specialists
+            let specialistsQuery = supabase
+              .from('profiles')
+              .select('id, full_name, role, school_id')
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+              .neq('id', user.id);
+            
+            // Use the user's actual school_id from their profile, not from currentSchool
+            if (currentUserProfile?.school_id) {
+              console.log('[useScheduleData] Adding school_id filter from user profile:', currentUserProfile.school_id);
+              specialistsQuery = specialistsQuery.eq('school_id', currentUserProfile.school_id);
+            } else if (currentSchool.school_id) {
+              console.log('[useScheduleData] Adding school_id filter from context:', currentSchool.school_id);
+              specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
+            } else {
+              console.log('[useScheduleData] WARNING: No school_id available, cannot filter specialists by school');
+            }
+            
+            const { data: specialists, error: specialistsError } = await specialistsQuery
+              .order('full_name', { ascending: true });
+
+            if (specialistsError) {
+              console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
+              
+              // Try alternative query without school_id filter to see what's available
+              const { data: allSpecialists } = await supabase
+                .from('profiles')
+                .select('id, full_name, role, school_id')
+                .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+                .neq('id', user.id)
+                .order('full_name', { ascending: true });
+              
+              console.log('[useScheduleData] All specialists in database (without school filter):', 
+                allSpecialists?.map(s => `${s.full_name} (${s.role}, school_id: ${s.school_id})`).join(', '));
+            } else if (specialists) {
+              otherSpecialists = specialists.map(specialist => ({
+                id: specialist.id,
+                full_name: specialist.full_name,
+                role: specialist.role
+              }));
+              
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+              console.log('[useScheduleData] Specialists with school_ids:', 
+                specialists.map(s => `${s.full_name} (school_id: ${s.school_id})`).join(', '));
+            }
+          } else if (functionSpecialists) {
+            // Successfully got specialists from the database function
+            otherSpecialists = functionSpecialists.map(specialist => ({
               id: specialist.id,
               full_name: specialist.full_name,
               role: specialist.role
             }));
             
-            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists using database function: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
           }
         } catch (error) {
           console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
