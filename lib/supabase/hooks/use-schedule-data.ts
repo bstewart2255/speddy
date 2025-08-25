@@ -173,15 +173,31 @@ export function useScheduleData() {
             console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
-          // Try using the database function first (it handles school_id matching internally)
-          const { data: functionSpecialists, error: functionError } = await supabase
-            .rpc('get_available_specialists', { current_user_id: user.id });
+          // Skip the database function for now since it may not be deployed yet
+          // Try direct query approach instead
+          let useDirectQuery = true;
           
-          if (functionError) {
-            console.error('[useScheduleData] Error calling get_available_specialists function:', functionError);
+          if (!useDirectQuery) {
+            // Database function approach (disabled for now)
+            console.log('[useScheduleData] Calling get_available_specialists RPC with user.id:', user.id);
+            const { data: functionSpecialists, error: functionError } = await supabase
+              .rpc('get_available_specialists', { current_user_id: user.id });
             
-            // Fallback to direct query
-            console.log('[useScheduleData] Falling back to direct query...');
+            if (!functionError && functionSpecialists) {
+              // Successfully got specialists from the database function
+              otherSpecialists = functionSpecialists.map(specialist => ({
+                id: specialist.id,
+                full_name: specialist.full_name,
+                role: specialist.role
+              }));
+              
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists using database function: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+              useDirectQuery = false;
+            }
+          }
+          
+          if (useDirectQuery) {
+            console.log('[useScheduleData] Using direct query approach...');
             
             // First, check the current user's school_id
             const { data: currentUserProfile } = await supabase
@@ -238,15 +254,6 @@ export function useScheduleData() {
               console.log('[useScheduleData] Specialists with school_ids:', 
                 specialists.map(s => `${s.full_name} (school_id: ${s.school_id})`).join(', '));
             }
-          } else if (functionSpecialists) {
-            // Successfully got specialists from the database function
-            otherSpecialists = functionSpecialists.map(specialist => ({
-              id: specialist.id,
-              full_name: specialist.full_name,
-              role: specialist.role
-            }));
-            
-            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists using database function: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
           }
         } catch (error) {
           console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
