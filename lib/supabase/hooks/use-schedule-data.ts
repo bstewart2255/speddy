@@ -31,7 +31,6 @@ interface ScheduleData {
 
 export function useScheduleData() {
   const { currentSchool } = useSchool();
-  const supabase = createClient<Database>();
   
   // Core data state
   const [data, setData] = useState<ScheduleData>({
@@ -70,6 +69,8 @@ export function useScheduleData() {
       setData(prev => ({ ...prev, loading: false }));
       return;
     }
+
+    const supabase = createClient<Database>();
 
     try {
       setData(prev => ({ ...prev, loading: true, error: null }));
@@ -213,15 +214,11 @@ export function useScheduleData() {
             .rpc('get_available_specialists', { current_user_id: user.id });
 
           if (specialistsError) {
-            console.error('[useScheduleData] Error fetching other specialists via RPC:', {
-              error: specialistsError,
-              message: specialistsError.message,
-              code: specialistsError.code,
-              details: specialistsError.details,
-              hint: specialistsError.hint,
-              status: (specialistsError as any).status,
-              statusText: (specialistsError as any).statusText
-            });
+            console.error('[useScheduleData] Error fetching other specialists via RPC:', 
+              specialistsError.message || 'Unknown RPC error',
+              'Code:', specialistsError.code,
+              'Details:', specialistsError.details,
+              'Hint:', specialistsError.hint);
             
             // Fallback to direct query if RPC fails (e.g., function not deployed yet)
             console.log('[useScheduleData] Falling back to direct query for specialists');
@@ -305,7 +302,7 @@ export function useScheduleData() {
         error: error instanceof Error ? error.message : 'Failed to fetch schedule data',
       }));
     }
-  }, [currentSchool, supabase]);
+  }, [currentSchool]);
 
   // Initial data fetch
   useEffect(() => {
@@ -342,6 +339,7 @@ export function useScheduleData() {
   useEffect(() => {
     if (!currentSchool || !data.currentUserId) return;
 
+    const supabase = createClient<Database>();
     const channel = supabase.channel('schedule-changes');
     
     // Subscribe to sessions where user is the provider
@@ -398,7 +396,7 @@ export function useScheduleData() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentSchool, data.currentUserId, data.providerRole, fetchData, supabase]);
+  }, [currentSchool, data.currentUserId, data.providerRole, fetchData]);
 
   // Optimistic update function
   const optimisticUpdateSession = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {
