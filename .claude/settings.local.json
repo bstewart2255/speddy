@@ -45,7 +45,10 @@
       "mcp__context7__get-library-docs",
       "Bash(psql:*)",
       "mcp__supabase__apply_migration",
-      "mcp__supabase__execute_sql"
+      "mcp__supabase__execute_sql",
+      "Bash(npm run dev)",
+      "Bash(gh pr list --head fix/react-hook-dependencies-build-errors)",
+      "mcp__github__get_issue"
     ],
     "deny": []
   },

@@ -277,6 +277,134 @@ export interface Database {
           updated_at?: string
         }
       },
+      student_assessments: {
+        Row: {
+          id: string
+          student_id: string
+          dibels_wpm_accuracy: number | null
+          dibels_nonsense_word_fluency: number | null
+          reading_comprehension_accuracy: number | null
+          lexile_level: string | null
+          fp_dra_level: string | null
+          phoneme_segmentation_fluency: number | null
+          sight_words_known: number | null
+          sight_words_list_level: string | null
+          math_computation_addition_accuracy: number | null
+          math_computation_subtraction_accuracy: number | null
+          math_computation_multiplication_accuracy: number | null
+          math_computation_division_accuracy: number | null
+          math_fact_fluency_addition: number | null
+          math_fact_fluency_subtraction: number | null
+          math_fact_fluency_multiplication: number | null
+          math_fact_fluency_division: number | null
+          math_problem_solving_accuracy: number | null
+          math_number_sense_score: number | null
+          spelling_developmental_stage: string | null
+          spelling_accuracy: number | null
+          written_expression_score: number | null
+          words_per_sentence_average: number | null
+          handwriting_letters_per_minute: number | null
+          wisc_processing_speed_index: number | null
+          wisc_working_memory_index: number | null
+          wisc_fluid_reasoning_index: number | null
+          academic_fluency_score: number | null
+          processing_speed_score: number | null
+          cognitive_efficiency_score: number | null
+          brief_working_memory_tscore: number | null
+          brief_inhibition_tscore: number | null
+          brief_shift_flexibility_tscore: number | null
+          immediate_recall_score: number | null
+          delayed_recall_score: number | null
+          recognition_score: number | null
+          assessment_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          student_id: string
+          dibels_wpm_accuracy?: number | null
+          dibels_nonsense_word_fluency?: number | null
+          reading_comprehension_accuracy?: number | null
+          lexile_level?: string | null
+          fp_dra_level?: string | null
+          phoneme_segmentation_fluency?: number | null
+          sight_words_known?: number | null
+          sight_words_list_level?: string | null
+          math_computation_addition_accuracy?: number | null
+          math_computation_subtraction_accuracy?: number | null
+          math_computation_multiplication_accuracy?: number | null
+          math_computation_division_accuracy?: number | null
+          math_fact_fluency_addition?: number | null
+          math_fact_fluency_subtraction?: number | null
+          math_fact_fluency_multiplication?: number | null
+          math_fact_fluency_division?: number | null
+          math_problem_solving_accuracy?: number | null
+          math_number_sense_score?: number | null
+          spelling_developmental_stage?: string | null
+          spelling_accuracy?: number | null
+          written_expression_score?: number | null
+          words_per_sentence_average?: number | null
+          handwriting_letters_per_minute?: number | null
+          wisc_processing_speed_index?: number | null
+          wisc_working_memory_index?: number | null
+          wisc_fluid_reasoning_index?: number | null
+          academic_fluency_score?: number | null
+          processing_speed_score?: number | null
+          cognitive_efficiency_score?: number | null
+          brief_working_memory_tscore?: number | null
+          brief_inhibition_tscore?: number | null
+          brief_shift_flexibility_tscore?: number | null
+          immediate_recall_score?: number | null
+          delayed_recall_score?: number | null
+          recognition_score?: number | null
+          assessment_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          student_id?: string
+          dibels_wpm_accuracy?: number | null
+          dibels_nonsense_word_fluency?: number | null
+          reading_comprehension_accuracy?: number | null
+          lexile_level?: string | null
+          fp_dra_level?: string | null
+          phoneme_segmentation_fluency?: number | null
+          sight_words_known?: number | null
+          sight_words_list_level?: string | null
+          math_computation_addition_accuracy?: number | null
+          math_computation_subtraction_accuracy?: number | null
+          math_computation_multiplication_accuracy?: number | null
+          math_computation_division_accuracy?: number | null
+          math_fact_fluency_addition?: number | null
+          math_fact_fluency_subtraction?: number | null
+          math_fact_fluency_multiplication?: number | null
+          math_fact_fluency_division?: number | null
+          math_problem_solving_accuracy?: number | null
+          math_number_sense_score?: number | null
+          spelling_developmental_stage?: string | null
+          spelling_accuracy?: number | null
+          written_expression_score?: number | null
+          words_per_sentence_average?: number | null
+          handwriting_letters_per_minute?: number | null
+          wisc_processing_speed_index?: number | null
+          wisc_working_memory_index?: number | null
+          wisc_fluid_reasoning_index?: number | null
+          academic_fluency_score?: number | null
+          processing_speed_score?: number | null
+          cognitive_efficiency_score?: number | null
+          brief_working_memory_tscore?: number | null
+          brief_inhibition_tscore?: number | null
+          brief_shift_flexibility_tscore?: number | null
+          immediate_recall_score?: number | null
+          delayed_recall_score?: number | null
+          recognition_score?: number | null
+          assessment_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      },
       bell_schedules: {
         Row: {
           id: string
@@ -393,12 +521,14 @@ export interface Database {
           end_time: string
           service_type: string
           assigned_to_sea_id: string | null
-          delivered_by: 'provider' | 'sea'
+          assigned_to_specialist_id: string | null
+          delivered_by: 'provider' | 'sea' | 'specialist'
           created_at: string
           completed_at: string | null
           completed_by: string | null
           session_date: string | null
           session_notes: string | null
+          manually_placed: boolean
         }
         Insert: {
           id?: string
@@ -409,12 +539,14 @@ export interface Database {
           end_time: string
           service_type: string
           assigned_to_sea_id?: string | null
-          delivered_by?: 'provider' | 'sea'
+          assigned_to_specialist_id?: string | null
+          delivered_by?: 'provider' | 'sea' | 'specialist'
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
           session_date?: string | null
           session_notes?: string | null
+          manually_placed?: boolean
         }
         Update: {
           id?: string
@@ -425,12 +557,14 @@ export interface Database {
           end_time?: string
           service_type?: string
           assigned_to_sea_id?: string | null
-          delivered_by?: 'provider' | 'sea'
+          assigned_to_specialist_id?: string | null
+          delivered_by?: 'provider' | 'sea' | 'specialist'
           created_at?: string
           completed_at?: string | null
           completed_by?: string | null
           session_date?: string | null
           session_notes?: string | null
+          manually_placed?: boolean
         }
       },
       lessons: {

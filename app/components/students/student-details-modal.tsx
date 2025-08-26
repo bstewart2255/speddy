@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../../lib/supabase/queries/student-details';
+import { getStudentAssessment, upsertStudentAssessment, StudentAssessment } from '../../../lib/supabase/queries/student-assessments';
 import { SkillsChecklist } from './skills-checklist';
 import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
-import { ReadingLevelDropdown } from './reading-level-dropdown';
+import { AssessmentInputs } from './assessment-inputs';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -44,9 +45,9 @@ export function StudentDetailsModal({
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
     iep_goals: [],
-    working_skills: [],
-    reading_level: '',
+    working_skills: []
   });
+  const [assessment, setAssessment] = useState<StudentAssessment>({});
   const [loading, setLoading] = useState(false);
 
   const [studentInfo, setStudentInfo] = useState({
@@ -69,9 +70,10 @@ export function StudentDetailsModal({
         minutes_per_session: student.minutes_per_session,
       });
 
-      // Load existing student details
-      const loadDetails = async () => {
+      // Load existing student details and assessments
+      const loadData = async () => {
         try {
+          // Load student details
           const existingDetails = await getStudentDetails(student.id);
           if (existingDetails) {
             setDetails(existingDetails);
@@ -85,16 +87,23 @@ export function StudentDetailsModal({
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
               iep_goals: [],
-              working_skills: [],
-              reading_level: '',
-            });
+              working_skills: []
+                      });
+          }
+
+          // Load assessment data
+          const existingAssessment = await getStudentAssessment(student.id);
+          if (existingAssessment) {
+            setAssessment(existingAssessment);
+          } else {
+            setAssessment({});
           }
         } catch (error) {
-          console.error('Error loading student details:', error);
+          console.error('Error loading student data:', error);
         }
       };
 
-      loadDetails();
+      loadData();
     }
   }, [isOpen, student.id]);
 
@@ -102,10 +111,18 @@ export function StudentDetailsModal({
     setLoading(true);
     try {
       console.log('Saving student details:', details);
+      console.log('Saving assessment data:', assessment);
 
       // Save student details
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
+
+      // Save assessment data if any fields are filled
+      const hasAssessmentData = Object.values(assessment).some(value => value !== null && value !== undefined && value !== '');
+      if (hasAssessmentData) {
+        await upsertStudentAssessment(student.id, assessment);
+        console.log('Assessment data saved successfully');
+      }
 
       // Update student info if changed
       if (onUpdateStudent) {
@@ -300,13 +317,6 @@ export function StudentDetailsModal({
                 </FormGroup>
               </div>
 
-              {/* Reading Level Section */}
-              <div className="grid grid-cols-2 gap-4">
-                <ReadingLevelDropdown
-                  value={details.reading_level}
-                  onChange={(value) => setDetails({...details, reading_level: value})}
-                />
-              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>
@@ -421,6 +431,21 @@ export function StudentDetailsModal({
                 gradeLevel={studentInfo.grade_level}
                 selectedSkills={details.working_skills}
                 onSkillsChange={(skills) => setDetails({...details, working_skills: skills})}
+              />
+            </div>
+
+            {/* Academic Assessments Section */}
+            <div className="space-y-3 pt-4 border-t">
+              <div className="space-y-1">
+                <h4 className="font-medium text-gray-900">Academic Assessments</h4>
+                <p className="text-sm text-gray-600">
+                  Optional assessment data to help AI generate more personalized lesson content. All fields are optional.
+                </p>
+              </div>
+              
+              <AssessmentInputs
+                assessment={assessment}
+                onChange={setAssessment}
               />
             </div>
           </div>

@@ -21,6 +21,7 @@ interface ScheduleData {
   specialActivities: SpecialActivity[];
   schoolHours: any[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -30,7 +31,6 @@ interface ScheduleData {
 
 export function useScheduleData() {
   const { currentSchool } = useSchool();
-  const supabase = createClient<Database>();
   
   // Core data state
   const [data, setData] = useState<ScheduleData>({
@@ -40,6 +40,7 @@ export function useScheduleData() {
     specialActivities: [],
     schoolHours: [],
     seaProfiles: [],
+    otherSpecialists: [],
     unscheduledCount: 0,
     currentUserId: null,
     providerRole: '',
@@ -68,6 +69,8 @@ export function useScheduleData() {
       setData(prev => ({ ...prev, loading: false }));
       return;
     }
+
+    const supabase = createClient<Database>();
 
     try {
       setData(prev => ({ ...prev, loading: true, error: null }));
@@ -138,38 +141,111 @@ export function useScheduleData() {
 
       // Fetch sessions based on students
       const studentIds = studentsResult.data?.map(s => s.id) || [];
-      const sessionsResult = await supabase
+      
+      // For specialist users, also fetch sessions assigned to them
+      let sessionsQuery = supabase
         .from('schedule_sessions')
         .select('*')
-        .eq('provider_id', user.id)
         .in('student_id', studentIds)
         .is('session_date', null);
+      
+      // Build OR condition for provider_id or specialist assignment
+      if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role)) {
+        sessionsQuery = sessionsQuery.or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id}`);
+      } else {
+        sessionsQuery = sessionsQuery.eq('provider_id', user.id);
+      }
+      
+      const sessionsResult = await sessionsQuery;
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
-      if (profile.role === 'resource') {
+      let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }> = [];
+      
+      if (profile?.role === 'resource') {
         try {
-          // Get SEAs supervised by this provider
-          const { data: supervisedSeas, error } = await supabase
+          // RLS policies will automatically filter to the correct school(s)
+          // But we also need to filter by the CURRENT school selected in the school switcher
+          
+          // Get SEAs from the CURRENT school only
+          console.log('[useScheduleData] Fetching SEAs for current school:', currentSchool.school_id || currentSchool.school_site);
+          let seaQuery = supabase
             .from('profiles')
-            .select('id, full_name')
-            .eq('supervising_provider_id', user.id)
-            .eq('role', 'sea')
-            .order('full_name', { ascending: true });
+            .select('id, full_name, supervising_provider_id')
+            .eq('role', 'sea');
+          
+          // Filter by current school
+          if (currentSchool.school_id) {
+            seaQuery = seaQuery.eq('school_id', currentSchool.school_id);
+          } else {
+            // Legacy schools without school_id
+            seaQuery = seaQuery
+              .eq('school_site', currentSchool.school_site)
+              .eq('school_district', currentSchool.school_district);
+          }
+          
+          const { data: schoolSeas, error } = await seaQuery.order('full_name', { ascending: true });
 
           if (error) {
-            console.error('[useScheduleData] Error fetching SEA profiles:', error);
-          } else if (supervisedSeas) {
-            seaProfiles = supervisedSeas.map(sea => ({
+            console.error('[useScheduleData] Error fetching SEA profiles:', {
+              error,
+              message: error.message,
+              code: error.code,
+              details: error.details,
+              hint: error.hint,
+              status: (error as any).status,
+              statusText: (error as any).statusText
+            });
+          } else if (schoolSeas) {
+            seaProfiles = schoolSeas.map(sea => ({
               id: sea.id,
               full_name: sea.full_name,
-              is_shared: false
+              is_shared: false  // Deprecated field, kept for compatibility
             }));
             
-            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
+            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs from current school (${currentSchool.school_id || currentSchool.school_site}): ${seaProfiles.map(s => s.full_name).join(', ')}`);
+          }
+
+          // Get other specialists (resource, speech, ot, counseling, specialist) from the CURRENT school only
+          console.log('[useScheduleData] Fetching other specialists for current school:', currentSchool.school_id || currentSchool.school_site);
+          
+          // Direct query with proper school filtering
+          // NOTE: The RPC function get_available_specialists doesn't properly filter by the currently selected school
+          // for users who work at multiple schools, so we use a direct query instead
+          let specialistsQuery = supabase
+            .from('profiles')
+            .select('id, full_name, role')
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])  // All specialist roles
+            .neq('id', user.id);  // Exclude self
+          
+          // Filter by current school
+          if (currentSchool.school_id) {
+            specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
+          } else {
+            // Legacy schools without school_id
+            specialistsQuery = specialistsQuery
+              .eq('school_site', currentSchool.school_site)
+              .eq('school_district', currentSchool.school_district);
+          }
+          
+          const { data: specialistsData, error: specialistsError } = await specialistsQuery.order('full_name', { ascending: true });
+          
+          if (specialistsError) {
+            console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
+          } else if (specialistsData) {
+            // Type narrowing for role field
+            otherSpecialists = specialistsData
+              .filter(s => ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role))
+              .map(specialist => ({
+                id: specialist.id,
+                full_name: specialist.full_name,
+                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+              }));
+            
+            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id || currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
           }
         } catch (error) {
-          console.error('[useScheduleData] Exception fetching SEA profiles:', error);
+          console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
         }
       }
 
@@ -180,6 +256,7 @@ export function useScheduleData() {
         specialActivities: activitiesResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
+        otherSpecialists,
         unscheduledCount: unscheduledCountData,
         currentUserId: user.id,
         providerRole: profile.role,
@@ -203,7 +280,7 @@ export function useScheduleData() {
         error: error instanceof Error ? error.message : 'Failed to fetch schedule data',
       }));
     }
-  }, [currentSchool, supabase]);
+  }, [currentSchool]);
 
   // Initial data fetch
   useEffect(() => {
@@ -240,27 +317,64 @@ export function useScheduleData() {
   useEffect(() => {
     if (!currentSchool || !data.currentUserId) return;
 
-    const channel = supabase
-      .channel('schedule-changes')
-      .on(
+    const supabase = createClient<Database>();
+    const channel = supabase.channel('schedule-changes');
+    
+    // Subscribe to sessions where user is the provider
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'schedule_sessions',
+        filter: `provider_id=eq.${data.currentUserId}`,
+      },
+      (payload) => {
+        console.log('[useScheduleData] Real-time update (provider):', payload);
+        fetchData();
+      }
+    );
+    
+    // For specialist users, also subscribe to sessions assigned to them
+    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(data.providerRole)) {
+      channel.on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'schedule_sessions',
-          filter: `provider_id=eq.${data.currentUserId}`,
+          filter: `assigned_to_specialist_id=eq.${data.currentUserId}`,
         },
         (payload) => {
-          console.log('[useScheduleData] Real-time update:', payload);
+          console.log('[useScheduleData] Real-time update (specialist assignee):', payload);
           fetchData();
         }
-      )
-      .subscribe();
+      );
+    }
+    
+    // For SEA users, also subscribe to sessions assigned to them
+    if (data.providerRole === 'sea') {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_sessions',
+          filter: `assigned_to_sea_id=eq.${data.currentUserId}`,
+        },
+        (payload) => {
+          console.log('[useScheduleData] Real-time update (SEA assignee):', payload);
+          fetchData();
+        }
+      );
+    }
+    
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentSchool, data.currentUserId, fetchData, supabase]);
+  }, [currentSchool, data.currentUserId, data.providerRole, fetchData]);
 
   // Optimistic update function
   const optimisticUpdateSession = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {

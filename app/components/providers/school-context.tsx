@@ -143,11 +143,23 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       console.log('[SchoolContext] User ID:', user.id);
 
       // Fetch profile with migration status
-      const { data: profile } = await supabase
+      console.log('[SchoolContext] Fetching profile for user:', user.id);
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('works_at_multiple_schools, school_site, school_district, school_id, district_id, state_id')
         .eq('id', user.id)
         .single();
+
+      if (profileError) {
+        console.error('[SchoolContext] Error fetching profile:', {
+          error: profileError,
+          message: profileError.message,
+          code: profileError.code,
+          details: profileError.details,
+          hint: profileError.hint,
+          status: (profileError as any).status
+        });
+      }
 
       if (!profile) {
         console.log('[SchoolContext] No profile found');

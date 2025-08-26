@@ -478,11 +478,13 @@ export class SchedulingEngine {
       end_time: slot.endTime,
       service_type: '', // Will be set by coordinator
       assigned_to_sea_id: null,
+      assigned_to_specialist_id: null,
       delivered_by: 'provider' as const,
       completed_at: null,
       completed_by: null,
       session_notes: null,
-      session_date: null
+      session_date: null,
+      manually_placed: false
     }));
   }
 

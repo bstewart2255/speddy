@@ -78,11 +78,12 @@ export function CalendarWeekView({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDaySessions, setSelectedDaySessions] = useState<ScheduleSession[]>([]);
   const [aiContent, setAiContent] = useState<string | null>(null);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [savedLessons, setSavedLessons] = useState<Map<string, any>>(new Map());
-  const [loadingSavedLessons, setLoadingSavedLessons] = useState(true);
+  const [loadingSavedLessons, setLoadingSavedLessons] = useState(false);
   const [viewingSavedLesson, setViewingSavedLesson] = useState(false);
   
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -237,8 +238,6 @@ export function CalendarWeekView({
     // Skip if weekDates is not ready
     if (!weekDates || weekDates.length === 0) return;
 
-    // Skip if already loading
-    if (loadingSavedLessons) return;
 
     const loadSavedLessons = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -270,7 +269,18 @@ export function CalendarWeekView({
         } else {
           const lessonsMap = new Map<string, any>();
           data?.forEach(lesson => {
-            lessonsMap.set(lesson.lesson_date, lesson);
+            const dateKey = lesson.lesson_date;
+            const timeSlot = lesson.time_slot || '08:00'; // Default for legacy data
+            
+            if (!lessonsMap.has(dateKey)) {
+              lessonsMap.set(dateKey, {});
+            }
+            
+            const dayLessons = lessonsMap.get(dateKey);
+            dayLessons[timeSlot] = {
+              content: lesson.content,
+              prompt: lesson.prompt
+            };
           });
           setSavedLessons(lessonsMap);
         }
@@ -379,6 +389,32 @@ export function CalendarWeekView({
     return "bg-white border-gray-200";
   };
 
+  // Helper function to group sessions by 30-minute time slots
+  const groupSessionsByTimeSlot = (sessions: ScheduleSession[]): Map<string, ScheduleSession[]> => {
+    const timeSlotGroups = new Map<string, ScheduleSession[]>();
+    
+    sessions.forEach(session => {
+      if (!session.start_time) return;
+      
+      const [hour, minute] = session.start_time.split(':').map(Number);
+      const sessionMinutes = hour * 60 + minute;
+      
+      // Round down to nearest 30-minute slot
+      const slotMinutes = Math.floor(sessionMinutes / 30) * 30;
+      const slotHour = Math.floor(slotMinutes / 60);
+      const slotMin = slotMinutes % 60;
+      const timeSlot = `${String(slotHour).padStart(2, '0')}:${String(slotMin).padStart(2, '0')}`;
+      
+      if (!timeSlotGroups.has(timeSlot)) {
+        timeSlotGroups.set(timeSlot, []);
+      }
+      timeSlotGroups.get(timeSlot)!.push(session);
+    });
+    
+    // Sort the map by time slot keys
+    return new Map([...timeSlotGroups.entries()].sort());
+  };
+
   const handleGenerateDailyAILesson = async (
     date: Date,
     daySessions: ScheduleSession[],
@@ -393,24 +429,26 @@ export function CalendarWeekView({
       return;
     }
     
-    setSelectedDate(date);
-    setSelectedDaySessions(daySessions);
-    setModalOpen(true);
+    // Group sessions by time slots
+    const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
     
-    // Auto-generate content after state is set
-    setTimeout(() => {
-      generateAIContentForDate(date, daySessions);
-    }, 100);
+    // Generate AI lessons for each time slot
+    for (const [timeSlot, slotSessions] of timeSlotGroups) {
+      await generateAIContentForTimeSlot(date, slotSessions, timeSlot);
+    }
+    
+    showToast(`Generated ${timeSlotGroups.size} AI lesson(s) for different time slots`, 'success');
   };
 
-  const generateAIContentForDate = async (date: Date, daySessions: ScheduleSession[]) => {
+  // Generate AI content for a specific time slot
+  const generateAIContentForTimeSlot = async (date: Date, slotSessions: ScheduleSession[], timeSlot: string) => {
     if (!currentUser) {
       return;
     }
     
     // Extract unique students from the sessions
     const sessionStudents = new Set<string>();
-    daySessions.forEach(session => {
+    slotSessions.forEach(session => {
       if (session.student_id) {
         sessionStudents.add(session.student_id);
       }
@@ -427,12 +465,9 @@ export function CalendarWeekView({
     });
     
     if (studentList.length === 0) {
-      showToast('No students found for this day', 'warning');
-      setModalOpen(false);
-      return;
+      return; // Skip empty time slots
     }
     
-    setGeneratingContent(true);
     try {
       const response = await fetch('/api/generate-lesson', {
         method: 'POST',
@@ -441,50 +476,85 @@ export function CalendarWeekView({
         },
         body: JSON.stringify({
           students: studentList,
-          timeSlot: `Daily Lessons - ${formatDate(date)}`,
+          timeSlot: formatTimeSlot(timeSlot),
           duration: 30, // Default duration
         }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         throw new Error('Failed to generate content');
       }
 
       const data = await response.json();
-      setAiContent(data.content);
 
-      // Save the generated lesson
+      // Save the generated lesson with time slot
       const { error } = await supabase
         .from('ai_generated_lessons')
         .upsert({
           provider_id: currentUser.id,
           lesson_date: date.toISOString().split('T')[0],
+          time_slot: timeSlot,
           content: data.content,
           prompt: '',
-          session_data: daySessions,
+          session_data: slotSessions,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'provider_id,lesson_date,time_slot' });
 
       if (error) {
         throw error;
       }
 
-      // Update saved lessons
+      // Update saved lessons to support time slots
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        newMap.set(date.toISOString().split('T')[0], {
-          content: data.content,
-          prompt: ''
+        const dateKey = date.toISOString().split('T')[0];
+        const dayLessons = newMap.get(dateKey) || {};
+        
+        // Store lessons by time slot
+        newMap.set(dateKey, {
+          ...dayLessons,
+          [timeSlot]: {
+            content: data.content,
+            prompt: ''
+          }
         });
         return newMap;
       });
 
-      showToast('AI lesson generated and saved successfully', 'success');
     } catch (error) {
-      console.error('Error generating content:', error);
-      showToast('Failed to generate AI content', 'error');
+      console.error(`Error generating content for time slot ${timeSlot}:`, error);
+      showToast(`Failed to generate AI content for ${formatTimeSlot(timeSlot)}`, 'error');
+    }
+  };
+  
+  // Format time slot for display
+  const formatTimeSlot = (timeSlot: string) => {
+    const [hours, minutes] = timeSlot.split(':');
+    const hour = parseInt(hours);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${period}`;
+  };
+
+  const generateAIContentForDate = async (date: Date, daySessions: ScheduleSession[]) => {
+    if (!currentUser) {
+      return;
+    }
+    
+    setSelectedDate(date);
+    setSelectedDaySessions(daySessions);
+    setModalOpen(true);
+    
+    // Group sessions by time slots and generate for each
+    const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+    
+    setGeneratingContent(true);
+    try {
+      for (const [timeSlot, slotSessions] of timeSlotGroups) {
+        await generateAIContentForTimeSlot(date, slotSessions, timeSlot);
+      }
+      showToast(`Generated ${timeSlotGroups.size} AI lesson(s) for different time slots`, 'success');
     } finally {
       setGeneratingContent(false);
     }
@@ -550,22 +620,24 @@ export function CalendarWeekView({
     }
   };
 
-  const handleViewAILesson = (date: Date) => {
+  const handleViewAILessonForSlot = (date: Date, timeSlot: string) => {
     const dateStr = date.toISOString().split('T')[0];
-    const lesson = savedLessons.get(dateStr);
-    if (lesson) {
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons && dayLessons[timeSlot]) {
       setSelectedDate(date);
-      setAiContent(lesson.content);
+      setSelectedTimeSlot(timeSlot);
+      setAiContent(dayLessons[timeSlot].content);
       setViewingSavedLesson(true);
       setModalOpen(true);
     }
   };
 
-  const handleEditAILesson = (date: Date) => {
+  const handleEditAILessonForSlot = (date: Date, timeSlot: string) => {
     const dateStr = date.toISOString().split('T')[0];
-    const lesson = savedLessons.get(dateStr);
-    if (lesson) {
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons && dayLessons[timeSlot]) {
       setSelectedDate(date);
+      setSelectedTimeSlot(timeSlot);
       const daySessions = sessionsState.filter((s) => {
         const sessionDate = new Date(weekDates[0]);
         sessionDate.setDate(
@@ -573,10 +645,57 @@ export function CalendarWeekView({
         );
         return sessionDate.toDateString() === date.toDateString();
       });
-      setSelectedDaySessions(daySessions);
-      setAiContent(lesson.content);
+      // Filter sessions for this specific time slot
+      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+      const slotSessions = timeSlotGroups.get(timeSlot) || [];
+      setSelectedDaySessions(slotSessions);
+      setAiContent(dayLessons[timeSlot].content);
       setViewingSavedLesson(false);
       setModalOpen(true);
+    }
+  };
+  
+  const handleCreateLessonForSlot = async (date: Date, slotSessions: ScheduleSession[], timeSlot: string) => {
+    if (!currentUser) {
+      showToast('Please log in to generate AI lessons', 'error');
+      return;
+    }
+    
+    setSelectedDate(date);
+    setSelectedTimeSlot(timeSlot);
+    setSelectedDaySessions(slotSessions);
+    setModalOpen(true);
+    setGeneratingContent(true);
+    
+    try {
+      await generateAIContentForTimeSlot(date, slotSessions, timeSlot);
+    } finally {
+      setGeneratingContent(false);
+    }
+  };
+
+  // Legacy functions for backward compatibility
+  const handleViewAILesson = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons) {
+      // View the first lesson if multiple exist
+      const firstTimeSlot = Object.keys(dayLessons).sort()[0];
+      if (firstTimeSlot) {
+        handleViewAILessonForSlot(date, firstTimeSlot);
+      }
+    }
+  };
+
+  const handleEditAILesson = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons) {
+      // Edit the first lesson if multiple exist
+      const firstTimeSlot = Object.keys(dayLessons).sort()[0];
+      if (firstTimeSlot) {
+        handleEditAILessonForSlot(date, firstTimeSlot);
+      }
     }
   };
 
@@ -792,12 +911,16 @@ export function CalendarWeekView({
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
           const dateStr = date.toISOString().split("T")[0];
-          const hasAIContent = savedLessons.has(dateStr);
+          const dayAILessons = savedLessons.get(dateStr) || {};
+          const hasAIContent = Object.keys(dayAILessons).length > 0;
           const dayManualLessons = manualLessons.get(dateStr) || [];
           const isPast = isDateInPast(date);
           
           // Sort sessions by start time for chronological order
           const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
+          
+          // Group sessions by time slot for display
+          const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
 
           return (
             <div
@@ -821,35 +944,54 @@ export function CalendarWeekView({
               </div>
 
               <div className="p-2 min-h-[400px]">
-                {/* AI Content Indicator and Buttons */}
-                {!isHolidayDay && !isPast && (
-                  <div className="mb-2 flex items-center gap-1">
-                    {hasAIContent ? (
-                      <>
-                        <button
-                          onClick={() => handleViewAILesson(date)}
-                          className="flex-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded flex items-center justify-center gap-1"
-                          title="View AI-generated lesson"
-                        >
-                          <span>📄</span>
-                          <span>AI Lesson</span>
-                        </button>
-                        <button
-                          onClick={() => handleEditAILesson(date)}
-                          className="text-xs bg-green-100 hover:bg-green-200 text-green-700 p-1 rounded"
-                          title="Edit AI lesson"
-                        >
-                          ✏️
-                        </button>
-                      </>
-                    ) : (
+                {/* AI Lessons by Time Slot */}
+                {!isHolidayDay && !isPast && timeSlotGroups.size > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {Array.from(timeSlotGroups.entries()).map(([timeSlot, slotSessions]) => {
+                      const hasLessonForSlot = dayAILessons[timeSlot];
+                      return (
+                        <div key={timeSlot} className="flex items-center gap-1">
+                          <span className="text-xs text-gray-600 w-16">
+                            {formatTimeSlot(timeSlot)}
+                          </span>
+                          {hasLessonForSlot ? (
+                            <>
+                              <button
+                                onClick={() => handleViewAILessonForSlot(date, timeSlot)}
+                                className="flex-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 py-0.5 px-2 rounded flex items-center justify-center gap-1"
+                                title={`View AI lesson for ${formatTimeSlot(timeSlot)}`}
+                              >
+                                <span>📄</span>
+                                <span>AI Lesson</span>
+                              </button>
+                              <button
+                                onClick={() => handleEditAILessonForSlot(date, timeSlot)}
+                                className="text-xs bg-green-100 hover:bg-green-200 text-green-700 p-0.5 rounded"
+                                title={`Edit AI lesson for ${formatTimeSlot(timeSlot)}`}
+                              >
+                                ✏️
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleCreateLessonForSlot(date, slotSessions, timeSlot)}
+                              className="flex-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 py-0.5 px-2 rounded"
+                              title={`Create lesson for ${formatTimeSlot(timeSlot)}`}
+                            >
+                              + Create Lesson
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Button to generate all lessons at once */}
+                    {!hasAIContent && (
                       <button
-                        onClick={() => handleCreateLesson(date)}
-                        className="w-full text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 py-1 px-2 rounded"
-                        disabled={sortedDaySessions.length === 0}
-                        title={sortedDaySessions.length === 0 ? "No sessions scheduled" : "Create lesson plan"}
+                        onClick={() => handleGenerateDailyAILesson(date, sortedDaySessions)}
+                        className="w-full text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 py-1 px-2 rounded mt-1"
+                        title="Generate AI lessons for all time slots"
                       >
-                        + Create Lesson
+                        🚀 Generate All Lessons
                       </button>
                     )}
                   </div>
@@ -1023,9 +1165,10 @@ export function CalendarWeekView({
         onClose={() => {
           setModalOpen(false);
           setAiContent(null);
+          setSelectedTimeSlot(null);
           setViewingSavedLesson(false);
         }}
-        timeSlot={selectedDate ? formatDate(selectedDate) : ''}
+        timeSlot={selectedTimeSlot ? formatTimeSlot(selectedTimeSlot) : ''}
         students={Array.from(students.entries()).map(([id, student]) => ({
           id,
           student_number: '',
