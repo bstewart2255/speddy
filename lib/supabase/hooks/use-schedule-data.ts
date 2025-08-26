@@ -151,26 +151,25 @@ export function useScheduleData() {
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
       let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }> = [];
       
-      if (profile.role === 'resource') {
+      if (profile?.role === 'resource') {
         try {
-          // Get SEAs supervised by this provider
-          const { data: supervisedSeas, error } = await supabase
+          // Get ALL SEAs at the same school (RLS will filter to same school automatically)
+          const { data: schoolSeas, error } = await supabase
             .from('profiles')
-            .select('id, full_name')
-            .eq('supervising_provider_id', user.id)
+            .select('id, full_name, supervising_provider_id')
             .eq('role', 'sea')
             .order('full_name', { ascending: true });
 
           if (error) {
             console.error('[useScheduleData] Error fetching SEA profiles:', error);
-          } else if (supervisedSeas) {
-            seaProfiles = supervisedSeas.map(sea => ({
+          } else if (schoolSeas) {
+            seaProfiles = schoolSeas.map(sea => ({
               id: sea.id,
               full_name: sea.full_name,
-              is_shared: false
+              is_shared: false  // Deprecated field, kept for compatibility
             }));
             
-            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs: ${seaProfiles.map(s => s.full_name).join(', ')}`);
+            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs at school: ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
           // Skip the database function for now since it may not be deployed yet
@@ -199,50 +198,17 @@ export function useScheduleData() {
           if (useDirectQuery) {
             console.log('[useScheduleData] Using direct query approach...');
             
-            // First, check the current user's school_id
-            const { data: currentUserProfile } = await supabase
+            // Get other Resource Specialists at the same school
+            // RLS will automatically filter to same school
+            const { data: specialists, error: specialistsError } = await supabase
               .from('profiles')
-              .select('school_id')
-              .eq('id', user.id)
-              .single();
-            
-            console.log('[useScheduleData] Current user school_id:', currentUserProfile?.school_id);
-            console.log('[useScheduleData] Current school from context:', currentSchool.school_id);
-
-            // Build the query for other specialists
-            let specialistsQuery = supabase
-              .from('profiles')
-              .select('id, full_name, role, school_id')
-              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
-              .neq('id', user.id);
-            
-            // Use the user's actual school_id from their profile, not from currentSchool
-            if (currentUserProfile?.school_id) {
-              console.log('[useScheduleData] Adding school_id filter from user profile:', currentUserProfile.school_id);
-              specialistsQuery = specialistsQuery.eq('school_id', currentUserProfile.school_id);
-            } else if (currentSchool.school_id) {
-              console.log('[useScheduleData] Adding school_id filter from context:', currentSchool.school_id);
-              specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
-            } else {
-              console.log('[useScheduleData] WARNING: No school_id available, cannot filter specialists by school');
-            }
-            
-            const { data: specialists, error: specialistsError } = await specialistsQuery
+              .select('id, full_name, role')
+              .eq('role', 'resource')  // Only Resource Specialists
+              .neq('id', user.id)  // Exclude self
               .order('full_name', { ascending: true });
 
             if (specialistsError) {
               console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
-              
-              // Try alternative query without school_id filter to see what's available
-              const { data: allSpecialists } = await supabase
-                .from('profiles')
-                .select('id, full_name, role, school_id')
-                .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
-                .neq('id', user.id)
-                .order('full_name', { ascending: true });
-              
-              console.log('[useScheduleData] All specialists in database (without school filter):', 
-                allSpecialists?.map(s => `${s.full_name} (${s.role}, school_id: ${s.school_id})`).join(', '));
             } else if (specialists) {
               otherSpecialists = specialists.map(specialist => ({
                 id: specialist.id,
