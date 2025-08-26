@@ -43,10 +43,12 @@
       "Bash(npm search @modelcontextprotocol/server-playwright)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__execute_sql"
     ],
     "deny": []
   },
-  "enabledMcpjsonServers": ["github", "context7", "playwright"],
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": ["github", "context7", "playwright"]
 }

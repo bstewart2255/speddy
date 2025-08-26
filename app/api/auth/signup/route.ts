@@ -82,6 +82,7 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       user_metadata: {
         full_name: metadata.full_name,
         role: metadata.role,
+        state: metadata.state,
         school_district: metadata.school_district,
         school_site: metadata.school_site,
         works_at_multiple_schools: metadata.works_at_multiple_schools || false,
@@ -117,6 +118,29 @@ export const POST = asyncHandler(async (request: NextRequest) => {
         { error: 'Failed to complete registration. Please try again.' },
         { status: 500 }
       );
+    }
+
+    // For SEA roles, verify that school IDs were populated
+    if (metadata.role === 'sea') {
+      const { data: profile, error: profileCheckError } = await supabase
+        .from('profiles')
+        .select('school_id, district_id, state_id')
+        .eq('id', signUpData.user.id)
+        .single();
+
+      if (!profileCheckError && profile) {
+        if (!profile.school_id || !profile.district_id || !profile.state_id) {
+          requestLogger.warn('SEA profile created without complete school IDs', {
+            userId: signUpData.user.id,
+            hasSchoolId: !!profile.school_id,
+            hasDistrictId: !!profile.district_id,
+            hasStateId: !!profile.state_id,
+            state: metadata.state,
+            district: metadata.school_district,
+            school: metadata.school_site
+          });
+        }
+      }
     }
 
     // For teacher roles, ensure referral code is generated
