@@ -205,28 +205,15 @@ export function useScheduleData() {
             console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs from current school (${currentSchool.school_id || currentSchool.school_site}): ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
-          // Get other Resource Specialists from the CURRENT school only
-          console.log('[useScheduleData] Fetching other Resource Specialists for current school:', currentSchool.school_id || currentSchool.school_site);
-          let specialistsQuery = supabase
-            .from('profiles')
-            .select('id, full_name, role')
-            .eq('role', 'resource')  // Only Resource Specialists
-            .neq('id', user.id);  // Exclude self
+          // Get other specialists (resource, speech, ot, counseling, specialist) via RPC
+          console.log('[useScheduleData] Fetching other specialists for current school:', currentSchool.school_id || currentSchool.school_site);
           
-          // Filter by current school
-          if (currentSchool.school_id) {
-            specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
-          } else {
-            // Legacy schools without school_id
-            specialistsQuery = specialistsQuery
-              .eq('school_site', currentSchool.school_site)
-              .eq('school_district', currentSchool.school_district);
-          }
-          
-          const { data: specialists, error: specialistsError } = await specialistsQuery.order('full_name', { ascending: true });
+          // Try RPC function first (preferred - centralizes same-school logic and RLS)
+          const { data: specialists, error: specialistsError } = await supabase
+            .rpc('get_available_specialists', { current_user_id: user.id });
 
           if (specialistsError) {
-            console.error('[useScheduleData] Error fetching other Resource Specialists:', {
+            console.error('[useScheduleData] Error fetching other specialists via RPC:', {
               error: specialistsError,
               message: specialistsError.message,
               code: specialistsError.code,
@@ -235,14 +222,52 @@ export function useScheduleData() {
               status: (specialistsError as any).status,
               statusText: (specialistsError as any).statusText
             });
-          } else if (specialists) {
-            otherSpecialists = specialists.map(specialist => ({
-              id: specialist.id,
-              full_name: specialist.full_name,
-              role: specialist.role
-            }));
             
-            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id || currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+            // Fallback to direct query if RPC fails (e.g., function not deployed yet)
+            console.log('[useScheduleData] Falling back to direct query for specialists');
+            let specialistsQuery = supabase
+              .from('profiles')
+              .select('id, full_name, role')
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])  // All specialist roles
+              .neq('id', user.id);  // Exclude self
+            
+            // Filter by current school
+            if (currentSchool.school_id) {
+              specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
+            } else {
+              // Legacy schools without school_id
+              specialistsQuery = specialistsQuery
+                .eq('school_site', currentSchool.school_site)
+                .eq('school_district', currentSchool.school_district);
+            }
+            
+            const { data: fallbackSpecialists, error: fallbackError } = await specialistsQuery.order('full_name', { ascending: true });
+            
+            if (fallbackError) {
+              console.error('[useScheduleData] Fallback query also failed:', fallbackError);
+            } else if (fallbackSpecialists) {
+              // Type narrowing for role field
+              otherSpecialists = fallbackSpecialists
+                .filter(s => ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role))
+                .map(specialist => ({
+                  id: specialist.id,
+                  full_name: specialist.full_name,
+                  role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                }));
+              
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists via fallback from current school: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+            }
+          } else if (specialists) {
+            // Type narrowing for RPC result
+            otherSpecialists = specialists
+              .filter(s => ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role))
+              .map(specialist => ({
+                id: specialist.id,
+                full_name: specialist.full_name,
+                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+              }));
+            
+            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists via RPC from current school: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
           }
         } catch (error) {
           console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
@@ -351,12 +376,29 @@ export function useScheduleData() {
       );
     }
     
+    // For SEA users, also subscribe to sessions assigned to them
+    if (data.providerRole === 'sea') {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'schedule_sessions',
+          filter: `assigned_to_sea_id=eq.${data.currentUserId}`,
+        },
+        (payload) => {
+          console.log('[useScheduleData] Real-time update (SEA assignee):', payload);
+          fetchData();
+        }
+      );
+    }
+    
     channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentSchool, data.currentUserId, fetchData, supabase]);
+  }, [currentSchool, data.currentUserId, data.providerRole, fetchData, supabase]);
 
   // Optimistic update function
   const optimisticUpdateSession = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {
