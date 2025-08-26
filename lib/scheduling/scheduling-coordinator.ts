@@ -145,7 +145,14 @@ export class SchedulingCoordinator {
       provider_id: this.providerId,
       service_type: this.providerRole,
       assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
-      delivered_by: this.providerRole === 'sea' ? 'sea' as const : 'provider' as const
+      assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+        ? this.providerId
+        : (session.assigned_to_specialist_id ?? null),
+      delivered_by: this.providerRole === 'sea'
+        ? 'sea' as const
+        : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+          ? 'specialist' as const
+          : 'provider' as const
     }));
     
     // Update context if successful
@@ -475,11 +482,13 @@ export class SchedulingCoordinator {
         end_time: session.end_time,
         service_type: session.service_type,
         assigned_to_sea_id: session.assigned_to_sea_id,
+        assigned_to_specialist_id: session.assigned_to_specialist_id || null,
         delivered_by: session.delivered_by,
         completed_at: session.completed_at,
         completed_by: session.completed_by,
         session_notes: session.session_notes,
         session_date: session.session_date,
+        manually_placed: session.manually_placed || false,
         created_at: new Date().toISOString()
       });
     }

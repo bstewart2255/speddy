@@ -215,6 +215,7 @@ export default function SchedulePage() {
     specialActivities,
     schoolHours,
     seaProfiles,
+    otherSpecialists,
     unscheduledCount,
     currentUserId,
     providerRole,
@@ -411,14 +412,36 @@ export default function SchedulePage() {
     );
   }
 
-  // Count filtered sessions
-  const filteredSessionsCount = providerRole === 'sea' && currentUserId
-    ? sessions.filter(s => s.assigned_to_sea_id === currentUserId).length
-    : sessionFilter === 'mine'
-      ? sessions.filter(s => s.delivered_by !== 'sea').length
-      : sessionFilter === 'sea'
-        ? sessions.filter(s => s.delivered_by === 'sea').length
-        : sessions.length;
+  // Unified session filtering function matching ScheduleGrid logic
+  const getFilteredSessions = (allSessions: any[]) => {
+    // Special handling for SEA users - always show their assigned sessions
+    if (providerRole === 'sea' && currentUserId) {
+      return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
+    }
+    
+    // Special handling for specialist users - show their assigned sessions for 'mine' filter
+    if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
+      return allSessions.filter(s => 
+        s.assigned_to_specialist_id === currentUserId ||
+        (s.delivered_by === 'provider' && !s.assigned_to_sea_id && !s.assigned_to_specialist_id)
+      );
+    }
+    
+    // Standard filtering based on delivered_by
+    switch (sessionFilter) {
+      case 'mine':
+        return allSessions.filter(s => s.delivered_by === 'provider');
+      case 'sea':
+        return allSessions.filter(s => s.delivered_by === 'sea');
+      case 'specialist':
+        return allSessions.filter(s => s.delivered_by === 'specialist');
+      default:
+        return allSessions;
+    }
+  };
+  
+  // Count filtered sessions using the same logic as the grid
+  const filteredSessionsCount = getFilteredSessions(sessions).length;
 
   return (
     <ScheduleErrorBoundary>
@@ -446,6 +469,7 @@ export default function SchedulePage() {
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
+            showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
@@ -469,6 +493,7 @@ export default function SchedulePage() {
             selectedSession={selectedSession}
             popupPosition={popupPosition}
             seaProfiles={seaProfiles}
+            otherSpecialists={otherSpecialists}
             providerRole={providerRole}
             currentUserId={currentUserId}
             gridConfig={gridConfig}
@@ -490,6 +515,17 @@ export default function SchedulePage() {
           <div className="mt-4 flex justify-between items-center">
             <div className="text-sm text-gray-600">
               Total Sessions: {filteredSessionsCount}
+            </div>
+            {/* Legend for assignment indicators */}
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-orange-400"></div>
+                <span>SEA Assigned</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-purple-400"></div>
+                <span>Specialist Assigned</span>
+              </div>
             </div>
           </div>
         </div>

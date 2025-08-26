@@ -8,7 +8,7 @@ export interface ScheduleUIState {
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
-  sessionFilter: 'all' | 'mine' | 'sea';
+  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
   draggedSession: any | null;
   dragOffset: number;
   dragPosition: {
@@ -28,7 +28,7 @@ export function useScheduleState() {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
-  const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea'>('all');
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea' | 'specialist'>('all');
 
   // Drag and drop states
   const [draggedSession, setDraggedSession] = useState<any | null>(null);
