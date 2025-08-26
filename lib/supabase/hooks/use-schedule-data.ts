@@ -157,6 +157,7 @@ export function useScheduleData() {
           // The new get_user_school_ids() function handles both single and multiple schools
           
           // Get ALL SEAs - RLS will filter to user's schools automatically
+          console.log('[useScheduleData] Fetching SEAs for user:', user.id);
           const { data: schoolSeas, error } = await supabase
             .from('profiles')
             .select('id, full_name, supervising_provider_id')
@@ -164,7 +165,15 @@ export function useScheduleData() {
             .order('full_name', { ascending: true });
 
           if (error) {
-            console.error('[useScheduleData] Error fetching SEA profiles:', error);
+            console.error('[useScheduleData] Error fetching SEA profiles:', {
+              error,
+              message: error.message,
+              code: error.code,
+              details: error.details,
+              hint: error.hint,
+              status: (error as any).status,
+              statusText: (error as any).statusText
+            });
           } else if (schoolSeas) {
             seaProfiles = schoolSeas.map(sea => ({
               id: sea.id,
@@ -176,6 +185,7 @@ export function useScheduleData() {
           }
 
           // Get other Resource Specialists - RLS will filter to user's schools automatically
+          console.log('[useScheduleData] Fetching other Resource Specialists for user:', user.id);
           const { data: specialists, error: specialistsError } = await supabase
             .from('profiles')
             .select('id, full_name, role')
@@ -184,7 +194,15 @@ export function useScheduleData() {
             .order('full_name', { ascending: true });
 
           if (specialistsError) {
-            console.error('[useScheduleData] Error fetching other Resource Specialists:', specialistsError);
+            console.error('[useScheduleData] Error fetching other Resource Specialists:', {
+              error: specialistsError,
+              message: specialistsError.message,
+              code: specialistsError.code,
+              details: specialistsError.details,
+              hint: specialistsError.hint,
+              status: (specialistsError as any).status,
+              statusText: (specialistsError as any).statusText
+            });
           } else if (specialists) {
             otherSpecialists = specialists.map(specialist => ({
               id: specialist.id,

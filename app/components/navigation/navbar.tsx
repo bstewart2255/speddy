@@ -28,14 +28,27 @@ export default function Navbar() {
 
       // Get user's role if logged in
       if (user) {
-        const { data: profile } = await supabase
+        console.log('[Navbar] Fetching role for user:', user.id);
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', user.id)
           .single();
 
+        if (error) {
+          console.error('[Navbar] Error fetching role:', {
+            error,
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            status: (error as any).status
+          });
+        }
+
         if (profile) {
           setUserRole(profile.role);
+          console.log('[Navbar] User role:', profile.role);
         }
       }
     };
