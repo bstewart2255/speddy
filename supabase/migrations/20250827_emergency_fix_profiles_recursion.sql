@@ -15,10 +15,11 @@ DROP FUNCTION IF EXISTS public.get_user_school_ids() CASCADE;
 -- Create a SIMPLE, NON-RECURSIVE security definer function
 -- This function runs with elevated privileges to avoid recursion
 CREATE OR REPLACE FUNCTION public.auth_user_school_ids()
-RETURNS TABLE(school_id varchar)
+RETURNS TABLE(school_id uuid)
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
+SET search_path = public
 AS $$
     -- Direct query without recursion - uses auth.uid() directly
     SELECT DISTINCT school_id::varchar
@@ -41,6 +42,7 @@ AS $$
 $$;
 
 -- Grant execute permission
+REVOKE ALL ON FUNCTION public.auth_user_school_ids() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.auth_user_school_ids() TO authenticated;
 
 -- Create SIMPLE, NON-RECURSIVE policies
@@ -55,7 +57,8 @@ USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" 
 ON profiles
 FOR UPDATE 
-USING (auth.uid() = id);
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
 
 -- Policy 3: Users can view profiles of people in their schools
 -- This uses the security definer function to avoid recursion

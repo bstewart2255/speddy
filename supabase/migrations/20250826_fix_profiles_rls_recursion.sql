@@ -7,14 +7,14 @@ DROP POLICY IF EXISTS "Users can view team members in same school" ON profiles;
 -- Create a security definer function to get the current user's school_id
 -- This avoids recursion by executing with elevated privileges
 CREATE OR REPLACE FUNCTION public.get_user_school_id()
-RETURNS varchar
+RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 STABLE
 AS $$
 DECLARE
-    user_school_id varchar;
+    user_school_id uuid;
 BEGIN
     SELECT school_id INTO user_school_id
     FROM profiles
@@ -26,6 +26,7 @@ END;
 $$;
 
 -- Grant execute permission to authenticated users
+REVOKE ALL ON FUNCTION public.get_user_school_id() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_user_school_id() TO authenticated;
 
 -- Create a non-recursive policy using the security definer function

@@ -125,5 +125,5 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant execute permission on the new functions
-GRANT EXECUTE ON FUNCTION can_assign_specialist_to_session TO authenticated;
-GRANT EXECUTE ON FUNCTION get_available_specialists TO authenticated;
+GRANT EXECUTE ON FUNCTION can_assign_specialist_to_session(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_available_specialists(uuid) TO authenticated;

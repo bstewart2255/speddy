@@ -19,7 +19,7 @@ interface ScheduleGridProps {
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
-  sessionFilter: 'all' | 'mine' | 'sea';
+  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
   draggedSession: any | null;
   dragPosition: any | null;
   selectedSession: any | null;

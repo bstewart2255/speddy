@@ -412,18 +412,36 @@ export default function SchedulePage() {
     );
   }
 
-  // Count filtered sessions
-  const filteredSessionsCount = providerRole === 'sea' && currentUserId
-    ? sessions.filter(s => s.assigned_to_sea_id === currentUserId).length
-    : ['speech', 'ot', 'counseling', 'specialist'].includes(providerRole) && currentUserId
-      ? sessions.filter(s => s.assigned_to_specialist_id === currentUserId).length
-      : sessionFilter === 'mine'
-        ? sessions.filter(s => s.delivered_by === 'provider').length
-        : sessionFilter === 'sea'
-          ? sessions.filter(s => s.delivered_by === 'sea').length
-          : sessionFilter === 'specialist'
-            ? sessions.filter(s => s.delivered_by === 'specialist').length
-            : sessions.length;
+  // Unified session filtering function matching ScheduleGrid logic
+  const getFilteredSessions = (allSessions: any[]) => {
+    // Special handling for SEA users - always show their assigned sessions
+    if (providerRole === 'sea' && currentUserId) {
+      return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
+    }
+    
+    // Special handling for specialist users - show their assigned sessions for 'mine' filter
+    if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
+      return allSessions.filter(s => 
+        s.assigned_to_specialist_id === currentUserId ||
+        (s.delivered_by === 'provider' && !s.assigned_to_sea_id && !s.assigned_to_specialist_id)
+      );
+    }
+    
+    // Standard filtering based on delivered_by
+    switch (sessionFilter) {
+      case 'mine':
+        return allSessions.filter(s => s.delivered_by === 'provider');
+      case 'sea':
+        return allSessions.filter(s => s.delivered_by === 'sea');
+      case 'specialist':
+        return allSessions.filter(s => s.delivered_by === 'specialist');
+      default:
+        return allSessions;
+    }
+  };
+  
+  // Count filtered sessions using the same logic as the grid
+  const filteredSessionsCount = getFilteredSessions(sessions).length;
 
   return (
     <ScheduleErrorBoundary>

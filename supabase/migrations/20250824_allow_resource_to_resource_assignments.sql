@@ -15,6 +15,10 @@ BEGIN
   FROM profiles
   WHERE id = provider_id;
   
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
+  
   -- Only Resource Specialists can assign to other specialists
   IF provider_record.role != 'resource' THEN
     RETURN FALSE;
@@ -25,6 +29,10 @@ BEGIN
   INTO specialist_record
   FROM profiles
   WHERE id = specialist_id;
+  
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
   
   -- Target must be a specialist role (including resource, but not SEA or admin)
   IF specialist_record.role NOT IN ('resource', 'speech', 'ot', 'counseling', 'specialist') THEN
@@ -43,7 +51,7 @@ BEGIN
   
   RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Update the get_available_specialists function
 CREATE OR REPLACE FUNCTION get_available_specialists(current_user_id UUID)
@@ -68,7 +76,7 @@ BEGIN
   AND p.id != current_user_id
   ORDER BY p.full_name;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Update comment to reflect that resource specialists can be assigned
 COMMENT ON COLUMN schedule_sessions.assigned_to_specialist_id IS 'ID of the specialist (resource, speech, OT, counseling) assigned to deliver this session';

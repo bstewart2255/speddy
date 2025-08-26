@@ -140,12 +140,22 @@ export function useScheduleData() {
 
       // Fetch sessions based on students
       const studentIds = studentsResult.data?.map(s => s.id) || [];
-      const sessionsResult = await supabase
+      
+      // For specialist users, also fetch sessions assigned to them
+      let sessionsQuery = supabase
         .from('schedule_sessions')
         .select('*')
-        .eq('provider_id', user.id)
         .in('student_id', studentIds)
         .is('session_date', null);
+      
+      // Build OR condition for provider_id or specialist assignment
+      if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role)) {
+        sessionsQuery = sessionsQuery.or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id}`);
+      } else {
+        sessionsQuery = sessionsQuery.eq('provider_id', user.id);
+      }
+      
+      const sessionsResult = await sessionsQuery;
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
@@ -307,22 +317,41 @@ export function useScheduleData() {
   useEffect(() => {
     if (!currentSchool || !data.currentUserId) return;
 
-    const channel = supabase
-      .channel('schedule-changes')
-      .on(
+    const channel = supabase.channel('schedule-changes');
+    
+    // Subscribe to sessions where user is the provider
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'schedule_sessions',
+        filter: `provider_id=eq.${data.currentUserId}`,
+      },
+      (payload) => {
+        console.log('[useScheduleData] Real-time update (provider):', payload);
+        fetchData();
+      }
+    );
+    
+    // For specialist users, also subscribe to sessions assigned to them
+    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(data.providerRole)) {
+      channel.on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'schedule_sessions',
-          filter: `provider_id=eq.${data.currentUserId}`,
+          filter: `assigned_to_specialist_id=eq.${data.currentUserId}`,
         },
         (payload) => {
-          console.log('[useScheduleData] Real-time update:', payload);
+          console.log('[useScheduleData] Real-time update (specialist assignee):', payload);
           fetchData();
         }
-      )
-      .subscribe();
+      );
+    }
+    
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
