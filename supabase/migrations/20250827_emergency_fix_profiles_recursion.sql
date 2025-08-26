@@ -15,7 +15,7 @@ DROP FUNCTION IF EXISTS public.get_user_school_ids() CASCADE;
 -- Create a SIMPLE, NON-RECURSIVE security definer function
 -- This function runs with elevated privileges to avoid recursion
 CREATE OR REPLACE FUNCTION public.auth_user_school_ids()
-RETURNS TABLE(school_id uuid)
+RETURNS TABLE(school_id varchar)
 LANGUAGE sql
 SECURITY DEFINER
 STABLE

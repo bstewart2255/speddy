@@ -10,7 +10,7 @@ DROP FUNCTION IF EXISTS public.get_user_school_ids() CASCADE;
 -- Create the proper security definer function that returns all school IDs for a user
 -- This supports both single school (profiles.school_id) and multiple schools (provider_schools)
 CREATE OR REPLACE FUNCTION public.get_user_school_ids()
-RETURNS TABLE(school_id uuid)
+RETURNS TABLE(school_id varchar)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public

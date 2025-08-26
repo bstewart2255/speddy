@@ -18,7 +18,7 @@ DROP FUNCTION IF EXISTS public.auth_user_school_ids() CASCADE;
 -- Create a single, authoritative security definer function for getting user's schools
 -- This handles both single school (profiles.school_id) and multiple schools (provider_schools)
 CREATE OR REPLACE FUNCTION public.user_accessible_school_ids()
-RETURNS TABLE(school_id uuid)
+RETURNS TABLE(school_id varchar)
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
