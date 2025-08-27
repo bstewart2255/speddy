@@ -17,7 +17,7 @@ const nextConfig = {
 };
 
 // Conditionally apply Sentry configuration
-const shouldUseSentry = process.env.NODE_ENV === 'production' && !process.env.SKIP_SENTRY;
+const shouldUseSentry = process.env.NODE_ENV === 'production' && process.env.SKIP_SENTRY !== 'true';
 
 // Wrap the config with Sentry only in production or if not skipping
 module.exports = shouldUseSentry 

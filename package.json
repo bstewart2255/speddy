@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsc --noEmit --skipLibCheck",
     "typecheck:incremental": "tsc --noEmit --incremental",
-    "typecheck:project": "tsc --build --dry --force",
+    "typecheck:project": "tsc --build --dry",
     "build:dev": "next build",
     "build:fast": "SKIP_TYPE_CHECK=true next build",
     "benchmark": "node scripts/performance-benchmark.js",
