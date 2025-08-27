@@ -38,7 +38,8 @@ interface ScheduleSession {
   end_time: string;
   service_type: string;
   assigned_to_sea_id: string | null;
-  delivered_by: 'provider' | 'sea';
+  assigned_to_specialist_id?: string | null;
+  delivered_by: 'provider' | 'sea' | 'specialist';
   completed_at: string | null;
   completed_by: string | null;
   session_notes: string | null;
@@ -1387,6 +1388,7 @@ export default function SchedulePage() {
             student={students.find((s) => s.id === selectedSession.student_id)}
             triggerRect={popupPosition}
             seaProfiles={seaProfiles}
+            otherSpecialists={[]}
             sessionTags={sessionTags}
             setSessionTags={setSessionTags}
             onClose={() => {
