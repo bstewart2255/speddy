@@ -69,7 +69,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     
     let enrichedSchool: SchoolInfo = {
       ...school,
-      display_name: getSchoolDisplayName(school),
+      display_name: school.display_name || getSchoolDisplayName(school),
       is_migrated: isUserMigrated(school),
       query_performance: school.school_id ? 'fast' : 'normal',
     };
@@ -192,23 +192,26 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               is_primary: true,
               school_id: profile.school_id,
               district_id: profile.district_id,
-              state_id: profile.state_id
+              state_id: profile.state_id,
+              display_name: `${profile.school_site} (${profile.school_district})`
             },
             {
               school_site: 'Lincoln Elementary',
               school_district: profile.school_district,
               is_primary: false,
-              school_id: 'SCH002',
+              school_id: 'MOCK_SCH_002',
               district_id: profile.district_id,
-              state_id: profile.state_id
+              state_id: profile.state_id,
+              display_name: `Lincoln Elementary (${profile.school_district})`
             },
             {
               school_site: 'Washington Middle School',
               school_district: profile.school_district,
               is_primary: false,
-              school_id: 'SCH003',
+              school_id: 'MOCK_SCH_003',
               district_id: profile.district_id,
-              state_id: profile.state_id
+              state_id: profile.state_id,
+              display_name: `Washington Middle School (${profile.school_district})`
             }
           ];
         }

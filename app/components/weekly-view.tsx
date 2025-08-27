@@ -108,26 +108,40 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
 
         // Fetch schedule sessions based on view mode
-        let sessionQuery = supabase
-          .from("schedule_sessions")
-          .select(`
-            id, 
-            day_of_week, 
-            start_time, 
-            end_time, 
-            student_id, 
-            delivered_by, 
-            assigned_to_sea_id, 
-            provider_id,
-            students!inner(
-              id,
-              school_id
-            )
-          `)
-          .gte("day_of_week", 1)
-          .lte("day_of_week", 5)
-          .order("day_of_week")
-          .order("start_time");
+        // Only join students table if we need to filter by school
+        const needsStudentJoin = selectedSchoolFilter !== 'all' && worksAtMultipleSchools;
+        
+        let sessionQuery;
+        if (needsStudentJoin) {
+          sessionQuery = supabase
+            .from("schedule_sessions")
+            .select(`
+              id, 
+              day_of_week, 
+              start_time, 
+              end_time, 
+              student_id, 
+              delivered_by, 
+              assigned_to_sea_id, 
+              provider_id,
+              students!inner(
+                id,
+                school_id
+              )
+            `)
+            .gte("day_of_week", 1)
+            .lte("day_of_week", 5)
+            .order("day_of_week")
+            .order("start_time");
+        } else {
+          sessionQuery = supabase
+            .from("schedule_sessions")
+            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
+            .gte("day_of_week", 1)
+            .lte("day_of_week", 5)
+            .order("day_of_week")
+            .order("start_time");
+        }
 
         if (hasSEAs && viewMode === 'sea') {
           // Show sessions assigned to SEAs
@@ -141,7 +155,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
         
         // Apply school filter if a specific school is selected
-        if (selectedSchoolFilter !== 'all' && worksAtMultipleSchools) {
+        if (needsStudentJoin) {
           sessionQuery = sessionQuery.eq('students.school_id', selectedSchoolFilter);
         }
 

@@ -20,10 +20,21 @@ export function SchoolFilterToggle({
     return null;
   }
 
+  // Get the display name for the selected school
+  const getSelectedDisplay = () => {
+    if (selectedSchool === 'all') {
+      return 'All Schools';
+    }
+    const school = availableSchools.find(
+      s => (s.school_id || s.school_site) === selectedSchool
+    );
+    return school?.display_name || school?.school_site || 'Select school';
+  };
+
   return (
     <Select value={selectedSchool} onValueChange={onSchoolChange}>
       <SelectTrigger className="w-[200px]">
-        <SelectValue placeholder="Select school" />
+        <span className="block truncate">{getSelectedDisplay()}</span>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All Schools</SelectItem>
