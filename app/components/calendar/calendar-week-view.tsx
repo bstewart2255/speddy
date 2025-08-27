@@ -233,6 +233,31 @@ export function CalendarWeekView({
     loadManualLessons();
   }, [weekOffset]);
 
+  // Clean up legacy lessons without time_slot on mount
+  React.useEffect(() => {
+    const cleanupLegacyLessons = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      try {
+        // Delete lessons without time_slot as they are no longer needed
+        const { error } = await supabase
+          .from('ai_generated_lessons')
+          .delete()
+          .eq('provider_id', user.id)
+          .is('time_slot', null);
+
+        if (error && error.code !== '42P01') {
+          console.error('Failed to cleanup legacy lessons:', error);
+        }
+      } catch (error) {
+        console.error('Error during legacy cleanup:', error);
+      }
+    };
+
+    cleanupLegacyLessons();
+  }, []); // Run once on mount
+
   // Load saved AI lessons
   React.useEffect(() => {
     // Skip if weekDates is not ready
@@ -356,9 +381,9 @@ export function CalendarWeekView({
     return date < today;
   };
 
-  const getDayColor = (date: Date, isHolidayDay: boolean) => {
+  const getDayColor = (date: Date, isHolidayDay: boolean, daySessions: ScheduleSession[]) => {
     const dateStr = date.toISOString().split("T")[0];
-    const hasAIContent = savedLessons.has(dateStr);
+    const dayLessons = savedLessons.get(dateStr);
     const hasManualLessons = manualLessons.has(dateStr);
 
     // Past dates are gray
@@ -371,22 +396,44 @@ export function CalendarWeekView({
       return "bg-red-50 border-red-200";
     }
 
-    // Today's date
-    const today = new Date();
-    if (date.toDateString() === today.toDateString()) {
-      return "bg-blue-50 border-blue-300";
+    // Check AI lesson coverage for time slots
+    let hasCompleteAICoverage = false;
+    let hasPartialAICoverage = false;
+    
+    if (dayLessons && daySessions.length > 0) {
+      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+      const totalSlots = timeSlotGroups.size;
+      const coveredSlots = Array.from(timeSlotGroups.keys()).filter(slot => dayLessons[slot]).length;
+      
+      hasCompleteAICoverage = totalSlots > 0 && coveredSlots === totalSlots;
+      hasPartialAICoverage = coveredSlots > 0 && coveredSlots < totalSlots;
     }
 
-    // Has content
-    if (hasAIContent && hasManualLessons) {
-      return "bg-purple-50 border-purple-300"; // Both types
-    } else if (hasAIContent) {
-      return "bg-green-50 border-green-300"; // AI content only
+    // Today's date gets special treatment
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+      if (hasCompleteAICoverage) {
+        return "bg-green-100 border-green-400 ring-2 ring-green-400"; // Today with complete AI
+      } else if (hasPartialAICoverage || hasManualLessons) {
+        return "bg-blue-100 border-blue-400 ring-2 ring-blue-400"; // Today with some lessons
+      }
+      return "bg-blue-50 border-blue-300 ring-2 ring-blue-300"; // Today without lessons
+    }
+
+    // Color based on lesson coverage
+    if (hasCompleteAICoverage && hasManualLessons) {
+      return "bg-purple-50 border-purple-300"; // Complete AI + Manual
+    } else if (hasCompleteAICoverage) {
+      return "bg-green-50 border-green-300"; // Complete AI coverage
+    } else if (hasPartialAICoverage && hasManualLessons) {
+      return "bg-indigo-50 border-indigo-300"; // Partial AI + Manual
+    } else if (hasPartialAICoverage) {
+      return "bg-blue-50 border-blue-300"; // Partial AI coverage
     } else if (hasManualLessons) {
       return "bg-yellow-50 border-yellow-300"; // Manual lessons only
     }
 
-    return "bg-white border-gray-200";
+    return "bg-white border-gray-200"; // No lessons
   };
 
   // Helper function to group sessions by 30-minute time slots
@@ -505,7 +552,7 @@ export function CalendarWeekView({
         throw error;
       }
 
-      // Update saved lessons to support time slots
+      // Only update state if save was successful
       setSavedLessons(prev => {
         const newMap = new Map(prev);
         const dateKey = date.toISOString().split('T')[0];
@@ -522,9 +569,32 @@ export function CalendarWeekView({
         return newMap;
       });
 
+      // Return success
+      return true;
     } catch (error) {
       console.error(`Error generating content for time slot ${timeSlot}:`, error);
       showToast(`Failed to generate AI content for ${formatTimeSlot(timeSlot)}`, 'error');
+      
+      // Remove any phantom lesson from state
+      setSavedLessons(prev => {
+        const newMap = new Map(prev);
+        const dateKey = date.toISOString().split('T')[0];
+        const dayLessons = newMap.get(dateKey);
+        
+        if (dayLessons && dayLessons[timeSlot]) {
+          delete dayLessons[timeSlot];
+          if (Object.keys(dayLessons).length === 0) {
+            newMap.delete(dateKey);
+          } else {
+            newMap.set(dateKey, dayLessons);
+          }
+        }
+        
+        return newMap;
+      });
+      
+      // Return failure
+      return false;
     }
   };
   
@@ -674,6 +744,77 @@ export function CalendarWeekView({
     }
   };
 
+  // New unified lesson creation handler
+  const handleCreateDailyLesson = (date: Date, daySessions: ScheduleSession[]) => {
+    setSelectedLessonDate(date);
+    setSelectedDaySessions(daySessions);
+    setShowLessonTypeModal(true);
+  };
+
+  // Handle viewing all AI lessons for a day
+  const handleViewAllAILessons = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons) {
+      // Get all time slots with lessons
+      const timeSlots = Object.keys(dayLessons).sort();
+      if (timeSlots.length > 0) {
+        // For now, show the first lesson - later we'll enhance this with tabbed view
+        handleViewAILessonForSlot(date, timeSlots[0]);
+      }
+    }
+  };
+
+  // Handle editing all AI lessons for a day
+  const handleEditAllAILessons = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    const dayLessons = savedLessons.get(dateStr);
+    if (dayLessons) {
+      const timeSlots = Object.keys(dayLessons).sort();
+      if (timeSlots.length > 0) {
+        // For now, edit the first lesson - later we'll enhance this with tabbed view
+        handleEditAILessonForSlot(date, timeSlots[0]);
+      }
+    }
+  };
+
+  // Handle deleting all lessons for a day (entire day only as per requirements)
+  const handleDeleteDailyLessons = async (date: Date) => {
+    if (!confirm('Are you sure you want to delete all lessons for this day?')) {
+      return;
+    }
+
+    const dateStr = date.toISOString().split('T')[0];
+    const dayLessons = savedLessons.get(dateStr);
+    
+    if (!dayLessons) return;
+
+    try {
+      const supabase = createClient();
+      
+      // Delete all AI lessons for this date
+      const { error } = await supabase
+        .from('ai_generated_lessons')
+        .delete()
+        .eq('school_id', currentUser?.school_id)
+        .eq('session_date', dateStr);
+
+      if (error) throw error;
+
+      // Update local state
+      setSavedLessons(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(dateStr);
+        return newMap;
+      });
+
+      showToast('All lessons deleted successfully', 'success');
+    } catch (error) {
+      console.error('Error deleting lessons:', error);
+      showToast('Failed to delete lessons', 'error');
+    }
+  };
+
   // Legacy functions for backward compatibility
   const handleViewAILesson = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
@@ -750,19 +891,59 @@ export function CalendarWeekView({
     setShowLessonTypeModal(true);
   };
 
-  const handleLessonTypeSelect = (type: 'ai' | 'manual') => {
+  const handleLessonTypeSelect = async (type: 'ai' | 'manual') => {
     setShowLessonTypeModal(false);
     
     if (type === 'ai' && selectedLessonDate) {
-      // Get sessions for the selected date
-      const daySessions = sessionsState.filter((s) => {
-        const sessionDate = new Date(weekDates[0]);
-        sessionDate.setDate(
-          weekDates[0].getDate() + (s.day_of_week - 1)
-        );
-        return sessionDate.toDateString() === selectedLessonDate.toDateString();
+      // Use the sessions that were set when Create Lesson button was clicked
+      const daySessions = selectedDaySessions;
+      
+      if (!daySessions || daySessions.length === 0) {
+        showToast('No sessions scheduled for this day', 'warning');
+        return;
+      }
+
+      // Group sessions by time slot for AI generation
+      const timeSlotGroups = new Map<string, ScheduleSession[]>();
+      daySessions.forEach(session => {
+        const timeSlot = `${session.start_time}-${session.end_time}`;
+        if (!timeSlotGroups.has(timeSlot)) {
+          timeSlotGroups.set(timeSlot, []);
+        }
+        timeSlotGroups.get(timeSlot)!.push(session);
       });
-      handleGenerateDailyAILesson(selectedLessonDate, daySessions);
+
+      // Generate AI lessons for each time slot
+      setGeneratingContent(true);
+      setModalOpen(true);
+      
+      let successCount = 0;
+      let failCount = 0;
+      
+      try {
+        for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
+          const success = await generateAIContentForTimeSlot(selectedLessonDate, slotSessions, timeSlot);
+          if (success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        }
+        
+        if (successCount > 0 && failCount === 0) {
+          showToast(`Successfully generated ${successCount} AI lesson(s)`, 'success');
+        } else if (successCount > 0 && failCount > 0) {
+          showToast(`Generated ${successCount} lesson(s), ${failCount} failed`, 'warning');
+        } else {
+          showToast('Failed to generate any lessons', 'error');
+        }
+      } catch (error) {
+        console.error('Error generating AI lessons:', error);
+        showToast('An unexpected error occurred', 'error');
+      } finally {
+        setGeneratingContent(false);
+        setModalOpen(false);
+      }
     } else if (type === 'manual') {
       setShowManualLessonForm(true);
     }
@@ -908,6 +1089,37 @@ export function CalendarWeekView({
 
   return (
     <div className="w-full">
+      {/* Color Legend */}
+      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+        <p className="text-xs font-medium text-gray-700 mb-2">Calendar Legend:</p>
+        <div className="flex flex-wrap gap-3 text-xs">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-green-50 border border-green-300 rounded"></div>
+            <span>All time slots have AI lessons</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-blue-50 border border-blue-300 rounded"></div>
+            <span>Partial AI lessons</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-yellow-50 border border-yellow-300 rounded"></div>
+            <span>Manual lessons only</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-purple-50 border border-purple-300 rounded"></div>
+            <span>AI + Manual lessons</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-red-50 border border-red-200 rounded"></div>
+            <span>Holiday</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-gray-50 border border-gray-200 rounded"></div>
+            <span>Past date</span>
+          </div>
+        </div>
+      </div>
+      
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
           const dateStr = date.toISOString().split("T")[0];
@@ -927,7 +1139,7 @@ export function CalendarWeekView({
               key={dayOfWeek}
               className={cn(
                 "relative border rounded-lg transition-colors",
-                getDayColor(date, isHolidayDay)
+                getDayColor(date, isHolidayDay, sortedDaySessions)
               )}
             >
               <div
@@ -944,56 +1156,68 @@ export function CalendarWeekView({
               </div>
 
               <div className="p-2 min-h-[400px]">
-                {/* AI Lessons by Time Slot */}
-                {!isHolidayDay && !isPast && timeSlotGroups.size > 0 && (
+                {/* Single Create Lesson Button Per Day */}
+                {!isHolidayDay && !isPast && sortedDaySessions.length > 0 && !hasAIContent && (
+                  <div className="mb-3">
+                    <button
+                      onClick={() => handleCreateDailyLesson(date, sortedDaySessions)}
+                      className="w-full text-sm bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md font-medium transition-colors"
+                      title="Create lessons for this day"
+                    >
+                      + Create Lesson
+                    </button>
+                  </div>
+                )}
+
+                {/* AI Lessons Display */}
+                {!isHolidayDay && timeSlotGroups.size > 0 && hasAIContent && (
                   <div className="mb-2 space-y-1">
-                    {Array.from(timeSlotGroups.entries()).map(([timeSlot, slotSessions]) => {
-                      const hasLessonForSlot = dayAILessons[timeSlot];
-                      return (
-                        <div key={timeSlot} className="flex items-center gap-1">
-                          <span className="text-xs text-gray-600 w-16">
-                            {formatTimeSlot(timeSlot)}
-                          </span>
-                          {hasLessonForSlot ? (
-                            <>
-                              <button
-                                onClick={() => handleViewAILessonForSlot(date, timeSlot)}
-                                className="flex-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 py-0.5 px-2 rounded flex items-center justify-center gap-1"
-                                title={`View AI lesson for ${formatTimeSlot(timeSlot)}`}
-                              >
-                                <span>📄</span>
-                                <span>AI Lesson</span>
-                              </button>
-                              <button
-                                onClick={() => handleEditAILessonForSlot(date, timeSlot)}
-                                className="text-xs bg-green-100 hover:bg-green-200 text-green-700 p-0.5 rounded"
-                                title={`Edit AI lesson for ${formatTimeSlot(timeSlot)}`}
-                              >
-                                ✏️
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              onClick={() => handleCreateLessonForSlot(date, slotSessions, timeSlot)}
-                              className="flex-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 py-0.5 px-2 rounded"
-                              title={`Create lesson for ${formatTimeSlot(timeSlot)}`}
-                            >
-                              + Create Lesson
-                            </button>
-                          )}
+                    <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-green-800">AI Lessons</span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleViewAllAILessons(date)}
+                            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded"
+                            title="View all AI lessons"
+                          >
+                            📄 View All
+                          </button>
+                          <button
+                            onClick={() => handleEditAllAILessons(date)}
+                            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded"
+                            title="Edit AI lessons"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDailyLessons(date)}
+                            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 py-1 px-2 rounded"
+                            title="Delete all lessons for this day"
+                          >
+                            🗑️
+                          </button>
                         </div>
-                      );
-                    })}
-                    {/* Button to generate all lessons at once */}
-                    {!hasAIContent && (
-                      <button
-                        onClick={() => handleGenerateDailyAILesson(date, sortedDaySessions)}
-                        className="w-full text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 py-1 px-2 rounded mt-1"
-                        title="Generate AI lessons for all time slots"
-                      >
-                        🚀 Generate All Lessons
-                      </button>
-                    )}
+                      </div>
+                      {/* Time slot indicators */}
+                      <div className="space-y-1">
+                        {Array.from(timeSlotGroups.entries()).map(([timeSlot, slotSessions]) => {
+                          const hasLessonForSlot = dayAILessons[timeSlot];
+                          return (
+                            <div key={timeSlot} className="flex items-center gap-2 text-xs">
+                              <span className="text-gray-600">
+                                {formatTimeSlot(timeSlot)}
+                              </span>
+                              {hasLessonForSlot ? (
+                                <span className="text-green-600">✓ Lesson created</span>
+                              ) : (
+                                <span className="text-gray-400">No lesson</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
