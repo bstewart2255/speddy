@@ -21,6 +21,20 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Check if user is an SEA - SEAs cannot dismiss schedule share requests
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role === 'sea') {
+      return NextResponse.json(
+        { error: 'Special Education Assistants (SEAs) do not have access to schedule sharing functionality' },
+        { status: 403 }
+      );
+    }
+
     // Remove the share request without importing
     const { error } = await supabase
       .from('schedule_share_requests')

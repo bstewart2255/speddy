@@ -31,6 +31,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if user is an SEA - SEAs cannot import shared schedules
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role === 'sea') {
+      return NextResponse.json(
+        { error: 'Special Education Assistants (SEAs) do not have access to schedule sharing functionality' },
+        { status: 403 }
+      );
+    }
+
     // Use service client to fetch sharer's schedules (bypass RLS)
     const serviceClient = createServiceClient();
     
