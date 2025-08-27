@@ -19,10 +19,6 @@ export function SubscriptionManager() {
   const [userRole, setUserRole] = useState<string>('');
   const supabase = createClient();
 
-  useEffect(() => {
-    loadSubscriptionData();
-  }, [loadSubscriptionData]);
-
   const loadSubscriptionData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -56,6 +52,10 @@ export function SubscriptionManager() {
       setLoading(false);
     }
   }, [supabase]);
+
+  useEffect(() => {
+    loadSubscriptionData();
+  }, [loadSubscriptionData]);
 
   const openCustomerPortal = async () => {
     setPortalLoading(true);

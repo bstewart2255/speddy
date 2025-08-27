@@ -28,10 +28,6 @@ export function WorkScheduleSettings() {
   const [schedules, setSchedules] = useState<Record<string, number[]>>({});
   const supabase = createClient();
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
   const loadData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -70,6 +66,10 @@ export function WorkScheduleSettings() {
       setLoading(false);
     }
   }, [supabase]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const toggleDay = (schoolId: string, day: number) => {
     setSchedules(prev => {

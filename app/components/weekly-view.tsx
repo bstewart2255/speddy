@@ -320,6 +320,19 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     setDropTarget(null);
   }, []);
 
+  // Helper function for time conversion
+  const timeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
+    const totalMinutes = timeToMinutes(time) + minutesToAdd;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+  };
+
   const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
     event.preventDefault();
 
@@ -391,20 +404,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts, addMinutesToTime]);
-
-  // Helper function for time conversion
-  const timeToMinutes = (time: string): number => {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-  };
-
-  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
-    const totalMinutes = timeToMinutes(time) + minutesToAdd;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  };
+  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts]);
 
   // Group sessions by day and time
   const sessionsByDayTime = React.useMemo(() => {

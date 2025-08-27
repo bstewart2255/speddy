@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { SessionGenerator } from '@/lib/services/session-generator';
@@ -46,8 +46,8 @@ export function CalendarTodayView({
     const [userProfile, setUserProfile] = useState<any>(null);
     const [providerId, setProviderId] = useState<string | null>(null);
 
-    const supabase = createClient<Database>();
-    const sessionGenerator = new SessionGenerator();
+    const supabase = useMemo(() => createClient<Database>(), []);
+    const sessionGenerator = useMemo(() => new SessionGenerator(), []);
 
     // Load sessions and user info for the current date
     React.useEffect(() => {
@@ -219,7 +219,7 @@ export function CalendarTodayView({
     setValidDropTargets(valid);
     setInvalidDropTargets(invalid);
     setIsValidating(false);
-  }, [timeSlots, addMinutesToTime]);
+  }, [timeSlots]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((session: ScheduleSession, event: DragEvent) => {
@@ -284,7 +284,7 @@ export function CalendarTodayView({
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd, addMinutesToTime]);
+  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd]);
 
   // Handler for completing/uncompleting a session
     const handleCompleteToggle = async (sessionId: string, completed: boolean) => {

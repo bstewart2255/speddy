@@ -23,10 +23,6 @@ export function TodoWidget() {
   const [isAddingTask, setIsAddingTask] = useState(false)
   const supabase = createClient<Database>()
 
-  useEffect(() => {
-    fetchTodos()
-  }, [fetchTodos])
-
   const fetchTodos = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -49,6 +45,10 @@ export function TodoWidget() {
       setLoading(false)
     }
   }, [supabase])
+
+  useEffect(() => {
+    fetchTodos()
+  }, [fetchTodos])
 
   const addTodo = async (e: React.FormEvent) => {
     e.preventDefault()

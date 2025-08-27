@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
@@ -46,7 +46,7 @@ export default function CalendarPage() {
   const [providerId, setProviderId] = useState<string>('');
 
   // Helper function to fetch calendar events
-  const getCalendarEvents = async (providerIdParam?: string) => {
+  const getCalendarEvents = useCallback(async (providerIdParam?: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
     
@@ -64,7 +64,7 @@ export default function CalendarPage() {
     }
     
     return eventsData || [];
-  };
+  }, [supabase, providerId]);
 
   // Navigation handlers
   const handlePreviousDay = () => {

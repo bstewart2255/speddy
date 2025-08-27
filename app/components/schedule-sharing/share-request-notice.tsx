@@ -28,10 +28,6 @@ export function ShareRequestNotice({ schoolId, schoolName }: ShareRequestNoticeP
   const [importingRequest, setImportingRequest] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<{ [key: string]: string }>({});
 
-  useEffect(() => {
-    fetchShareRequests();
-  }, [schoolId, fetchShareRequests]);
-
   const fetchShareRequests = useCallback(async () => {
     try {
       const response = await fetch(`/api/schedule-sharing/requests?school_id=${schoolId}`);
@@ -45,6 +41,10 @@ export function ShareRequestNotice({ schoolId, schoolName }: ShareRequestNoticeP
       setLoading(false);
     }
   }, [schoolId]);
+
+  useEffect(() => {
+    fetchShareRequests();
+  }, [schoolId, fetchShareRequests]);
 
   const handleImport = async (request: ShareRequest, mode: ImportMode) => {
     setImportingRequest(request.sharer_id);

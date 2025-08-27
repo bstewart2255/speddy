@@ -667,6 +667,19 @@ export default function SchedulePage() {
     }
   }, [currentSchool, selectedWeek, supabase]);
 
+  // Check for unscheduled sessions
+  const checkUnscheduledSessions = useCallback(async () => {
+    try {
+      const { getUnscheduledSessionsCount } = await import(
+        "../../../../lib/supabase/queries/schedule-sessions"
+      );
+      const count = await getUnscheduledSessionsCount(currentSchool?.school_site);
+      setUnscheduledCount(count);
+    } catch (error) {
+      console.error("Error checking unscheduled sessions:", error);
+    }
+  }, [currentSchool, currentUserId, selectedWeek, supabase]);
+
   useEffect(() => {
     if (currentSchool) {
       fetchData();
@@ -693,19 +706,6 @@ export default function SchedulePage() {
 
   // Add this after the existing useEffect
   const [unscheduledCount, setUnscheduledCount] = useState(0);
-
-  // Check for unscheduled sessions
-  const checkUnscheduledSessions = useCallback(async () => {
-    try {
-      const { getUnscheduledSessionsCount } = await import(
-        "../../../../lib/supabase/queries/schedule-sessions"
-      );
-      const count = await getUnscheduledSessionsCount(currentSchool?.school_site);
-      setUnscheduledCount(count);
-    } catch (error) {
-      console.error("Error checking unscheduled sessions:", error);
-    }
-  }, [currentSchool, currentUserId, selectedWeek, supabase]);
 
   // Close popup when clicking outside
   useEffect(() => {

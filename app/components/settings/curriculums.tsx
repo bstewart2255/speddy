@@ -64,10 +64,6 @@ export function CurriculumsSettings() {
   const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
-    loadCurriculums();
-  }, [loadCurriculums]);
-
   const loadCurriculums = useCallback(async () => {
     try {
       const {
@@ -90,6 +86,10 @@ export function CurriculumsSettings() {
       setLoading(false);
     }
   }, [supabase]);
+
+  useEffect(() => {
+    loadCurriculums();
+  }, [loadCurriculums]);
 
   const handleToggleCurriculum = (curriculumId: string) => {
     setSelectedCurriculums((prev) => {
