@@ -115,21 +115,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     return enrichedSchool;
   }, [supabase, schoolCache]);
 
-  useEffect(() => {
-    fetchProviderSchools();
-  }, [fetchProviderSchools]);
-
-  // Persist school selection with migration status
-  useEffect(() => {
-    if (currentSchool && !loading) {
-      const persistData = {
-        ...currentSchool,
-        cached_at: new Date().toISOString(),
-      };
-      localStorage.setItem('selectedSchool', JSON.stringify(persistData));
-    }
-  }, [currentSchool, loading]);
-
   const fetchProviderSchools = useCallback(async () => {
     console.log('[SchoolContext] Fetching provider schools...');
     const startTime = performance.now();
@@ -280,6 +265,22 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     schoolCache.clear();
     await fetchProviderSchools();
   }, [schoolCache, fetchProviderSchools]);
+
+  // Call fetchProviderSchools on mount
+  useEffect(() => {
+    fetchProviderSchools();
+  }, [fetchProviderSchools]);
+
+  // Persist school selection with migration status
+  useEffect(() => {
+    if (currentSchool && !loading) {
+      const persistData = {
+        ...currentSchool,
+        cached_at: new Date().toISOString(),
+      };
+      localStorage.setItem('selectedSchool', JSON.stringify(persistData));
+    }
+  }, [currentSchool, loading]);
 
   return (
     <SchoolContext.Provider value={{ 
