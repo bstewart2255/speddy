@@ -388,6 +388,28 @@ export function CalendarWeekView({
     return date < today;
   };
 
+  // Helper function to group sessions by time slots (using actual start-end times)
+  const groupSessionsByTimeSlot = (sessions: ScheduleSession[]): Map<string, ScheduleSession[]> => {
+    const timeSlotGroups = new Map<string, ScheduleSession[]>();
+    
+    sessions.forEach(session => {
+      if (!session.start_time || !session.end_time) return;
+      
+      // Normalize time format by removing seconds if present
+      const startTime = session.start_time.split(':').slice(0, 2).join(':');
+      const endTime = session.end_time.split(':').slice(0, 2).join(':');
+      const timeSlot = `${startTime}-${endTime}`;
+      
+      if (!timeSlotGroups.has(timeSlot)) {
+        timeSlotGroups.set(timeSlot, []);
+      }
+      timeSlotGroups.get(timeSlot)!.push(session);
+    });
+    
+    // Sort the map by time slot keys
+    return new Map([...timeSlotGroups.entries()].sort());
+  };
+
   // Memoize expensive day color calculations
   const getDayColorData = useMemo(() => {
     const colorMap = new Map<string, string>();
@@ -466,28 +488,6 @@ export function CalendarWeekView({
   const getDayColor = (date: Date) => {
     const dateStr = toLocalDateKey(date);
     return getDayColorData.get(dateStr) || "bg-white border-gray-200";
-  };
-
-  // Helper function to group sessions by time slots (using actual start-end times)
-  const groupSessionsByTimeSlot = (sessions: ScheduleSession[]): Map<string, ScheduleSession[]> => {
-    const timeSlotGroups = new Map<string, ScheduleSession[]>();
-    
-    sessions.forEach(session => {
-      if (!session.start_time || !session.end_time) return;
-      
-      // Normalize time format by removing seconds if present
-      const startTime = session.start_time.split(':').slice(0, 2).join(':');
-      const endTime = session.end_time.split(':').slice(0, 2).join(':');
-      const timeSlot = `${startTime}-${endTime}`;
-      
-      if (!timeSlotGroups.has(timeSlot)) {
-        timeSlotGroups.set(timeSlot, []);
-      }
-      timeSlotGroups.get(timeSlot)!.push(session);
-    });
-    
-    // Sort the map by time slot keys
-    return new Map([...timeSlotGroups.entries()].sort());
   };
 
   const handleGenerateDailyAILesson = async (
