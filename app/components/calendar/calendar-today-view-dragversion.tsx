@@ -80,7 +80,7 @@ export function CalendarTodayView({
       };
 
       loadSessions();
-    }, [currentDate]);
+    }, [currentDate, sessionGenerator, supabase]);
 
     // Use session sync hook for real-time updates
     const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -219,7 +219,7 @@ export function CalendarTodayView({
     setValidDropTargets(valid);
     setInvalidDropTargets(invalid);
     setIsValidating(false);
-  }, [timeSlots]);
+  }, [timeSlots, addMinutesToTime]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((session: ScheduleSession, event: DragEvent) => {
@@ -284,7 +284,7 @@ export function CalendarTodayView({
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd]);
+  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd, addMinutesToTime]);
 
   // Handler for completing/uncompleting a session
     const handleCompleteToggle = async (sessionId: string, completed: boolean) => {

@@ -149,13 +149,13 @@ export default function SchedulePage() {
   const TOTAL_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PIXELS_PER_HOUR;
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-  const weekDays = [
+  const weekDays = useMemo(() => [
     { name: "Monday", number: 1 },
     { name: "Tuesday", number: 2 },
     { name: "Wednesday", number: 3 },
     { name: "Thursday", number: 4 },
     { name: "Friday", number: 5 },
-  ];
+  ], []);
 
   //... Inside your useMemo hook
   const daySessionColumns = useMemo(() => {
@@ -218,7 +218,7 @@ export default function SchedulePage() {
     console.log('[daySessionColumns] Calculation time:', memoEndTime - memoStartTime, 'ms');
 
     return columns;
-  }, [sessions, weekDays]);
+  }, [sessions]);
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {
@@ -511,7 +511,7 @@ export default function SchedulePage() {
   };
 
   // Fetch all data
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -665,13 +665,13 @@ export default function SchedulePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool, selectedWeek, supabase]);
 
   useEffect(() => {
     if (currentSchool) {
       fetchData();
     }
-  }, [currentSchool]); // Add currentSchool as a dependency
+  }, [currentSchool, fetchData]);
   
   // Sync data from data manager when it's initialized
   useEffect(() => {
@@ -689,13 +689,13 @@ export default function SchedulePage() {
         refreshSchedulingData().catch(console.error);
       }
     }
-  }, [isDataManagerInitialized, isDataManagerLoading]);
+  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, metrics, refreshSchedulingData]);
 
   // Add this after the existing useEffect
   const [unscheduledCount, setUnscheduledCount] = useState(0);
 
   // Check for unscheduled sessions
-  const checkUnscheduledSessions = async () => {
+  const checkUnscheduledSessions = useCallback(async () => {
     try {
       const { getUnscheduledSessionsCount } = await import(
         "../../../../lib/supabase/queries/schedule-sessions"
@@ -705,7 +705,7 @@ export default function SchedulePage() {
     } catch (error) {
       console.error("Error checking unscheduled sessions:", error);
     }
-  };
+  }, [currentSchool, currentUserId, selectedWeek, supabase]);
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -749,7 +749,7 @@ export default function SchedulePage() {
     if (!loading && currentSchool) {
       checkUnscheduledSessions();
     }
-  }, [loading, currentSchool]); // Add currentSchool as dependency
+  }, [loading, currentSchool, checkUnscheduledSessions]);
 
   // Cleanup effect for conflictCheckTimeoutRef
   useEffect(() => {

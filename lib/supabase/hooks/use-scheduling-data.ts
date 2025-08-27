@@ -288,7 +288,7 @@ export function useSchedulingData(config?: DataManagerConfig): UseSchedulingData
       };
     }
     return dataManager.getMetrics();
-  }, [dataManager, isInitialized, refreshTrigger]);
+  }, [dataManager, isInitialized]);
   
   return {
     // Data access

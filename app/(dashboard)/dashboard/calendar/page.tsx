@@ -105,7 +105,7 @@ export default function CalendarPage() {
     fetchData();
   }, [currentSchool]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // Get user profile
       const { data: { user } } = await supabase.auth.getUser();
@@ -188,7 +188,7 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool, supabase, getCalendarEvents]);
 
   const handleAddEvent = (date: Date) => {
     setSelectedEventDate(date);

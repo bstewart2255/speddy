@@ -65,7 +65,7 @@ export default function MigrateSchoolsPage() {
     loadInitialData();
   }, []);
 
-  const loadInitialData = async () => {
+  const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
       await Promise.all([
@@ -78,7 +78,7 @@ export default function MigrateSchoolsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadStats = async () => {
     const { data, error } = await supabase.rpc('get_school_migration_stats');
@@ -485,7 +485,7 @@ function MigrationLogsPanel() {
     loadLogs();
   }, []);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -505,7 +505,7 @@ function MigrationLogsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const exportLogs = () => {
     const csv = [

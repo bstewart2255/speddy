@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import QRCode from 'qrcode';
 
 /**
@@ -150,7 +151,7 @@ export default function QRUploadTestPage() {
               {qrDataUrl && (
                 <div className="mt-6">
                   <h3 className="font-medium mb-2">Generated QR Code:</h3>
-                  <img src={qrDataUrl} alt="QR Code" className="border rounded" />
+                  <Image src={qrDataUrl} alt="QR Code" width={200} height={200} className="border rounded" />
                   <p className="text-sm text-gray-600 mt-2">
                     Scan this with your phone camera to test
                   </p>

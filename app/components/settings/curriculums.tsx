@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardBody } from "../ui/card";
 import { Button } from "../ui/button";
 import { createClient } from '@/lib/supabase/client';
@@ -66,9 +66,9 @@ export function CurriculumsSettings() {
 
   useEffect(() => {
     loadCurriculums();
-  }, []);
+  }, [loadCurriculums]);
 
-  const loadCurriculums = async () => {
+  const loadCurriculums = useCallback(async () => {
     try {
       const {
         data: { user },
@@ -89,7 +89,7 @@ export function CurriculumsSettings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const handleToggleCurriculum = (curriculumId: string) => {
     setSelectedCurriculums((prev) => {

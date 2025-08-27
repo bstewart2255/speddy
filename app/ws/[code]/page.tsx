@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
 import { compressImage, validateImageFile, extractImageMetadata } from '@/lib/image-utils';
@@ -75,7 +76,7 @@ export default function WorksheetUploadPage() {
         timestamp: new Date().toISOString()
       }
     });
-  }, [code]);
+  }, [code, fetchWorksheet]);
 
   useEffect(() => {
     if (uploadSuccess) {
@@ -92,7 +93,7 @@ export default function WorksheetUploadPage() {
     };
   }, [uploadSuccess, router]);
 
-  const fetchWorksheet = async () => {
+  const fetchWorksheet = useCallback(async () => {
     try {
       const supabase = createClient<Database>();
       
@@ -148,7 +149,7 @@ export default function WorksheetUploadPage() {
       setError('An error occurred while loading the worksheet.');
       setLoading(false);
     }
-  };
+  }, [code]);
 
   const handleImageSelect = async (file: File, method: 'camera' | 'gallery') => {
     // Validate the image file
@@ -539,10 +540,13 @@ export default function WorksheetUploadPage() {
             
             {/* Image preview */}
             <div className="mb-4 relative">
-              <img
+              <Image
                 src={imagePreview}
                 alt="Worksheet preview"
+                width={800}
+                height={600}
                 className="w-full rounded-lg shadow-sm"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
 

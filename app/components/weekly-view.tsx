@@ -210,7 +210,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode]); // Re-run when viewMode changes
+  }, [viewMode, weekStart]); // Re-run when viewMode or weekStart changes
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -391,7 +391,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts]);
+  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts, addMinutesToTime]);
 
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {

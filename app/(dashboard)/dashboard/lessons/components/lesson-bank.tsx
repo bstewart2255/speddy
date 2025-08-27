@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TrashIcon, PrinterIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
 import { createClient } from '@/lib/supabase/client';
@@ -238,7 +238,7 @@ export default function LessonBank() {
     filterLessons();
   }, [lessons, filterSubject, filterGrade]);
 
-  const fetchLessons = async () => {
+  const fetchLessons = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetch('/api/lessons');
@@ -257,9 +257,9 @@ export default function LessonBank() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
-  const filterLessons = () => {
+  const filterLessons = useCallback(() => {
     let filtered = [...lessons];
     
     if (filterSubject !== 'All Subjects') {
@@ -271,7 +271,7 @@ export default function LessonBank() {
     }
     
     setFilteredLessons(filtered);
-  };
+  }, [lessons, filterSubject, filterGrade]);
 
   const handleDelete = async (lessonId: string) => {
     try {

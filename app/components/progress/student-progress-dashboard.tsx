@@ -46,9 +46,9 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
 
   useEffect(() => {
     loadProgressData();
-  }, [studentId, selectedTimeRange]);
+  }, [loadProgressData]);
 
-  const loadProgressData = async () => {
+  const loadProgressData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -148,7 +148,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentId, selectedTimeRange, supabase]);
 
   const calculateProgressTrend = (submissions: any[]) => {
     if (submissions.length < 2) return 'insufficient_data';

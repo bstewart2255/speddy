@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatPrice, SUBSCRIPTION_CONFIG, isCurrentMonthPauseable } from '@/src/lib/stripe';
 import { format, differenceInDays } from 'date-fns';
@@ -21,9 +21,9 @@ export function SubscriptionManager() {
 
   useEffect(() => {
     loadSubscriptionData();
-  }, []);
+  }, [loadSubscriptionData]);
 
-  const loadSubscriptionData = async () => {
+  const loadSubscriptionData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -55,7 +55,7 @@ export function SubscriptionManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const openCustomerPortal = async () => {
     setPortalLoading(true);

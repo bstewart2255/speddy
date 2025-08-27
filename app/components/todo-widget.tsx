@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -25,9 +25,9 @@ export function TodoWidget() {
 
   useEffect(() => {
     fetchTodos()
-  }, [])
+  }, [fetchTodos])
 
-  const fetchTodos = async () => {
+  const fetchTodos = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -48,7 +48,7 @@ export function TodoWidget() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
   const addTodo = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardTitle, CardBody } from '../ui/card';
 import { Button } from '../ui/button';
 import { getUserSiteSchedules, setUserSiteSchedule } from '../../../lib/supabase/queries/user-site-schedules';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CollapsibleCard } from '../ui/collapsible-card';
 
@@ -30,9 +30,9 @@ export function WorkScheduleSettings() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -69,7 +69,7 @@ export function WorkScheduleSettings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const toggleDay = (schoolId: string, day: number) => {
     setSchedules(prev => {

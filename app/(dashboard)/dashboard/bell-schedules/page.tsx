@@ -35,7 +35,7 @@ export default function BellSchedulesPage() {
   const [activityFilter, setActivityFilter] = useState('');
 
   // Fetch bell schedules from database with intelligent filtering
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     try {
       const startTime = performance.now();
       console.log('Fetching bell schedules for:', currentSchool?.display_name || currentSchool?.school_site);
@@ -58,7 +58,7 @@ export default function BellSchedulesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool]);
 
   useEffect(() => {
     // Clear existing schedules when school changes

@@ -343,12 +343,12 @@ export default function SchedulePage() {
   }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop]);
 
   // Helper function to convert pixels to time
-  const pixelsToTime = (pixels: number): string => {
+  const pixelsToTime = useCallback((pixels: number): string => {
     const totalMinutes = Math.round((pixels * 60) / gridConfig.pixelsPerHour);
     const hours = Math.floor(totalMinutes / 60) + gridConfig.startHour;
     const minutes = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  };
+  }, [gridConfig.pixelsPerHour, gridConfig.startHour]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {

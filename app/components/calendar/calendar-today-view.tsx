@@ -87,7 +87,7 @@ export function CalendarTodayView({
     };
 
     loadSessions();
-  }, [currentDate]);
+  }, [currentDate, sessionGenerator, supabase]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
