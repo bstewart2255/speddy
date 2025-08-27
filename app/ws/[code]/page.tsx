@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
 import { compressImage, validateImageFile, extractImageMetadata } from '@/lib/image-utils';
@@ -540,13 +539,12 @@ export default function WorksheetUploadPage() {
             
             {/* Image preview */}
             <div className="mb-4 relative">
-              <Image
-                src={imagePreview}
+              <img
+                src={imagePreview || ''}
                 alt="Worksheet preview"
-                width={800}
-                height={600}
                 className="w-full rounded-lg shadow-sm"
                 style={{ width: '100%', height: 'auto' }}
+                loading="eager"
               />
             </div>
 

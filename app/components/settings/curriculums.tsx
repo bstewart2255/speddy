@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardBody } from "../ui/card";
 import { Button } from "../ui/button";
 import { createClient } from '@/lib/supabase/client';
@@ -62,7 +62,7 @@ export function CurriculumsSettings() {
   const [selectedCurriculums, setSelectedCurriculums] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const loadCurriculums = useCallback(async () => {
     try {

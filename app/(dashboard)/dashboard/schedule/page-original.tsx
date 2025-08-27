@@ -678,7 +678,7 @@ export default function SchedulePage() {
     } catch (error) {
       console.error("Error checking unscheduled sessions:", error);
     }
-  }, [currentSchool, currentUserId, selectedWeek, supabase]);
+  }, [currentSchool]);
 
   useEffect(() => {
     if (currentSchool) {
