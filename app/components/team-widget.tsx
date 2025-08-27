@@ -199,22 +199,26 @@
                 <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
               )}
               
-              {/* Share Request Notices */}
-              <ShareRequestNotice 
-                schoolId={school.school_id}
-                schoolName={school.school_name}
-              />
+              {/* Share Request Notices - Hidden for SEA users */}
+              {currentUser.role !== 'sea' && (
+                <ShareRequestNotice 
+                  schoolId={school.school_id}
+                  schoolName={school.school_name}
+                />
+              )}
               
               <TeamMembersList 
                 currentUser={currentUser} 
                 teammates={teammates} 
               />
               
-              {/* Share Button */}
-              <ShareButton 
-                schoolId={school.school_id}
-                schoolName={school.school_name}
-              />
+              {/* Share Button - Hidden for SEA users */}
+              {currentUser.role !== 'sea' && (
+                <ShareButton 
+                  schoolId={school.school_id}
+                  schoolName={school.school_name}
+                />
+              )}
             </CardBody>
           </Card>
         );
@@ -255,22 +259,26 @@
                 <CardBody>
                   <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
                   
-                  {/* Share Request Notices */}
-                  <ShareRequestNotice 
-                    schoolId={school.school_id}
-                    schoolName={school.school_name}
-                  />
+                  {/* Share Request Notices - Hidden for SEA users */}
+                  {currentUser.role !== 'sea' && (
+                    <ShareRequestNotice 
+                      schoolId={school.school_id}
+                      schoolName={school.school_name}
+                    />
+                  )}
                   
                   <TeamMembersList 
                     currentUser={currentUser} 
                     teammates={teammates} 
                   />
                   
-                  {/* Share Button */}
-                  <ShareButton 
-                    schoolId={school.school_id}
-                    schoolName={school.school_name}
-                  />
+                  {/* Share Button - Hidden for SEA users */}
+                  {currentUser.role !== 'sea' && (
+                    <ShareButton 
+                      schoolId={school.school_id}
+                      schoolName={school.school_name}
+                    />
+                  )}
                 </CardBody>
               </Card>
             );
