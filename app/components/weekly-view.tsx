@@ -9,7 +9,7 @@ import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
 import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
-import { useSchool } from '@/app/components/providers/school-context-v2';
+import { useSchool } from '@/app/components/providers/school-context';
 
 interface Holiday {
   date: string;

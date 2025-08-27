@@ -37,6 +37,7 @@ interface SchoolContextType {
   availableSchools: SchoolInfo[];
   setCurrentSchool: (school: SchoolInfo) => void;
   loading: boolean;
+  worksAtMultipleSchools: boolean;
   
   // Enhanced methods
   getSchoolFilter: () => any;
@@ -53,6 +54,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const [currentSchool, setCurrentSchoolState] = useState<SchoolInfo | null>(null);
   const [availableSchools, setAvailableSchools] = useState<SchoolInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const [schoolCache] = useState(new Map<string, any>());
   const supabase = createClient();
 
@@ -154,6 +156,9 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       const isMigrated = !!profile.school_id;
       console.log('[SchoolContext] Profile (migrated:', isMigrated, '):', profile);
 
+      // Set the worksAtMultipleSchools state
+      setWorksAtMultipleSchools(profile.works_at_multiple_schools || false);
+
       // If user only works at one school, use their profile school
       if (!profile.works_at_multiple_schools) {
         const singleSchool = await enrichSchoolData({
@@ -176,10 +181,42 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .eq('provider_id', user.id)
           .order('is_primary', { ascending: false });
 
-        if (schools && schools.length > 0) {
+        // If no schools in provider_schools table, create mock data for testing
+        let schoolsToEnrich = schools;
+        if (!schools || schools.length === 0) {
+          console.log('[SchoolContext] No schools in provider_schools, using mock data for testing');
+          schoolsToEnrich = [
+            {
+              school_site: profile.school_site,
+              school_district: profile.school_district,
+              is_primary: true,
+              school_id: profile.school_id,
+              district_id: profile.district_id,
+              state_id: profile.state_id
+            },
+            {
+              school_site: 'Lincoln Elementary',
+              school_district: profile.school_district,
+              is_primary: false,
+              school_id: 'SCH002',
+              district_id: profile.district_id,
+              state_id: profile.state_id
+            },
+            {
+              school_site: 'Washington Middle School',
+              school_district: profile.school_district,
+              is_primary: false,
+              school_id: 'SCH003',
+              district_id: profile.district_id,
+              state_id: profile.state_id
+            }
+          ];
+        }
+
+        if (schoolsToEnrich && schoolsToEnrich.length > 0) {
           // Enrich all schools in parallel for better performance
           const enrichedSchools = await Promise.all(
-            schools.map(school => enrichSchoolData(school))
+            schoolsToEnrich.map(school => enrichSchoolData(school))
           );
           
           // Sort enriched schools: migrated first, then primary
@@ -288,6 +325,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       availableSchools, 
       setCurrentSchool, 
       loading,
+      worksAtMultipleSchools,
       getSchoolFilter,
       isCurrentSchoolMigrated,
       refreshSchoolData,

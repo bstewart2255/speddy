@@ -1,12 +1,6 @@
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
-
-interface SchoolInfo {
-  school_id: string;
-  school_name: string;
-  district_name: string;
-  state_abbreviation: string;
-}
+import type { SchoolInfo } from '@/app/components/providers/school-context';
 
 interface SchoolFilterToggleProps {
   selectedSchool: string;
@@ -34,8 +28,11 @@ export function SchoolFilterToggle({
       <SelectContent>
         <SelectItem value="all">All Schools</SelectItem>
         {availableSchools.map((school) => (
-          <SelectItem key={school.school_id} value={school.school_id}>
-            {school.school_name}
+          <SelectItem 
+            key={school.school_id || school.school_site} 
+            value={school.school_id || school.school_site}
+          >
+            {school.display_name || school.school_site}
           </SelectItem>
         ))}
       </SelectContent>
