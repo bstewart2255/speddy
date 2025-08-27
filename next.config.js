@@ -5,6 +5,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  typescript: {
+    // Skip type checking during build if already checked
+    ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
+  },
   // Ensure CSS is processed correctly
   webpack: config => {
     // Ensure CSS modules work properly
@@ -12,8 +16,12 @@ const nextConfig = {
   },
 };
 
-// Wrap the config with Sentry
-module.exports = withSentryConfig(nextConfig, {
+// Conditionally apply Sentry configuration
+const shouldUseSentry = process.env.NODE_ENV === 'production' && process.env.SKIP_SENTRY !== 'true';
+
+// Wrap the config with Sentry only in production or if not skipping
+module.exports = shouldUseSentry 
+  ? withSentryConfig(nextConfig, {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
@@ -24,7 +32,7 @@ module.exports = withSentryConfig(nextConfig, {
   silent: !process.env.CI,
 
   // Upload a larger set of source maps for prettier stack traces (increases build time)
-  widenClientFileUpload: true,
+  widenClientFileUpload: false, // Disabled to improve build performance
 
   // Routes browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers
   tunnelRoute: '/monitoring',
@@ -40,4 +48,5 @@ module.exports = withSentryConfig(nextConfig, {
   // https://docs.sentry.io/product/crons/
   // https://vercel.com/docs/cron-jobs
   automaticVercelMonitors: true,
-});
+})
+  : nextConfig;
