@@ -7,6 +7,25 @@ export const formatLessonContent = (content: string): string => {
   
   let formatted = content;
   
+  // Clean up any redundant headers that might still exist
+  // Remove standalone "Special Education" headers
+  formatted = formatted.replace(
+    /<h[1-6][^>]*>\s*Special Education\s*<\/h[1-6]>/gi,
+    ''
+  );
+  
+  // Remove lesson plan headers that are too generic
+  formatted = formatted.replace(
+    /<h1[^>]*>\s*Lesson Plan\s*<\/h1>/gi,
+    ''
+  );
+  
+  // Clean up empty paragraphs that might result from removals
+  formatted = formatted.replace(/<p[^>]*>\s*<\/p>/gi, '');
+  
+  // Remove duplicate line breaks
+  formatted = formatted.replace(/(\n\s*){3,}/g, '\n\n');
+  
   // Add icons to main section headers
   const sectionIcons: Record<string, string> = {
     'objective': '🎯',

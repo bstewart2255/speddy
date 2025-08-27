@@ -59,8 +59,29 @@ export function AIContentModalEnhanced({
   const processLessonContent = (content: string) => {
     if (!content) return null;
     
-    // First apply our custom formatting
-    let processedContent = formatLessonContent(content);
+    // Remove redundant headers that are already shown in the UI
+    let processedContent = content;
+    
+    // Remove "Special Education Lesson Plan" title and grade/time subtitle
+    processedContent = processedContent.replace(
+      /<h1[^>]*>\s*Special Education Lesson Plan\s*<\/h1>/gi,
+      ''
+    );
+    
+    // Remove grade level and duration line (e.g., "Grades 3-4 | 30 Minutes")
+    processedContent = processedContent.replace(
+      /<p[^>]*>\s*Grade[s]?\s+[^<]*\|\s*\d+\s*[Mm]inutes?\s*<\/p>/gi,
+      ''
+    );
+    
+    // Also remove if it's in a heading format
+    processedContent = processedContent.replace(
+      /<h[2-6][^>]*>\s*Grade[s]?\s+[^<]*\|\s*\d+\s*[Mm]inutes?\s*<\/h[2-6]>/gi,
+      ''
+    );
+    
+    // Apply our custom formatting
+    processedContent = formatLessonContent(processedContent);
     
     // Additional modal-specific formatting
     
@@ -157,7 +178,7 @@ export function AIContentModalEnhanced({
         </head>
         <body>
           <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-            <h1 style="margin: 0;">Special Education Lesson Plan</h1>
+            <h1 style="margin: 0;">Lesson Plan</h1>
             <p style="margin: 5px 0;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()}</p>
             <p style="margin: 5px 0;"><strong>Time:</strong> ${formatTimeSlot(currentLesson.timeSlot)}</p>
             <p style="margin: 5px 0;"><strong>Students:</strong> ${currentLesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
@@ -209,7 +230,7 @@ export function AIContentModalEnhanced({
             </head>
             <body>
               <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-                <h1 style="margin: 0;">Special Education Lesson Plan</h1>
+                <h1 style="margin: 0;">Lesson Plan</h1>
                 <p style="margin: 5px 0;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()}</p>
                 <p style="margin: 5px 0;"><strong>Time:</strong> ${formatTimeSlot(lesson.timeSlot)}</p>
                 <p style="margin: 5px 0;"><strong>Students:</strong> ${lesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
