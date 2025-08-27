@@ -8,16 +8,24 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Test credentials from environment variables
+const TEST_USER_ID = process.env.TEST_USER_ID || '43241323-d9a7-4c88-99a9-e7b2633ba592';
+const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL;
+const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD;
+
 if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
   console.error('Missing environment variables. Please check .env.local');
   process.exit(1);
 }
 
 // Create two clients - one with anon key (RLS enforced) and one with service role (bypasses RLS)
-const supabaseWithRLS = createClient(supabaseUrl, supabaseAnonKey);
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-const TEST_USER_ID = '43241323-d9a7-4c88-99a9-e7b2633ba592';
+// Disable session persistence for CLI-style debugging
+const supabaseWithRLS = createClient(supabaseUrl, supabaseAnonKey, { 
+  auth: { persistSession: false, autoRefreshToken: false }
+});
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, { 
+  auth: { persistSession: false, autoRefreshToken: false }
+});
 
 async function debugRLSIssue() {
   console.log('='.repeat(80));
@@ -95,15 +103,22 @@ async function debugRLSIssue() {
     console.log('\n4. TESTING WITH AUTHENTICATED USER (RLS ENFORCED)');
     console.log('-'.repeat(40));
     
-    // First sign in as the user
-    const { data: authData, error: authError } = await supabaseWithRLS.auth.signInWithPassword({
-      email: 'test@example.com', // You'll need the actual email
-      password: 'test-password'   // You'll need the actual password
-    });
+    // First sign in as the user (if credentials provided)
+    if (TEST_USER_EMAIL && TEST_USER_PASSWORD) {
+      const { data: authData, error: authError } = await supabaseWithRLS.auth.signInWithPassword({
+        email: TEST_USER_EMAIL,
+        password: TEST_USER_PASSWORD
+      });
 
-    if (authError) {
-      console.log('Note: Cannot test RLS as authenticated user without credentials');
-      console.log('Attempting to test with anon access...');
+      if (authError) {
+        console.log('Authentication failed:', authError.message);
+        console.log('Attempting to test with anon access...');
+      } else {
+        console.log('Successfully authenticated as user');
+      }
+    } else {
+      console.log('Note: TEST_USER_EMAIL and TEST_USER_PASSWORD not set in environment');
+      console.log('Skipping authenticated tests. Testing with anon access only...');
     }
 
     // Test various queries

@@ -16,10 +16,18 @@ DECLARE
   v_school_id VARCHAR(20);
   v_confidence FLOAT;
 BEGIN
-  -- Extract names from metadata
-  v_state_name := COALESCE(user_metadata->>'state', '');
-  v_district_name := COALESCE(user_metadata->>'school_district', '');
-  v_school_name := COALESCE(user_metadata->>'school_site', '');
+  -- Extract names from metadata (trim whitespace and handle both snake_case and camelCase)
+  v_state_name := TRIM(COALESCE(user_metadata->>'state', ''));
+  v_district_name := TRIM(COALESCE(
+    user_metadata->>'school_district', 
+    user_metadata->>'schoolDistrict', 
+    ''
+  ));
+  v_school_name := TRIM(COALESCE(
+    user_metadata->>'school_site', 
+    user_metadata->>'schoolSite', 
+    ''
+  ));
   
   -- Try to find matching IDs
   IF v_state_name != '' OR v_district_name != '' OR v_school_name != '' THEN
@@ -110,10 +118,10 @@ BEGIN
     district_domain = EXCLUDED.district_domain,
     updated_at = NOW();
     
-  -- If this was an SEA profile and we couldn't match schools, log a warning
+  -- If this was an SEA profile and we couldn't match schools, log a warning with confidence score
   IF COALESCE(user_metadata->>'role', 'resource') = 'sea' AND v_school_id IS NULL THEN
-    RAISE WARNING 'SEA profile created without school IDs for user %: state=%, district=%, school=%', 
-      user_id, v_state_name, v_district_name, v_school_name;
+    RAISE WARNING 'SEA profile created without school IDs for user %: state=%, district=%, school=%, confidence=%', 
+      user_id, v_state_name, v_district_name, v_school_name, v_confidence;
   END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -26,6 +26,16 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     });
   }
 
+  // Validate required metadata fields
+  const requiredMetadata = ['full_name', 'role', 'state', 'school_district', 'school_site'];
+  const missing = requiredMetadata.filter((field) => !metadata?.[field]);
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { error: `Missing required metadata fields: ${missing.join(', ')}` },
+      { status: 400 }
+    );
+  }
+
     // Validate email domain
     const emailDomain = email.split('@')[1];
     if (!emailDomain || 
@@ -40,7 +50,9 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     }
 
     // Validate school site name
-    if (metadata.school_site.length < 5 || !/\s/.test(metadata.school_site)) {
+    if (typeof metadata.school_site !== 'string' ||
+        metadata.school_site.trim().length < 5 ||
+        !/\s/.test(metadata.school_site)) {
       return NextResponse.json(
         { error: 'Please enter your full school site name (no abbreviations - and spell correctly!)' },
         { status: 400 }
@@ -86,6 +98,7 @@ export const POST = asyncHandler(async (request: NextRequest) => {
         school_district: metadata.school_district,
         school_site: metadata.school_site,
         works_at_multiple_schools: metadata.works_at_multiple_schools || false,
+        additional_schools: metadata.additional_schools || []
       }
     });
 

@@ -21,6 +21,7 @@ DECLARE
   v_status TEXT;
   v_count INTEGER := 0;
   v_fixed INTEGER := 0;
+  v_min_confidence CONSTANT FLOAT := 0.6;  -- Only apply updates when confidence is high enough
 BEGIN
   -- Find all SEA profiles that are missing any ID fields
   FOR sea_profile IN 
@@ -55,8 +56,9 @@ BEGIN
       sea_profile.state_name
     ) f;
     
-    -- Update the profile if we found matches
-    IF v_school_id IS NOT NULL OR v_district_id IS NOT NULL OR v_state_id IS NOT NULL THEN
+    -- Update the profile if we found matches with sufficient confidence
+    IF (v_school_id IS NOT NULL OR v_district_id IS NOT NULL OR v_state_id IS NOT NULL) 
+       AND v_confidence >= v_min_confidence THEN
       UPDATE profiles
       SET 
         state_id = COALESCE(v_state_id, state_id),
@@ -67,6 +69,9 @@ BEGIN
       
       v_status := 'updated';
       v_fixed := v_fixed + 1;
+    ELSIF v_confidence IS NOT NULL AND v_confidence < v_min_confidence THEN
+      -- Low confidence match - don't update but log it
+      v_status := 'low_confidence';
       
       -- Log the migration
       INSERT INTO school_migration_log (

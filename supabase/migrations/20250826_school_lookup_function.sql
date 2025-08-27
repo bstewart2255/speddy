@@ -21,6 +21,9 @@ DECLARE
   v_district_id VARCHAR(20);
   v_school_id VARCHAR(20);
   v_confidence FLOAT;
+  -- Define similarity thresholds as constants
+  v_similarity_threshold CONSTANT FLOAT := 0.3;  -- Default threshold for fuzzy matching
+  v_cross_district_threshold CONSTANT FLOAT := 0.4;  -- Higher threshold for cross-district matching
 BEGIN
   -- Initialize confidence score
   v_confidence := 0.0;
@@ -69,7 +72,7 @@ BEGIN
         AND (
           LOWER(name) ILIKE '%' || LOWER(p_school_district_name) || '%'
           OR LOWER(p_school_district_name) ILIKE '%' || LOWER(name) || '%'
-          OR similarity(LOWER(name), LOWER(p_school_district_name)) > 0.3
+          OR similarity(LOWER(name), LOWER(p_school_district_name)) > v_similarity_threshold
         )
       ORDER BY similarity(LOWER(name), LOWER(p_school_district_name)) DESC
       LIMIT 1;
@@ -96,7 +99,7 @@ BEGIN
         AND (
           LOWER(name) ILIKE '%' || LOWER(p_school_site_name) || '%'
           OR LOWER(p_school_site_name) ILIKE '%' || LOWER(name) || '%'
-          OR similarity(LOWER(name), LOWER(p_school_site_name)) > 0.3
+          OR similarity(LOWER(name), LOWER(p_school_site_name)) > v_similarity_threshold
         )
       ORDER BY similarity(LOWER(name), LOWER(p_school_site_name)) DESC
       LIMIT 1;
@@ -109,7 +112,7 @@ BEGIN
       WHERE state_id = v_state_id
         AND (
           LOWER(name) ILIKE '%' || LOWER(p_school_site_name) || '%'
-          OR similarity(LOWER(name), LOWER(p_school_site_name)) > 0.4
+          OR similarity(LOWER(name), LOWER(p_school_site_name)) > v_cross_district_threshold  -- Higher threshold for cross-district matching
         )
       ORDER BY similarity(LOWER(name), LOWER(p_school_site_name)) DESC
       LIMIT 1;
