@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
+import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
 import { LessonTypeModal } from "../modals/lesson-type-modal";
 import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
@@ -106,6 +107,11 @@ export function CalendarWeekView({
   const [loadingManualLessons, setLoadingManualLessons] = useState(false);
   const [showManualLessonView, setShowManualLessonView] = useState(false);
   const [viewingManualLesson, setViewingManualLesson] = useState<ManualLesson | null>(null);
+  
+  // State for enhanced modal with multiple lessons
+  const [enhancedModalOpen, setEnhancedModalOpen] = useState(false);
+  const [enhancedModalLessons, setEnhancedModalLessons] = useState<any[]>([]);
+  const [enhancedModalDate, setEnhancedModalDate] = useState<Date>(new Date());
 
   const supabase = createClient<Database>();
   const sessionGenerator = new SessionGenerator();
@@ -793,23 +799,45 @@ export function CalendarWeekView({
       // Get all time slots with lessons
       const timeSlots = Object.keys(dayLessons).sort();
       if (timeSlots.length > 0) {
-        // For now, show the first lesson - later we'll enhance this with tabbed view
-        handleViewAILessonForSlot(date, timeSlots[0]);
+        // Get all sessions for this day
+        const daySessions = sessionsState.filter((s) => {
+          const sessionDate = new Date(weekDates[0]);
+          sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
+          return sessionDate.toDateString() === date.toDateString();
+        });
+        
+        // Group sessions by time slot
+        const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+        
+        // Build lessons array for enhanced modal
+        const lessons = timeSlots.map(timeSlot => {
+          const slotSessions = timeSlotGroups.get(timeSlot) || [];
+          const slotStudents = slotSessions.map(session => ({
+            id: session.student_id || '',
+            initials: students.get(session.student_id || '')?.initials || '',
+            grade_level: students.get(session.student_id || '')?.grade_level || '',
+            teacher_name: session.teacher_name || ''
+          }));
+          
+          return {
+            timeSlot,
+            content: dayLessons[timeSlot].content,
+            students: slotStudents
+          };
+        });
+        
+        // Open enhanced modal with all lessons
+        setEnhancedModalLessons(lessons);
+        setEnhancedModalDate(date);
+        setEnhancedModalOpen(true);
       }
     }
   };
 
   // Handle editing all AI lessons for a day
   const handleEditAllAILessons = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    const dayLessons = savedLessons.get(dateStr);
-    if (dayLessons) {
-      const timeSlots = Object.keys(dayLessons).sort();
-      if (timeSlots.length > 0) {
-        // For now, edit the first lesson - later we'll enhance this with tabbed view
-        handleEditAILessonForSlot(date, timeSlots[0]);
-      }
-    }
+    // For editing, just open view mode - the enhanced modal allows editing too
+    handleViewAllAILessons(date);
   };
 
   // Handle deleting all lessons for a day (entire day only as per requirements)
@@ -1497,6 +1525,20 @@ export function CalendarWeekView({
           }}
         />
       )}
+
+      {/* Enhanced AI Content Modal for multiple time slots */}
+      <AIContentModalEnhanced
+        isOpen={enhancedModalOpen}
+        onClose={() => {
+          setEnhancedModalOpen(false);
+          setEnhancedModalLessons([]);
+        }}
+        lessons={enhancedModalLessons}
+        isLoading={false}
+        lessonDate={enhancedModalDate}
+        isViewingSaved={true}
+        hideControls={false}
+      />
     </div>
   );
 }
