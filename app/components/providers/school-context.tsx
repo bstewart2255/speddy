@@ -56,6 +56,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const [schoolCache] = useState(new Map<string, any>());
+  const [userId, setUserId] = useState<string | null>(null);
   const supabase = createClient();
 
   // Enhanced school enrichment function
@@ -125,9 +126,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('[SchoolContext] No user found');
+        setLoading(false);
         return;
       }
       console.log('[SchoolContext] User ID:', user.id);
+      setUserId(user.id);
+      
+      // Clean up old global localStorage key if it exists
+      if (localStorage.getItem('selectedSchool')) {
+        localStorage.removeItem('selectedSchool');
+        console.log('[SchoolContext] Cleaned up old global selectedSchool key');
+      }
 
       // Fetch profile with migration status
       console.log('[SchoolContext] Fetching profile for user:', user.id);
@@ -235,25 +244,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           
           setAvailableSchools(enrichedSchools);
 
-          // Check for saved school preference with migration awareness
-          const savedSchool = localStorage.getItem('selectedSchool');
+          // Check for saved school preference with user-scoped key
+          const savedSchoolData = localStorage.getItem(`selectedSchool:${user.id}`);
           let schoolToSet: SchoolInfo | undefined = undefined;
 
-          if (savedSchool) {
+          if (savedSchoolData) {
             try {
-              const parsedSchool = JSON.parse(savedSchool);
+              const saved = JSON.parse(savedSchoolData);
               
-              // Try to match by school_id first (most reliable)
-              if (parsedSchool.school_id) {
-                schoolToSet = enrichedSchools.find(s => s.school_id === parsedSchool.school_id);
-              }
-              
-              // Fallback to text matching
-              if (!schoolToSet) {
-                schoolToSet = enrichedSchools.find(s => 
-                  s.school_site === parsedSchool.school_site && 
-                  s.school_district === parsedSchool.school_district
-                );
+              // Only use the school_id from saved data to find the actual school
+              if (saved.school_id) {
+                schoolToSet = enrichedSchools.find(s => s.school_id === saved.school_id);
               }
             } catch (e) {
               console.error('Error parsing saved school:', e);
@@ -311,16 +312,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     fetchProviderSchools();
   }, [fetchProviderSchools]);
 
-  // Persist school selection with migration status
+  // Persist school selection with user-scoped key and minimal data
   useEffect(() => {
-    if (currentSchool && !loading) {
-      const persistData = {
-        ...currentSchool,
+    if (currentSchool && !loading && userId) {
+      // Store only minimal identifiers to prevent PII leakage
+      const minimalData = {
+        school_id: currentSchool.school_id || null,
         cached_at: new Date().toISOString(),
       };
-      localStorage.setItem('selectedSchool', JSON.stringify(persistData));
+      localStorage.setItem(`selectedSchool:${userId}`, JSON.stringify(minimalData));
     }
-  }, [currentSchool, loading]);
+  }, [currentSchool, loading, userId]);
 
   return (
     <SchoolContext.Provider value={{ 
