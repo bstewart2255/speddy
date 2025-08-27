@@ -497,19 +497,31 @@ export function CalendarWeekView({
       }
     });
     
-    // Get student details for the API
+    // Get student details for the API - need full student info
     const studentList = Array.from(sessionStudents).map(studentId => {
       const student = students.get(studentId);
+      const relevantSessions = slotSessions.filter(s => s.student_id === studentId);
+      const session = relevantSessions[0]; // Get first session for this student
+      
       return {
         id: studentId,
+        student_number: session?.student_number || '',
+        first_name: session?.first_name || '',
+        last_name: session?.last_name || '',
         initials: student?.initials || 'Unknown',
-        grade_level: student?.grade_level || 'Unknown'
+        grade_level: student?.grade_level || 'Unknown',
+        teacher_name: session?.teacher_name || '',
+        iep_goals: session?.iep_goals || '',
+        working_skills: session?.working_skills || '',
+        school_site: session?.school_site || ''
       };
     });
     
     if (studentList.length === 0) {
       return; // Skip empty time slots
     }
+    
+    console.log(`Generating lesson for ${studentList.length} students in time slot ${timeSlot}`);
     
     try {
       const response = await fetch('/api/generate-lesson', {
@@ -518,9 +530,7 @@ export function CalendarWeekView({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          date: date.toISOString(),
-          sessions: slotSessions,
-          students: studentList,
+          students: studentList, // Full student data
           timeSlot: formatTimeSlot(timeSlot),
           duration: 30, // Default duration
         }),
@@ -706,8 +716,20 @@ export function CalendarWeekView({
     const dateStr = date.toISOString().split('T')[0];
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons && dayLessons[timeSlot]) {
+      // Get the sessions for this time slot
+      const daySessions = sessionsState.filter((s) => {
+        const sessionDate = new Date(weekDates[0]);
+        sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
+        return sessionDate.toDateString() === date.toDateString();
+      });
+      
+      // Filter to just this time slot's sessions
+      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+      const slotSessions = timeSlotGroups.get(timeSlot) || [];
+      
       setSelectedDate(date);
       setSelectedTimeSlot(timeSlot);
+      setSelectedDaySessions(slotSessions);
       setAiContent(dayLessons[timeSlot].content);
       setViewingSavedLesson(true);
       setModalOpen(true);
@@ -1408,14 +1430,14 @@ export function CalendarWeekView({
           setViewingSavedLesson(false);
         }}
         timeSlot={selectedTimeSlot ? formatTimeSlot(selectedTimeSlot) : ''}
-        students={Array.from(students.entries()).map(([id, student]) => ({
-          id,
-          student_number: '',
-          first_name: '',
-          last_name: '',
-          initials: student.initials,
-          grade_level: student.grade_level || '',
-          teacher_name: ''
+        students={selectedDaySessions.map(session => ({
+          id: session.student_id || '',
+          student_number: session.student_number || '',
+          first_name: session.first_name || '',
+          last_name: session.last_name || '',
+          initials: students.get(session.student_id || '')?.initials || '',
+          grade_level: students.get(session.student_id || '')?.grade_level || '',
+          teacher_name: session.teacher_name || ''
         }))}
         content={aiContent}
         isLoading={generatingContent}
