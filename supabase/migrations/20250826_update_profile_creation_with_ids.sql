@@ -45,7 +45,9 @@ BEGIN
       v_school_name,
       v_district_name,
       v_state_name
-    );
+    )
+    ORDER BY confidence_score DESC
+    LIMIT 1;
     
     -- Log the matching attempt for SEA profiles
     IF COALESCE(user_metadata->>'role', 'resource') = 'sea' THEN
@@ -124,7 +126,8 @@ BEGIN
       user_id, v_state_name, v_district_name, v_school_name, v_confidence;
   END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 -- Ensure permissions are still granted
 GRANT EXECUTE ON FUNCTION public.create_profile_for_new_user(UUID, TEXT, JSONB) TO authenticated;

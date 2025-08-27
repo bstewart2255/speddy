@@ -56,25 +56,24 @@ BEGIN
       sea_profile.state_name
     ) f;
     
-    -- Update the profile if we found matches with sufficient confidence
-    IF (v_school_id IS NOT NULL OR v_district_id IS NOT NULL OR v_state_id IS NOT NULL) 
-       AND v_confidence >= v_min_confidence THEN
-      UPDATE profiles
-      SET 
-        state_id = COALESCE(v_state_id, state_id),
-        district_id = COALESCE(v_district_id, district_id),
-        school_id = COALESCE(v_school_id, school_id),
-        updated_at = NOW()
-      WHERE id = sea_profile.id;
-      
-      v_status := 'updated';
-      v_fixed := v_fixed + 1;
-    ELSIF v_confidence IS NOT NULL AND v_confidence < v_min_confidence THEN
-      -- Low confidence match - don't update but log it
-      v_status := 'low_confidence';
-      
-      -- Log the migration
-      INSERT INTO school_migration_log (
+    -- Make the update and logging atomic with error handling
+    BEGIN
+      -- Update the profile if we found matches with sufficient confidence
+      IF (v_school_id IS NOT NULL OR v_district_id IS NOT NULL OR v_state_id IS NOT NULL) 
+         AND v_confidence >= v_min_confidence THEN
+        UPDATE public.profiles
+        SET 
+          state_id = COALESCE(v_state_id, state_id),
+          district_id = COALESCE(v_district_id, district_id),
+          school_id = COALESCE(v_school_id, school_id),
+          updated_at = NOW()
+        WHERE id = sea_profile.id;
+        
+        v_status := 'updated';
+        v_fixed := v_fixed + 1;
+        
+        -- Log successful migration
+        INSERT INTO public.school_migration_log (
         profile_id,
         original_district,
         original_school,
@@ -95,9 +94,12 @@ BEGIN
         'migration',
         'Batch migration for existing SEA profiles'
       );
-    ELSE
-      -- Log failed migration attempts
-      INSERT INTO school_migration_log (
+        
+      ELSIF v_confidence IS NOT NULL AND v_confidence < v_min_confidence THEN
+        -- Low confidence match - don't update but log it
+        v_status := 'low_confidence';
+        
+        INSERT INTO public.school_migration_log (
         profile_id,
         original_district,
         original_school,
@@ -111,14 +113,47 @@ BEGIN
         sea_profile.id,
         sea_profile.school_district,
         sea_profile.school_site,
-        NULL,
-        NULL,
-        NULL,
-        0,
-        'migration_failed',
-        'Could not find matching schools for SEA profile'
+        v_state_id,
+        v_district_id,
+        v_school_id,
+        v_confidence,
+        'low_confidence',
+        'Low confidence match - manual review needed'
       );
-    END IF;
+        
+      ELSE
+        -- No matches found
+        v_status := 'not_matched';
+        
+        INSERT INTO public.school_migration_log (
+          profile_id,
+          original_district,
+          original_school,
+          matched_state_id,
+          matched_district_id,
+          matched_school_id,
+          confidence_score,
+          migration_type,
+          notes
+        ) VALUES (
+          sea_profile.id,
+          sea_profile.school_district,
+          sea_profile.school_site,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          'migration_failed',
+          'Could not find matching schools for SEA profile'
+        );
+      END IF;
+      
+    EXCEPTION WHEN OTHERS THEN
+      -- Handle any errors in the migration step
+      RAISE WARNING 'Migration step failed for profile %: %', sea_profile.id, SQLERRM;
+      v_status := 'error';
+      -- Continue with the next profile
+    END;
     
     -- Return status for this profile
     RETURN QUERY

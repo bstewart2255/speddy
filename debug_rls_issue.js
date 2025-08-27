@@ -28,10 +28,18 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 async function debugRLSIssue() {
+  // Development-only guard
+  if (process.env.NODE_ENV === 'production') {
+    console.error('ERROR: debug_rls_issue.js cannot run in production environment');
+    process.exit(1);
+  }
+
   console.log('='.repeat(80));
   console.log('RLS DEBUGGING FOR PROFILES TABLE');
   console.log('='.repeat(80));
-  console.log(`Test User ID: ${TEST_USER_ID}\n`);
+  // Mask sensitive data - only show first 8 chars
+  const maskedUserId = TEST_USER_ID ? TEST_USER_ID.substring(0, 8) + '...' : 'NOT_SET';
+  console.log(`Test User ID: ${maskedUserId}\n`);
 
   try {
     // Step 1: Check if RLS is enabled

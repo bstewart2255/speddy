@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
@@ -87,8 +88,13 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
     }
 
-    // Create profile record using the database function
-    const { error: profileError } = await supabase.rpc('create_profile_for_new_user', {
+    // Create profile record using the database function (use admin client to bypass RLS)
+    const adminClient = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    const { error: profileError } = await adminClient.rpc('create_profile_for_new_user', {
       user_id: signUpData.user.id,
       user_email: signUpData.user.email!,
       user_metadata: {
@@ -107,16 +113,13 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       
       // Clean up the auth user since profile creation failed
       try {
-        // We need to use a service role client for admin operations
-        const serviceRoleClient = createRouteHandlerClient<Database>(
-          { cookies: () => cookieStore },
-          {
-            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          }
+        // Use admin client for user deletion
+        const adminClientForCleanup = createClient<Database>(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
         
-        const { error: deleteError } = await serviceRoleClient.auth.admin.deleteUser(
+        const { error: deleteError } = await adminClientForCleanup.auth.admin.deleteUser(
           signUpData.user.id
         );
         
@@ -133,9 +136,9 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       );
     }
 
-    // For SEA roles, verify that school IDs were populated
+    // For SEA roles, verify that school IDs were populated (use admin to bypass RLS)
     if (metadata.role === 'sea') {
-      const { data: profile, error: profileCheckError } = await supabase
+      const { data: profile, error: profileCheckError } = await adminClient
         .from('profiles')
         .select('school_id, district_id, state_id')
         .eq('id', signUpData.user.id)

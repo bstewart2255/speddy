@@ -140,7 +140,8 @@ BEGIN
     v_school_id AS matched_school_id,
     v_confidence AS confidence_score;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public;
 
 -- Grant execute permission
 GRANT EXECUTE ON FUNCTION public.find_school_ids_by_names(TEXT, TEXT, TEXT) TO authenticated;
