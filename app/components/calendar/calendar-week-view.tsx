@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
@@ -12,6 +12,7 @@ import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
+import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -66,13 +67,13 @@ export function CalendarWeekView({
 
   // Check if a date is a holiday
   const isHoliday = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     return holidays.some(h => h.date === dateStr);
   };
 
   // Get holiday name for a date
   const getHolidayName = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const holiday = holidays.find(h => h.date === dateStr);
     return holiday?.name || 'Holiday';
   };
@@ -207,8 +208,8 @@ export function CalendarWeekView({
         weekEnd.setDate(weekStart.getDate() + 6);
 
         // Format dates for API
-        const startDate = weekStart.toISOString().split('T')[0];
-        const endDate = weekEnd.toISOString().split('T')[0];
+        const startDate = toLocalDateKey(weekStart);
+        const endDate = toLocalDateKey(weekEnd);
 
         const response = await fetch(`/api/manual-lessons?start_date=${startDate}&end_date=${endDate}`);
         
@@ -279,8 +280,8 @@ export function CalendarWeekView({
         const weekStart = weekDates[0];
         const weekEnd = weekDates[weekDates.length - 1];
 
-        const startDate = weekStart.toISOString().split('T')[0];
-        const endDate = weekEnd.toISOString().split('T')[0];
+        const startDate = toLocalDateKey(weekStart);
+        const endDate = toLocalDateKey(weekEnd);
 
         const { data, error } = await supabase
           .from('ai_generated_lessons')
@@ -387,59 +388,84 @@ export function CalendarWeekView({
     return date < today;
   };
 
-  const getDayColor = (date: Date, isHolidayDay: boolean, daySessions: ScheduleSession[]) => {
-    const dateStr = date.toISOString().split("T")[0];
-    const dayLessons = savedLessons.get(dateStr);
-    const hasManualLessons = manualLessons.has(dateStr);
-
-    // Past dates are gray
-    if (isDateInPast(date)) {
-      return "bg-gray-50 border-gray-200";
-    }
-
-    // Holidays are red
-    if (isHolidayDay) {
-      return "bg-red-50 border-red-200";
-    }
-
-    // Check AI lesson coverage for time slots
-    let hasCompleteAICoverage = false;
-    let hasPartialAICoverage = false;
-    
-    if (dayLessons && daySessions.length > 0) {
-      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
-      const totalSlots = timeSlotGroups.size;
-      const coveredSlots = Array.from(timeSlotGroups.keys()).filter(slot => dayLessons[slot]).length;
-      
-      hasCompleteAICoverage = totalSlots > 0 && coveredSlots === totalSlots;
-      hasPartialAICoverage = coveredSlots > 0 && coveredSlots < totalSlots;
-    }
-
-    // Today's date gets special treatment
+  // Memoize expensive day color calculations
+  const getDayColorData = useMemo(() => {
+    const colorMap = new Map<string, string>();
     const today = new Date();
-    if (date.toDateString() === today.toDateString()) {
-      if (hasCompleteAICoverage) {
-        return "bg-green-100 border-green-400 ring-2 ring-green-400"; // Today with complete AI
-      } else if (hasPartialAICoverage || hasManualLessons) {
-        return "bg-blue-100 border-blue-400 ring-2 ring-blue-400"; // Today with some lessons
+    
+    weekDates.forEach((date) => {
+      const dateStr = toLocalDateKey(date);
+      const dayLessons = savedLessons.get(dateStr);
+      const hasManualLessons = manualLessons.has(dateStr);
+      
+      // Get sessions for this date
+      const daySessions = sessionsState.filter((s) => {
+        const sessionDate = new Date(weekDates[0]);
+        sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
+        return sessionDate.toDateString() === date.toDateString();
+      });
+      
+      const isHolidayDay = isHoliday(date);
+      
+      // Past dates are gray
+      if (isDateInPast(date)) {
+        colorMap.set(dateStr, "bg-gray-50 border-gray-200");
+        return;
       }
-      return "bg-blue-50 border-blue-300 ring-2 ring-blue-300"; // Today without lessons
-    }
-
-    // Color based on lesson coverage
-    if (hasCompleteAICoverage && hasManualLessons) {
-      return "bg-purple-50 border-purple-300"; // Complete AI + Manual
-    } else if (hasCompleteAICoverage) {
-      return "bg-green-50 border-green-300"; // Complete AI coverage
-    } else if (hasPartialAICoverage && hasManualLessons) {
-      return "bg-indigo-50 border-indigo-300"; // Partial AI + Manual
-    } else if (hasPartialAICoverage) {
-      return "bg-blue-50 border-blue-300"; // Partial AI coverage
-    } else if (hasManualLessons) {
-      return "bg-yellow-50 border-yellow-300"; // Manual lessons only
-    }
-
-    return "bg-white border-gray-200"; // No lessons
+      
+      // Holidays are red
+      if (isHolidayDay) {
+        colorMap.set(dateStr, "bg-red-50 border-red-200");
+        return;
+      }
+      
+      // Check AI lesson coverage for time slots
+      let hasCompleteAICoverage = false;
+      let hasPartialAICoverage = false;
+      
+      if (dayLessons && daySessions.length > 0) {
+        const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+        const totalSlots = timeSlotGroups.size;
+        const coveredSlots = Array.from(timeSlotGroups.keys()).filter(slot => dayLessons[slot]).length;
+        
+        hasCompleteAICoverage = totalSlots > 0 && coveredSlots === totalSlots;
+        hasPartialAICoverage = coveredSlots > 0 && coveredSlots < totalSlots;
+      }
+      
+      // Today's date gets special treatment
+      if (date.toDateString() === today.toDateString()) {
+        if (hasCompleteAICoverage) {
+          colorMap.set(dateStr, "bg-green-100 border-green-400 ring-2 ring-green-400");
+        } else if (hasPartialAICoverage || hasManualLessons) {
+          colorMap.set(dateStr, "bg-blue-100 border-blue-400 ring-2 ring-blue-400");
+        } else {
+          colorMap.set(dateStr, "bg-blue-50 border-blue-300 ring-2 ring-blue-300");
+        }
+        return;
+      }
+      
+      // Color based on lesson coverage
+      if (hasCompleteAICoverage && hasManualLessons) {
+        colorMap.set(dateStr, "bg-purple-50 border-purple-300");
+      } else if (hasCompleteAICoverage) {
+        colorMap.set(dateStr, "bg-green-50 border-green-300");
+      } else if (hasPartialAICoverage && hasManualLessons) {
+        colorMap.set(dateStr, "bg-indigo-50 border-indigo-300");
+      } else if (hasPartialAICoverage) {
+        colorMap.set(dateStr, "bg-blue-50 border-blue-300");
+      } else if (hasManualLessons) {
+        colorMap.set(dateStr, "bg-yellow-50 border-yellow-300");
+      } else {
+        colorMap.set(dateStr, "bg-white border-gray-200");
+      }
+    });
+    
+    return colorMap;
+  }, [weekDates, savedLessons, manualLessons, sessionsState]);
+  
+  const getDayColor = (date: Date) => {
+    const dateStr = toLocalDateKey(date);
+    return getDayColorData.get(dateStr) || "bg-white border-gray-200";
   };
 
   // Helper function to group sessions by time slots (using actual start-end times)
@@ -503,23 +529,14 @@ export function CalendarWeekView({
       }
     });
     
-    // Get student details for the API - need full student info
+    // Get student details for the API
     const studentList = Array.from(sessionStudents).map(studentId => {
       const student = students.get(studentId);
-      const relevantSessions = slotSessions.filter(s => s.student_id === studentId);
-      const session = relevantSessions[0]; // Get first session for this student
       
       return {
         id: studentId,
-        student_number: session?.student_number || '',
-        first_name: session?.first_name || '',
-        last_name: session?.last_name || '',
         initials: student?.initials || 'Unknown',
-        grade_level: student?.grade_level || 'Unknown',
-        teacher_name: session?.teacher_name || '',
-        iep_goals: session?.iep_goals || '',
-        working_skills: session?.working_skills || '',
-        school_site: session?.school_site || ''
+        grade_level: student?.grade_level || 'Unknown'
       };
     });
     
@@ -538,7 +555,7 @@ export function CalendarWeekView({
         body: JSON.stringify({
           students: studentList, // Full student data
           timeSlot: formatTimeSlot(timeSlot),
-          duration: 30, // Default duration
+          duration: calculateDurationFromTimeSlot(timeSlot),
         }),
       });
 
@@ -553,7 +570,7 @@ export function CalendarWeekView({
         .from('ai_generated_lessons')
         .upsert({
           provider_id: currentUser.id,
-          lesson_date: date.toISOString().split('T')[0],
+          lesson_date: toLocalDateKey(date),
           time_slot: timeSlot,
           content: data.content,
           prompt: '',
@@ -569,7 +586,7 @@ export function CalendarWeekView({
       // Only update state if save was successful
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        const dateKey = date.toISOString().split('T')[0];
+        const dateKey = toLocalDateKey(date);
         const dayLessons = newMap.get(dateKey) || {};
         
         // Store lessons by time slot
@@ -592,7 +609,7 @@ export function CalendarWeekView({
       // Remove any phantom lesson from state
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        const dateKey = date.toISOString().split('T')[0];
+        const dateKey = toLocalDateKey(date);
         const dayLessons = newMap.get(dateKey);
         
         if (dayLessons && dayLessons[timeSlot]) {
@@ -612,28 +629,7 @@ export function CalendarWeekView({
     }
   };
   
-  // Format time slot for display
-  const formatTimeSlot = (timeSlot: string) => {
-    // Handle time range format (e.g., "08:15-08:45")
-    if (timeSlot.includes('-')) {
-      const [startTime, endTime] = timeSlot.split('-');
-      const formatSingleTime = (time: string) => {
-        const [hours, minutes] = time.split(':');
-        const hour = parseInt(hours);
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-        return `${displayHour}:${minutes} ${period}`;
-      };
-      return `${formatSingleTime(startTime)} - ${formatSingleTime(endTime)}`;
-    }
-    
-    // Handle single time format (legacy)
-    const [hours, minutes] = timeSlot.split(':');
-    const hour = parseInt(hours);
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${period}`;
-  };
+  // Format time slot for display - now using shared utility
 
   const generateAIContentForDate = async (date: Date, daySessions: ScheduleSession[]) => {
     if (!currentUser) {
@@ -689,7 +685,7 @@ export function CalendarWeekView({
         .from('ai_generated_lessons')
         .upsert({
           provider_id: currentUser.id,
-          lesson_date: selectedDate.toISOString().split('T')[0],
+          lesson_date: toLocalDateKey(selectedDate),
           content: data.content,
           prompt: prompt,
           session_data: selectedDaySessions,
@@ -702,7 +698,7 @@ export function CalendarWeekView({
       // Update saved lessons
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        newMap.set(selectedDate.toISOString().split('T')[0], {
+        newMap.set(toLocalDateKey(selectedDate), {
           content: data.content,
           prompt: prompt
         });
@@ -719,7 +715,7 @@ export function CalendarWeekView({
   };
 
   const handleViewAILessonForSlot = (date: Date, timeSlot: string) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons && dayLessons[timeSlot]) {
       // Get the sessions for this time slot
@@ -743,7 +739,7 @@ export function CalendarWeekView({
   };
 
   const handleEditAILessonForSlot = (date: Date, timeSlot: string) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons && dayLessons[timeSlot]) {
       setSelectedDate(date);
@@ -793,7 +789,7 @@ export function CalendarWeekView({
 
   // Handle viewing all AI lessons for a day
   const handleViewAllAILessons = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons) {
       // Get all time slots with lessons
@@ -816,7 +812,7 @@ export function CalendarWeekView({
             id: session.student_id || '',
             initials: students.get(session.student_id || '')?.initials || '',
             grade_level: students.get(session.student_id || '')?.grade_level || '',
-            teacher_name: session.teacher_name || ''
+            teacher_name: '' // Teacher name not available on session
           }));
           
           return {
@@ -846,7 +842,7 @@ export function CalendarWeekView({
       return;
     }
 
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     
     if (!dayLessons) return;
@@ -879,7 +875,7 @@ export function CalendarWeekView({
 
   // Legacy functions for backward compatibility
   const handleViewAILesson = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons) {
       // View the first lesson if multiple exist
@@ -891,7 +887,7 @@ export function CalendarWeekView({
   };
 
   const handleEditAILesson = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const dayLessons = savedLessons.get(dateStr);
     if (dayLessons) {
       // Edit the first lesson if multiple exist
@@ -966,17 +962,7 @@ export function CalendarWeekView({
       }
 
       // Group sessions by time slot for AI generation
-      const timeSlotGroups = new Map<string, ScheduleSession[]>();
-      daySessions.forEach(session => {
-        // Normalize time format by removing seconds if present
-        const startTime = session.start_time.split(':').slice(0, 2).join(':');
-        const endTime = session.end_time.split(':').slice(0, 2).join(':');
-        const timeSlot = `${startTime}-${endTime}`;
-        if (!timeSlotGroups.has(timeSlot)) {
-          timeSlotGroups.set(timeSlot, []);
-        }
-        timeSlotGroups.get(timeSlot)!.push(session);
-      });
+      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
 
       // Generate AI lessons for each time slot
       setGeneratingContent(true);
@@ -1028,7 +1014,7 @@ export function CalendarWeekView({
     if (!selectedLessonDate || !currentUser) return;
 
     try {
-      const lessonDate = selectedLessonDate.toISOString().split('T')[0];
+      const lessonDate = toLocalDateKey(selectedLessonDate);
       
       const { data, error } = await supabase
         .from('manual_lesson_plans')
@@ -1204,7 +1190,7 @@ export function CalendarWeekView({
               key={dayOfWeek}
               className={cn(
                 "relative border rounded-lg transition-colors",
-                getDayColor(date, isHolidayDay, sortedDaySessions)
+                getDayColor(date)
               )}
             >
               <div
@@ -1460,12 +1446,12 @@ export function CalendarWeekView({
         timeSlot={selectedTimeSlot ? formatTimeSlot(selectedTimeSlot) : ''}
         students={selectedDaySessions.map(session => ({
           id: session.student_id || '',
-          student_number: session.student_number || '',
-          first_name: session.first_name || '',
-          last_name: session.last_name || '',
+          student_number: '',
+          first_name: '',
+          last_name: '',
           initials: students.get(session.student_id || '')?.initials || '',
           grade_level: students.get(session.student_id || '')?.grade_level || '',
-          teacher_name: session.teacher_name || ''
+          teacher_name: ''
         }))}
         content={aiContent}
         isLoading={generatingContent}

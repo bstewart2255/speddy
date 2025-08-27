@@ -4,6 +4,7 @@ import * as React from "react";
 import { X, Printer, Save, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { getSanitizedHTML } from '../../lib/sanitize-html';
+import { formatTimeSlot } from '../../lib/utils/date-time';
 
 interface Student {
   id: string;
@@ -63,20 +64,6 @@ export function AIContentModalEnhanced({
       .replace(/'/g, "&#039;");
   }
 
-  const formatTimeSlot = (timeSlot: string) => {
-    const parts = timeSlot.split('-');
-    if (parts.length !== 2) return timeSlot;
-    
-    const formatTime = (time: string) => {
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours);
-      const period = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      return `${displayHour}:${minutes} ${period}`;
-    };
-    
-    return `${formatTime(parts[0])} - ${formatTime(parts[1])}`;
-  };
 
   const handlePrintSingle = () => {
     setPrintMode('single');
@@ -403,7 +390,7 @@ export function AIContentModalEnhanced({
 
         {/* Worksheet Prompt Modal */}
         {showWorksheetPrompt && printMode === 'single' && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md">
               <h3 className="text-lg font-semibold mb-4">Print Worksheets?</h3>
               <p className="mb-4">
