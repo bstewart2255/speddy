@@ -161,6 +161,12 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         const { data: sessionData, error: sessionError } = await sessionQuery;
 
+        console.log('[WeeklyView] Query result:', { 
+          sessionData: sessionData?.length || 0, 
+          error: sessionError,
+          firstSession: sessionData?.[0]
+        });
+
         if (sessionError) {
           console.error("Session fetch error:", sessionError);
           setLoading(false);
@@ -168,15 +174,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
 
         if (sessionData && isMounted) {
+          console.log('[WeeklyView] Raw sessionData:', sessionData);
+          
           // Transform sessions to include calculated dates
-          const transformedSessions = sessionData.map((session) => ({
-            ...session,
-            date: format(
-              addDays(weekStart, session.day_of_week - 1),
-              "yyyy-MM-dd",
-            ),
-          }));
+          // Handle both with and without student joins
+          const transformedSessions = sessionData.map((session: any) => {
+            // Extract the core session data (removing nested students object if present)
+            const { students, ...sessionCore } = session;
+            return {
+              ...sessionCore,
+              date: format(
+                addDays(weekStart, sessionCore.day_of_week - 1),
+                "yyyy-MM-dd",
+              ),
+            };
+          });
 
+          console.log('[WeeklyView] Setting sessions:', transformedSessions.length, 'sessions');
           setSessions(transformedSessions);
 
           // Get unique student IDs
@@ -445,15 +459,25 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   // Group sessions by day and time
   const sessionsByDayTime = React.useMemo(() => {
     const grouped: Record<string, any[]> = {}; // Note: now stores arrays of sessions
-
+    
+    console.log('[sessionsByDayTime] Processing', sessions.length, 'sessions');
+    
     sessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
       const timeIndex = getTimeSlotIndex(session.start_time);
       const span = getSessionSpan(session.start_time, session.end_time);
 
+      console.log('[sessionsByDayTime] Session:', {
+        id: session.id,
+        day_of_week: session.day_of_week,
+        dayIndex,
+        start_time: session.start_time,
+        timeIndex,
+        key: `${dayIndex}-${timeIndex}`
+      });
+
       if (dayIndex >= 0 && dayIndex < 5 && timeIndex >= 0) {
         const key = `${dayIndex}-${timeIndex}`;
-
 
         // Initialize array if it doesn't exist
         if (!grouped[key]) {
@@ -465,6 +489,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       }
     });
 
+    console.log('[sessionsByDayTime] Final grouped:', Object.keys(grouped).length, 'slots', grouped);
     return grouped;
   }, [sessions]);
 
@@ -542,7 +567,11 @@ return (
       <div className="space-y-4">
         {[0].map(dayOffset => {
           const currentDate = addDays(startDay, dayOffset);
-          const dayIndex = currentDate.getDay() - 1; // 0 = Monday
+          // Get the day of week for the current date (0 = Sunday, 1 = Monday, etc.)
+          const actualDayOfWeek = currentDate.getDay();
+          // Convert to our index system (0 = Monday, 1 = Tuesday, ..., 4 = Friday)
+          // Sunday (0) becomes 6, but we skip weekends anyway
+          const dayIndex = actualDayOfWeek === 0 ? -1 : actualDayOfWeek - 1;
           const isToday = format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
 
           // Skip weekends
@@ -562,6 +591,10 @@ return (
                     const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
                     const sessionKey = `${dayIndex}-${timeIndex}`;
                     const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
+                    
+                    if (sessionsInSlot.length > 0) {
+                      console.log('[Render] Found sessions in slot:', sessionKey, sessionsInSlot);
+                    }
 
                     return (
                       <div
