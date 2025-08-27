@@ -52,6 +52,15 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const availableSchools = schoolContext.availableSchools;
   const worksAtMultipleSchools = schoolContext.worksAtMultipleSchools;
   
+  // Filter schools to only include those with valid school_id for database queries
+  const filterableSchools = React.useMemo(() => {
+    return availableSchools.filter(school => 
+      school.school_id && 
+      school.school_id.trim() !== '' &&
+      !school.school_id.startsWith('MOCK_') // Exclude mock schools that won't work in DB queries
+    );
+  }, [availableSchools]);
+  
   // Memoize weekStart to prevent infinite re-renders
   const weekStart = React.useMemo(() => {
     const today = new Date();
@@ -73,6 +82,18 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+
+  // Reset to 'all' if the selected school is not filterable
+  React.useEffect(() => {
+    if (selectedSchoolFilter !== 'all' && filterableSchools.length > 0) {
+      const isValidSelection = filterableSchools.some(
+        school => school.school_id === selectedSchoolFilter
+      );
+      if (!isValidSelection) {
+        setSelectedSchoolFilter('all');
+      }
+    }
+  }, [selectedSchoolFilter, filterableSchools]);  
 
   React.useEffect(() => {
     let isMounted = true;
@@ -115,7 +136,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         // Fetch schedule sessions based on view mode
         // Only join students table if we need to filter by school
-        const needsStudentJoin = selectedSchoolFilter !== 'all' && worksAtMultipleSchools;
+        // Also check that we have filterable schools
+        const needsStudentJoin = selectedSchoolFilter !== 'all' && 
+                                worksAtMultipleSchools && 
+                                filterableSchools.length > 0;
         
         let sessionQuery;
         if (needsStudentJoin) {
@@ -543,7 +567,7 @@ return (
         </h2>
         <SchoolFilterToggle
           selectedSchool={selectedSchoolFilter}
-          availableSchools={availableSchools}
+          availableSchools={filterableSchools}
           worksAtMultiple={worksAtMultipleSchools}
           onSchoolChange={setSelectedSchoolFilter}
         />
