@@ -436,21 +436,17 @@ export function CalendarWeekView({
     return "bg-white border-gray-200"; // No lessons
   };
 
-  // Helper function to group sessions by 30-minute time slots
+  // Helper function to group sessions by time slots (using actual start-end times)
   const groupSessionsByTimeSlot = (sessions: ScheduleSession[]): Map<string, ScheduleSession[]> => {
     const timeSlotGroups = new Map<string, ScheduleSession[]>();
     
     sessions.forEach(session => {
-      if (!session.start_time) return;
+      if (!session.start_time || !session.end_time) return;
       
-      const [hour, minute] = session.start_time.split(':').map(Number);
-      const sessionMinutes = hour * 60 + minute;
-      
-      // Round down to nearest 30-minute slot
-      const slotMinutes = Math.floor(sessionMinutes / 30) * 30;
-      const slotHour = Math.floor(slotMinutes / 60);
-      const slotMin = slotMinutes % 60;
-      const timeSlot = `${String(slotHour).padStart(2, '0')}:${String(slotMin).padStart(2, '0')}`;
+      // Normalize time format by removing seconds if present
+      const startTime = session.start_time.split(':').slice(0, 2).join(':');
+      const endTime = session.end_time.split(':').slice(0, 2).join(':');
+      const timeSlot = `${startTime}-${endTime}`;
       
       if (!timeSlotGroups.has(timeSlot)) {
         timeSlotGroups.set(timeSlot, []);
@@ -522,6 +518,8 @@ export function CalendarWeekView({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          date: date.toISOString(),
+          sessions: slotSessions,
           students: studentList,
           timeSlot: formatTimeSlot(timeSlot),
           duration: 30, // Default duration
@@ -600,6 +598,20 @@ export function CalendarWeekView({
   
   // Format time slot for display
   const formatTimeSlot = (timeSlot: string) => {
+    // Handle time range format (e.g., "08:15-08:45")
+    if (timeSlot.includes('-')) {
+      const [startTime, endTime] = timeSlot.split('-');
+      const formatSingleTime = (time: string) => {
+        const [hours, minutes] = time.split(':');
+        const hour = parseInt(hours);
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+        return `${displayHour}:${minutes} ${period}`;
+      };
+      return `${formatSingleTime(startTime)} - ${formatSingleTime(endTime)}`;
+    }
+    
+    // Handle single time format (legacy)
     const [hours, minutes] = timeSlot.split(':');
     const hour = parseInt(hours);
     const period = hour >= 12 ? 'PM' : 'AM';
@@ -906,7 +918,10 @@ export function CalendarWeekView({
       // Group sessions by time slot for AI generation
       const timeSlotGroups = new Map<string, ScheduleSession[]>();
       daySessions.forEach(session => {
-        const timeSlot = `${session.start_time}-${session.end_time}`;
+        // Normalize time format by removing seconds if present
+        const startTime = session.start_time.split(':').slice(0, 2).join(':');
+        const endTime = session.end_time.split(':').slice(0, 2).join(':');
+        const timeSlot = `${startTime}-${endTime}`;
         if (!timeSlotGroups.has(timeSlot)) {
           timeSlotGroups.set(timeSlot, []);
         }
