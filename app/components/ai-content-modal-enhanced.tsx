@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { X, Printer, Save, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Target, BookOpen, Activity } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { getSanitizedHTML } from '../../lib/sanitize-html';
 import { formatTimeSlot } from '../../lib/utils/date-time';
+import { formatLessonContent } from '../../lib/utils/lesson-formatter';
+import '../../app/styles/lesson-content.css';
 
 interface Student {
   id: string;
@@ -52,7 +54,59 @@ export function AIContentModalEnhanced({
   const [showWorksheetPrompt, setShowWorksheetPrompt] = React.useState(false);
 
   const currentLesson = lessons[currentLessonIndex];
-  const sanitizedContent = currentLesson?.content ? getSanitizedHTML(currentLesson.content) : null;
+  
+  // Enhanced content processing for better formatting
+  const processLessonContent = (content: string) => {
+    if (!content) return null;
+    
+    // First apply our custom formatting
+    let processedContent = formatLessonContent(content);
+    
+    // Additional modal-specific formatting
+    
+    // Highlight student names with colored badges
+    currentLesson.students.forEach((student, index) => {
+      const colors = [
+        'from-purple-500 to-pink-500',
+        'from-blue-500 to-cyan-500',
+        'from-green-500 to-emerald-500',
+        'from-orange-500 to-red-500',
+        'from-indigo-500 to-purple-500'
+      ];
+      const colorClass = colors[index % colors.length];
+      
+      // Replace student references with styled badges
+      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
+      processedContent = processedContent.replace(
+        studentRegex,
+        `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${colorClass} text-white">${student.initials}</span>`
+      );
+    });
+    
+    // Add activity blocks with better visual separation
+    processedContent = processedContent.replace(
+      /<h3>([^<]*Activity[^<]*)<\/h3>/gi,
+      '</div><div class="activity-block mt-6"><h3 class="flex items-center gap-2"><svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>$1</h3>'
+    );
+    
+    // Ensure proper closing of sections
+    processedContent = processedContent.replace(
+      /<div class="activity-block/g,
+      '</div><div class="activity-block'
+    ).replace(
+      /^<\/div>/, ''
+    );
+    
+    // Add section dividers for better visual separation
+    processedContent = processedContent.replace(
+      /<h2>/g,
+      '<div class="my-8 border-t-2 border-gray-200"></div><h2>'
+    );
+    
+    return getSanitizedHTML(processedContent);
+  };
+  
+  const sanitizedContent = currentLesson?.content ? processLessonContent(currentLesson.content) : null;
 
   // Escape HTML special characters
   function escapeHTML(str: string): string {
@@ -310,31 +364,82 @@ export function AIContentModalEnhanced({
           </div>
         )}
 
-        {/* Current time slot info */}
+        {/* Current time slot info with enhanced visual design */}
         {currentLesson && (
-          <div className="px-6 py-3 bg-blue-50 border-b">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm font-medium text-gray-700">
-                  Time: {formatTimeSlot(currentLesson.timeSlot)}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Students: {currentLesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}
-                </p>
+          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-blue-600" />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Time Slot</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {formatTimeSlot(currentLesson.timeSlot)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600" />
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Students</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {currentLesson.students.map((s, idx) => (
+                      <span 
+                        key={idx}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                      >
+                        {s.initials} (Gr {s.grade_level})
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div className="flex-1 overflow-auto px-6 py-4 bg-gray-50">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : currentLesson ? (
-            <div ref={printRef}>
-              <div className="prose max-w-none" dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
+            <div ref={printRef} className="max-w-4xl mx-auto">
+              {/* Quick Overview Card */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-green-600" />
+                  Lesson Overview
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="flex items-start gap-2">
+                    <BookOpen className="w-4 h-4 text-blue-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-gray-700">Focus Area</p>
+                      <p className="text-gray-600">Special Education Support</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Activity className="w-4 h-4 text-purple-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-gray-700">Duration</p>
+                      <p className="text-gray-600">{formatTimeSlot(currentLesson.timeSlot)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Users className="w-4 h-4 text-green-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-gray-700">Group Size</p>
+                      <p className="text-gray-600">{currentLesson.students.length} student{currentLesson.students.length > 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Main Lesson Content */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="lesson-content prose prose-lg max-w-none" dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
+              </div>
             </div>
           ) : (
             <div className="text-center text-gray-500">No lesson content available</div>

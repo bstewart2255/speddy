@@ -1,0 +1,178 @@
+/* Custom styles for AI-generated lesson content */
+
+.lesson-content {
+  @apply text-gray-800;
+}
+
+/* Main headings - Lesson Title */
+.lesson-content h1 {
+  @apply text-2xl font-bold text-gray-900 mb-6 pb-3 border-b-2 border-blue-200;
+}
+
+/* Section headings */
+.lesson-content h2 {
+  @apply text-xl font-semibold text-blue-700 mt-8 mb-4 flex items-center gap-2;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.lesson-content h2::before {
+  content: '▸';
+  @apply text-blue-500 absolute left-0;
+}
+
+/* Sub-section headings */
+.lesson-content h3 {
+  @apply text-lg font-semibold text-gray-700 mt-6 mb-3 pl-4 border-l-4 border-green-400;
+}
+
+/* Activity/Student specific headings */
+.lesson-content h4 {
+  @apply text-base font-semibold text-purple-700 mt-4 mb-2 bg-purple-50 px-3 py-2 rounded-lg;
+}
+
+/* Paragraphs */
+.lesson-content p {
+  @apply text-gray-700 leading-relaxed mb-4;
+}
+
+/* Lists */
+.lesson-content ul {
+  @apply space-y-2 mb-4 ml-4;
+}
+
+.lesson-content ul li {
+  @apply pl-6 relative;
+}
+
+.lesson-content ul li::before {
+  content: '✓';
+  @apply absolute left-0 text-green-500 font-bold;
+}
+
+.lesson-content ol {
+  @apply space-y-3 mb-4 ml-4;
+}
+
+.lesson-content ol li {
+  @apply pl-6 relative;
+  counter-increment: item;
+}
+
+.lesson-content ol li::before {
+  content: counter(item);
+  @apply absolute left-0 w-5 h-5 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center font-bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Reset counter for each ol */
+.lesson-content ol {
+  counter-reset: item;
+}
+
+/* Strong text (usually for emphasis or labels) */
+.lesson-content strong {
+  @apply font-semibold text-gray-900 bg-yellow-50 px-1 rounded;
+}
+
+/* Activity cards */
+.lesson-content .activity-block {
+  @apply bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-4 border border-blue-200 shadow-sm;
+}
+
+/* Materials section */
+.lesson-content .materials-section {
+  @apply bg-green-50 rounded-lg p-4 mb-4 border border-green-300;
+}
+
+/* Objectives section */
+.lesson-content .objectives-section {
+  @apply bg-amber-50 rounded-lg p-4 mb-4 border border-amber-300;
+}
+
+/* Time indicators */
+.lesson-content .time-indicator {
+  @apply inline-block bg-gray-100 text-gray-700 px-2 py-1 rounded text-sm font-medium mr-2;
+}
+
+/* Student names/initials */
+.lesson-content .student-name {
+  @apply inline-block bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded text-sm font-bold mr-1;
+}
+
+/* IEP Goals */
+.lesson-content .iep-goal {
+  @apply bg-blue-50 border-l-4 border-blue-500 pl-4 py-2 mb-2 italic text-sm;
+}
+
+/* Dividers between major sections */
+.lesson-content hr {
+  @apply my-8 border-t-2 border-gray-200;
+}
+
+/* Tables for structured content */
+.lesson-content table {
+  @apply w-full border-collapse mb-6;
+}
+
+.lesson-content th {
+  @apply bg-gray-100 px-4 py-2 text-left font-semibold text-gray-700 border border-gray-300;
+}
+
+.lesson-content td {
+  @apply px-4 py-2 border border-gray-300;
+}
+
+.lesson-content tbody tr:nth-child(even) {
+  @apply bg-gray-50;
+}
+
+/* Blockquotes for special notes or tips */
+.lesson-content blockquote {
+  @apply border-l-4 border-yellow-400 bg-yellow-50 pl-4 py-3 mb-4 italic;
+}
+
+/* Code blocks for specific instructions */
+.lesson-content code {
+  @apply bg-gray-100 px-2 py-1 rounded text-sm font-mono text-red-600;
+}
+
+.lesson-content pre {
+  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .lesson-content h1 {
+    @apply text-xl;
+  }
+  
+  .lesson-content h2 {
+    @apply text-lg;
+  }
+  
+  .lesson-content h3 {
+    @apply text-base;
+  }
+}
+
+/* Print styles */
+@media print {
+  .lesson-content {
+    @apply text-black;
+  }
+  
+  .lesson-content h2::before,
+  .lesson-content ul li::before {
+    content: '•';
+    @apply text-black;
+  }
+  
+  .lesson-content .activity-block,
+  .lesson-content .materials-section,
+  .lesson-content .objectives-section {
+    @apply border-2 border-black bg-white;
+  }
+}
