@@ -48,11 +48,17 @@ interface WeeklyViewProps {
 
 export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const { showToast } = useToast();
-  const { availableSchools, worksAtMultipleSchools } = useSchool();
-  const today = new Date();
-  const weekStart = isWeekend(today)
-    ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
-    : startOfWeek(today, { weekStartsOn: 1 });
+  const schoolContext = useSchool();
+  const availableSchools = schoolContext.availableSchools;
+  const worksAtMultipleSchools = schoolContext.worksAtMultipleSchools;
+  
+  // Memoize weekStart to prevent infinite re-renders
+  const weekStart = React.useMemo(() => {
+    const today = new Date();
+    return isWeekend(today)
+      ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
+      : startOfWeek(today, { weekStartsOn: 1 });
+  }, []); // Calculate once on mount
 
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
@@ -161,12 +167,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         const { data: sessionData, error: sessionError } = await sessionQuery;
 
-        console.log('[WeeklyView] Query result:', { 
-          sessionData: sessionData?.length || 0, 
-          error: sessionError,
-          firstSession: sessionData?.[0]
-        });
-
         if (sessionError) {
           console.error("Session fetch error:", sessionError);
           setLoading(false);
@@ -174,8 +174,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
 
         if (sessionData && isMounted) {
-          console.log('[WeeklyView] Raw sessionData:', sessionData);
-          
           // Transform sessions to include calculated dates
           // Handle both with and without student joins
           const transformedSessions = sessionData.map((session: any) => {
@@ -190,7 +188,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             };
           });
 
-          console.log('[WeeklyView] Setting sessions:', transformedSessions.length, 'sessions');
           setSessions(transformedSessions);
 
           // Get unique student IDs
@@ -260,7 +257,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, selectedSchoolFilter, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school filter changes
+  }, [viewMode, weekStart, selectedSchoolFilter]); // Re-run when viewMode, weekStart, or school filter changes
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -460,21 +457,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const sessionsByDayTime = React.useMemo(() => {
     const grouped: Record<string, any[]> = {}; // Note: now stores arrays of sessions
     
-    console.log('[sessionsByDayTime] Processing', sessions.length, 'sessions');
-    
     sessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
       const timeIndex = getTimeSlotIndex(session.start_time);
       const span = getSessionSpan(session.start_time, session.end_time);
-
-      console.log('[sessionsByDayTime] Session:', {
-        id: session.id,
-        day_of_week: session.day_of_week,
-        dayIndex,
-        start_time: session.start_time,
-        timeIndex,
-        key: `${dayIndex}-${timeIndex}`
-      });
 
       if (dayIndex >= 0 && dayIndex < 5 && timeIndex >= 0) {
         const key = `${dayIndex}-${timeIndex}`;
@@ -489,7 +475,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       }
     });
 
-    console.log('[sessionsByDayTime] Final grouped:', Object.keys(grouped).length, 'slots', grouped);
     return grouped;
   }, [sessions]);
 
@@ -591,10 +576,6 @@ return (
                     const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
                     const sessionKey = `${dayIndex}-${timeIndex}`;
                     const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
-                    
-                    if (sessionsInSlot.length > 0) {
-                      console.log('[Render] Found sessions in slot:', sessionKey, sessionsInSlot);
-                    }
 
                     return (
                       <div
