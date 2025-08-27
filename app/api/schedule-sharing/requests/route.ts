@@ -22,6 +22,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Check if user is an SEA - SEAs cannot view schedule share requests
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role === 'sea') {
+      return NextResponse.json(
+        { error: 'Special Education Assistants (SEAs) do not have access to schedule sharing functionality' },
+        { status: 403 }
+      );
+    }
+
     // Get share requests for this school, excluding the current user's own requests  
     const { data: shareRequests, error } = await supabase
       .from('schedule_share_requests')
