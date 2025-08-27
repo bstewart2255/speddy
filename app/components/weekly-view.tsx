@@ -8,6 +8,8 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
+import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
+import { useSchool } from '@/app/components/providers/school-context';
 
 interface Holiday {
   date: string;
@@ -46,10 +48,26 @@ interface WeeklyViewProps {
 
 export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const { showToast } = useToast();
-  const today = new Date();
-  const weekStart = isWeekend(today)
-    ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
-    : startOfWeek(today, { weekStartsOn: 1 });
+  const schoolContext = useSchool();
+  const availableSchools = schoolContext.availableSchools;
+  const worksAtMultipleSchools = schoolContext.worksAtMultipleSchools;
+  
+  // Filter schools to only include those with valid school_id for database queries
+  const filterableSchools = React.useMemo(() => {
+    return availableSchools.filter(school => 
+      school.school_id && 
+      school.school_id.trim() !== '' &&
+      !school.school_id.startsWith('MOCK_') // Exclude mock schools that won't work in DB queries
+    );
+  }, [availableSchools]);
+  
+  // Memoize weekStart to prevent infinite re-renders
+  const weekStart = React.useMemo(() => {
+    const today = new Date();
+    return isWeekend(today)
+      ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
+      : startOfWeek(today, { weekStartsOn: 1 });
+  }, []); // Calculate once on mount
 
   const [sessions, setSessions] = React.useState<any[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
@@ -57,12 +75,25 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<any>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+
+  // Reset to 'all' if the selected school is not filterable
+  React.useEffect(() => {
+    if (selectedSchoolFilter !== 'all' && filterableSchools.length > 0) {
+      const isValidSelection = filterableSchools.some(
+        school => school.school_id === selectedSchoolFilter
+      );
+      if (!isValidSelection) {
+        setSelectedSchoolFilter('all');
+      }
+    }
+  }, [selectedSchoolFilter, filterableSchools]);  
 
   React.useEffect(() => {
     let isMounted = true;
@@ -104,13 +135,43 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
 
         // Fetch schedule sessions based on view mode
-        let sessionQuery = supabase
-          .from("schedule_sessions")
-          .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
-          .gte("day_of_week", 1)
-          .lte("day_of_week", 5)
-          .order("day_of_week")
-          .order("start_time");
+        // Only join students table if we need to filter by school
+        // Also check that we have filterable schools
+        const needsStudentJoin = selectedSchoolFilter !== 'all' && 
+                                worksAtMultipleSchools && 
+                                filterableSchools.length > 0;
+        
+        let sessionQuery;
+        if (needsStudentJoin) {
+          sessionQuery = supabase
+            .from("schedule_sessions")
+            .select(`
+              id, 
+              day_of_week, 
+              start_time, 
+              end_time, 
+              student_id, 
+              delivered_by, 
+              assigned_to_sea_id, 
+              provider_id,
+              students!inner(
+                id,
+                school_id
+              )
+            `)
+            .gte("day_of_week", 1)
+            .lte("day_of_week", 5)
+            .order("day_of_week")
+            .order("start_time");
+        } else {
+          sessionQuery = supabase
+            .from("schedule_sessions")
+            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
+            .gte("day_of_week", 1)
+            .lte("day_of_week", 5)
+            .order("day_of_week")
+            .order("start_time");
+        }
 
         if (hasSEAs && viewMode === 'sea') {
           // Show sessions assigned to SEAs
@@ -121,6 +182,11 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           // Show all provider sessions (default behavior)
           sessionQuery = sessionQuery
             .eq("provider_id", user.id);
+        }
+        
+        // Apply school filter if a specific school is selected
+        if (needsStudentJoin) {
+          sessionQuery = sessionQuery.eq('students.school_id', selectedSchoolFilter);
         }
 
         const { data: sessionData, error: sessionError } = await sessionQuery;
@@ -133,13 +199,18 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         if (sessionData && isMounted) {
           // Transform sessions to include calculated dates
-          const transformedSessions = sessionData.map((session) => ({
-            ...session,
-            date: format(
-              addDays(weekStart, session.day_of_week - 1),
-              "yyyy-MM-dd",
-            ),
-          }));
+          // Handle both with and without student joins
+          const transformedSessions = sessionData.map((session: any) => {
+            // Extract the core session data (removing nested students object if present)
+            const { students, ...sessionCore } = session;
+            return {
+              ...sessionCore,
+              date: format(
+                addDays(weekStart, sessionCore.day_of_week - 1),
+                "yyyy-MM-dd",
+              ),
+            };
+          });
 
           setSessions(transformedSessions);
 
@@ -210,7 +281,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart]); // Re-run when viewMode or weekStart changes
+  }, [viewMode, weekStart, selectedSchoolFilter]); // Re-run when viewMode, weekStart, or school filter changes
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -409,7 +480,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   // Group sessions by day and time
   const sessionsByDayTime = React.useMemo(() => {
     const grouped: Record<string, any[]> = {}; // Note: now stores arrays of sessions
-
+    
     sessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
       const timeIndex = getTimeSlotIndex(session.start_time);
@@ -417,7 +488,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
       if (dayIndex >= 0 && dayIndex < 5 && timeIndex >= 0) {
         const key = `${dayIndex}-${timeIndex}`;
-
 
         // Initialize array if it doesn't exist
         if (!grouped[key]) {
@@ -491,16 +561,26 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
 return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="mb-4">
+      <div className="mb-4 flex justify-between items-center">
         <h2 className="text-lg font-semibold">
           Today's Schedule
         </h2>
+        <SchoolFilterToggle
+          selectedSchool={selectedSchoolFilter}
+          availableSchools={filterableSchools}
+          worksAtMultiple={worksAtMultipleSchools}
+          onSchoolChange={setSelectedSchoolFilter}
+        />
       </div>
 
       <div className="space-y-4">
         {[0].map(dayOffset => {
           const currentDate = addDays(startDay, dayOffset);
-          const dayIndex = currentDate.getDay() - 1; // 0 = Monday
+          // Get the day of week for the current date (0 = Sunday, 1 = Monday, etc.)
+          const actualDayOfWeek = currentDate.getDay();
+          // Convert to our index system (0 = Monday, 1 = Tuesday, ..., 4 = Friday)
+          // Sunday (0) becomes 6, but we skip weekends anyway
+          const dayIndex = actualDayOfWeek === 0 ? -1 : actualDayOfWeek - 1;
           const isToday = format(currentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
 
           // Skip weekends
