@@ -8,6 +8,8 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
+import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
+import { useSchool } from '@/app/components/providers/school-context-v2';
 
 interface Holiday {
   date: string;
@@ -46,6 +48,7 @@ interface WeeklyViewProps {
 
 export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const { showToast } = useToast();
+  const { availableSchools, worksAtMultipleSchools } = useSchool();
   const today = new Date();
   const weekStart = isWeekend(today)
     ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
@@ -57,6 +60,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<any>(null);
@@ -106,7 +110,20 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         // Fetch schedule sessions based on view mode
         let sessionQuery = supabase
           .from("schedule_sessions")
-          .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
+          .select(`
+            id, 
+            day_of_week, 
+            start_time, 
+            end_time, 
+            student_id, 
+            delivered_by, 
+            assigned_to_sea_id, 
+            provider_id,
+            students!inner(
+              id,
+              school_id
+            )
+          `)
           .gte("day_of_week", 1)
           .lte("day_of_week", 5)
           .order("day_of_week")
@@ -121,6 +138,11 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           // Show all provider sessions (default behavior)
           sessionQuery = sessionQuery
             .eq("provider_id", user.id);
+        }
+        
+        // Apply school filter if a specific school is selected
+        if (selectedSchoolFilter !== 'all' && worksAtMultipleSchools) {
+          sessionQuery = sessionQuery.eq('students.school_id', selectedSchoolFilter);
         }
 
         const { data: sessionData, error: sessionError } = await sessionQuery;
@@ -210,7 +232,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart]); // Re-run when viewMode or weekStart changes
+  }, [viewMode, weekStart, selectedSchoolFilter, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school filter changes
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -491,10 +513,16 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
 return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="mb-4">
+      <div className="mb-4 flex justify-between items-center">
         <h2 className="text-lg font-semibold">
           Today's Schedule
         </h2>
+        <SchoolFilterToggle
+          selectedSchool={selectedSchoolFilter}
+          availableSchools={availableSchools}
+          worksAtMultiple={worksAtMultipleSchools}
+          onSchoolChange={setSelectedSchoolFilter}
+        />
       </div>
 
       <div className="space-y-4">

@@ -30,6 +30,7 @@ interface SchoolContextType {
   availableSchools: SchoolInfo[];
   setCurrentSchool: (school: SchoolInfo) => void;
   loading: boolean;
+  worksAtMultipleSchools: boolean;
   
   // Simplified methods
   getSchoolFilter: () => { school_id: string } | null;
@@ -45,6 +46,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   const [currentSchool, setCurrentSchoolState] = useState<SchoolInfo | null>(null);
   const [availableSchools, setAvailableSchools] = useState<SchoolInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = createClient();
 
   const fetchProviderSchools = useCallback(async () => {
@@ -118,8 +120,49 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         nces_id: school?.nces_id,
       };
 
-      // For now, only support single school (multiple schools feature can be added later)
-      const schools = [primarySchool];
+      // Check if user works at multiple schools
+      let schools: SchoolInfo[] = [primarySchool];
+      setWorksAtMultipleSchools(profile.works_at_multiple_schools || false);
+      
+      // If user works at multiple schools, fetch additional school associations
+      if (profile.works_at_multiple_schools) {
+        // For now, we'll use mock data for testing the UI
+        // In production, this would fetch from a school_associations table
+        console.log('[SchoolContext] User works at multiple schools - loading school associations');
+        
+        // Mock additional schools for testing
+        const mockSchools: SchoolInfo[] = [
+          primarySchool,
+          {
+            school_id: 'SCH002',
+            district_id: profile.district_id,
+            state_id: profile.state_id,
+            school_name: 'Lincoln Elementary',
+            district_name: district?.name || '',
+            state_name: state?.name || '',
+            state_abbreviation: state?.abbreviation || profile.state_id,
+            display_name: `Lincoln Elementary (${district?.name}, ${state?.abbreviation})`,
+            full_address: `Lincoln Elementary, ${district?.name}, ${state?.name}`,
+            is_primary: false,
+            nces_id: undefined,
+          },
+          {
+            school_id: 'SCH003',
+            district_id: profile.district_id,
+            state_id: profile.state_id,
+            school_name: 'Washington Middle School',
+            district_name: district?.name || '',
+            state_name: state?.name || '',
+            state_abbreviation: state?.abbreviation || profile.state_id,
+            display_name: `Washington Middle School (${district?.name}, ${state?.abbreviation})`,
+            full_address: `Washington Middle School, ${district?.name}, ${state?.name}`,
+            is_primary: false,
+            nces_id: undefined,
+          },
+        ];
+        schools = mockSchools;
+      }
+      
       setAvailableSchools(schools);
 
       // Check for cached selection
@@ -182,11 +225,12 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       availableSchools,
       setCurrentSchool,
       loading,
+      worksAtMultipleSchools,
       getSchoolFilter,
       refreshSchoolData,
       queryPerformance: 'fast' as const,
     }),
-    [currentSchool, availableSchools, setCurrentSchool, loading, getSchoolFilter, refreshSchoolData]
+    [currentSchool, availableSchools, setCurrentSchool, loading, worksAtMultipleSchools, getSchoolFilter, refreshSchoolData]
   );
 
   return (
