@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
@@ -26,6 +27,16 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     });
   }
 
+  // Validate required metadata fields
+  const requiredMetadata = ['full_name', 'role', 'state', 'school_district', 'school_site'];
+  const missing = requiredMetadata.filter((field) => !metadata?.[field]);
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { error: `Missing required metadata fields: ${missing.join(', ')}` },
+      { status: 400 }
+    );
+  }
+
     // Validate email domain
     const emailDomain = email.split('@')[1];
     if (!emailDomain || 
@@ -40,7 +51,9 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     }
 
     // Validate school site name
-    if (metadata.school_site.length < 5 || !/\s/.test(metadata.school_site)) {
+    if (typeof metadata.school_site !== 'string' ||
+        metadata.school_site.trim().length < 5 ||
+        !/\s/.test(metadata.school_site)) {
       return NextResponse.json(
         { error: 'Please enter your full school site name (no abbreviations - and spell correctly!)' },
         { status: 400 }
@@ -75,16 +88,23 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
     }
 
-    // Create profile record using the database function
-    const { error: profileError } = await supabase.rpc('create_profile_for_new_user', {
+    // Create profile record using the database function (use admin client to bypass RLS)
+    const adminClient = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    const { error: profileError } = await adminClient.rpc('create_profile_for_new_user', {
       user_id: signUpData.user.id,
       user_email: signUpData.user.email!,
       user_metadata: {
         full_name: metadata.full_name,
         role: metadata.role,
+        state: metadata.state,
         school_district: metadata.school_district,
         school_site: metadata.school_site,
         works_at_multiple_schools: metadata.works_at_multiple_schools || false,
+        additional_schools: metadata.additional_schools || []
       }
     });
 
@@ -93,16 +113,13 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       
       // Clean up the auth user since profile creation failed
       try {
-        // We need to use a service role client for admin operations
-        const serviceRoleClient = createRouteHandlerClient<Database>(
-          { cookies: () => cookieStore },
-          {
-            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          }
+        // Use admin client for user deletion
+        const adminClientForCleanup = createClient<Database>(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
         
-        const { error: deleteError } = await serviceRoleClient.auth.admin.deleteUser(
+        const { error: deleteError } = await adminClientForCleanup.auth.admin.deleteUser(
           signUpData.user.id
         );
         
@@ -117,6 +134,29 @@ export const POST = asyncHandler(async (request: NextRequest) => {
         { error: 'Failed to complete registration. Please try again.' },
         { status: 500 }
       );
+    }
+
+    // For SEA roles, verify that school IDs were populated (use admin to bypass RLS)
+    if (metadata.role === 'sea') {
+      const { data: profile, error: profileCheckError } = await adminClient
+        .from('profiles')
+        .select('school_id, district_id, state_id')
+        .eq('id', signUpData.user.id)
+        .single();
+
+      if (!profileCheckError && profile) {
+        if (!profile.school_id || !profile.district_id || !profile.state_id) {
+          requestLogger.warn('SEA profile created without complete school IDs', {
+            userId: signUpData.user.id,
+            hasSchoolId: !!profile.school_id,
+            hasDistrictId: !!profile.district_id,
+            hasStateId: !!profile.state_id,
+            state: metadata.state,
+            district: metadata.school_district,
+            school: metadata.school_site
+          });
+        }
+      }
     }
 
     // For teacher roles, ensure referral code is generated
