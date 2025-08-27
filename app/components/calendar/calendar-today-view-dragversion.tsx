@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { SessionGenerator } from '@/lib/services/session-generator';
@@ -46,8 +46,8 @@ export function CalendarTodayView({
     const [userProfile, setUserProfile] = useState<any>(null);
     const [providerId, setProviderId] = useState<string | null>(null);
 
-    const supabase = createClient<Database>();
-    const sessionGenerator = new SessionGenerator();
+    const supabase = useMemo(() => createClient<Database>(), []);
+    const sessionGenerator = useMemo(() => new SessionGenerator(), []);
 
     // Load sessions and user info for the current date
     React.useEffect(() => {
@@ -80,7 +80,7 @@ export function CalendarTodayView({
       };
 
       loadSessions();
-    }, [currentDate]);
+    }, [currentDate, sessionGenerator, supabase]);
 
     // Use session sync hook for real-time updates
     const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({

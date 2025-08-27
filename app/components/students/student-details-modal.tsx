@@ -105,7 +105,7 @@ export function StudentDetailsModal({
 
       loadData();
     }
-  }, [isOpen, student.id]);
+  }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
 
   const handleSave = async () => {
     setLoading(true);

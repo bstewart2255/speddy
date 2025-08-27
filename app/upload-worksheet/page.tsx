@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Upload, Send, Loader2, Camera, Info } from 'lucide-react';
 
 export default function UploadWorksheetPage() {
@@ -142,10 +143,13 @@ export default function UploadWorksheetPage() {
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
               {preview ? (
                 <div className="space-y-4">
-                  <img 
+                  <Image 
                     src={preview} 
                     alt="Worksheet preview" 
+                    width={400}
+                    height={400}
                     className="max-w-full max-h-96 mx-auto rounded"
+                    style={{ width: 'auto', height: 'auto', maxHeight: '24rem' }}
                   />
                   <button
                     onClick={() => {

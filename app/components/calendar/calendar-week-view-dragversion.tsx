@@ -150,7 +150,7 @@ export function CalendarWeekView({
     };
 
     loadSessions();
-  }, [weekOffset]);
+  }, [weekOffset, sessionGenerator, supabase]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
@@ -235,7 +235,7 @@ export function CalendarWeekView({
     };
 
     loadManualLessons();
-  }, [weekOffset]); // Removed showToast dependency to prevent re-fetching
+  }, [weekOffset, showToast, supabase.auth]);
 
   // Handler for completing/uncompleting a session
   // In calendar-week-view.tsx

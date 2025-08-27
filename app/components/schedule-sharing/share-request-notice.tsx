@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Users, Download, X } from 'lucide-react';
 import type { ImportMode } from '@/lib/schedule-sharing/import-service';
 
@@ -28,11 +28,7 @@ export function ShareRequestNotice({ schoolId, schoolName }: ShareRequestNoticeP
   const [importingRequest, setImportingRequest] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<{ [key: string]: string }>({});
 
-  useEffect(() => {
-    fetchShareRequests();
-  }, [schoolId]);
-
-  const fetchShareRequests = async () => {
+  const fetchShareRequests = useCallback(async () => {
     try {
       const response = await fetch(`/api/schedule-sharing/requests?school_id=${schoolId}`);
       if (response.ok) {
@@ -44,7 +40,11 @@ export function ShareRequestNotice({ schoolId, schoolName }: ShareRequestNoticeP
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolId]);
+
+  useEffect(() => {
+    fetchShareRequests();
+  }, [schoolId, fetchShareRequests]);
 
   const handleImport = async (request: ShareRequest, mode: ImportMode) => {
     setImportingRequest(request.sharer_id);

@@ -44,11 +44,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
   const [selectedTimeRange, setSelectedTimeRange] = useState<'week' | 'month' | 'all'>('month');
   const supabase = createClient<Database>();
 
-  useEffect(() => {
-    loadProgressData();
-  }, [studentId, selectedTimeRange]);
-
-  const loadProgressData = async () => {
+  const loadProgressData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -148,7 +144,11 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentId, selectedTimeRange, supabase]);
+
+  useEffect(() => {
+    loadProgressData();
+  }, [loadProgressData]);
 
   const calculateProgressTrend = (submissions: any[]) => {
     if (submissions.length < 2) return 'insufficient_data';

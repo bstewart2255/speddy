@@ -46,7 +46,7 @@ export function SessionAssignmentPopup({
       currentTag: sessionTags[session.id] || '(no tag)',
       allTags: sessionTags
     });
-  }, []);
+  }, [session.id, session.student_id, sessionTags]);
 
   // Format time for display (12-hour format)
   const formatTime = (time: string): string => {

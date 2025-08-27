@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
@@ -61,38 +61,7 @@ export default function WorksheetUploadPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    fetchWorksheet();
-    
-    // Track page load
-    trackEvent({
-      event: 'qr_upload_started',
-      worksheetCode: code,
-      deviceType: getDeviceType(navigator.userAgent),
-      userAgent: navigator.userAgent,
-      metadata: {
-        referrer: document.referrer,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }, [code]);
-
-  useEffect(() => {
-    if (uploadSuccess) {
-      // Set up auto-redirect after 5 seconds
-      redirectTimerRef.current = setTimeout(() => {
-        router.push('/');
-      }, 5000);
-    }
-
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, [uploadSuccess, router]);
-
-  const fetchWorksheet = async () => {
+  const fetchWorksheet = useCallback(async () => {
     try {
       const supabase = createClient<Database>();
       
@@ -148,7 +117,38 @@ export default function WorksheetUploadPage() {
       setError('An error occurred while loading the worksheet.');
       setLoading(false);
     }
-  };
+  }, [code]);
+
+  useEffect(() => {
+    fetchWorksheet();
+    
+    // Track page load
+    trackEvent({
+      event: 'qr_upload_started',
+      worksheetCode: code,
+      deviceType: getDeviceType(navigator.userAgent),
+      userAgent: navigator.userAgent,
+      metadata: {
+        referrer: document.referrer,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }, [code, fetchWorksheet]);
+
+  useEffect(() => {
+    if (uploadSuccess) {
+      // Set up auto-redirect after 5 seconds
+      redirectTimerRef.current = setTimeout(() => {
+        router.push('/');
+      }, 5000);
+    }
+
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, [uploadSuccess, router]);
 
   const handleImageSelect = async (file: File, method: 'camera' | 'gallery') => {
     // Validate the image file
@@ -540,9 +540,11 @@ export default function WorksheetUploadPage() {
             {/* Image preview */}
             <div className="mb-4 relative">
               <img
-                src={imagePreview}
+                src={imagePreview || ''}
                 alt="Worksheet preview"
                 className="w-full rounded-lg shadow-sm"
+                style={{ width: '100%', height: 'auto' }}
+                loading="eager"
               />
             </div>
 

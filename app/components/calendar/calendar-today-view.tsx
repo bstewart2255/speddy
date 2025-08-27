@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { SessionGenerator } from '@/lib/services/session-generator';
@@ -47,8 +47,8 @@ export function CalendarTodayView({
   const [providerId, setProviderId] = useState<string | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
 
-  const supabase = createClient<Database>();
-  const sessionGenerator = new SessionGenerator();
+  const supabase = useMemo(() => createClient<Database>(), []);
+  const sessionGenerator = useMemo(() => new SessionGenerator(), []);
 
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {
@@ -87,7 +87,7 @@ export function CalendarTodayView({
     };
 
     loadSessions();
-  }, [currentDate]);
+  }, [currentDate, sessionGenerator, supabase]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {

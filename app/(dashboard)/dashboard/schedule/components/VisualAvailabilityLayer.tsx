@@ -114,7 +114,7 @@ export function VisualAvailabilityLayer({
 
 
     return bands;
-  }, [day, bellSchedules, specialActivities, schoolHours, sessions, students, filters, gridConfig]);
+  }, [day, bellSchedules, specialActivities, students, filters, gridConfig]);
 
   // Merge overlapping bands
   const mergedBands = useMemo(() => {

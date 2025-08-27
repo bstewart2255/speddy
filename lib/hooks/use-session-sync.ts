@@ -126,7 +126,7 @@ export function useSessionSync({
     });
 
     setLastSync(new Date());
-  }, [setSessions, onConflict]);
+  }, [setSessions]);
 
   // Schedule batch update
   const scheduleBatchUpdate = useCallback(() => {
@@ -380,11 +380,13 @@ export function useSessionSync({
   useEffect(() => {
     return () => {
       // Clear all rollback timers
-      optimisticUpdatesRef.current.forEach((update) => {
+      const optimisticUpdates = optimisticUpdatesRef.current;
+      optimisticUpdates.forEach((update) => {
         if (update.rollbackTimer) {
           clearTimeout(update.rollbackTimer);
         }
       });
+      optimisticUpdates.clear();
     };
   }, []);
 

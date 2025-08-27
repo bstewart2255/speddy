@@ -80,7 +80,7 @@ export function usePerformanceMetrics(componentName: string) {
     }
 
     renderStartTime.current = performance.now();
-  });
+  }, [componentName]);
 
   const getPerformanceScore = (): number => {
     // Score based on average render time

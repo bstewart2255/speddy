@@ -148,7 +148,7 @@
         return () => {
           isCancelled = true;
         };
-      }, []);
+      }, [supabase]);
 
       if (loading) {
         return (

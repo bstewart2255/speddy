@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { StatCard } from "../../../components/ui/stats";
@@ -29,7 +29,7 @@ export default function SEADashboard() {
     fetchSEAData();
   }, []);
 
-  const fetchSEAData = async () => {
+  const fetchSEAData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -78,7 +78,7 @@ export default function SEADashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':');
