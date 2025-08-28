@@ -947,7 +947,7 @@ export function CalendarWeekView({
           
           if (dayLessons) {
             // Convert the lessons object to array format for the enhanced modal
-            const lessonsArray = Object.entries(dayLessons).map(([timeSlot, lesson]) => ({
+            const lessonsArray = Object.entries(dayLessons).map(([timeSlot, lesson]: [string, any]) => ({
               timeSlot,
               content: lesson.content,
               prompt: lesson.prompt
