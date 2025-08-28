@@ -584,13 +584,33 @@ Requirements:
 
 CRITICAL: Pay special attention to the "Current Working Skills" for each student. These are the specific skills the teacher has identified as current focus areas. Design activities that directly practice these skills.
 
-Structure the lesson with:
-- Opening (5 min): Multi-sensory warm-up engaging all learning styles
-- Main Instruction (${duration - 10} min): 
-  * Differentiated activities for each ability level
-  * Specific IEP goal practice for each student
-  * Clear instructions for grouping/individual work
-- Closing (5 min): Individual assessment aligned to goals
+MANDATORY FORMAT - You MUST structure the lesson EXACTLY like this:
+
+<h3>Opening ⏱️ 5 minutes</h3>
+[Multi-sensory warm-up content here]
+
+<h3>Main Instruction ⏱️ ${duration - 10} minutes</h3>
+<h4>[Student Initials] (Grade [X])</h4>
+<strong>IEP Goal:</strong> [State the specific goal]
+<strong>Current Working Skills:</strong> [List skills]
+<strong>Focus Areas:</strong> [List areas]
+
+<strong>Activity 1:</strong> [Activity name]
+[Activity description]
+
+<strong>Activity 2:</strong> [Activity name]
+[Activity description]
+
+[Repeat for each student]
+
+<h3>Closing ⏱️ 5 minutes</h3>
+[Assessment activities here]
+
+Use EXACTLY this format with:
+- <h3> for main sections (Opening, Main Instruction, Closing) 
+- ⏱️ emoji for ALL time durations
+- <h4> for student names with grade
+- <strong> for labels like "IEP Goal:", "Activity 1:", etc.
 
 ${profile?.selected_curriculums?.length > 0 ? `
 
@@ -612,7 +632,7 @@ For each activity, specify:
 - Which curriculum/program to use (if applicable)
 - How to assess progress
 
-Format as clean, semantic HTML. Use <h3> for sections, <h4> for activities, <strong> for student names, and clear paragraph structure. Make it immediately actionable for a ${
+IMPORTANT: Follow the MANDATORY FORMAT shown above exactly. Do not deviate from the structure. Make it immediately actionable for a ${
   userRole === 'speech' ? 'speech-language pathologist' :
   userRole === 'ot' ? 'occupational therapist' :
   userRole === 'counseling' ? 'school counselor' :
