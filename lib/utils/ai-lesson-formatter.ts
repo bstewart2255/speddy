@@ -5,6 +5,7 @@
 
 import { getSanitizedHTML } from '../sanitize-html';
 import { formatLessonContent } from './lesson-formatter';
+import { standardizeLessonStructure } from './ai-lesson-standardizer';
 
 interface Student {
   id: string;
@@ -20,8 +21,8 @@ interface Student {
 export function processAILessonContent(content: string, students: Student[] = []): { __html: string } | null {
   if (!content) return null;
   
-  // Start with the base formatting
-  let processedContent = content;
+  // First, standardize the structure
+  let processedContent = standardizeLessonStructure(content);
   
   // Remove redundant headers that are already shown in the UI
   processedContent = processedContent.replace(
