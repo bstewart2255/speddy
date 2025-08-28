@@ -410,23 +410,13 @@ export function CalendarWeekView({
     return new Map([...timeSlotGroups.entries()].sort());
   };
 
-  // Memoize expensive day color calculations
+  // Simplified day color calculations - only holidays and past dates
   const getDayColorData = useMemo(() => {
     const colorMap = new Map<string, string>();
     const today = new Date();
     
     weekDates.forEach((date) => {
       const dateStr = toLocalDateKey(date);
-      const dayLessons = savedLessons.get(dateStr);
-      const hasManualLessons = manualLessons.has(dateStr);
-      
-      // Get sessions for this date
-      const daySessions = sessionsState.filter((s) => {
-        const sessionDate = new Date(weekDates[0]);
-        sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
-        return sessionDate.toDateString() === date.toDateString();
-      });
-      
       const isHolidayDay = isHoliday(date);
       
       // Past dates are gray
@@ -441,49 +431,18 @@ export function CalendarWeekView({
         return;
       }
       
-      // Check AI lesson coverage for time slots
-      let hasCompleteAICoverage = false;
-      let hasPartialAICoverage = false;
-      
-      if (dayLessons && daySessions.length > 0) {
-        const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
-        const totalSlots = timeSlotGroups.size;
-        const coveredSlots = Array.from(timeSlotGroups.keys()).filter(slot => dayLessons[slot]).length;
-        
-        hasCompleteAICoverage = totalSlots > 0 && coveredSlots === totalSlots;
-        hasPartialAICoverage = coveredSlots > 0 && coveredSlots < totalSlots;
-      }
-      
-      // Today's date gets special treatment
+      // Today's date gets a subtle ring
       if (date.toDateString() === today.toDateString()) {
-        if (hasCompleteAICoverage) {
-          colorMap.set(dateStr, "bg-green-100 border-green-400 ring-2 ring-green-400");
-        } else if (hasPartialAICoverage || hasManualLessons) {
-          colorMap.set(dateStr, "bg-blue-100 border-blue-400 ring-2 ring-blue-400");
-        } else {
-          colorMap.set(dateStr, "bg-blue-50 border-blue-300 ring-2 ring-blue-300");
-        }
+        colorMap.set(dateStr, "bg-white border-blue-300 ring-2 ring-blue-300");
         return;
       }
       
-      // Color based on lesson coverage
-      if (hasCompleteAICoverage && hasManualLessons) {
-        colorMap.set(dateStr, "bg-purple-50 border-purple-300");
-      } else if (hasCompleteAICoverage) {
-        colorMap.set(dateStr, "bg-green-50 border-green-300");
-      } else if (hasPartialAICoverage && hasManualLessons) {
-        colorMap.set(dateStr, "bg-indigo-50 border-indigo-300");
-      } else if (hasPartialAICoverage) {
-        colorMap.set(dateStr, "bg-blue-50 border-blue-300");
-      } else if (hasManualLessons) {
-        colorMap.set(dateStr, "bg-yellow-50 border-yellow-300");
-      } else {
-        colorMap.set(dateStr, "bg-white border-gray-200");
-      }
+      // Regular days are white
+      colorMap.set(dateStr, "bg-white border-gray-200");
     });
     
     return colorMap;
-  }, [weekDates, savedLessons, manualLessons, sessionsState]);
+  }, [weekDates, isHoliday]);
   
   const getDayColor = (date: Date) => {
     const dateStr = toLocalDateKey(date);
@@ -1140,37 +1099,6 @@ export function CalendarWeekView({
 
   return (
     <div className="w-full">
-      {/* Color Legend */}
-      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
-        <p className="text-xs font-medium text-gray-700 mb-2">Calendar Legend:</p>
-        <div className="flex flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-green-50 border border-green-300 rounded"></div>
-            <span>All time slots have AI lessons</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-blue-50 border border-blue-300 rounded"></div>
-            <span>Partial AI lessons</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-yellow-50 border border-yellow-300 rounded"></div>
-            <span>Manual lessons only</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-purple-50 border border-purple-300 rounded"></div>
-            <span>AI + Manual lessons</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-red-50 border border-red-200 rounded"></div>
-            <span>Holiday</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-gray-50 border border-gray-200 rounded"></div>
-            <span>Past date</span>
-          </div>
-        </div>
-      </div>
-      
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
           const dateStr = date.toISOString().split("T")[0];
@@ -1220,93 +1148,36 @@ export function CalendarWeekView({
                   </div>
                 )}
 
-                {/* AI Lessons Display */}
+                {/* AI Lessons Summary Button */}
                 {!isHolidayDay && timeSlotGroups.size > 0 && hasAIContent && (
-                  <div className="mb-2 space-y-1">
-                    <div className="bg-green-50 border border-green-200 rounded-md p-2">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-green-800">AI Lessons</span>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleViewAllAILessons(date)}
-                            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded"
-                            title="View all AI lessons"
-                          >
-                            📄 View All
-                          </button>
-                          <button
-                            onClick={() => handleEditAllAILessons(date)}
-                            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 px-2 rounded"
-                            title="Edit AI lessons"
-                          >
-                            ✏️ Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDailyLessons(date)}
-                            className="text-xs bg-red-100 hover:bg-red-200 text-red-700 py-1 px-2 rounded"
-                            title="Delete all lessons for this day"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                      {/* Time slot indicators */}
-                      <div className="space-y-1">
-                        {Array.from(timeSlotGroups.entries()).map(([timeSlot, slotSessions]) => {
-                          const hasLessonForSlot = dayAILessons[timeSlot];
-                          return (
-                            <div key={timeSlot} className="flex items-center gap-2 text-xs">
-                              <span className="text-gray-600">
-                                {formatTimeSlot(timeSlot)}
-                              </span>
-                              {hasLessonForSlot ? (
-                                <span className="text-green-600">✓ Lesson created</span>
-                              ) : (
-                                <span className="text-gray-400">No lesson</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                  <div className="mb-2">
+                    <button
+                      onClick={() => handleViewAllAILessons(date)}
+                      className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-3 rounded-md border border-purple-300 text-sm"
+                    >
+                      Saved AI Lesson
+                    </button>
                   </div>
                 )}
 
-                {/* Manual Lessons */}
+                {/* Manual Lessons Summary Button */}
                 {dayManualLessons.length > 0 && (
-                  <div className="mb-2 p-2 bg-yellow-100 rounded-md border border-yellow-300">
-                    <div className="text-xs font-medium text-yellow-800 mb-1">
-                      Manual Lessons ({dayManualLessons.length})
-                    </div>
-                    {dayManualLessons.map((lesson) => (
-                      <div key={lesson.id} className="flex items-center justify-between gap-1 mb-1">
-                        <button
-                          onClick={() => {
-                            setViewingManualLesson(lesson);
-                            setShowManualLessonView(true);
-                          }}
-                          className="text-xs text-left hover:text-yellow-900 truncate flex-1"
-                        >
-                          • {lesson.title}
-                        </button>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleEditManualLesson(lesson)}
-                            className="text-xs text-yellow-700 hover:text-yellow-900"
-                            title="Edit lesson"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => handleDeleteManualLesson(lesson.id)}
-                            className="text-xs text-red-600 hover:text-red-800"
-                            title="Delete lesson"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="mb-2">
+                    <button
+                      onClick={() => {
+                        if (dayManualLessons.length === 1) {
+                          setViewingManualLesson(dayManualLessons[0]);
+                          setShowManualLessonView(true);
+                        } else {
+                          // If multiple manual lessons, show first one or implement a list view modal
+                          setViewingManualLesson(dayManualLessons[0]);
+                          setShowManualLessonView(true);
+                        }
+                      }}
+                      className="w-full bg-green-100 hover:bg-green-200 text-green-800 font-medium py-2 px-3 rounded-md border border-green-300 text-sm"
+                    >
+                      Saved Manual Lesson
+                    </button>
                   </div>
                 )}
 
