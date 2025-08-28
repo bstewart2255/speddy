@@ -864,9 +864,9 @@ export function CalendarWeekView({
       sessionDate.setDate(
         startDate.getDate() + (session.day_of_week - 1)
       );
-      const sessionDateStr = sessionDate.toISOString().split("T")[0];
+      const sessionDateStr = toLocalDateKey(sessionDate);
       return weekDates.some(
-        (d) => d.toISOString().split("T")[0] === sessionDateStr
+        (d) => toLocalDateKey(d) === sessionDateStr
       );
     });
 
@@ -940,10 +940,30 @@ export function CalendarWeekView({
           }
         }
         
-        if (successCount > 0 && failCount === 0) {
-          showToast(`Successfully generated ${successCount} AI lesson(s)`, 'success');
-        } else if (successCount > 0 && failCount > 0) {
-          showToast(`Generated ${successCount} lesson(s), ${failCount} failed`, 'warning');
+        if (successCount > 0) {
+          // After successful generation, show the enhanced modal with all lessons
+          const dateStr = toLocalDateKey(selectedLessonDate);
+          const dayLessons = savedLessons.get(dateStr);
+          
+          if (dayLessons) {
+            // Convert the lessons object to array format for the enhanced modal
+            const lessonsArray = Object.entries(dayLessons).map(([timeSlot, lesson]) => ({
+              timeSlot,
+              content: lesson.content,
+              prompt: lesson.prompt
+            }));
+            
+            // Set up the enhanced modal to show all generated lessons
+            setEnhancedModalLessons(lessonsArray);
+            setEnhancedModalDate(selectedLessonDate);
+            setEnhancedModalOpen(true);
+          }
+          
+          if (failCount === 0) {
+            showToast(`Successfully generated ${successCount} AI lesson(s)`, 'success');
+          } else {
+            showToast(`Generated ${successCount} lesson(s), ${failCount} failed`, 'warning');
+          }
         } else {
           showToast('Failed to generate any lessons', 'error');
         }
@@ -1101,7 +1121,7 @@ export function CalendarWeekView({
     <div className="w-full">
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
-          const dateStr = date.toISOString().split("T")[0];
+          const dateStr = toLocalDateKey(date);
           const dayAILessons = savedLessons.get(dateStr) || {};
           const hasAIContent = Object.keys(dayAILessons).length > 0;
           const dayManualLessons = manualLessons.get(dateStr) || [];
