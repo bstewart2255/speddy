@@ -3,7 +3,7 @@
 import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
-import { getSanitizedHTML } from '../../lib/sanitize-html';
+import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
 
 interface Student {
   id: string;
@@ -42,7 +42,7 @@ export function AIContentModal({
   const [saved, setSaved] = React.useState(false);
   const [notes, setNotes] = React.useState("");
   const [showNotes, setShowNotes] = React.useState(false);
-  const sanitizedContent = content ? getSanitizedHTML(content) : null;
+  const sanitizedContent = content ? processAILessonContent(content, students) : null;
 
   // Escape HTML special characters in user-supplied notes
   function escapeHTML(str: string): string {
@@ -136,6 +136,9 @@ export function AIContentModal({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    // Use the print formatter for consistent print output
+    const printFormattedContent: { __html: string } | null = content ? processAILessonContentForPrint(content, students) : null;
+
     const styles = `
       <style>
         @media print {
@@ -162,7 +165,7 @@ export function AIContentModal({
             <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
-          ${sanitizedContent ? sanitizedContent.__html : ''}
+          ${printFormattedContent ? printFormattedContent.__html : ''}
         </body>
       </html>
     `);

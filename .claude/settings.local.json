@@ -49,7 +49,8 @@
       "Bash(npm run dev)",
       "Bash(gh pr list --head fix/react-hook-dependencies-build-errors)",
       "mcp__github__get_issue",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "mcp__github__create_issue"
     ],
     "deny": []
   },

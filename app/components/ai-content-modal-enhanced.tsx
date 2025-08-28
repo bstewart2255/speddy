@@ -3,9 +3,8 @@
 import * as React from "react";
 import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Target, BookOpen, Activity } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
-import { getSanitizedHTML } from '../../lib/sanitize-html';
 import { formatTimeSlot } from '../../lib/utils/date-time';
-import { formatLessonContent } from '../../lib/utils/lesson-formatter';
+import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
 import '../../app/styles/lesson-content.css';
 
 interface Student {
@@ -55,79 +54,8 @@ export function AIContentModalEnhanced({
 
   const currentLesson = lessons[currentLessonIndex];
   
-  // Enhanced content processing for better formatting
-  const processLessonContent = (content: string) => {
-    if (!content) return null;
-    
-    // Remove redundant headers that are already shown in the UI
-    let processedContent = content;
-    
-    // Remove "Special Education Lesson Plan" title and grade/time subtitle
-    processedContent = processedContent.replace(
-      /<h1[^>]*>\s*Special Education Lesson Plan\s*<\/h1>/gi,
-      ''
-    );
-    
-    // Remove grade level and duration line (e.g., "Grades 3-4 | 30 Minutes")
-    processedContent = processedContent.replace(
-      /<p[^>]*>\s*Grade[s]?\s+[^<]*\|\s*\d+\s*[Mm]inutes?\s*<\/p>/gi,
-      ''
-    );
-    
-    // Also remove if it's in a heading format
-    processedContent = processedContent.replace(
-      /<h[2-6][^>]*>\s*Grade[s]?\s+[^<]*\|\s*\d+\s*[Mm]inutes?\s*<\/h[2-6]>/gi,
-      ''
-    );
-    
-    // Apply our custom formatting
-    processedContent = formatLessonContent(processedContent);
-    
-    // Additional modal-specific formatting
-    
-    // Highlight student names with colored badges
-    currentLesson.students.forEach((student, index) => {
-      const colors = [
-        'from-purple-500 to-pink-500',
-        'from-blue-500 to-cyan-500',
-        'from-green-500 to-emerald-500',
-        'from-orange-500 to-red-500',
-        'from-indigo-500 to-purple-500'
-      ];
-      const colorClass = colors[index % colors.length];
-      
-      // Replace student references with styled badges
-      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
-      processedContent = processedContent.replace(
-        studentRegex,
-        `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${colorClass} text-white">${student.initials}</span>`
-      );
-    });
-    
-    // Add activity blocks with better visual separation
-    processedContent = processedContent.replace(
-      /<h3>([^<]*Activity[^<]*)<\/h3>/gi,
-      '</div><div class="activity-block mt-6"><h3 class="flex items-center gap-2"><svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>$1</h3>'
-    );
-    
-    // Ensure proper closing of sections
-    processedContent = processedContent.replace(
-      /<div class="activity-block/g,
-      '</div><div class="activity-block'
-    ).replace(
-      /^<\/div>/, ''
-    );
-    
-    // Add section dividers for better visual separation
-    processedContent = processedContent.replace(
-      /<h2>/g,
-      '<div class="my-8 border-t-2 border-gray-200"></div><h2>'
-    );
-    
-    return getSanitizedHTML(processedContent);
-  };
-  
-  const sanitizedContent = currentLesson?.content ? processLessonContent(currentLesson.content) : null;
+  // Use the shared formatter for consistent formatting
+  const sanitizedContent = currentLesson?.content ? processAILessonContent(currentLesson.content, currentLesson.students) : null;
 
   // Escape HTML special characters
   function escapeHTML(str: string): string {
@@ -158,6 +86,9 @@ export function AIContentModalEnhanced({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    // Use the print formatter for consistent print output
+    const printFormattedContent: { __html: string } | null = processAILessonContentForPrint(currentLesson.content, currentLesson.students);
+
     const styles = `
       <style>
         @media print {
@@ -184,7 +115,7 @@ export function AIContentModalEnhanced({
             <p style="margin: 5px 0;"><strong>Students:</strong> ${currentLesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
-          ${sanitizedContent ? sanitizedContent.__html : ''}
+          ${printFormattedContent ? printFormattedContent.__html : ''}
         </body>
       </html>
     `);
@@ -210,7 +141,7 @@ export function AIContentModalEnhanced({
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
-        const sanitized = getSanitizedHTML(lesson.content);
+        const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
         const styles = `
           <style>
             @media print {
