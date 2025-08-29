@@ -184,7 +184,7 @@ Make it print-friendly and ready to use.`;
         const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
         const completion = await openai.chat.completions.create({
           model: "gpt-5",
-          max_tokens: 2000,
+          max_completion_tokens: 2000,
           temperature: 0.7,
           messages: [
             {
@@ -318,7 +318,7 @@ Make it print-friendly and ready to use.`;
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
         model: "gpt-5",
-        max_tokens: 2000,
+        max_completion_tokens: 2000,
         temperature: 0.7,
         messages: [
           {
