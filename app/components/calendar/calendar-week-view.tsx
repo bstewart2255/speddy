@@ -523,6 +523,23 @@ export function CalendarWeekView({
       }
 
       const data = await response.json();
+      
+      // Ensure we have content before saving
+      if (!data.content || data.content.trim() === '') {
+        console.error(`No content received for time slot ${timeSlot}`);
+        throw new Error('No content received from API');
+      }
+
+      console.log(`Saving lesson for ${timeSlot} with content length: ${data.content.length}`);
+
+      // First try to delete any existing empty lesson
+      await supabase
+        .from('ai_generated_lessons')
+        .delete()
+        .eq('provider_id', currentUser.id)
+        .eq('lesson_date', toLocalDateKey(date))
+        .eq('time_slot', timeSlot)
+        .eq('content', '');
 
       // Save the generated lesson with time slot
       const { error } = await supabase
