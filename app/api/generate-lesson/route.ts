@@ -183,7 +183,7 @@ Make it print-friendly and ready to use.`;
 
         const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
         const completion = await openai.chat.completions.create({
-          model: "gpt-5",
+          model: "gpt-5-nano",
           max_completion_tokens: 5000,
           messages: [
             {
@@ -316,7 +316,7 @@ Make it print-friendly and ready to use.`;
 
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-5-nano",
         max_completion_tokens: 5000,
         messages: [
           {
@@ -469,21 +469,26 @@ async function createEnhancedPrompt(
   profile: any,
   userRole: string
 ): Promise<string> {
+  // Fetch all student details once
+  const studentDetailsArray = await Promise.all(
+    students.map(async (student) => {
+      const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
+      try {
+        const details = await getStudentDetails(student.id);
+        detailsPerf.end({ studentId: student.id, success: true });
+        return details;
+      } catch (error) {
+        log.error('Failed to fetch student details', error, { studentId: student.id });
+        detailsPerf.end({ studentId: student.id, success: false });
+        return null;
+      }
+    })
+  );
+
   // Create detailed student profiles with skills
-  const studentProfiles = await Promise.all(students.map(async (student) => {
+  const studentProfiles = await Promise.all(students.map(async (student, index) => {
     const studentLogs = recentLogs.filter(log => log.student_id === student.id);
-    
-    // Fetch student details to get working skills
-    const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
-    let details: StudentDetails | null = null;
-    try {
-      details = await getStudentDetails(student.id);
-      detailsPerf.end({ studentId: student.id, success: true });
-    } catch (error) {
-      log.error('Failed to fetch student details', error, { studentId: student.id });
-      detailsPerf.end({ studentId: student.id, success: false });
-      // Continue with null details - will use default values
-    }
+    const details = studentDetailsArray[index];
     
     // Get skill labels for the selected skills
     let workingSkillsText = 'General curriculum';
@@ -524,18 +529,7 @@ async function createEnhancedPrompt(
     ${studentLogs.length > 0 && studentLogs[0].next_steps ? `- Recommended Next Steps: ${studentLogs[0].next_steps}` : ''}`;
   }));
 
-    // Check what data we have across all students
-    const studentDetailsArray = await Promise.all(
-      students.map(async (student) => {
-        try {
-          return await getStudentDetails(student.id);
-        } catch (error) {
-          log.error('Failed to fetch student details for prompt', error, { studentId: student.id });
-          return null;
-        }
-      })
-    );
-
+    // Check what data we have across all students (reuse already fetched data)
     const hasIEPGoals = studentDetailsArray.some(details => 
       details?.iep_goals && details.iep_goals.length > 0
     );
