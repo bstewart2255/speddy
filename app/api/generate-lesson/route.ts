@@ -185,7 +185,6 @@ Make it print-friendly and ready to use.`;
         const completion = await openai.chat.completions.create({
           model: "gpt-5",
           max_completion_tokens: 2000,
-          temperature: 0.7,
           messages: [
             {
               role: "system",
@@ -319,7 +318,6 @@ Make it print-friendly and ready to use.`;
       const completion = await openai.chat.completions.create({
         model: "gpt-5",
         max_completion_tokens: 2000,
-        temperature: 0.7,
         messages: [
           {
             role: "system",
