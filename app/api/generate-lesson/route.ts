@@ -184,7 +184,7 @@ Make it print-friendly and ready to use.`;
         const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
         const completion = await openai.chat.completions.create({
           model: "gpt-5",
-          max_completion_tokens: 2000,
+          max_completion_tokens: 5000,
           messages: [
             {
               role: "system",
@@ -317,7 +317,7 @@ Make it print-friendly and ready to use.`;
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
         model: "gpt-5",
-        max_completion_tokens: 2000,
+        max_completion_tokens: 5000,
         messages: [
           {
             role: "system",
