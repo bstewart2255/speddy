@@ -183,7 +183,7 @@ Make it print-friendly and ready to use.`;
 
         const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
         const completion = await openai.chat.completions.create({
-          model: "gpt-5-nano",
+          model: "gpt-4o-mini",
           max_completion_tokens: 5000,
           messages: [
             {
@@ -316,7 +316,7 @@ Make it print-friendly and ready to use.`;
 
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         max_completion_tokens: 5000,
         messages: [
           {
