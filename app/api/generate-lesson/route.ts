@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { getStudentDetails, type StudentDetails } from '../../../lib/supabase/queries/student-details';
 import { GRADE_SKILLS_CONFIG } from '../../../lib/grade-skills-config';
 import { log } from '@/lib/monitoring/logger';
@@ -130,17 +130,17 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         timeDuration
       });
 
-      const apiKey = process.env.ANTHROPIC_API_KEY;
+      const apiKey = process.env.OPENAI_API_KEY;
       
       if (!apiKey) {
-        log.warn('No Anthropic API key configured for generic lesson', { userId });
+        log.warn('No OpenAI API key configured for generic lesson', { userId });
         return NextResponse.json({ 
           content: '<p>API key not configured. Please contact your administrator.</p>' 
         });
       }
 
       try {
-        const anthropic = new Anthropic({ apiKey });
+        const openai = new OpenAI({ apiKey });
         
         const systemContent = `You are an expert educator creating engaging, curriculum-aligned worksheets for students. Create practical, age-appropriate educational materials that teachers can use immediately.`;
         
@@ -181,28 +181,32 @@ Format as clean HTML with:
 
 Make it print-friendly and ready to use.`;
 
-        const aiPerf = measurePerformanceWithAlerts('anthropic_api_call', 'api');
-        const message = await anthropic.messages.create({
-          model: "claude-3-haiku-20240307",
+        const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5",
           max_tokens: 2000,
           temperature: 0.7,
           messages: [
             {
+              role: "system",
+              content: systemContent
+            },
+            {
               role: "user",
-              content: `${systemContent}\n\n${promptContent}`
+              content: promptContent
             }
           ]
         });
         const aiDuration = aiPerf.end({ 
-          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+          tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0)
         });
 
-        const content = message.content[0].type === 'text' ? message.content[0].text : '';
+        const content = completion.choices[0]?.message?.content || '';
         
         log.info('Generic lesson generated successfully', {
           userId,
-          inputTokens: message.usage.input_tokens,
-          outputTokens: message.usage.output_tokens,
+          inputTokens: completion.usage?.prompt_tokens || 0,
+          outputTokens: completion.usage?.completion_tokens || 0,
           duration: Math.round(aiDuration)
         });
         
@@ -212,15 +216,15 @@ Make it print-friendly and ready to use.`;
           subject,
           topic,
           timeDuration,
-          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+          tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0)
         });
 
         return NextResponse.json({ content });
         
       } catch (apiError: any) {
-        log.error('Anthropic API error for generic lesson', apiError, { 
+        log.error('OpenAI API error for generic lesson', apiError, { 
           userId,
-          errorCode: apiError.status,
+          errorCode: apiError.status || apiError.response?.status,
           errorMessage: apiError.message
         });
         
@@ -287,13 +291,13 @@ Make it print-friendly and ready to use.`;
     let content: string;
 
     // Check if API key exists in Replit Secrets
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (apiKey) {
       try {
-        log.info('Using Anthropic API for lesson generation', { userId });
+        log.info('Using OpenAI API for lesson generation', { userId });
 
-        const anthropic = new Anthropic({
+        const openai = new OpenAI({
           apiKey: apiKey,
         });
 
@@ -311,14 +315,14 @@ Make it print-friendly and ready to use.`;
         'lesson plans'
       }. You have deep knowledge of evidence-based practices, developmental milestones, and therapeutic interventions specific to your field. Always create practical, engaging activities appropriate for the school setting.`;
 
-      const aiPerf = measurePerformanceWithAlerts('anthropic_api_call', 'api');
-      const message = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307", // Cheapest and fastest model
+      const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
+      const completion = await openai.chat.completions.create({
+        model: "gpt-5",
         max_tokens: 2000,
         temperature: 0.7,
         messages: [
           {
-            role: "user",
+            role: "system",
             content: systemContent
           },
           {
@@ -328,12 +332,12 @@ Make it print-friendly and ready to use.`;
         ]
       });
       const aiDuration = aiPerf.end({ 
-        tokensUsed: message.usage.input_tokens + message.usage.output_tokens,
+        tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0),
         role: userRole 
       });
 
-        // Extract the text content from Claude's response
-        content = message.content[0].type === 'text' ? message.content[0].text : '';
+        // Extract the text content from OpenAI's response
+        content = completion.choices[0]?.message?.content || '';
 
         // Map student numbers back to initials for display
         students.forEach((student, index) => {
@@ -347,11 +351,11 @@ Make it print-friendly and ready to use.`;
         });
 
         // Log API usage
-        log.info('Anthropic API success', {
+        log.info('OpenAI API success', {
           userId,
-          inputTokens: message.usage.input_tokens,
-          outputTokens: message.usage.output_tokens,
-          totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+          inputTokens: completion.usage?.prompt_tokens || 0,
+          outputTokens: completion.usage?.completion_tokens || 0,
+          totalTokens: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0),
           duration: Math.round(aiDuration)
         });
         
@@ -360,13 +364,13 @@ Make it print-friendly and ready to use.`;
           studentCount: students.length,
           duration,
           role: userRole,
-          tokensUsed: message.usage.input_tokens + message.usage.output_tokens
+          tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0)
         });
 
       } catch (apiError: any) {
-        log.error('Anthropic API error', apiError, { 
+        log.error('OpenAI API error', apiError, { 
           userId,
-          errorCode: apiError.status,
+          errorCode: apiError.status || apiError.response?.status,
           errorMessage: apiError.message,
           errorDetails: apiError.response?.data || apiError.toString()
         });
@@ -374,15 +378,15 @@ Make it print-friendly and ready to use.`;
         track.event('lesson_generation_failed', {
           userId,
           error: apiError.message,
-          errorCode: apiError.status
+          errorCode: apiError.status || apiError.response?.status
         });
         
         // Provide more detailed error information
-        const errorMessage = apiError.status === 401 
-          ? 'Invalid API key. Please check your Anthropic API key configuration.'
-          : apiError.status === 429
+        const errorMessage = (apiError.status || apiError.response?.status) === 401 
+          ? 'Invalid API key. Please check your OpenAI API key configuration.'
+          : (apiError.status || apiError.response?.status) === 429
           ? 'Rate limit exceeded. Please try again in a few moments.'
-          : apiError.status === 400
+          : (apiError.status || apiError.response?.status) === 400
           ? 'Invalid request. Please check your input and try again.'
           : `Failed to generate lesson: ${apiError.message || 'Unknown error'}`;
         
@@ -402,14 +406,14 @@ Make it print-friendly and ready to use.`;
       }
     } else {
       // No API key configured, use mock response
-      log.warn('No Anthropic API key configured', { userId });
+      log.warn('No OpenAI API key configured', { userId });
       
       track.event('lesson_generation_no_api_key', {
         userId
       });
       
       content = `<div class="error-message">
-        <p><strong>Note:</strong> No API key configured. Please add your Anthropic API key to generate lessons.</p>
+        <p><strong>Note:</strong> No API key configured. Please add your OpenAI API key to generate lessons.</p>
         <p>Contact your administrator for assistance.</p>
       </div>`;
 
