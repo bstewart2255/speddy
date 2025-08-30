@@ -52,6 +52,7 @@ BEGIN
     AND rowsecurity = true
   ) THEN
     ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE lessons FORCE ROW LEVEL SECURITY;
   END IF;
 END $$;
 
@@ -69,7 +70,8 @@ CREATE POLICY "Users can create their own lessons" ON lessons
 DROP POLICY IF EXISTS "Users can update their own lessons" ON lessons;
 CREATE POLICY "Users can update their own lessons" ON lessons
   FOR UPDATE
-  USING (auth.uid() = provider_id);
+  USING (auth.uid() = provider_id)
+  WITH CHECK (auth.uid() = provider_id);
 
 DROP POLICY IF EXISTS "Users can delete their own lessons" ON lessons;
 CREATE POLICY "Users can delete their own lessons" ON lessons

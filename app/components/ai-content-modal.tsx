@@ -4,6 +4,7 @@ import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
+import { JsonLessonRenderer } from '../../lib/utils/json-lesson-renderer';
 
 interface Student {
   id: string;
@@ -42,7 +43,19 @@ export function AIContentModal({
   const [saved, setSaved] = React.useState(false);
   const [notes, setNotes] = React.useState("");
   const [showNotes, setShowNotes] = React.useState(false);
-  const sanitizedContent = content ? processAILessonContent(content, students) : null;
+  
+  // Check if content is JSON lesson data
+  const isJsonLesson = React.useMemo(() => {
+    if (!content) return false;
+    try {
+      const parsed = JSON.parse(content);
+      return parsed.lessonPlan && parsed.materials;
+    } catch {
+      return false;
+    }
+  }, [content]);
+  
+  const sanitizedContent = content && !isJsonLesson ? processAILessonContent(content, students) : null;
 
   // Escape HTML special characters in user-supplied notes
   function escapeHTML(str: string): string {
@@ -443,9 +456,22 @@ export function AIContentModal({
             </div>
           ) : content ? (
             <>
-              <div className="prose max-w-none">
-                <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
-              </div>
+              {isJsonLesson ? (
+                <div className="prose max-w-none">
+                  <JsonLessonRenderer 
+                    lessonData={content} 
+                    students={students.map(s => ({
+                      id: s.id,
+                      initials: s.initials,
+                      grade_level: s.grade_level
+                    }))}
+                  />
+                </div>
+              ) : (
+                <div className="prose max-w-none">
+                  <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
+                </div>
+              )}
               {/* Add worksheet buttons for each student */}
               {!isViewingSaved && students.length > 0 && (
                 <div className="mt-6 border-t pt-4">

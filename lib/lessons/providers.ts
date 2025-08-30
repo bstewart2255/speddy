@@ -49,7 +49,7 @@ export class OpenAIProvider implements AIProvider {
       try {
         jsonResponse = JSON.parse(content);
       } catch (e) {
-        console.error('Failed to parse OpenAI response:', content);
+        console.error('Failed to parse OpenAI response (content redacted for privacy)');
         throw new Error('Non-JSON response from OpenAI');
       }
       
@@ -67,7 +67,9 @@ export class OpenAIProvider implements AIProvider {
         modelUsed: 'OpenAI',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        gradeGroups: (baseMeta as any).gradeGroups || [],
+        validationStatus: (baseMeta as any).validationStatus || 'passed'
       };
 
       return jsonResponse;
@@ -159,7 +161,7 @@ export class AnthropicProvider implements AIProvider {
       try {
         jsonResponse = JSON.parse(cleanedResponse);
       } catch (e) {
-        console.error('Failed to parse Anthropic response:', cleanedResponse);
+        console.error('Failed to parse Anthropic response (content redacted for privacy)');
         throw new Error('Non-JSON response from Anthropic');
       }
       
@@ -177,7 +179,9 @@ export class AnthropicProvider implements AIProvider {
         modelUsed: 'Anthropic',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        gradeGroups: (baseMeta as any).gradeGroups || [],
+        validationStatus: (baseMeta as any).validationStatus || 'passed'
       };
 
       return jsonResponse;

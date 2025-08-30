@@ -293,7 +293,7 @@ export class MaterialsValidator {
         texts.push(material.worksheet.title);
         texts.push(material.worksheet.instructions);
         
-        material.worksheet.content.forEach(content => {
+        material.worksheet.content?.forEach(content => {
           texts.push(content.sectionTitle);
           texts.push(content.instructions);
           
