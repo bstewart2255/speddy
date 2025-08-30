@@ -3,6 +3,36 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { LessonRequest, LessonResponse, isValidLessonResponse } from './schema';
 
+// Debug logging helper with PII sanitization
+function sanitizeAndLogDebug(context: string, content: string): void {
+  const isDebugEnabled = process.env.DEBUG_OPENAI === 'true' || process.env.NODE_ENV === 'development';
+  
+  if (!isDebugEnabled) {
+    return;
+  }
+  
+  // Sanitize PII patterns
+  let sanitized = content
+    // Email addresses
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL_REDACTED]')
+    // SSN patterns
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN_REDACTED]')
+    // Phone numbers
+    .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE_REDACTED]')
+    // Long numeric IDs (more than 8 digits)
+    .replace(/\b\d{9,}\b/g, '[ID_REDACTED]')
+    // Student names in common patterns
+    .replace(/Student\s+[A-Z][a-z]+\s+[A-Z][a-z]+/g, 'Student [NAME_REDACTED]')
+    .replace(/"name"\s*:\s*"[^"]+"/g, '"name":"[REDACTED]"');
+  
+  // Truncate to first 200 chars
+  const truncated = sanitized.length > 200 
+    ? `${sanitized.substring(0, 200)}... [truncated, total length: ${content.length}]`
+    : sanitized;
+  
+  console.debug(`[${context}] Response preview:`, truncated);
+}
+
 export interface AIProvider {
   generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
   getName(): string;
@@ -49,7 +79,11 @@ export class OpenAIProvider implements AIProvider {
       try {
         jsonResponse = JSON.parse(content);
       } catch (e) {
-        console.error('Failed to parse OpenAI response (content redacted for privacy)');
+        // Log sanitized debug info only if debug is enabled
+        sanitizeAndLogDebug('OpenAI Parse Error', content);
+        
+        // Log generic error without exposing content
+        console.error('Failed to parse OpenAI response: Invalid JSON format');
         throw new Error('Non-JSON response from OpenAI');
       }
       
@@ -161,7 +195,11 @@ export class AnthropicProvider implements AIProvider {
       try {
         jsonResponse = JSON.parse(cleanedResponse);
       } catch (e) {
-        console.error('Failed to parse Anthropic response (content redacted for privacy)');
+        // Log sanitized debug info only if debug is enabled
+        sanitizeAndLogDebug('Anthropic Parse Error', cleanedResponse);
+        
+        // Log generic error without exposing content
+        console.error('Failed to parse Anthropic response: Invalid JSON format');
         throw new Error('Non-JSON response from Anthropic');
       }
       

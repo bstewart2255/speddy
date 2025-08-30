@@ -304,6 +304,86 @@ export class WorksheetRenderer {
     </div>`;
   }
 
+  private renderRoleSpecificContent(content: any): string {
+    if (!content) return '';
+    
+    const items: string[] = [];
+    
+    if (content.differentiationStrategies) {
+      items.push(`
+        <h3>Differentiation Strategies</h3>
+        <ul>${content.differentiationStrategies.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+      `);
+    }
+    
+    if (content.scaffoldingSteps) {
+      items.push(`
+        <h3>Scaffolding Steps</h3>
+        <ol>${content.scaffoldingSteps.map((s: string) => `<li>${s}</li>`).join('')}</ol>
+      `);
+    }
+    
+    if (content.fineMotorActivities) {
+      items.push(`
+        <h3>Fine Motor Activities</h3>
+        <ul>${content.fineMotorActivities.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+      `);
+    }
+    
+    if (content.sensorySupports) {
+      items.push(`
+        <h3>Sensory Supports</h3>
+        <ul>${content.sensorySupports.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+      `);
+    }
+    
+    if (content.articulationTargets) {
+      items.push(`
+        <h3>Articulation Targets</h3>
+        <ul>${content.articulationTargets.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+      `);
+    }
+    
+    if (content.languageGoals) {
+      items.push(`
+        <h3>Language Goals</h3>
+        <ul>${content.languageGoals.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+      `);
+    }
+    
+    if (items.length === 0) return '';
+    
+    return `
+      <div class="section role-specific">
+        <h2>Specialized Content</h2>
+        ${items.join('')}
+      </div>
+    `;
+  }
+
+  private renderGradeGroups(lesson: LessonResponse): string {
+    // Guard against missing metadata or gradeGroups
+    if (!lesson?.metadata?.gradeGroups || !Array.isArray(lesson.metadata.gradeGroups)) {
+      return '';
+    }
+    
+    const groups = lesson.metadata.gradeGroups;
+    
+    // Additional check for empty array
+    if (groups.length === 0) {
+      return '';
+    }
+    
+    return groups.map((group, index) => `
+      <div style="margin: 10px 0;">
+        <strong>Group ${index + 1}:</strong> 
+        Grades ${group.grades.join(', ')} 
+        (${group.studentIds.length} students) - 
+        Activity Level: ${group.activityLevel}
+      </div>
+    `).join('');
+  }
+
   /**
    * Renders answer key for teacher
    */
