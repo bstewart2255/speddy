@@ -1,0 +1,3 @@
+- Use the Supabase MCP server for any information or context needed about the database.
+- The Github repo we are using is /bstewart2255/speddy.
+- Use the Context7 MCP server whenever there is a question of code best practices, or before implementing any large feature set.

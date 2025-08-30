@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
@@ -132,10 +131,9 @@ export default function SchedulePage() {
   const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
   
   
-  const latestDragPositionRef = useRef<string | null>(null);
-  const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const conflictCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const studentMap = useMemo(
     () => new Map(Array.isArray(students) ? students.map((s) => [s.id, s]) : []),
     [students],
@@ -318,7 +316,6 @@ export default function SchedulePage() {
     setDraggedSession(null);
     setConflictSlots(new Set());
     setDragPosition(null);
-    latestDragPositionRef.current = null;
     setDragOffset(0);
   };
 
@@ -662,10 +659,11 @@ export default function SchedulePage() {
         );
       });
     } catch (error) {
+      console.error("[Schedule] fetchData failed:", error);
     } finally {
       setLoading(false);
     }
-  }, [currentSchool, selectedWeek, supabase]);
+  }, [currentSchool, supabase]);
 
   // Check for unscheduled sessions
   const checkUnscheduledSessions = useCallback(async () => {
@@ -1238,9 +1236,7 @@ export default function SchedulePage() {
                       )}
 
                       {daySessions.map((session) => {
-                        const student = students.find(
-                          (s) => s.id === session.student_id,
-                        );
+                        const student = studentMap.get(session.student_id);
                         const startTime = session.start_time.substring(0, 5);
                         const endTime = session.end_time.substring(0, 5);
 

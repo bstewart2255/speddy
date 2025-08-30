@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
@@ -35,7 +35,7 @@ export default function CalendarPage() {
   const [holidayName, setHolidayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClient<Database>();
+  const supabase = useMemo(() => createClient<Database>(), []);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
@@ -100,10 +100,6 @@ export default function CalendarPage() {
     setWeekOffset(0);
     setMonthOffset(0);
   };
-
-  useEffect(() => {
-    fetchData();
-  }, [currentSchool]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -189,6 +185,10 @@ export default function CalendarPage() {
       setLoading(false);
     }
   }, [currentSchool, supabase, getCalendarEvents]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleAddEvent = (date: Date) => {
     setSelectedEventDate(date);
@@ -548,7 +548,7 @@ export default function CalendarPage() {
                   placeholder="Holiday name (optional)"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleAddHoliday();
                     }

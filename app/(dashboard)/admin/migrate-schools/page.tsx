@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -43,7 +43,7 @@ interface SchoolMatch {
 }
 
 export default function MigrateSchoolsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const [stats, setStats] = useState<MigrationStats | null>(null);
   const [unmigratedUsers, setUnmigratedUsers] = useState<UnmigratedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,9 +61,44 @@ export default function MigrateSchoolsPage() {
 
   const itemsPerPage = 20;
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  const loadStats = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_school_migration_stats');
+    if (error) {
+      console.error('Error loading stats:', error);
+      return;
+    }
+    if (data && data.length > 0) {
+      setStats(data[0]);
+    }
+  }, [supabase]);
+
+  const loadUnmigratedUsers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, display_name, school_district, school_site, created_at')
+      .is('school_id', null)
+      .not('school_site', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading unmigrated users:', error);
+      return;
+    }
+    setUnmigratedUsers(data || []);
+  }, [supabase]);
+
+  const loadStates = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('states')
+      .select('id, name')
+      .order('name');
+
+    if (error) {
+      console.error('Error loading states:', error);
+      return;
+    }
+    setStates(data || []);
+  }, [supabase]);
 
   const loadInitialData = useCallback(async () => {
     setLoading(true);
@@ -78,48 +113,13 @@ export default function MigrateSchoolsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadStats, loadUnmigratedUsers, loadStates]);
 
-  const loadStats = async () => {
-    const { data, error } = await supabase.rpc('get_school_migration_stats');
-    if (error) {
-      console.error('Error loading stats:', error);
-      return;
-    }
-    if (data && data.length > 0) {
-      setStats(data[0]);
-    }
-  };
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
 
-  const loadUnmigratedUsers = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, display_name, school_district, school_site, created_at')
-      .is('school_id', null)
-      .not('school_site', 'is', null)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error loading unmigrated users:', error);
-      return;
-    }
-    setUnmigratedUsers(data || []);
-  };
-
-  const loadStates = async () => {
-    const { data, error } = await supabase
-      .from('states')
-      .select('id, name')
-      .order('name');
-
-    if (error) {
-      console.error('Error loading states:', error);
-      return;
-    }
-    setStates(data || []);
-  };
-
-  const loadDistricts = async (stateId: string) => {
+  const loadDistricts = useCallback(async (stateId: string) => {
     if (stateId === 'all') {
       setDistricts([]);
       return;
@@ -136,7 +136,7 @@ export default function MigrateSchoolsPage() {
       return;
     }
     setDistricts(data || []);
-  };
+  }, [supabase]);
 
   const findMatchesForUser = async (user: UnmigratedUser) => {
     setSelectedUser(user);
@@ -477,13 +477,9 @@ export default function MigrateSchoolsPage() {
 }
 
 function MigrationLogsPanel() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadLogs();
-  }, []);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -507,7 +503,20 @@ function MigrationLogsPanel() {
     }
   }, [supabase]);
 
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
   const exportLogs = () => {
+    const escapeCSV = (value: any) => {
+      const str = value == null ? '' : String(value);
+      // If the value contains quotes, commas, or newlines, wrap it in quotes and escape existing quotes
+      if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
     const csv = [
       ['Date', 'User', 'Original School', 'Original District', 'Matched School ID', 'Confidence', 'Type', 'Migrated By'],
       ...logs.map(log => [
@@ -520,7 +529,7 @@ function MigrationLogsPanel() {
         log.migration_type,
         log.migrator?.email
       ])
-    ].map(row => row.join(',')).join('\n');
+    ].map(row => row.map(escapeCSV).join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
