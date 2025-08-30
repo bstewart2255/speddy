@@ -61,12 +61,31 @@ export class MaterialsValidator {
       errors.push(`${context}: Forbidden materials mentioned: ${forbiddenMentioned.join(', ')}`);
     }
     
-    // Check that only allowed materials are mentioned (if specific materials are listed)
-    if (mentionedMaterials.length > 0 && !materialLower.includes('only')) {
-      const unrecognizedMaterials = mentionedMaterials.filter(mat =>
-        !ALLOWED_MATERIALS.some(allowed => mat.includes(allowed)) &&
-        !forbiddenMentioned.includes(mat)
-      );
+    // Verify that ONLY allowed materials are mentioned
+    // The string must contain "only" and all materials must be in the allowed list
+    if (mentionedMaterials.length > 0) {
+      // Check if "only" is present in the original string
+      if (!materialLower.includes('only')) {
+        errors.push(`${context}: Must specify "only" when listing materials`);
+      }
+      
+      // Check that all mentioned materials are allowed
+      const unrecognizedMaterials = mentionedMaterials.filter(mat => {
+        // Skip if it's already identified as forbidden
+        if (forbiddenMentioned.includes(mat)) return false;
+        
+        // Check if this material is in the allowed list
+        const isAllowed = ALLOWED_MATERIALS.some(allowed => {
+          const allowedLower = allowed.toLowerCase();
+          // Exact match or plural form match
+          return mat === allowedLower || 
+                 mat === allowedLower + 's' ||
+                 (allowedLower.endsWith('s') && mat === allowedLower.slice(0, -1));
+        });
+        
+        return !isAllowed;
+      });
+      
       if (unrecognizedMaterials.length > 0) {
         errors.push(`${context}: Unrecognized materials: ${unrecognizedMaterials.join(', ')}. Only allowed: ${ALLOWED_MATERIALS.join(', ')}`);
       }
@@ -75,12 +94,20 @@ export class MaterialsValidator {
   
   // Helper to parse a materials string into a list of normalized material names
   private parseMaterialsList(materials: string): string[] {
-    // Split on commas and 'and', remove 'only', trim whitespace, and filter out empty strings
-    return materials
-      .replace(/\bonly\b/g, '')
-      .split(/,| and /)
+    // Remove 'only' repeatedly until no more instances remain (handles cases like "only only pencils")
+    let processedMaterials = materials;
+    let previousLength;
+    do {
+      previousLength = processedMaterials.length;
+      processedMaterials = processedMaterials.replace(/\bonly\b/gi, '');
+    } while (processedMaterials.length !== previousLength);
+    
+    // Remove common punctuation, then split on commas, 'and', and ampersands
+    return processedMaterials
+      .replace(/[()]/g, '')
+      .split(/[,&]|\band\b/i)
       .map(s => s.trim())
-      .filter(s => s.length > 0);
+      .filter(s => s.length > 0 && s !== 'none');
   }
 
   private validateActivitySection(
@@ -102,10 +129,14 @@ export class MaterialsValidator {
           }
         }
         
-        // Check if it's in allowed list
-        const isAllowed = ALLOWED_MATERIALS.some(allowed => 
-          materialLower.includes(allowed)
-        );
+        // Check if it's in allowed list (exact match, not substring)
+        const isAllowed = ALLOWED_MATERIALS.some(allowed => {
+          const allowedLower = allowed.toLowerCase();
+          // Exact match or plural form match
+          return materialLower === allowedLower || 
+                 materialLower === allowedLower + 's' ||
+                 (allowedLower.endsWith('s') && materialLower === allowedLower.slice(0, -1));
+        });
         
         if (!isAllowed && materialLower !== 'none') {
           errors.push(`${sectionName}: Material "${material}" is not in the allowed list`);
@@ -157,12 +188,24 @@ export class MaterialsValidator {
     const textLower = text.toLowerCase();
     
     for (const forbidden of FORBIDDEN_MATERIALS) {
-      if (textLower.includes(forbidden)) {
-        // Special cases where the word might be okay in context
-        if (forbidden === 'cut' && textLower.includes('shortcut')) continue;
-        if (forbidden === 'online' && textLower.includes('outline')) continue;
+      const forbiddenLower = forbidden.toLowerCase();
+      
+      // Use word boundaries for short words to reduce false positives
+      if (forbiddenLower.length <= 3) {
+        const pattern = new RegExp(`\\b${this.escapeRegExp(forbiddenLower)}\\b`, 'i');
+        if (pattern.test(textLower)) {
+          errors.push(`${context}: Contains forbidden term "${forbidden}"`);
+        }
+      } else {
+        // For longer words, check for false positive cases first
+        if (forbiddenLower === 'cut' && /\b(shortcut|execute|cute)\b/i.test(text)) continue;
+        if (forbiddenLower === 'online' && /\b(outline|deadline|storyline)\b/i.test(text)) continue;
+        if (forbiddenLower === 'paste' && /\b(toothpaste)\b/i.test(text)) continue;
+        if (forbiddenLower === 'app' && /\b(application|apply|appear|happy|approach)\b/i.test(text)) continue;
         
-        errors.push(`${context}: Contains forbidden term "${forbidden}"`);
+        if (textLower.includes(forbiddenLower)) {
+          errors.push(`${context}: Contains forbidden term "${forbidden}"`);
+        }
       }
     }
     
@@ -212,6 +255,10 @@ export class MaterialsValidator {
     });
   }
 
+  private escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   private extractAllText(lesson: LessonResponse): string {
     const texts: string[] = [];
     
@@ -230,9 +277,13 @@ export class MaterialsValidator {
     
     activities.forEach(activity => {
       if (activity) {
-        texts.push(activity.description);
-        activity.instructions.forEach(inst => texts.push(inst));
-        activity.materials.forEach(mat => texts.push(mat));
+        if (activity.description) texts.push(activity.description);
+        if (Array.isArray(activity.instructions)) {
+          activity.instructions.forEach(inst => texts.push(inst));
+        }
+        if (Array.isArray(activity.materials)) {
+          activity.materials.forEach(mat => texts.push(mat));
+        }
       }
     });
     
