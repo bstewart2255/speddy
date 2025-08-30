@@ -132,9 +132,9 @@ export default function SchedulePage() {
   
   
   const latestDragPositionRef = useRef<string | null>(null);
-  const conflictCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const conflictCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const studentMap = useMemo(
     () => new Map(Array.isArray(students) ? students.map((s) => [s.id, s]) : []),
     [students],
@@ -661,6 +661,7 @@ export default function SchedulePage() {
         );
       });
     } catch (error) {
+      console.error("[Schedule] fetchData failed:", error);
     } finally {
       setLoading(false);
     }

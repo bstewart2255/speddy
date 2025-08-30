@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
@@ -35,7 +35,7 @@ export default function CalendarPage() {
   const [holidayName, setHolidayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { currentSchool } = useSchool();
-  const supabase = createClient<Database>();
+  const supabase = useMemo(() => createClient<Database>(), []);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);

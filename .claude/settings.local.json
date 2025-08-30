@@ -55,5 +55,5 @@
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["github", "context7", "playwright"]
+  "enabledMcpjsonServers": ["context7", "playwright", "supabase"]
 }

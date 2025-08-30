@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -43,7 +43,7 @@ interface SchoolMatch {
 }
 
 export default function MigrateSchoolsPage() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const [stats, setStats] = useState<MigrationStats | null>(null);
   const [unmigratedUsers, setUnmigratedUsers] = useState<UnmigratedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +119,7 @@ export default function MigrateSchoolsPage() {
     loadInitialData();
   }, [loadInitialData]);
 
-  const loadDistricts = async (stateId: string) => {
+  const loadDistricts = useCallback(async (stateId: string) => {
     if (stateId === 'all') {
       setDistricts([]);
       return;
@@ -136,7 +136,7 @@ export default function MigrateSchoolsPage() {
       return;
     }
     setDistricts(data || []);
-  };
+  }, [supabase]);
 
   const findMatchesForUser = async (user: UnmigratedUser) => {
     setSelectedUser(user);
@@ -477,7 +477,7 @@ export default function MigrateSchoolsPage() {
 }
 
 function MigrationLogsPanel() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
