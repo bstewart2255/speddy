@@ -508,6 +508,15 @@ function MigrationLogsPanel() {
   }, [loadLogs]);
 
   const exportLogs = () => {
+    const escapeCSV = (value: any) => {
+      const str = value == null ? '' : String(value);
+      // If the value contains quotes, commas, or newlines, wrap it in quotes and escape existing quotes
+      if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
     const csv = [
       ['Date', 'User', 'Original School', 'Original District', 'Matched School ID', 'Confidence', 'Type', 'Migrated By'],
       ...logs.map(log => [
@@ -520,7 +529,7 @@ function MigrationLogsPanel() {
         log.migration_type,
         log.migrator?.email
       ])
-    ].map(row => row.join(',')).join('\n');
+    ].map(row => row.map(escapeCSV).join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

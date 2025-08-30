@@ -131,7 +131,6 @@ export default function SchedulePage() {
   const [sessionTags, setSessionTags] = useState<Record<string, string>>({});
   
   
-  const latestDragPositionRef = useRef<string | null>(null);
   const conflictCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { currentSchool } = useSchool();
   const supabase = useMemo(() => createClient(), []);
@@ -317,7 +316,6 @@ export default function SchedulePage() {
     setDraggedSession(null);
     setConflictSlots(new Set());
     setDragPosition(null);
-    latestDragPositionRef.current = null;
     setDragOffset(0);
   };
 
@@ -1238,9 +1236,7 @@ export default function SchedulePage() {
                       )}
 
                       {daySessions.map((session) => {
-                        const student = students.find(
-                          (s) => s.id === session.student_id,
-                        );
+                        const student = studentMap.get(session.student_id);
                         const startTime = session.start_time.substring(0, 5);
                         const endTime = session.end_time.substring(0, 5);
 

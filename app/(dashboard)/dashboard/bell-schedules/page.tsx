@@ -9,7 +9,6 @@ import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-sch
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { useSchool } from '../../../components/providers/school-context';
-import { createClient } from '@/lib/supabase/client';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
@@ -26,7 +25,6 @@ export default function BellSchedulesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const supabase = createClient();
   const { currentSchool, loading: schoolLoading } = useSchool();
   
   // Filter states
