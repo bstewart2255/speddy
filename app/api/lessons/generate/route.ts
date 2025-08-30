@@ -150,17 +150,28 @@ async function enrichStudentData(
   students: any[],
   supabase: any
 ): Promise<StudentProfile[]> {
+  // Collect all student IDs for batch query
+  const studentIds = students.map(s => s.id || s.studentId);
+  
+  // Batch fetch all student data in one query
+  const { data: studentsData } = await supabase
+    .from('students')
+    .select('*, student_details(*)')
+    .in('id', studentIds);
+  
+  // Create a map for quick lookup
+  const studentDataMap = new Map();
+  if (studentsData) {
+    studentsData.forEach((sd: any) => {
+      studentDataMap.set(sd.id, sd);
+    });
+  }
+  
   const studentProfiles: StudentProfile[] = [];
   
   for (const student of students) {
     const studentId = student.id || student.studentId;
-    
-    // Try to fetch additional student data from database
-    const { data: studentData } = await supabase
-      .from('students')
-      .select('*, student_details(*)')
-      .eq('id', studentId)
-      .single();
+    const studentData = studentDataMap.get(studentId);
     
     let grade = student.grade;
     let readingLevel = student.readingLevel;
@@ -232,9 +243,9 @@ async function saveLessonToDatabase(
       metadata: {
         teacherRole: request.teacherRole,
         focusSkills: request.focusSkills,
-        generatedAt: lesson.metadata.generatedAt,
-        modelUsed: lesson.metadata.modelUsed,
-        validationStatus: lesson.metadata.validationStatus
+        generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
+        modelUsed: lesson?.metadata?.modelUsed || 'unknown',
+        validationStatus: lesson?.metadata?.validationStatus || 'passed'
       },
       created_at: new Date().toISOString()
     })

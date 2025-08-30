@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { worksheetRenderer } from '@/lib/lessons/renderer';
-import { LessonResponse } from '@/lib/lessons/schema';
+import { LessonResponse, isValidLessonResponse } from '@/lib/lessons/schema';
 import { generateWorksheetWithQR } from '@/lib/worksheets/worksheet-generator';
 
 export async function GET(
@@ -32,13 +32,31 @@ export async function GET(
       );
     }
     
-    const lesson: LessonResponse = lessonData.content;
+    // Validate and extract lesson content
+    let lesson: LessonResponse | null = null;
+    if (lessonData?.content) {
+      lesson = lessonData.content as LessonResponse;
+    } else if (lessonData?.content_old_text) {
+      try {
+        const parsed = JSON.parse(lessonData.content_old_text);
+        if (isValidLessonResponse(parsed)) lesson = parsed;
+      } catch {
+        // ignore parse failure
+      }
+    }
+    
+    if (!lesson || !isValidLessonResponse(lesson)) {
+      return NextResponse.json(
+        { error: 'Invalid or missing lesson content' },
+        { status: 422 }
+      );
+    }
     
     // Render based on type
     let html: string;
     
     switch (renderType) {
-      case 'worksheet':
+      case 'worksheet': {
         if (!studentId) {
           return NextResponse.json(
             { error: 'Student ID required for worksheet rendering' },
@@ -65,9 +83,10 @@ export async function GET(
           .eq('id', studentId)
           .single();
         
-        const studentName = student 
-          ? `${student.first_name} ${student.last_name}`
-          : 'Student';
+        const studentName =
+          student?.first_name || student?.last_name
+            ? `${student.first_name ?? ''} ${student.last_name ?? ''}`.trim()
+            : (student?.initials ?? 'Student');
         
         // Generate QR code for worksheet (using existing system)
         let qrCodeUrl: string | undefined;
@@ -93,15 +112,18 @@ export async function GET(
           qrCodeUrl
         );
         break;
+      }
       
-      case 'answer':
+      case 'answer': {
         html = worksheetRenderer.renderAnswerKey(lesson);
         break;
+      }
       
       case 'plan':
-      default:
+      default: {
         html = worksheetRenderer.renderLessonPlan(lesson);
         break;
+      }
     }
     
     // Return HTML response

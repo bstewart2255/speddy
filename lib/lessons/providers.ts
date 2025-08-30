@@ -40,16 +40,30 @@ export class OpenAIProvider implements AIProvider {
         response_format: { type: 'json_object' } // Force JSON response
       });
 
-      const responseText = completion.choices[0]?.message?.content || '{}';
-      const jsonResponse = JSON.parse(responseText);
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('Empty response from OpenAI');
+      }
+      
+      let jsonResponse: any;
+      try {
+        jsonResponse = JSON.parse(content);
+      } catch (e) {
+        console.error('Failed to parse OpenAI response:', content);
+        throw new Error('Non-JSON response from OpenAI');
+      }
       
       if (!isValidLessonResponse(jsonResponse)) {
         throw new Error('Invalid lesson response structure from OpenAI');
       }
 
-      // Add metadata
+      // Add metadata safely
+      const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
+        ? jsonResponse.metadata
+        : {};
+      
       jsonResponse.metadata = {
-        ...jsonResponse.metadata,
+        ...baseMeta,
         modelUsed: 'OpenAI',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
@@ -59,7 +73,8 @@ export class OpenAIProvider implements AIProvider {
       return jsonResponse;
     } catch (error) {
       console.error('OpenAI generation error:', error);
-      throw new Error(`Failed to generate lesson with OpenAI: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to generate lesson with OpenAI: ${msg}`);
     }
   }
 
@@ -118,26 +133,40 @@ export class AnthropicProvider implements AIProvider {
         ]
       });
 
-      // Extract text from Anthropic response
-      const responseText = message.content[0].type === 'text' 
-        ? message.content[0].text 
-        : '';
+      // Extract text from Anthropic response safely
+      const textBlock: any = Array.isArray(message.content)
+        ? (message.content as any[]).find((b: any) => b && b.type === 'text' && typeof b.text === 'string')
+        : null;
+      
+      if (!textBlock?.text) {
+        throw new Error('Empty text content from Anthropic');
+      }
       
       // Clean response (remove any markdown if present)
-      const cleanedResponse = responseText
+      const cleanedResponse = textBlock.text
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
         .trim();
       
-      const jsonResponse = JSON.parse(cleanedResponse);
+      let jsonResponse: any;
+      try {
+        jsonResponse = JSON.parse(cleanedResponse);
+      } catch (e) {
+        console.error('Failed to parse Anthropic response:', cleanedResponse);
+        throw new Error('Non-JSON response from Anthropic');
+      }
       
       if (!isValidLessonResponse(jsonResponse)) {
         throw new Error('Invalid lesson response structure from Anthropic');
       }
 
-      // Add metadata
+      // Add metadata safely
+      const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
+        ? jsonResponse.metadata
+        : {};
+      
       jsonResponse.metadata = {
-        ...jsonResponse.metadata,
+        ...baseMeta,
         modelUsed: 'Anthropic',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
@@ -147,7 +176,8 @@ export class AnthropicProvider implements AIProvider {
       return jsonResponse;
     } catch (error) {
       console.error('Anthropic generation error:', error);
-      throw new Error(`Failed to generate lesson with Anthropic: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to generate lesson with Anthropic: ${msg}`);
     }
   }
 

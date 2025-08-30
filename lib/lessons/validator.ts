@@ -50,14 +50,37 @@ export class MaterialsValidator {
   private validateMaterialsString(materials: string, context: string, errors: string[]): void {
     const materialLower = materials.toLowerCase();
     
-    // Check that it mentions only allowed materials
-    const hasOnlyAllowed = materialLower.includes('worksheet') || 
-                          materialLower.includes('pencil') || 
-                          materialLower.includes('whiteboard');
+    // Parse materials into a list of items
+    const mentionedMaterials = this.parseMaterialsList(materialLower);
     
-    if (!hasOnlyAllowed && !materialLower.includes('only')) {
-      errors.push(`${context}: Materials must explicitly state "worksheets, pencils, whiteboard and markers only"`);
+    // Check for forbidden materials
+    const forbiddenMentioned = mentionedMaterials.filter(mat =>
+      FORBIDDEN_MATERIALS.some(forbidden => mat.includes(forbidden))
+    );
+    if (forbiddenMentioned.length > 0) {
+      errors.push(`${context}: Forbidden materials mentioned: ${forbiddenMentioned.join(', ')}`);
     }
+    
+    // Check that only allowed materials are mentioned (if specific materials are listed)
+    if (mentionedMaterials.length > 0 && !materialLower.includes('only')) {
+      const unrecognizedMaterials = mentionedMaterials.filter(mat =>
+        !ALLOWED_MATERIALS.some(allowed => mat.includes(allowed)) &&
+        !forbiddenMentioned.includes(mat)
+      );
+      if (unrecognizedMaterials.length > 0) {
+        errors.push(`${context}: Unrecognized materials: ${unrecognizedMaterials.join(', ')}. Only allowed: ${ALLOWED_MATERIALS.join(', ')}`);
+      }
+    }
+  }
+  
+  // Helper to parse a materials string into a list of normalized material names
+  private parseMaterialsList(materials: string): string[] {
+    // Split on commas and 'and', remove 'only', trim whitespace, and filter out empty strings
+    return materials
+      .replace(/\bonly\b/g, '')
+      .split(/,| and /)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
   }
 
   private validateActivitySection(

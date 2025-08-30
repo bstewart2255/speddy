@@ -38,19 +38,14 @@ export class LessonGenerator {
       const maxAttempts = 2;
       
       // Try generation with retry on failure
+      let dynamicSystemPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
+      
       while (attempts < maxAttempts) {
         attempts++;
         
         try {
-          // Create a modified system prompt that includes the user prompt for better context
-          const combinedSystemPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
-          
-          lesson = await this.provider.generateLesson(
-            enrichedRequest,
-            combinedSystemPrompt
-          );
-          
-          // Validate the generated lesson
+          // Generate using the current dynamic prompt
+          lesson = await this.provider.generateLesson(enrichedRequest, dynamicSystemPrompt);
           const validation = materialsValidator.validateLesson(lesson);
           
           if (validation.isValid) {
@@ -68,13 +63,12 @@ export class LessonGenerator {
             if (attempts < maxAttempts) {
               console.log('Retrying with additional constraints...');
               
-              // Modify system prompt to emphasize the validation errors
-              const errorFeedback = `\n\nPREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\nPlease fix these issues and ensure strict compliance with material constraints.`;
-              
-              lesson = await this.provider.generateLesson(
-                enrichedRequest,
-                combinedSystemPrompt + errorFeedback
-              );
+              // Persist additional constraints into the next attempt prompt
+              const errorFeedback =
+                `\n\nPREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\n` +
+                `Please fix these issues and ensure strict compliance with material constraints.`;
+              dynamicSystemPrompt += errorFeedback;
+              continue;
             }
           }
         } catch (error) {

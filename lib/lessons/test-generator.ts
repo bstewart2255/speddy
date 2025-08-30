@@ -103,7 +103,12 @@ async function testLessonGeneration() {
 }
 
 // Run test if this file is executed directly
-if (require.main === module) {
+// Using import.meta.url for ESM compatibility
+// Falls back to process.argv check for broader compatibility
+const isMainModule = import.meta.url === `file://${process.argv[1]}` || 
+                     process.argv[1]?.endsWith('test-generator.ts');
+
+if (isMainModule) {
   testLessonGeneration().then(() => {
     console.log('\n✨ Test complete!');
     process.exit(0);
