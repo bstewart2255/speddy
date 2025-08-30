@@ -28,9 +28,11 @@ export class MaterialsValidator {
     this.validateActivitySection(lesson.lesson.closure, 'Closure', errors);
 
     // Check student materials
-    lesson.studentMaterials.forEach((material, index) => {
-      this.validateStudentMaterial(material, `Student ${index + 1}`, errors);
-    });
+    if (Array.isArray(lesson?.studentMaterials)) {
+      lesson.studentMaterials.forEach((material, index) => {
+        this.validateStudentMaterial(material, `Student ${index + 1}`, errors);
+      });
+    }
 
     // Check for forbidden materials in all text content
     const allText = this.extractAllText(lesson);
@@ -48,15 +50,30 @@ export class MaterialsValidator {
   }
 
   private validateMaterialsString(materials: string, context: string, errors: string[]): void {
+    // Guard against null/undefined materials
+    if (materials == null) {
+      errors.push(`${context}: Materials list is missing or undefined`);
+      return;
+    }
+    
     const materialLower = materials.toLowerCase();
     
     // Parse materials into a list of items
     const mentionedMaterials = this.parseMaterialsList(materialLower);
     
-    // Check for forbidden materials
-    const forbiddenMentioned = mentionedMaterials.filter(mat =>
-      FORBIDDEN_MATERIALS.some(forbidden => mat.includes(forbidden))
-    );
+    // Check for forbidden materials using exact token matching
+    const forbiddenMentioned = mentionedMaterials.filter(mat => {
+      // Tokenize the material string and check each token
+      const tokens = this.tokenizeMaterial(mat);
+      return FORBIDDEN_MATERIALS.some(forbidden => {
+        const forbiddenLower = forbidden.toLowerCase();
+        return tokens.some(token => 
+          token === forbiddenLower || 
+          this.isPlural(token, forbiddenLower) ||
+          this.isPlural(forbiddenLower, token)
+        );
+      });
+    });
     if (forbiddenMentioned.length > 0) {
       errors.push(`${context}: Forbidden materials mentioned: ${forbiddenMentioned.join(', ')}`);
     }
@@ -64,23 +81,28 @@ export class MaterialsValidator {
     // Verify that ONLY allowed materials are mentioned
     // The string must contain "only" and all materials must be in the allowed list
     if (mentionedMaterials.length > 0) {
-      // Check if "only" is present in the original string
-      if (!materialLower.includes('only')) {
+      // Check if "only" is present as a complete word in the original string
+      const onlyPattern = /\bonly\b/i;
+      if (!onlyPattern.test(materials)) {
         errors.push(`${context}: Must specify "only" when listing materials`);
       }
       
-      // Check that all mentioned materials are allowed
+      // Check that all mentioned materials are allowed using exact token matching
       const unrecognizedMaterials = mentionedMaterials.filter(mat => {
         // Skip if it's already identified as forbidden
         if (forbiddenMentioned.includes(mat)) return false;
         
-        // Check if this material is in the allowed list
-        const isAllowed = ALLOWED_MATERIALS.some(allowed => {
-          const allowedLower = allowed.toLowerCase();
-          // Exact match or plural form match
-          return mat === allowedLower || 
-                 mat === allowedLower + 's' ||
-                 (allowedLower.endsWith('s') && mat === allowedLower.slice(0, -1));
+        // Tokenize the material and check if all tokens are allowed
+        const tokens = this.tokenizeMaterial(mat);
+        
+        // Check if this material matches any allowed material
+        const isAllowed = tokens.every(token => {
+          return ALLOWED_MATERIALS.some(allowed => {
+            const allowedLower = allowed.toLowerCase();
+            return token === allowedLower || 
+                   this.isPlural(token, allowedLower) ||
+                   this.isPlural(allowedLower, token);
+          });
         });
         
         return !isAllowed;
@@ -108,6 +130,29 @@ export class MaterialsValidator {
       .split(/[,&]|\band\b/i)
       .map(s => s.trim())
       .filter(s => s.length > 0 && s !== 'none');
+  }
+
+  // Helper to tokenize a material string into individual words
+  private tokenizeMaterial(material: string): string[] {
+    // Remove punctuation and split into words
+    return material
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(s => s.length > 0);
+  }
+
+  // Helper to check if two words are plural forms of each other
+  private isPlural(word1: string, word2: string): boolean {
+    // Simple plural check - can be enhanced with more rules
+    if (word1 === word2 + 's') return true;
+    if (word2 === word1 + 's') return true;
+    if (word1 === word2 + 'es') return true;
+    if (word2 === word1 + 'es') return true;
+    // Handle words ending in 'y' -> 'ies'
+    if (word1.endsWith('ies') && word2 === word1.slice(0, -3) + 'y') return true;
+    if (word2.endsWith('ies') && word1 === word2.slice(0, -3) + 'y') return true;
+    return false;
   }
 
   private validateActivitySection(
@@ -158,7 +203,7 @@ export class MaterialsValidator {
     const worksheet = material.worksheet;
     
     // Check worksheet content
-    if (worksheet.content && Array.isArray(worksheet.content)) {
+    if (Array.isArray(worksheet.content)) {
       worksheet.content.forEach((section: any, index: number) => {
         if (section.instructions) {
           this.checkForbiddenInText(
@@ -169,7 +214,7 @@ export class MaterialsValidator {
         }
         
         // Check items
-        if (section.items && Array.isArray(section.items)) {
+        if (Array.isArray(section.items)) {
           section.items.forEach((item: any, itemIndex: number) => {
             if (item.content) {
               this.checkForbiddenInText(
@@ -263,17 +308,21 @@ export class MaterialsValidator {
     const texts: string[] = [];
     
     // Extract from lesson plan
-    texts.push(lesson.lesson.title);
-    texts.push(lesson.lesson.overview);
-    texts.push(lesson.lesson.materials);
-    lesson.lesson.objectives.forEach(obj => texts.push(obj));
+    if (lesson?.lesson) {
+      if (lesson.lesson.title) texts.push(lesson.lesson.title);
+      if (lesson.lesson.overview) texts.push(lesson.lesson.overview);
+      if (lesson.lesson.materials) texts.push(lesson.lesson.materials);
+      if (Array.isArray(lesson.lesson.objectives)) {
+        lesson.lesson.objectives.forEach(obj => texts.push(obj));
+      }
+    }
     
     // Extract from activities
-    const activities = [
+    const activities = lesson?.lesson ? [
       lesson.lesson.introduction,
       lesson.lesson.mainActivity,
       lesson.lesson.closure
-    ];
+    ] : [];
     
     activities.forEach(activity => {
       if (activity) {
@@ -288,22 +337,28 @@ export class MaterialsValidator {
     });
     
     // Extract from student materials
-    lesson.studentMaterials.forEach(material => {
-      if (material.worksheet) {
-        texts.push(material.worksheet.title);
-        texts.push(material.worksheet.instructions);
+    if (Array.isArray(lesson?.studentMaterials)) {
+      lesson.studentMaterials.forEach(material => {
+        if (material?.worksheet) {
+          if (material.worksheet.title) texts.push(material.worksheet.title);
+          if (material.worksheet.instructions) texts.push(material.worksheet.instructions);
         
-        material.worksheet.content.forEach(content => {
-          texts.push(content.sectionTitle);
-          texts.push(content.instructions);
-          
-          content.items.forEach(item => {
-            texts.push(item.content);
-            if (item.visualSupport) texts.push(item.visualSupport);
-          });
-        });
-      }
-    });
+          if (Array.isArray(material.worksheet.content)) {
+            material.worksheet.content.forEach(content => {
+              if (content?.sectionTitle) texts.push(content.sectionTitle);
+              if (content?.instructions) texts.push(content.instructions);
+            
+              if (Array.isArray(content?.items)) {
+                content.items.forEach(item => {
+                  if (item?.content) texts.push(item.content);
+                  if (item?.visualSupport) texts.push(item.visualSupport);
+                });
+              }
+            });
+          }
+        }
+      });
+    }
     
     return texts.join(' ');
   }
