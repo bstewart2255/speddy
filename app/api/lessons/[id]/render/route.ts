@@ -8,13 +8,12 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const searchParams = request.nextUrl.searchParams;
+  const renderType = searchParams.get('type') || 'plan'; // plan, worksheet, answer
+  
   try {
     const supabase = await createClient();
     const lessonId = params.id;
-    
-    // Get render type from query params
-    const searchParams = request.nextUrl.searchParams;
-    const renderType = searchParams.get('type') || 'plan'; // plan, worksheet, answer
     const studentId = searchParams.get('studentId');
     
     // Fetch lesson from database
@@ -125,22 +124,37 @@ export async function GET(
       }
     }
     
-    // Return HTML response
+    // Return HTML response with security headers to prevent caching of PII
     return new NextResponse(html, {
       headers: {
         'Content-Type': 'text/html',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'no-referrer',
       },
     });
     
   } catch (error) {
-    console.error('Render error:', error);
+    // Log error with context but don't expose details to client
+    console.error('[Render API] Error rendering lesson:', {
+      lessonId: params.id,
+      renderType: renderType,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
     
+    // Return generic error message to client
     return NextResponse.json(
       { 
         error: 'Failed to render lesson', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+        message: 'An error occurred while rendering the lesson. Please try again.'
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store'
+        }
+      }
     );
   }
 }
