@@ -362,7 +362,17 @@ export class WorksheetRenderer {
   }
 
   private renderGradeGroups(lesson: LessonResponse): string {
+    // Guard against missing metadata or gradeGroups
+    if (!lesson?.metadata?.gradeGroups || !Array.isArray(lesson.metadata.gradeGroups)) {
+      return '';
+    }
+    
     const groups = lesson.metadata.gradeGroups;
+    
+    // Additional check for empty array
+    if (groups.length === 0) {
+      return '';
+    }
     
     return groups.map((group, index) => `
       <div style="margin: 10px 0;">
