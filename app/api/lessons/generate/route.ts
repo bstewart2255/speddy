@@ -228,7 +228,7 @@ async function saveLessonToDatabase(
       topic: request.topic || null,
       duration: request.duration,
       content: lesson, // Store entire JSON structure
-      student_ids: request.students.map(s => s.id),
+      student_ids: request.students.map(s => s.id), // This is a text array in the DB
       metadata: {
         teacherRole: request.teacherRole,
         focusSkills: request.focusSkills,

@@ -1,16 +1,41 @@
 -- Migration for JSON-first lesson storage
 -- This updates the lessons table to properly store JSON lesson data
 
--- Add new columns if they don't exist
+-- First, handle the content column - it exists as text, we need to convert it to JSONB
+-- We'll rename the old column and create a new one
 ALTER TABLE lessons 
-ADD COLUMN IF NOT EXISTS content JSONB,
-ADD COLUMN IF NOT EXISTS student_ids UUID[],
+RENAME COLUMN content TO content_old_text;
+
+ALTER TABLE lessons 
+ADD COLUMN content JSONB;
+
+-- Add metadata column if it doesn't exist
+ALTER TABLE lessons 
 ADD COLUMN IF NOT EXISTS metadata JSONB;
 
+-- Make some old required columns nullable for new JSON-based lessons
+ALTER TABLE lessons 
+ALTER COLUMN time_slot DROP NOT NULL,
+ALTER COLUMN student_details DROP NOT NULL,
+ALTER COLUMN lesson_date DROP NOT NULL,
+ALTER COLUMN content_old_text DROP NOT NULL;
+
+-- Add new columns for better organization (optional, with defaults)
+ALTER TABLE lessons
+ADD COLUMN IF NOT EXISTS lesson_type TEXT,
+ADD COLUMN IF NOT EXISTS subject TEXT,
+ADD COLUMN IF NOT EXISTS topic TEXT,
+ADD COLUMN IF NOT EXISTS duration INTEGER;
+
+-- Note: student_ids already exists as a text array, so we don't need to add it
+
 -- Add indexes for performance
+-- JSONB columns use GIN indexes directly
 CREATE INDEX IF NOT EXISTS idx_lessons_content ON lessons USING GIN(content);
-CREATE INDEX IF NOT EXISTS idx_lessons_student_ids ON lessons USING GIN(student_ids);
 CREATE INDEX IF NOT EXISTS idx_lessons_metadata ON lessons USING GIN(metadata);
+-- Text array can use GIN index
+CREATE INDEX IF NOT EXISTS idx_lessons_student_ids ON lessons USING GIN(student_ids);
+-- Regular btree index for provider and timestamp
 CREATE INDEX IF NOT EXISTS idx_lessons_provider_created ON lessons(provider_id, created_at DESC);
 
 -- Add validation constraint to ensure content is not null for new lessons
