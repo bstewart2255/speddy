@@ -38,12 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_lessons_student_ids ON lessons USING GIN(student_
 -- Regular btree index for provider and timestamp
 CREATE INDEX IF NOT EXISTS idx_lessons_provider_created ON lessons(provider_id, created_at DESC);
 
--- Add validation constraint to ensure content is not null for new lessons
-ALTER TABLE lessons 
-ADD CONSTRAINT lessons_content_not_null 
-CHECK (
-  created_at < '2025-01-31'::timestamp OR content IS NOT NULL
-);
+-- Note: Not adding a content constraint to avoid issues with existing data
+-- New lessons will use the 'content' JSONB column
+-- Old lessons will still have data in 'content_old_text'
 
 -- Add RLS policies if not exists
 DO $$ 
