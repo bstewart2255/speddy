@@ -61,18 +61,11 @@ export class MaterialsValidator {
     // Parse materials into a list of items
     const mentionedMaterials = this.parseMaterialsList(materialLower);
     
-    // Check for forbidden materials using exact token matching
+    // Check for forbidden materials using normalized comparison
+    const forbiddenSet = new Set(FORBIDDEN_MATERIALS.map((m) => this.normalizeMaterial(m)));
     const forbiddenMentioned = mentionedMaterials.filter(mat => {
-      // Tokenize the material string and check each token
-      const tokens = this.tokenizeMaterial(mat);
-      return FORBIDDEN_MATERIALS.some(forbidden => {
-        const forbiddenLower = forbidden.toLowerCase();
-        return tokens.some(token => 
-          token === forbiddenLower || 
-          this.isPlural(token, forbiddenLower) ||
-          this.isPlural(forbiddenLower, token)
-        );
-      });
+      const norm = this.normalizeMaterial(mat);
+      return forbiddenSet.has(norm);
     });
     if (forbiddenMentioned.length > 0) {
       errors.push(`${context}: Forbidden materials mentioned: ${forbiddenMentioned.join(', ')}`);
@@ -87,25 +80,12 @@ export class MaterialsValidator {
         errors.push(`${context}: Must specify "only" when listing materials`);
       }
       
-      // Check that all mentioned materials are allowed using exact token matching
-      const unrecognizedMaterials = mentionedMaterials.filter(mat => {
-        // Skip if it's already identified as forbidden
+      // Check that each mentioned material (as a phrase) is allowed using normalized equality
+      const allowedSet = new Set(ALLOWED_MATERIALS.map((m) => this.normalizeMaterial(m)));
+      const unrecognizedMaterials = mentionedMaterials.filter((mat) => {
         if (forbiddenMentioned.includes(mat)) return false;
-        
-        // Tokenize the material and check if all tokens are allowed
-        const tokens = this.tokenizeMaterial(mat);
-        
-        // Check if this material matches any allowed material
-        const isAllowed = tokens.every(token => {
-          return ALLOWED_MATERIALS.some(allowed => {
-            const allowedLower = allowed.toLowerCase();
-            return token === allowedLower || 
-                   this.isPlural(token, allowedLower) ||
-                   this.isPlural(allowedLower, token);
-          });
-        });
-        
-        return !isAllowed;
+        const norm = this.normalizeMaterial(mat);
+        return norm !== 'none' && !allowedSet.has(norm);
       });
       
       if (unrecognizedMaterials.length > 0) {
@@ -153,6 +133,32 @@ export class MaterialsValidator {
     if (word1.endsWith('ies') && word2 === word1.slice(0, -3) + 'y') return true;
     if (word2.endsWith('ies') && word1 === word2.slice(0, -3) + 'y') return true;
     return false;
+  }
+
+  // Helper to normalize material names for comparison
+  private normalizeMaterial(s: string): string {
+    const t = (s || '').toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Fold common plurals to singular
+    let r = t
+      .replace(/\bmarkers\b/g, 'marker')
+      .replace(/\bpencils\b/g, 'pencil')
+      .replace(/\bpapers\b/g, 'paper')
+      .replace(/\berasers\b/g, 'eraser')
+      .replace(/\bnotebooks\b/g, 'notebook')
+      .replace(/\bworksheets?\b/g, 'worksheets');
+    
+    // Handle synonyms and variations
+    r = r
+      .replace(/\bwhiteboard markers?\b/g, 'dry erase marker')
+      .replace(/\bdry erase markers?\b/g, 'dry erase marker')
+      .replace(/\bwhite board markers?\b/g, 'dry erase marker')
+      .replace(/\bdry-erase markers?\b/g, 'dry erase marker');
+    
+    return r;
   }
 
   private validateActivitySection(
