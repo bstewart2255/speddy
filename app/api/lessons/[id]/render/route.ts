@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { worksheetRenderer } from '@/lib/lessons/renderer';
 import { LessonResponse, isValidLessonResponse } from '@/lib/lessons/schema';
-import { generateWorksheetWithQR } from '@/lib/worksheets/worksheet-generator';
 
 export async function GET(
   request: NextRequest,
@@ -79,7 +78,7 @@ export async function GET(
         // Get student name from database
         const { data: student } = await supabase
           .from('students')
-          .select('first_name, last_name')
+          .select('first_name, last_name, initials')
           .eq('id', studentId)
           .single();
         

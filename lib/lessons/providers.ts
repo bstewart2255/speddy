@@ -133,9 +133,16 @@ export class AnthropicProvider implements AIProvider {
         ]
       });
 
-      // Extract text from Anthropic response safely
-      const textBlock: any = Array.isArray(message.content)
-        ? (message.content as any[]).find((b: any) => b && b.type === 'text' && typeof b.text === 'string')
+      // Extract text from Anthropic response safely with type assertions
+      interface TextBlock {
+        type: string;
+        text: string;
+      }
+      
+      const textBlock = Array.isArray(message.content)
+        ? (message.content as Array<TextBlock | any>).find(
+            (b): b is TextBlock => b && b.type === 'text' && typeof b.text === 'string'
+          )
         : null;
       
       if (!textBlock?.text) {
@@ -214,19 +221,21 @@ export function createAIProvider(): AIProvider {
   const provider = process.env.AI_PROVIDER || 'openai';
   
   switch (provider.toLowerCase()) {
-    case 'anthropic':
+    case 'anthropic': {
       if (!process.env.ANTHROPIC_API_KEY) {
         throw new Error('ANTHROPIC_API_KEY is required for Anthropic provider');
       }
       const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
       return new AnthropicProvider(process.env.ANTHROPIC_API_KEY, anthropicModel);
+    }
     
     case 'openai':
-    default:
+    default: {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY is required for OpenAI provider');
       }
       const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
       return new OpenAIProvider(process.env.OPENAI_API_KEY, openaiModel);
+    }
   }
 }
