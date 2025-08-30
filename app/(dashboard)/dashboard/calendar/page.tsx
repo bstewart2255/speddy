@@ -101,10 +101,6 @@ export default function CalendarPage() {
     setMonthOffset(0);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [currentSchool]);
-
   const fetchData = useCallback(async () => {
     try {
       // Get user profile
@@ -189,6 +185,10 @@ export default function CalendarPage() {
       setLoading(false);
     }
   }, [currentSchool, supabase, getCalendarEvents]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleAddEvent = (date: Date) => {
     setSelectedEventDate(date);

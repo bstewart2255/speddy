@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
@@ -70,7 +70,7 @@ export default function BellSchedulesPage() {
     } else {
       setLoading(false);
     }
-  }, [currentSchool]); // This dependency should trigger re-fetch when school changes
+  }, [currentSchool, fetchSchedules]); // This dependency should trigger re-fetch when school changes
 
   // Handle delete
   const handleDelete = async (id: string, periodName: string) => {

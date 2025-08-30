@@ -61,9 +61,44 @@ export default function MigrateSchoolsPage() {
 
   const itemsPerPage = 20;
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  const loadStats = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_school_migration_stats');
+    if (error) {
+      console.error('Error loading stats:', error);
+      return;
+    }
+    if (data && data.length > 0) {
+      setStats(data[0]);
+    }
+  }, [supabase]);
+
+  const loadUnmigratedUsers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, display_name, school_district, school_site, created_at')
+      .is('school_id', null)
+      .not('school_site', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading unmigrated users:', error);
+      return;
+    }
+    setUnmigratedUsers(data || []);
+  }, [supabase]);
+
+  const loadStates = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('states')
+      .select('id, name')
+      .order('name');
+
+    if (error) {
+      console.error('Error loading states:', error);
+      return;
+    }
+    setStates(data || []);
+  }, [supabase]);
 
   const loadInitialData = useCallback(async () => {
     setLoading(true);
@@ -78,46 +113,11 @@ export default function MigrateSchoolsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadStats, loadUnmigratedUsers, loadStates]);
 
-  const loadStats = async () => {
-    const { data, error } = await supabase.rpc('get_school_migration_stats');
-    if (error) {
-      console.error('Error loading stats:', error);
-      return;
-    }
-    if (data && data.length > 0) {
-      setStats(data[0]);
-    }
-  };
-
-  const loadUnmigratedUsers = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, display_name, school_district, school_site, created_at')
-      .is('school_id', null)
-      .not('school_site', 'is', null)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error loading unmigrated users:', error);
-      return;
-    }
-    setUnmigratedUsers(data || []);
-  };
-
-  const loadStates = async () => {
-    const { data, error } = await supabase
-      .from('states')
-      .select('id, name')
-      .order('name');
-
-    if (error) {
-      console.error('Error loading states:', error);
-      return;
-    }
-    setStates(data || []);
-  };
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
 
   const loadDistricts = async (stateId: string) => {
     if (stateId === 'all') {
@@ -481,10 +481,6 @@ function MigrationLogsPanel() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadLogs();
-  }, []);
-
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -506,6 +502,10 @@ function MigrationLogsPanel() {
       setLoading(false);
     }
   }, [supabase]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
 
   const exportLogs = () => {
     const csv = [

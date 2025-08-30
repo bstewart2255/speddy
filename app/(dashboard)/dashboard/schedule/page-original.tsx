@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { UndoSchedule } from "../../../components/schedule/undo-schedule";
@@ -665,7 +664,7 @@ export default function SchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, [currentSchool, selectedWeek, supabase]);
+  }, [currentSchool, supabase]);
 
   // Check for unscheduled sessions
   const checkUnscheduledSessions = useCallback(async () => {
