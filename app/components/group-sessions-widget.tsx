@@ -6,6 +6,7 @@ import { AIContentModal } from "./ai-content-modal";
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { getMinutesUntilFirstSession } from '../utils/date-helpers';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import type { Database } from '../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -230,24 +231,42 @@ export function GroupSessionsWidget() {
     setGeneratingContent(true);
 
     try {
-      const response = await fetch("/api/generate-lesson", {
+      // Transform students to match new API format
+      const formattedStudents = students.map(student => {
+        return {
+          id: student.id,
+          grade: parseGradeLevel(student.grade_level)
+        };
+      });
+
+      // Use the new JSON lesson API
+      const response = await fetch("/api/lessons/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          students: students, // Pass the students array directly
-          timeSlot: selectedTimeSlot,
+          students: formattedStudents,
+          subject: 'English Language Arts', // Default subject
           duration: 30,
+          topic: `Group session for ${selectedTimeSlot}`,
+          teacherRole: 'resource' // Default role
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate content");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to generate lesson");
       }
 
-      const { content } = await response.json();
-      setAiContent(content);
+      const data = await response.json();
+      
+      // Store the JSON lesson data
+      if (data.lesson) {
+        setAiContent(JSON.stringify(data.lesson));
+      } else {
+        throw new Error("No lesson content received");
+      }
     } catch (error) {
       console.error("Error generating content:", error);
       setAiContent(`

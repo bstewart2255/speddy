@@ -33,7 +33,7 @@ export class LessonGenerator {
       console.log(`Generating lesson with ${this.provider.getName()}...`);
       const startTime = Date.now();
       
-      let lesson: LessonResponse;
+      let lesson: LessonResponse | undefined;
       let attempts = 0;
       const maxAttempts = 2;
       
@@ -54,6 +54,12 @@ export class LessonGenerator {
             // Ensure grade groups are properly set
             if (!lesson.metadata.gradeGroups) {
               lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
+            }
+            
+            // Stamp validation metadata on success
+            lesson.metadata.validationStatus = 'passed';
+            if ('validationErrors' in lesson.metadata) {
+              (lesson.metadata as any).validationErrors = [];
             }
             
             return { lesson, validation };
@@ -80,14 +86,25 @@ export class LessonGenerator {
         }
       }
       
-      // If we get here, validation failed even after retries
-      const finalValidation = materialsValidator.validateLesson(lesson!);
+      // If we get here, we may have a lesson but validation may have failed
+      // Ensure we validate the final lesson attempt
+      if (lesson) {
+        const finalValidation = materialsValidator.validateLesson(lesson);
+        
+        // Ensure grade groups are properly set
+        if (!lesson.metadata.gradeGroups) {
+          lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
+        }
+        
+        // Return the lesson even if validation failed (UI can show warnings)
+        return { 
+          lesson, 
+          validation: finalValidation 
+        };
+      }
       
-      // Return the lesson even if validation failed (UI can show warnings)
-      return { 
-        lesson: lesson!, 
-        validation: finalValidation 
-      };
+      // No lesson was generated successfully
+      throw new Error('Failed to generate lesson after all attempts');
       
     } catch (error) {
       console.error('Lesson generation failed:', error);

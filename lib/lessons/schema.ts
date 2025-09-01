@@ -36,6 +36,16 @@ export interface LessonPlan {
   mainActivity: ActivitySection;
   closure: ActivitySection;
   
+  // Optional answer key
+  answerKey?: AnswerKey;
+  
+  // Differentiation strategies
+  differentiation?: {
+    below?: string;
+    onLevel?: string;
+    above?: string;
+  };
+  
   // Role-specific sections (populated based on teacher role)
   roleSpecificContent?: {
     // For OT
@@ -67,10 +77,16 @@ export interface StudentMaterial {
   worksheet: {
     title: string;
     instructions: string; // At student's reading level
-    content: WorksheetContent[];
+    sections?: Array<{
+      title: string;
+      instructions?: string;
+      items: WorksheetContent[];
+    }>;
+    content?: WorksheetContent[]; // Legacy support
     accommodations: string[]; // Applied accommodations
   };
   
+  accommodations?: string[];
   answerKey?: AnswerKey; // Optional: for activities with specific answers
 }
 
@@ -95,11 +111,14 @@ export interface WorksheetItem {
 }
 
 export interface AnswerKey {
-  items: {
+  answers?: Record<string, string | string[]>; // Legacy format
+  items?: {
     itemNumber: number;
     correctAnswer: string;
     acceptableVariations?: string[];
   }[];
+  rubric?: string;
+  notes?: string;
 }
 
 export interface LessonMetadata {
@@ -115,6 +134,8 @@ export interface LessonMetadata {
 export interface GradeGroup {
   grades: number[]; // e.g., [2, 3] for 2nd and 3rd graders together
   studentIds: string[];
+  studentCount?: number;
+  readingLevels?: number[];
   activityLevel: 'below' | 'on' | 'above'; // Relative to grade level
 }
 

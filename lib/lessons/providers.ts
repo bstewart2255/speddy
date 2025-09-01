@@ -101,7 +101,9 @@ export class OpenAIProvider implements AIProvider {
         modelUsed: 'OpenAI',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        gradeGroups: (baseMeta as any).gradeGroups || [],
+        validationStatus: (baseMeta as any).validationStatus || 'passed'
       };
 
       return jsonResponse;
@@ -215,7 +217,9 @@ export class AnthropicProvider implements AIProvider {
         modelUsed: 'Anthropic',
         modelVersion: this.model,
         generationTime: Date.now() - startTime,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        gradeGroups: (baseMeta as any).gradeGroups || [],
+        validationStatus: (baseMeta as any).validationStatus || 'passed'
       };
 
       return jsonResponse;

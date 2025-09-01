@@ -13,6 +13,7 @@ import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -488,14 +489,13 @@ export function CalendarWeekView({
       }
     });
     
-    // Get student details for the API
+    // Get student details for the new API format
     const studentList = Array.from(sessionStudents).map(studentId => {
       const student = students.get(studentId);
       
       return {
         id: studentId,
-        initials: student?.initials || 'Unknown',
-        grade_level: student?.grade_level || 'Unknown'
+        grade: parseGradeLevel(student?.grade_level)
       };
     });
     
@@ -506,31 +506,42 @@ export function CalendarWeekView({
     console.log(`Generating lesson for ${studentList.length} students in time slot ${timeSlot}`);
     
     try {
-      const response = await fetch('/api/generate-lesson', {
+      // Determine subject based on time of day or use default
+      const subject = 'English Language Arts'; // Default subject, can be made configurable
+      const duration = calculateDurationFromTimeSlot(timeSlot);
+      
+      // Use the new JSON lesson API
+      const response = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          students: studentList, // Full student data
-          timeSlot: formatTimeSlot(timeSlot),
-          duration: calculateDurationFromTimeSlot(timeSlot),
+          students: studentList,
+          subject,
+          duration,
+          topic: `Session for ${formatTimeSlot(timeSlot)}`,
+          teacherRole: userProfile?.role || 'resource'
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate content');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate lesson');
       }
 
       const data = await response.json();
       
-      // Ensure we have content before saving
-      if (!data.content || data.content.trim() === '') {
-        console.error(`No content received for time slot ${timeSlot}`);
-        throw new Error('No content received from API');
+      // The new API returns a structured lesson object
+      if (!data.lesson) {
+        console.error(`No lesson received for time slot ${timeSlot}`);
+        throw new Error('No lesson received from API');
       }
 
-      console.log(`Saving lesson for ${timeSlot} with content length: ${data.content.length}`);
+      console.log(`Saving lesson for ${timeSlot}, lessonId: ${data.lessonId}`);
+      
+      // Store the JSON lesson directly
+      const lessonContent = JSON.stringify(data.lesson);
 
       // First try to delete any existing empty lesson
       await supabase
@@ -548,7 +559,7 @@ export function CalendarWeekView({
           provider_id: currentUser.id,
           lesson_date: toLocalDateKey(date),
           time_slot: timeSlot,
-          content: data.content,
+          content: lessonContent,
           prompt: '',
           session_data: slotSessions,
           created_at: new Date().toISOString(),
@@ -569,8 +580,9 @@ export function CalendarWeekView({
         newMap.set(dateKey, {
           ...dayLessons,
           [timeSlot]: {
-            content: data.content,
-            prompt: ''
+            content: lessonContent,
+            prompt: '',
+            lessonId: data.lessonId
           }
         });
         return newMap;
@@ -830,8 +842,8 @@ export function CalendarWeekView({
       const { error } = await supabase
         .from('ai_generated_lessons')
         .delete()
-        .eq('school_id', currentUser?.school_id)
-        .eq('session_date', dateStr);
+        .eq('provider_id', currentUser!.id)
+        .eq('lesson_date', dateStr);
 
       if (error) throw error;
 

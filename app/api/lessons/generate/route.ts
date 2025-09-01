@@ -8,6 +8,7 @@ import {
   isValidTeacherRole 
 } from '@/lib/lessons/schema';
 import { withAuth } from '@/lib/api/with-auth';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
@@ -150,74 +151,70 @@ async function enrichStudentData(
   students: any[],
   supabase: any
 ): Promise<StudentProfile[]> {
-  // Collect all student IDs for batch query
-  const studentIds = students.map(s => s.id || s.studentId);
+  // Collect all student IDs for batch query, filtering out invalid ones
+  const studentIds = students
+    .map(s => s.id || s.studentId)
+    .filter(Boolean);
   
   // Batch fetch all student data in one query
   const { data: studentsData } = await supabase
     .from('students')
-    .select('*, student_details(*)')
+    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
     .in('id', studentIds);
   
   // Create a map for quick lookup
-  const studentDataMap = new Map();
+  const studentDataMap = new Map<string, any>();
   if (studentsData) {
     studentsData.forEach((sd: any) => {
       studentDataMap.set(sd.id, sd);
     });
   }
   
-  const studentProfiles: StudentProfile[] = [];
-  
-  for (const student of students) {
+  return students.map((student: any) => {
     const studentId = student.id || student.studentId;
     const studentData = studentDataMap.get(studentId);
     
-    let grade = student.grade;
-    let readingLevel = student.readingLevel;
-    let iepGoals: string[] = [];
-    let accommodations: string[] = [];
-    
-    if (studentData) {
-      // Parse grade from database (could be "2nd Grade", "Grade 2", or just "2")
-      if (studentData.grade) {
-        const gradeMatch = studentData.grade.match(/\d+/);
-        if (gradeMatch) {
-          grade = parseInt(gradeMatch[0]);
-        }
-      }
-      
-      // Get reading level from student_details
-      if (studentData.student_details?.reading_level) {
-        readingLevel = studentData.student_details.reading_level;
-      }
-      
-      // Parse IEP goals if available
-      if (studentData.iep_goals) {
-        iepGoals = Array.isArray(studentData.iep_goals) 
-          ? studentData.iep_goals 
-          : [studentData.iep_goals];
-      }
-      
-      // Parse accommodations if available
-      if (studentData.accommodations) {
-        accommodations = Array.isArray(studentData.accommodations)
-          ? studentData.accommodations
-          : studentData.accommodations.split(',').map((a: string) => a.trim());
-      }
+    // Parse grade with support for Kindergarten
+    let grade: number | undefined = student.grade;
+    if (!grade && studentData?.grade_level) {
+      grade = parseGradeLevel(studentData.grade_level);
     }
     
-    // Use provided data as fallback/override
-    studentProfiles.push({
+    // Parse reading level as number when possible
+    let readingLevel: number | undefined = 
+      typeof student.readingLevel === 'number' 
+        ? student.readingLevel
+        : studentData?.student_details?.reading_level != null
+        ? Number(studentData.student_details.reading_level)
+        : undefined;
+    if (Number.isNaN(readingLevel)) {
+      readingLevel = undefined;
+    }
+    
+    // Parse IEP goals with fallback to database
+    const iepGoals: string[] = student.iepGoals ||
+      (Array.isArray(studentData?.iep_goals) 
+        ? studentData.iep_goals 
+        : studentData?.iep_goals 
+        ? [studentData.iep_goals] 
+        : []);
+    
+    // Parse accommodations with fallback to database
+    const accommodations: string[] = student.accommodations ||
+      (Array.isArray(studentData?.accommodations)
+        ? studentData.accommodations
+        : studentData?.accommodations
+        ? String(studentData.accommodations).split(',').map((a: string) => a.trim()).filter(Boolean)
+        : []);
+    
+    return {
       id: studentId,
-      grade: grade || 3, // Default to grade 3 if not specified
-      readingLevel: readingLevel,
-      iepGoals: student.iepGoals || iepGoals,
-      accommodations: student.accommodations || accommodations
-    });
-  }
-  
-  return studentProfiles;
+      grade: grade ?? 3, // Default to grade 3 if not specified
+      readingLevel,
+      iepGoals,
+      accommodations
+    } as StudentProfile;
+  });
 }
 
 /**
