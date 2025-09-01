@@ -1,5 +1,5 @@
 // Worksheet renderer - converts JSON to HTML with XSS protection
-import { LessonResponse, StudentMaterial, WorksheetContent } from './schema';
+import { LessonResponse, StudentMaterial } from './schema';
 
 export class WorksheetRenderer {
   /**
@@ -275,7 +275,9 @@ export class WorksheetRenderer {
       <h2>Part ${sectionIndex + 1}: ${this.escapeHtml(section.title)}</h2>
       ${section.instructions ? `<p><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
       
-      ${section.items.map((item, itemIndex) => this.renderWorksheetItem(item, sectionIndex, itemIndex)).join('')}
+      ${(section.items ?? []).map((worksheetContent, contentIndex) => 
+        this.renderWorksheetContentSection(worksheetContent, sectionIndex, contentIndex)
+      ).join('')}
     </div>
   `).join('')}
 
@@ -283,7 +285,41 @@ export class WorksheetRenderer {
 </html>`;
   }
 
+  private renderWorksheetContentSection(worksheetContent: any, sectionIndex: number, contentIndex: number): string {
+    // Handle the nested structure where each section item is a WorksheetContent with its own items
+    if (!worksheetContent.items || !Array.isArray(worksheetContent.items)) {
+      // Fallback for flat structure (backward compatibility)
+      return this.renderWorksheetItem(worksheetContent, sectionIndex, contentIndex);
+    }
+    
+    // Check if the content has actual questions/items
+    const hasContent = worksheetContent.items.length > 0 && 
+                      worksheetContent.items.some((item: any) => item.content && item.content.trim() !== '');
+    
+    if (!hasContent) {
+      console.warn('Section has no content items:', worksheetContent.sectionTitle || 'unnamed');
+    }
+    
+    return `
+      <div class="worksheet-content-section" style="margin-bottom: 20px;">
+        <h3 style="color: #333; margin-bottom: 10px;">${this.escapeHtml(worksheetContent.sectionTitle ?? `Activity ${contentIndex + 1}`)}</h3>
+        ${worksheetContent.instructions ? `<p class="instructions" style="font-style: italic; margin-bottom: 15px;">${this.escapeHtml(worksheetContent.instructions)}</p>` : ''}
+        ${worksheetContent.items.map((item: any, itemIndex: number) => 
+          this.renderWorksheetItem(item, sectionIndex, itemIndex)
+        ).join('')}
+      </div>
+    `;
+  }
+  
   private renderWorksheetItem(item: any, sectionIndex: number, itemIndex: number): string {
+    // Render passages or text-only content without answer lines
+    if (item.type === 'passage' || item.type === 'text' || item.type === 'visual') {
+      return `
+      <div class="item">
+        <div class="passage" style="margin-bottom: 15px;">${this.escapeHtml(item.content)}</div>
+      </div>`;
+    }
+    
     return `
     <div class="item">
       <div class="question">${sectionIndex + 1}.${itemIndex + 1}. ${this.escapeHtml(item.content)}</div>
@@ -295,9 +331,11 @@ export class WorksheetRenderer {
         <div class="answer-space"></div>
       ` : item.type === 'fill-in-blank' ? `
         <div class="answer-space"></div>
+      ` : item.type === 'question' ? `
+        <div class="answer-lines"></div>
+        <div class="answer-lines"></div>
+        <div class="answer-lines"></div>
       ` : `
-        <div class="answer-lines"></div>
-        <div class="answer-lines"></div>
         <div class="answer-lines"></div>
       `}
     </div>`;
