@@ -336,7 +336,7 @@ export function generatePrintableWorksheet(
               <div class="question-number">Question ${index + 1}</div>
               <p>${safeQuestion}</p>
               <div class="multiple-choice">
-                ${q.options?.map(option => 
+                ${(q.options ?? []).map(option => 
                   `<div class="choice">○ ${escapeHtml(option)}</div>`
                 ).join('')}
               </div>
