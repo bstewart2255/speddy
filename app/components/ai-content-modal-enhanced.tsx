@@ -4,8 +4,7 @@ import * as React from "react";
 import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Target, BookOpen, Activity } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { formatTimeSlot } from '../../lib/utils/date-time';
-import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
-import { JsonLessonRenderer } from '../../lib/utils/json-lesson-renderer';
+import { LessonContentHandler, getPrintableContent, isJsonLesson } from '../../lib/utils/lesson-content-handler';
 import '../../app/styles/lesson-content.css';
 
 interface Student {
@@ -55,19 +54,11 @@ export function AIContentModalEnhanced({
 
   const currentLesson = lessons[currentLessonIndex];
   
-  // Check if the content is JSON
-  const isJsonContent = React.useMemo(() => {
-    if (!currentLesson?.content) return false;
-    try {
-      const parsed = JSON.parse(currentLesson.content);
-      return parsed.lesson && parsed.studentMaterials;
-    } catch {
-      return false;
-    }
-  }, [currentLesson]);
-  
-  // Use the shared formatter for consistent formatting (only for non-JSON content)
-  const sanitizedContent = currentLesson?.content && !isJsonContent ? processAILessonContent(currentLesson.content, currentLesson.students) : null;
+  // Check if the content is JSON using centralized function
+  const isJsonContent = React.useMemo(() => 
+    isJsonLesson(currentLesson?.content ?? null), 
+    [currentLesson]
+  );
 
   // Escape HTML special characters
   function escapeHTML(str: string): string {
@@ -91,25 +82,15 @@ export function AIContentModalEnhanced({
     printAllLessons();
   };
 
-  const printSingleLesson = (includeWorksheets: boolean) => {
+  const printSingleLesson = async (includeWorksheets: boolean) => {
     const printContent = printRef.current;
     if (!printContent || !currentLesson) return;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // Check if content is JSON lesson
-    let printHtml = '';
-    if (isJsonContent) {
-      // Use the JSON renderer for printing
-      const { WorksheetRenderer } = require('../../lib/lessons/renderer');
-      const renderer = new WorksheetRenderer();
-      printHtml = renderer.renderLessonPlan(JSON.parse(currentLesson.content));
-    } else {
-      // Use the print formatter for consistent print output
-      const printFormattedContent: { __html: string } | null = processAILessonContentForPrint(currentLesson.content, currentLesson.students);
-      printHtml = printFormattedContent ? printFormattedContent.__html : '';
-    }
+    // Get printable content using the centralized utility
+    const printHtml = await getPrintableContent(currentLesson.content, currentLesson.students);
 
     const styles = `
       <style>
@@ -133,8 +114,8 @@ export function AIContentModalEnhanced({
           <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
             <h1 style="margin: 0;">Lesson Plan</h1>
             <p style="margin: 5px 0;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()}</p>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${formatTimeSlot(currentLesson.timeSlot)}</p>
-            <p style="margin: 5px 0;"><strong>Students:</strong> ${currentLesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(formatTimeSlot(currentLesson.timeSlot))}</p>
+            <p style="margin: 5px 0;"><strong>Students:</strong> ${currentLesson.students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
           ${printHtml}
@@ -156,30 +137,17 @@ export function AIContentModalEnhanced({
     }, 250);
   };
 
-  const printAllLessons = () => {
+  const printAllLessons = async () => {
     // Print each lesson as a separate document
-    lessons.forEach((lesson, index) => {
+    for (let index = 0; index < lessons.length; index++) {
+      const lesson = lessons[index];
+      
+      // Get printable content using the centralized utility
+      const printHtml = await getPrintableContent(lesson.content, lesson.students);
+      
       setTimeout(() => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
-
-        // Check if content is JSON lesson
-        let printHtml = '';
-        try {
-          const parsed = JSON.parse(lesson.content);
-          if (parsed.lesson && parsed.studentMaterials) {
-            // Use the JSON renderer for printing
-            const { WorksheetRenderer } = require('../../lib/lessons/renderer');
-            const renderer = new WorksheetRenderer();
-            printHtml = renderer.renderLessonPlan(parsed);
-          } else {
-            const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
-            printHtml = sanitized ? sanitized.__html : '';
-          }
-        } catch {
-          const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
-          printHtml = sanitized ? sanitized.__html : '';
-        }
         const styles = `
           <style>
             @media print {
@@ -201,8 +169,8 @@ export function AIContentModalEnhanced({
               <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
                 <h1 style="margin: 0;">Lesson Plan</h1>
                 <p style="margin: 5px 0;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()}</p>
-                <p style="margin: 5px 0;"><strong>Time:</strong> ${formatTimeSlot(lesson.timeSlot)}</p>
-                <p style="margin: 5px 0;"><strong>Students:</strong> ${lesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
+                <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(formatTimeSlot(lesson.timeSlot))}</p>
+                <p style="margin: 5px 0;"><strong>Students:</strong> ${lesson.students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
               </div>
               ${printHtml}
             </body>
@@ -217,7 +185,7 @@ export function AIContentModalEnhanced({
           printWindow.close();
         }, 250);
       }, index * 500); // Delay between windows to prevent blocking
-    });
+    }
   };
 
   const generateWorksheetsForLesson = async (lesson: LessonContent) => {
@@ -428,18 +396,11 @@ export function AIContentModalEnhanced({
               
               {/* Main Lesson Content */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                {isJsonContent ? (
-                  <JsonLessonRenderer 
-                    lessonData={currentLesson.content} 
-                    students={currentLesson.students.map(s => ({
-                      id: s.id,
-                      initials: s.initials,
-                      grade_level: s.grade_level
-                    }))}
-                  />
-                ) : (
-                  <div className="lesson-content prose prose-lg max-w-none" dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
-                )}
+                <LessonContentHandler
+                  content={currentLesson.content}
+                  students={currentLesson.students}
+                  className="lesson-content prose prose-lg max-w-none"
+                />
               </div>
             </div>
           ) : (

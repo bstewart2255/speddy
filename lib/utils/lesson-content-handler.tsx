@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { JsonLessonRenderer } from './json-lesson-renderer';
-import { processAILessonContent } from './ai-lesson-formatter';
+import { processAILessonContent, processAILessonContentForPrint } from './ai-lesson-formatter';
 import { getSanitizedHTML } from '../sanitize-html';
 
 interface Student {
@@ -71,6 +71,7 @@ export function LessonContentHandler({
   }
 
   return (
+    /* biome-ignore lint/security/noDangerouslySetInnerHtml: content sanitized via getSanitizedHTML in processAILessonContent */
     <div 
       className={`prose max-w-none ${className}`}
       dangerouslySetInnerHTML={sanitizedContent}
@@ -81,27 +82,38 @@ export function LessonContentHandler({
 /**
  * Utility function to get printable HTML from lesson content
  */
-export function getPrintableContent(
+export async function getPrintableContent(
   content: string | null, 
   students: Student[] = []
-): string {
+): Promise<string> {
   if (!content) return '';
 
   // Check if content is JSON lesson
   if (isJsonLesson(content)) {
     try {
-      const { WorksheetRenderer } = require('../../lib/lessons/renderer');
+      const rendererModule = await import('../lessons/renderer');
+      const { WorksheetRenderer } = rendererModule;
       const renderer = new WorksheetRenderer();
-      return renderer.renderLessonPlan(JSON.parse(content));
+      const fullHtml = renderer.renderLessonPlan(JSON.parse(content));
+      
+      // Extract only the body content to embed inside our print wrapper
+      if (typeof window !== 'undefined' && 'DOMParser' in window) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(fullHtml, 'text/html');
+        return doc.body.innerHTML || fullHtml;
+      }
+      // Fallback for non-browser environments
+      const match = fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      return match ? match[1] : fullHtml;
     } catch (error) {
       console.error('Error rendering JSON lesson for print:', error);
       return '<p>Error rendering lesson content</p>';
     }
   }
 
-  // Otherwise, treat as HTML content
-  const sanitized = getSanitizedHTML(content);
-  return sanitized.__html;
+  // Otherwise, treat as HTML content - use print-specific formatter
+  const printSanitized = processAILessonContentForPrint(content, students);
+  return printSanitized ? printSanitized.__html : '';
 }
 
 /**

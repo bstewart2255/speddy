@@ -88,7 +88,7 @@ export function AIContentModal({
         }
       }
 
-      console.log('Saving lesson with date:', lessonDate); // Add logging
+      // Save lesson with computed date
 
       const response = await fetch('/api/save-lesson', {
         method: 'POST',
@@ -130,7 +130,7 @@ export function AIContentModal({
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const printContent = printRef.current;
     if (!printContent) return;
 
@@ -138,7 +138,7 @@ export function AIContentModal({
     if (!printWindow) return;
 
     // Get printable content using the utility
-    const printableHtml = getPrintableContent(content, students);
+    const printableHtml = await getPrintableContent(content, students);
 
       const styles = `
         <style>
@@ -155,14 +155,14 @@ export function AIContentModal({
     printWindow.document.write(`
       <html>
         <head>
-          <title>Lesson Plan - ${timeSlot}</title>
+          <title>Lesson Plan - ${escapeHTML(timeSlot)}</title>
           ${styles}
         </head>
         <body>
           <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
             <h1 style="margin: 0;">Special Education Lesson Plan</h1>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${timeSlot}</p>
-            <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(timeSlot)}</p>
+            <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
             <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
@@ -264,9 +264,7 @@ export function AIContentModal({
   };
 
   const handlePrintAllWorksheets = async () => {
-    const result = showPrintingProgress();
-    const timeoutId = result[0] as NodeJS.Timeout;
-    const cleanupFn = result[1] as () => void;
+    const [timeoutId, cleanupFn] = showPrintingProgress();
     
     try {
       // Generate all worksheets concurrently
@@ -380,7 +378,7 @@ export function AIContentModal({
   };
 
   // Helper function to show printing progress
-  const showPrintingProgress = () => {
+  const showPrintingProgress = (): [ReturnType<typeof setTimeout>, () => void] => {
     const loadingElement = document.createElement('div');
     loadingElement.innerHTML = `
       <div style="position: fixed; top: 20px; right: 20px; background: #4f46e5; color: white; padding: 12px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
