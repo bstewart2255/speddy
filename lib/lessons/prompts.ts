@@ -33,6 +33,7 @@ JSON STRUCTURE (with example content):
     },
     "mainActivity": { /* same structure */ },
     "closure": { /* same structure */ },
+    "answerKey": { /* optional - answer key for the lesson */ },
     "roleSpecificContent": { /* varies by role */ }
   },
   "studentMaterials": [{
@@ -72,8 +73,7 @@ JSON STRUCTURE (with example content):
         }]
       }],
       "accommodations": ["Larger font size", "Extra time"]
-    },
-    "answerKey": { /* optional */ }
+    }
   }],
   "metadata": {
     "gradeGroups": [{ "grades": [numbers], "studentIds": ["strings"], "activityLevel": "below|on|above" }],

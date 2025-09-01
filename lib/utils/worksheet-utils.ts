@@ -97,7 +97,7 @@ export function validateStudentMaterial(material: any): boolean {
       section.items && section.items.length > 0
     );
     if (!hasValidContent) {
-      console.log('Validation warning: sections exist but have no items');
+      console.warn('Validation warning: sections exist but have no items');
     }
   }
   
@@ -105,7 +105,7 @@ export function validateStudentMaterial(material: any): boolean {
     const hasValidContent = worksheet.content.length > 0 && 
       worksheet.content.some((c: any) => c.items && c.items.length > 0);
     if (!hasValidContent) {
-      console.log('Validation warning: content exists but has no items');
+      console.warn('Validation warning: content exists but has no items');
     }
   }
   
@@ -224,7 +224,7 @@ export async function generateAIWorksheetHtml(
  * Opens and prints HTML worksheet in a new window
  */
 export function printHtmlWorksheet(html: string, title: string): void {
-  const printWindow = window.open('', '_blank');
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
   if (!printWindow) {
     console.error('Failed to open print window - popup blocked');
     return;
@@ -243,25 +243,31 @@ export function printHtmlWorksheet(html: string, title: string): void {
  * Opens and prints PDF worksheet with proper print trigger
  */
 export function printPdfWorksheet(pdfDataUrl: string, title: string): void {
-  const printWindow = window.open('', '_blank');
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
   if (!printWindow) {
     console.error('Failed to open print window - popup blocked');
     return;
   }
+  
+  const escapeHtml = (s: string) =>
+    String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  
+  const safeTitle = escapeHtml(title);
+  const safeSrc = escapeHtml(pdfDataUrl);
   
   // Wrap PDF in HTML with auto-print
   printWindow.document.write(`
     <!DOCTYPE html>
     <html>
       <head>
-        <title>${title}</title>
+        <title>${safeTitle}</title>
         <style>
           body { margin: 0; padding: 0; }
           iframe { border: none; width: 100%; height: 100vh; }
         </style>
       </head>
       <body>
-        <iframe src="${pdfDataUrl}" onload="setTimeout(() => { window.print(); }, 500);"></iframe>
+        <iframe src="${safeSrc}" onload="setTimeout(() => { window.print(); }, 500);"></iframe>
       </body>
     </html>
   `);
