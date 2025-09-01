@@ -9,12 +9,19 @@ export function parseGradeLevel(gradeLevel: string | null | undefined, defaultGr
     return defaultGrade;
   }
 
-  const gradeStr = String(gradeLevel).toLowerCase();
+  const gradeStr = String(gradeLevel).trim().toLowerCase();
   
-  // Check for kindergarten
-  if (/\bk(indergarten)?\b/.test(gradeStr)) {
+  // Check for kindergarten - match exactly "k" or "kindergarten", with optional "grade " prefix
+  // Disallow continuations like "k-4" or "k2"
+  if (/^(?:grade\s+)?(?:k|kindergarten)(?:\s|$)/.test(gradeStr)) {
     return 0;
   }
+  
+  // Optional: Check for pre-k / tk (transitional kindergarten)
+  // Uncomment if needed:
+  // if (/\b(?:pre[-\s]?k|pk|tk)\b/.test(gradeStr)) {
+  //   return 0;
+  // }
   
   // Extract numeric grade
   const gradeMatch = gradeStr.match(/\d+/);

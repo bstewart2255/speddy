@@ -311,42 +311,42 @@ export class WorksheetRenderer {
     if (content.differentiationStrategies) {
       items.push(`
         <h3>Differentiation Strategies</h3>
-        <ul>${content.differentiationStrategies.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+        <ul>${content.differentiationStrategies.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ul>
       `);
     }
     
     if (content.scaffoldingSteps) {
       items.push(`
         <h3>Scaffolding Steps</h3>
-        <ol>${content.scaffoldingSteps.map((s: string) => `<li>${s}</li>`).join('')}</ol>
+        <ol>${content.scaffoldingSteps.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ol>
       `);
     }
     
     if (content.fineMotorActivities) {
       items.push(`
         <h3>Fine Motor Activities</h3>
-        <ul>${content.fineMotorActivities.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+        <ul>${content.fineMotorActivities.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ul>
       `);
     }
     
     if (content.sensorySupports) {
       items.push(`
         <h3>Sensory Supports</h3>
-        <ul>${content.sensorySupports.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+        <ul>${content.sensorySupports.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ul>
       `);
     }
     
     if (content.articulationTargets) {
       items.push(`
         <h3>Articulation Targets</h3>
-        <ul>${content.articulationTargets.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+        <ul>${content.articulationTargets.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ul>
       `);
     }
     
     if (content.languageGoals) {
       items.push(`
         <h3>Language Goals</h3>
-        <ul>${content.languageGoals.map((s: string) => `<li>${s}</li>`).join('')}</ul>
+        <ul>${content.languageGoals.map((s: string) => `<li>${this.escapeHtml(s)}</li>`).join('')}</ul>
       `);
     }
     

@@ -159,7 +159,7 @@ async function enrichStudentData(
   // Batch fetch all student data in one query
   const { data: studentsData } = await supabase
     .from('students')
-    .select('id, grade, iep_goals, accommodations, student_details(reading_level)')
+    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
     .in('id', studentIds);
   
   // Create a map for quick lookup
@@ -176,8 +176,8 @@ async function enrichStudentData(
     
     // Parse grade with support for Kindergarten
     let grade: number | undefined = student.grade;
-    if (!grade && studentData?.grade) {
-      grade = parseGradeLevel(studentData.grade);
+    if (!grade && studentData?.grade_level) {
+      grade = parseGradeLevel(studentData.grade_level);
     }
     
     // Parse reading level as number when possible

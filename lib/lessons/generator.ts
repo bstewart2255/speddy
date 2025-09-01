@@ -56,6 +56,12 @@ export class LessonGenerator {
               lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
             }
             
+            // Stamp validation metadata on success
+            lesson.metadata.validationStatus = 'passed';
+            if ('validationErrors' in lesson.metadata) {
+              (lesson.metadata as any).validationErrors = [];
+            }
+            
             return { lesson, validation };
           } else {
             console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);

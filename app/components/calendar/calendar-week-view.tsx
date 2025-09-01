@@ -521,7 +521,7 @@ export function CalendarWeekView({
           subject,
           duration,
           topic: `Session for ${formatTimeSlot(timeSlot)}`,
-          teacherRole: currentUser.role || 'resource'
+          teacherRole: userProfile?.role || 'resource'
         }),
       });
 
@@ -842,8 +842,8 @@ export function CalendarWeekView({
       const { error } = await supabase
         .from('ai_generated_lessons')
         .delete()
-        .eq('school_id', currentUser?.school_id)
-        .eq('session_date', dateStr);
+        .eq('provider_id', currentUser!.id)
+        .eq('lesson_date', dateStr);
 
       if (error) throw error;
 
