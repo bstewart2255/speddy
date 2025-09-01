@@ -15,8 +15,9 @@ CRITICAL REQUIREMENTS:
 4. All activities must be completed at student desks
 5. All materials must be included directly on the worksheets
 6. Group students within 1 grade level for the same activities
+7. Worksheets MUST contain complete, detailed content - not placeholders
 
-JSON STRUCTURE:
+JSON STRUCTURE (with example content):
 {
   "lesson": {
     "title": "string",
@@ -38,22 +39,39 @@ JSON STRUCTURE:
     "studentId": "string",
     "gradeGroup": number,
     "worksheet": {
-      "title": "string",
-      "instructions": "string",
-      "content": [{
-        "sectionType": "warmup|practice|assessment|enrichment",
-        "sectionTitle": "string",
-        "instructions": "string",
+      "title": "Worksheet Title (e.g., 'Story Elements Worksheet')",
+      "instructions": "Overall worksheet instructions",
+      "sections": [{
+        "title": "Part 1: Reading",
+        "instructions": "Read the story below",
         "items": [{
-          "type": "question|problem|task|prompt|visual",
-          "content": "string",
-          "choices": ["optional"],
-          "blankLines": number,
-          "visualSupport": "string",
-          "space": "small|medium|large"
+          "sectionType": "warmup|practice|assessment|enrichment",
+          "sectionTitle": "The Three Little Pigs",
+          "instructions": "Read this story carefully",
+          "items": [{
+            "type": "visual",
+            "content": "Once upon a time, there were three little pigs who lived with their mother. One day, they decided to build their own houses. The first pig built his house of straw. The second pig built his house of sticks. The third pig built his house of bricks..."
+          }]
+        }]
+      }, {
+        "title": "Part 2: Questions",
+        "instructions": "Answer these questions about the story",
+        "items": [{
+          "sectionType": "assessment",
+          "sectionTitle": "Comprehension Questions",
+          "instructions": "Circle the correct answer",
+          "items": [{
+            "type": "question",
+            "content": "Who are the main characters in the story?",
+            "choices": ["A) The wolf", "B) The three pigs", "C) The mother pig", "D) All of the above"]
+          }, {
+            "type": "question",
+            "content": "What happened to the house made of straw?",
+            "blankLines": 2
+          }]
         }]
       }],
-      "accommodations": ["string"]
+      "accommodations": ["Larger font size", "Extra time"]
     },
     "answerKey": { /* optional */ }
   }],
@@ -125,7 +143,10 @@ JSON STRUCTURE:
 - All materials must be on the worksheet
 - Use simple, clear instructions at appropriate reading levels
 - Include visual supports where helpful
-- Ensure activities can be completed in ${request.duration} minutes`;
+- Ensure activities can be completed in ${request.duration} minutes
+- IMPORTANT: Each worksheet must contain actual content with real questions, problems, or tasks
+- For story-based activities, include the complete story text in the worksheet
+- Worksheets must have substantial content - not just placeholder text`;
     
     return prompt;
   }
@@ -155,6 +176,12 @@ JSON STRUCTURE:
 - Include explicit instruction and guided practice
 - Provide scaffolding and differentiation strategies
 - Focus on IEP goal progress
+
+For ELA/Reading worksheets, include:
+- Complete story text when teaching story elements (characters, setting, problem, solution)
+- Reading comprehension questions based on the provided text
+- Vocabulary exercises with context from the story
+- Writing prompts related to the story
 
 In roleSpecificContent, include:
 - differentiationStrategies: Specific strategies for each grade group

@@ -47,6 +47,7 @@ export async function generateWorksheetQRCode(worksheetCode: string): Promise<st
  */
 export function validateStudentMaterial(material: any): boolean {
   if (!material || typeof material !== 'object') {
+    console.log('Validation failed: material is not an object');
     return false;
   }
   
@@ -71,17 +72,41 @@ export function validateStudentMaterial(material: any): boolean {
   
   // If no worksheet found in either location, return false
   if (!worksheet) {
+    console.log('Validation failed: no worksheet found in material');
     return false;
   }
   
   // Validate the worksheet structure
   if (!worksheet.title || !worksheet.instructions) {
+    console.log('Validation failed: missing title or instructions', {
+      hasTitle: !!worksheet.title,
+      hasInstructions: !!worksheet.instructions
+    });
     return false;
   }
   
   // Check for sections or content
   if (!worksheet.sections && !worksheet.content) {
+    console.log('Validation failed: no sections or content found');
     return false;
+  }
+  
+  // Validate that content actually exists in sections or content
+  if (worksheet.sections) {
+    const hasValidContent = worksheet.sections.some((section: any) => 
+      section.items && section.items.length > 0
+    );
+    if (!hasValidContent) {
+      console.log('Validation warning: sections exist but have no items');
+    }
+  }
+  
+  if (worksheet.content) {
+    const hasValidContent = worksheet.content.length > 0 && 
+      worksheet.content.some((c: any) => c.items && c.items.length > 0);
+    if (!hasValidContent) {
+      console.log('Validation warning: content exists but has no items');
+    }
   }
   
   return true;
