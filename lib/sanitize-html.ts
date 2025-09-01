@@ -5,11 +5,11 @@ import DOMPurify from 'dompurify';
  * Specifically configured for educational content and worksheets
  */
 export function sanitizeHTML(dirty: string): string {
-  // Only run DOMPurify on the client side
+  // Handle server-side sanitization safely
   if (typeof window === 'undefined') {
-    // On server-side, return the content as-is
-    // The actual sanitization will happen on client-side hydration
-    return dirty;
+    // On server-side, return empty string for safety
+    // The actual content will be sanitized and rendered on client-side hydration
+    return '';
   }
 
   // Configure DOMPurify to allow safe HTML tags but remove dangerous ones
@@ -64,8 +64,10 @@ export function sanitizeHTML(dirty: string): string {
     FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover'],
     // Keep text content of removed elements
     KEEP_CONTENT: true,
-    // Allow data: URLs for links (useful for print/download)
+    // Don't allow data: URLs or javascript: protocols
     ALLOW_DATA_ATTR: false,
+    // Only allow safe URI schemes
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     // Ensure links open in new window with proper security
     ADD_ATTR: ['target', 'rel'],
     SANITIZE_DOM: true
@@ -129,8 +131,10 @@ export function sanitizeHTML(dirty: string): string {
         FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover'],
         // Keep text content of removed elements
         KEEP_CONTENT: true,
-        // Allow data: URLs for links (useful for print/download)
+        // Don't allow data: URLs or javascript: protocols
         ALLOW_DATA_ATTR: false,
+        // Only allow safe URI schemes
+        ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
         // Ensure links open in new window with proper security
         ADD_ATTR: ['target', 'rel'],
         SANITIZE_DOM: true
