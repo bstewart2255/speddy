@@ -3,8 +3,7 @@
 import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
-import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
-import { JsonLessonRenderer } from '../../lib/utils/json-lesson-renderer';
+import { LessonContentHandler, getPrintableContent } from '../../lib/utils/lesson-content-handler';
 
 interface Student {
   id: string;
@@ -44,18 +43,7 @@ export function AIContentModal({
   const [notes, setNotes] = React.useState("");
   const [showNotes, setShowNotes] = React.useState(false);
   
-  // Check if content is JSON lesson data
-  const isJsonLesson = React.useMemo(() => {
-    if (!content) return false;
-    try {
-      const parsed = JSON.parse(content);
-      return parsed.lesson && parsed.studentMaterials;
-    } catch {
-      return false;
-    }
-  }, [content]);
-  
-  const sanitizedContent = content && !isJsonLesson ? processAILessonContent(content, students) : null;
+  // Content processing handled by LessonContentHandler
 
   // Escape HTML special characters in user-supplied notes
   function escapeHTML(str: string): string {
@@ -149,16 +137,8 @@ export function AIContentModal({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // Check if content is JSON lesson
-    if (isJsonLesson && content) {
-      // Use the JSON renderer for printing
-      const { WorksheetRenderer } = require('../../lib/lessons/renderer');
-      const renderer = new WorksheetRenderer();
-      const html = renderer.renderLessonPlan(JSON.parse(content));
-      printWindow.document.write(html);
-    } else {
-      // Use the print formatter for consistent print output
-      const printFormattedContent: { __html: string } | null = content ? processAILessonContentForPrint(content, students) : null;
+    // Get printable content using the utility
+    const printableHtml = getPrintableContent(content, students);
 
       const styles = `
         <style>
@@ -172,25 +152,24 @@ export function AIContentModal({
         </style>
       `;
 
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Lesson Plan - ${timeSlot}</title>
-            ${styles}
-          </head>
-          <body>
-            <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-              <h1 style="margin: 0;">Special Education Lesson Plan</h1>
-              <p style="margin: 5px 0;"><strong>Time:</strong> ${timeSlot}</p>
-              <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
-              <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-              ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
-            </div>
-            ${printFormattedContent ? printFormattedContent.__html : ''}
-          </body>
-        </html>
-      `);
-    }
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Lesson Plan - ${timeSlot}</title>
+          ${styles}
+        </head>
+        <body>
+          <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+            <h1 style="margin: 0;">Special Education Lesson Plan</h1>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${timeSlot}</p>
+            <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
+            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
+          </div>
+          ${printableHtml}
+        </body>
+      </html>
+    `);
 
     printWindow.document.close();
     printWindow.focus();
@@ -465,22 +444,11 @@ export function AIContentModal({
             </div>
           ) : content ? (
             <>
-              {isJsonLesson ? (
-                <div className="prose max-w-none">
-                  <JsonLessonRenderer 
-                    lessonData={content} 
-                    students={students.map(s => ({
-                      id: s.id,
-                      initials: s.initials,
-                      grade_level: s.grade_level
-                    }))}
-                  />
-                </div>
-              ) : (
-                <div className="prose max-w-none">
-                  <div dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
-                </div>
-              )}
+              <LessonContentHandler 
+                content={content}
+                students={students}
+                className="prose max-w-none"
+              />
               {/* Add worksheet buttons for each student */}
               {!isViewingSaved && students.length > 0 && (
                 <div className="mt-6 border-t pt-4">

@@ -5,6 +5,7 @@ import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Targe
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { formatTimeSlot } from '../../lib/utils/date-time';
 import { processAILessonContent, processAILessonContentForPrint } from '../../lib/utils/ai-lesson-formatter';
+import { JsonLessonRenderer } from '../../lib/utils/json-lesson-renderer';
 import '../../app/styles/lesson-content.css';
 
 interface Student {
@@ -54,8 +55,19 @@ export function AIContentModalEnhanced({
 
   const currentLesson = lessons[currentLessonIndex];
   
-  // Use the shared formatter for consistent formatting
-  const sanitizedContent = currentLesson?.content ? processAILessonContent(currentLesson.content, currentLesson.students) : null;
+  // Check if the content is JSON
+  const isJsonContent = React.useMemo(() => {
+    if (!currentLesson?.content) return false;
+    try {
+      const parsed = JSON.parse(currentLesson.content);
+      return parsed.lesson && parsed.studentMaterials;
+    } catch {
+      return false;
+    }
+  }, [currentLesson]);
+  
+  // Use the shared formatter for consistent formatting (only for non-JSON content)
+  const sanitizedContent = currentLesson?.content && !isJsonContent ? processAILessonContent(currentLesson.content, currentLesson.students) : null;
 
   // Escape HTML special characters
   function escapeHTML(str: string): string {
@@ -86,8 +98,18 @@ export function AIContentModalEnhanced({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // Use the print formatter for consistent print output
-    const printFormattedContent: { __html: string } | null = processAILessonContentForPrint(currentLesson.content, currentLesson.students);
+    // Check if content is JSON lesson
+    let printHtml = '';
+    if (isJsonContent) {
+      // Use the JSON renderer for printing
+      const { WorksheetRenderer } = require('../../lib/lessons/renderer');
+      const renderer = new WorksheetRenderer();
+      printHtml = renderer.renderLessonPlan(JSON.parse(currentLesson.content));
+    } else {
+      // Use the print formatter for consistent print output
+      const printFormattedContent: { __html: string } | null = processAILessonContentForPrint(currentLesson.content, currentLesson.students);
+      printHtml = printFormattedContent ? printFormattedContent.__html : '';
+    }
 
     const styles = `
       <style>
@@ -115,7 +137,7 @@ export function AIContentModalEnhanced({
             <p style="margin: 5px 0;"><strong>Students:</strong> ${currentLesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
             ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
-          ${printFormattedContent ? printFormattedContent.__html : ''}
+          ${printHtml}
         </body>
       </html>
     `);
@@ -141,7 +163,23 @@ export function AIContentModalEnhanced({
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
-        const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
+        // Check if content is JSON lesson
+        let printHtml = '';
+        try {
+          const parsed = JSON.parse(lesson.content);
+          if (parsed.lesson && parsed.studentMaterials) {
+            // Use the JSON renderer for printing
+            const { WorksheetRenderer } = require('../../lib/lessons/renderer');
+            const renderer = new WorksheetRenderer();
+            printHtml = renderer.renderLessonPlan(parsed);
+          } else {
+            const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
+            printHtml = sanitized ? sanitized.__html : '';
+          }
+        } catch {
+          const sanitized: { __html: string } | null = processAILessonContentForPrint(lesson.content, lesson.students);
+          printHtml = sanitized ? sanitized.__html : '';
+        }
         const styles = `
           <style>
             @media print {
@@ -166,7 +204,7 @@ export function AIContentModalEnhanced({
                 <p style="margin: 5px 0;"><strong>Time:</strong> ${formatTimeSlot(lesson.timeSlot)}</p>
                 <p style="margin: 5px 0;"><strong>Students:</strong> ${lesson.students.map(s => `${s.initials} (Grade ${s.grade_level})`).join(', ')}</p>
               </div>
-              ${sanitized ? sanitized.__html : ''}
+              ${printHtml}
             </body>
           </html>
         `);
@@ -390,7 +428,18 @@ export function AIContentModalEnhanced({
               
               {/* Main Lesson Content */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="lesson-content prose prose-lg max-w-none" dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
+                {isJsonContent ? (
+                  <JsonLessonRenderer 
+                    lessonData={currentLesson.content} 
+                    students={currentLesson.students.map(s => ({
+                      id: s.id,
+                      initials: s.initials,
+                      grade_level: s.grade_level
+                    }))}
+                  />
+                ) : (
+                  <div className="lesson-content prose prose-lg max-w-none" dangerouslySetInnerHTML={sanitizedContent || { __html: '' }} />
+                )}
               </div>
             </div>
           ) : (
