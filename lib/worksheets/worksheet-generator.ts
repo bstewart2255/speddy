@@ -2,6 +2,7 @@
 import QRCode from 'qrcode';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '../../src/types/database';
+import type { LessonResponse, StudentMaterial, WorksheetItem } from '../lessons/schema';
 
 interface WorksheetQuestion {
   id: string;
@@ -65,16 +66,115 @@ export async function generateWorksheetWithQR(
   };
 }
 
+// Helper function to escape HTML to prevent XSS attacks
+function escapeHtml(text: string): string {
+  const div = typeof document !== 'undefined' ? document.createElement('div') : null;
+  if (div) {
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  // Fallback for server-side rendering
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Helper function to extract worksheet content from lesson HTML
 export function extractWorksheetFromLesson(
   lessonContent: string,
   studentId: string,
   gradeLevel: string
 ): WorksheetContent | null {
-  // This is a simplified example - you'd parse the lesson content
-  // to extract relevant practice problems for the student
-
-  // For now, return grade-appropriate template worksheets
+  try {
+    // Validate JSON structure before parsing
+    if (!lessonContent || typeof lessonContent !== 'string') {
+      throw new Error('Invalid lesson content format');
+    }
+    
+    // Try to parse as JSON lesson content
+    const lessonData = JSON.parse(lessonContent) as LessonResponse;
+    
+    // Check if this is a LessonResponse with studentMaterials
+    if (lessonData && lessonData.studentMaterials && Array.isArray(lessonData.studentMaterials)) {
+      // Find the worksheet for this specific student
+      const studentMaterial: StudentMaterial | undefined = lessonData.studentMaterials.find(
+        (material) => material.studentId === studentId
+      );
+      
+      if (studentMaterial && studentMaterial.worksheet) {
+        const worksheet = studentMaterial.worksheet;
+        const questions: WorksheetQuestion[] = [];
+        let questionId = 1;
+        
+        // Process worksheet sections or content
+        const sectionsToProcess = worksheet.sections || 
+          (worksheet.content ? [{ items: worksheet.content }] : []);
+        
+        for (const section of sectionsToProcess) {
+          const items = section.items || [];
+          
+          for (const contentItem of items) {
+            // Handle both nested WorksheetContent and direct WorksheetItem
+            const itemsToProcess = contentItem.items || [contentItem];
+            
+            for (const item of itemsToProcess as WorksheetItem[]) {
+              if (!item.content) continue;
+              
+              // Determine question type based on item properties
+              let questionType: WorksheetQuestion['type'] = 'short_answer';
+              
+              if (item.choices && item.choices.length > 0) {
+                questionType = 'multiple_choice';
+              } else if (item.content.includes('___') || /_{3,}/.test(item.content)) {
+                // Only match 3 or more consecutive underscores
+                questionType = 'fill_blank';
+              } else if (item.type === 'problem' || item.content.includes('=')) {
+                questionType = 'fill_blank';
+              }
+              
+              // Extract answer from answer key if available
+              let answer = 'varies';
+              if (studentMaterial.answerKey) {
+                if (studentMaterial.answerKey.items && studentMaterial.answerKey.items[questionId - 1]) {
+                  answer = studentMaterial.answerKey.items[questionId - 1].correctAnswer;
+                } else if (studentMaterial.answerKey.answers) {
+                  const answerValue = studentMaterial.answerKey.answers[`q${questionId}`] || 
+                                     studentMaterial.answerKey.answers[questionId.toString()];
+                  answer = Array.isArray(answerValue) ? answerValue[0] : (answerValue || 'varies');
+                }
+              }
+              
+              questions.push({
+                id: questionId.toString(),
+                type: questionType,
+                question: item.content,
+                options: item.choices,
+                answer: answer,
+                points: 1
+              });
+              
+              questionId++;
+            }
+          }
+        }
+        
+        // Return the extracted worksheet content
+        return {
+          title: worksheet.title || 'Student Worksheet',
+          instructions: worksheet.instructions || 'Complete the following activities.',
+          questions: questions
+        };
+      }
+    }
+  } catch (e) {
+    // If JSON parsing fails or structure is not as expected, log sanitized error
+    console.error('Failed to extract worksheet from lesson content:', e instanceof Error ? e.message : 'Unknown error');
+  }
+  
+  // Fallback to grade-appropriate template worksheets if extraction fails
   const worksheetTemplates: Record<string, WorksheetContent> = {
     'K': {
       title: 'Letter Recognition Practice',
@@ -227,32 +327,59 @@ export function generatePrintableWorksheet(
       </div>
 
       ${worksheet.questions.map((q, index) => {
+        // Escape HTML in questions and options to prevent XSS
+        const safeQuestion = escapeHtml(q.question);
+        
         if (q.type === 'multiple_choice') {
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
+              <p>${safeQuestion}</p>
               <div class="multiple-choice">
-                ${q.options?.map(option => 
-                  `<div class="choice">○ ${option}</div>`
+                ${(q.options ?? []).map(option => 
+                  `<div class="choice">○ ${escapeHtml(option)}</div>`
                 ).join('')}
               </div>
             </div>
           `;
         } else if (q.type === 'fill_blank') {
+          // For fill-in-the-blank, show the question with blank lines embedded
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
+              <p>${safeQuestion}</p>
+              ${!q.question.includes('___') && !/_{3,}/.test(q.question) ? 
+                '<br/><span class="answer-line"></span>' : ''}
+            </div>
+          `;
+        } else if (q.type === 'spelling') {
+          // For spelling questions, provide lines for writing
+          return `
+            <div class="question">
+              <div class="question-number">Question ${index + 1}</div>
+              <p>${safeQuestion}</p>
+              <br/>
+              ${Array.from({ length: 3 }).map(() => 
+                '<span class="answer-line" style="width: 100%; margin: 10px 0;"></span><br/>'
+              ).join('')}
             </div>
           `;
         } else {
+          // Default short_answer type - determine number of lines needed
+          const qLower = q.question.toLowerCase();
+          const needsMultipleLines = q.question.length > 100 || 
+                                   qLower.includes('explain') ||
+                                   qLower.includes('describe');
+          const lineCount = needsMultipleLines ? 3 : 1;
+          
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
-              <br/><br/>
-              <span class="answer-line"></span>
+              <p>${safeQuestion}</p>
+              <br/>
+              ${Array.from({ length: lineCount }).map(() => 
+                '<span class="answer-line" style="width: 100%; margin: 10px 0;"></span><br/>'
+              ).join('')}
             </div>
           `;
         }
