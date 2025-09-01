@@ -1,3 +1,5 @@
 - Use the Supabase MCP server for any information or context needed about the database.
 - The Github repo we are using is /bstewart2255/speddy.
 - Use the Context7 MCP server whenever there is a question of code best practices, or before implementing any large feature set.
+- Use the Github CLI tool to manage actions in the repo.
+- When encountering a complex issue, or a bug that is proving difficult to resolve, use Web Search to investigate the problem and receive support in finding a solution.

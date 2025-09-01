@@ -5,6 +5,14 @@ import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Targe
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { formatTimeSlot } from '../../lib/utils/date-time';
 import { LessonContentHandler, getPrintableContent, isJsonLesson } from '../../lib/utils/lesson-content-handler';
+import { 
+  generateWorksheetId, 
+  findStudentWorksheetContent, 
+  generateAIWorksheetHtml,
+  generateWorksheetQRCode,
+  printHtmlWorksheet,
+  printPdfWorksheet
+} from '../../lib/utils/worksheet-utils';
 import '../../app/styles/lesson-content.css';
 
 interface Student {
@@ -192,59 +200,65 @@ export function AIContentModalEnhanced({
     // Generate worksheets for each student in the time slot
     for (const student of lesson.students) {
       try {
-        const generator = new WorksheetGenerator();
+        // Check for AI-generated content using shared utility
+        const { studentMaterial, isValid, error } = findStudentWorksheetContent(lesson.content, student.id);
         
-        // Generate math worksheet
-        const mathPdf = await generator.generateWorksheet({
-          studentName: student.initials,
-          gradeLevel: student.grade_level as any, // Grade level from DB
-          subject: 'math',
-          sessionTime: formatTimeSlot(lesson.timeSlot),
-          sessionDate: lessonDate
-        });
+        let aiMathWorksheetHtml: string | null = null;
+        let aiElaWorksheetHtml: string | null = null;
         
-        // Open math worksheet in new window for printing
-        const mathWindow = window.open('', '_blank');
-        if (mathWindow) {
-          mathWindow.document.write(`
-            <html>
-              <head><title>Math Worksheet - ${student.initials}</title></head>
-              <body style="margin: 0;">
-                <iframe src="${mathPdf}" width="100%" height="100%" style="border: none;"></iframe>
-              </body>
-            </html>
-          `);
-          mathWindow.document.close();
-          setTimeout(() => {
-            mathWindow.print();
-          }, 500);
+        if (isValid && studentMaterial) {
+          console.log('Found AI-generated worksheet for student:', student.initials);
+          
+          // Generate unique worksheet IDs and QR codes in parallel for better performance
+          const mathWorksheetCode = generateWorksheetId(student.id, 'math');
+          const elaWorksheetCode = generateWorksheetId(student.id, 'ela');
+          
+          // Generate worksheets in parallel with subject-specific content
+          const [mathHtml, elaHtml] = await Promise.all([
+            generateAIWorksheetHtml(studentMaterial, student.initials, mathWorksheetCode, 'math'),
+            generateAIWorksheetHtml(studentMaterial, student.initials, elaWorksheetCode, 'ela')
+          ]);
+          
+          aiMathWorksheetHtml = mathHtml;
+          aiElaWorksheetHtml = elaHtml;
+        } else {
+          console.log(`No AI worksheet for ${student.initials}: ${error || 'Unknown error'}`);
         }
         
-        // Generate ELA worksheet
-        const elaGenerator = new WorksheetGenerator();
-        const elaPdf = await elaGenerator.generateWorksheet({
-          studentName: student.initials,
-          gradeLevel: student.grade_level as any, // Grade level from DB
-          subject: 'ela',
-          sessionTime: formatTimeSlot(lesson.timeSlot),
-          sessionDate: lessonDate
-        });
-        
-        // Open ELA worksheet in new window for printing
-        const elaWindow = window.open('', '_blank');
-        if (elaWindow) {
-          elaWindow.document.write(`
-            <html>
-              <head><title>ELA Worksheet - ${student.initials}</title></head>
-              <body style="margin: 0;">
-                <iframe src="${elaPdf}" width="100%" height="100%" style="border: none;"></iframe>
-              </body>
-            </html>
-          `);
-          elaWindow.document.close();
-          setTimeout(() => {
-            elaWindow.print();
-          }, 500);
+        if (aiMathWorksheetHtml && aiElaWorksheetHtml) {
+          // Print AI-generated worksheets
+          printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
+          printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
+        } else {
+          // Fallback to the original WorksheetGenerator for non-JSON content
+          console.log('Using fallback WorksheetGenerator for student:', student.initials);
+          const generator = new WorksheetGenerator();
+          
+          // Generate math worksheet
+          const mathPdf = await generator.generateWorksheet({
+            studentName: student.initials,
+            gradeLevel: student.grade_level as any, // Grade level from DB
+            subject: 'math',
+            sessionTime: formatTimeSlot(lesson.timeSlot),
+            sessionDate: lessonDate
+          });
+          
+          // Print math worksheet with auto-trigger
+          printPdfWorksheet(mathPdf, `Math Worksheet - ${student.initials}`);
+          
+          // Generate ELA worksheet
+          const elaGenerator = new WorksheetGenerator();
+          const elaPdf = await elaGenerator.generateWorksheet({
+            studentName: student.initials,
+            gradeLevel: student.grade_level as any, // Grade level from DB
+            subject: 'ela',
+            sessionTime: formatTimeSlot(lesson.timeSlot),
+            sessionDate: lessonDate
+          });
+          
+          // Print ELA worksheet with auto-trigger
+          printPdfWorksheet(elaPdf, `ELA Worksheet - ${student.initials}`);
         }
         
       } catch (error) {
