@@ -1,3 +1,21 @@
+/**
+ * @deprecated This class uses hardcoded templates and should be replaced with AI-generated content.
+ * 
+ * ISSUE #213: This WorksheetGenerator class contains static, hardcoded worksheet templates 
+ * that don't reflect the AI-generated differentiated content created for each student.
+ * 
+ * NEW APPROACH: The system now uses AI-generated content from JSON responses when available:
+ * 1. AI generates individualized worksheets in the `studentMaterials` section
+ * 2. The WorksheetRenderer class (lib/lessons/renderer.ts) renders these to HTML
+ * 3. This generator is only used as a fallback for non-JSON/legacy content
+ * 
+ * TODO: Once all lessons are migrated to JSON format, this file can be removed entirely.
+ * 
+ * Files that have been updated to use AI content with fallback:
+ * - /app/components/ai-content-modal.tsx
+ * - /app/components/ai-content-modal-enhanced.tsx
+ */
+
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 
@@ -13,6 +31,9 @@ export interface WorksheetConfig {
   lessonId?: string; // Add this line
 }
 
+/**
+ * @deprecated Use WorksheetRenderer with AI-generated content instead
+ */
 export class WorksheetGenerator {
   private doc: jsPDF;
 

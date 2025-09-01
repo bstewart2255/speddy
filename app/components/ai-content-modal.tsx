@@ -4,6 +4,8 @@ import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
 import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { LessonContentHandler, getPrintableContent } from '../../lib/utils/lesson-content-handler';
+import { WorksheetRenderer } from '../../lib/lessons/renderer';
+import QRCode from 'qrcode';
 
 interface Student {
   id: string;
@@ -182,80 +184,135 @@ export function AIContentModal({
 
   const handlePrintWorksheet = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
     try {
-      console.log('Generating worksheet for:', { studentInitials, gradeLevel, subject });
+      console.log('Generating worksheet for:', { studentInitials, gradeLevel, subject, content: content?.substring(0, 100) });
 
-      const generator = new WorksheetGenerator();
-
-      // Extract session time from the timeSlot prop
-      let sessionTime = '';
-      let sessionDate = new Date();
-
-      // TODO: Connect lessonId from saved lessons
-      // When a lesson is saved, store its ID and pass it here:
-      // lessonId: savedLessonId || undefined
-      // This will enable tracking worksheets back to their source lessons
-      // for analytics and student performance tracking
-
-      // Check if this is a daily lesson or single session
-      if (timeSlot.includes('Daily Lessons')) {
-        // For daily lessons, use the current time slot being viewed
-        sessionTime = 'Daily Practice';
-        // Extract date from timeSlot like "Daily Lessons - Tue, Jul 8"
-        const dateMatch = timeSlot.match(/Daily Lessons - (.+)/);
-        if (dateMatch) {
-          sessionDate = new Date(dateMatch[1] + ', ' + new Date().getFullYear());
+      // Check if we have AI-generated JSON content with studentMaterials
+      let useAIContent = false;
+      let aiWorksheetHtml: string | null = null;
+      
+      if (content) {
+        try {
+          const parsedContent = JSON.parse(content);
+          if (parsedContent.studentMaterials && Array.isArray(parsedContent.studentMaterials)) {
+            // Find the material for this specific student
+            const studentMaterial = parsedContent.studentMaterials.find(
+              (m: any) => m.studentId === studentId
+            );
+            
+            if (studentMaterial && studentMaterial.worksheet) {
+              console.log('Found AI-generated worksheet for student:', studentInitials);
+              useAIContent = true;
+              
+              // Generate QR code for worksheet submission
+              const worksheetCode = `ws_${Date.now()}_${studentId}`;
+              const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
+              const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {
+                width: 80,
+                margin: 1,
+                errorCorrectionLevel: 'M',
+                color: {
+                  dark: '#000000',
+                  light: '#FFFFFF'
+                }
+              });
+              
+              // Use WorksheetRenderer to generate HTML from AI content
+              const renderer = new WorksheetRenderer();
+              aiWorksheetHtml = renderer.renderStudentWorksheet(
+                studentMaterial,
+                studentInitials,
+                qrCodeDataUrl
+              );
+            } else {
+              console.log('No AI worksheet found for student:', studentInitials, 'using fallback');
+            }
+          }
+        } catch (parseError) {
+          console.log('Content is not JSON or parsing failed, using fallback generator');
         }
-      } else {
-        // For single sessions, use the time slot directly
-        sessionTime = timeSlot;
       }
 
-      // Generate worksheet with session context
-      const worksheetData = await generator.generateWorksheet({
-        studentName: studentInitials,
-        subject: subject,
-        gradeLevel: gradeLevel as any,
-        sessionDate: sessionDate,
-        sessionTime: sessionTime // Add this new field
-      });
-
-      if (!worksheetData || worksheetData.length === 0) {
-        console.error('No worksheet data generated');
-        alert('Failed to generate worksheet - no data returned');
-        return;
-      }
-
-      // Convert data URI to blob
-      const base64Data = worksheetData.split(',')[1];
-      const binaryData = atob(base64Data);
-      const arrayBuffer = new ArrayBuffer(binaryData.length);
-      const uint8Array = new Uint8Array(arrayBuffer);
-
-      for (let i = 0; i < binaryData.length; i++) {
-        uint8Array[i] = binaryData.charCodeAt(i);
-      }
-
-      const blob = new Blob([uint8Array], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Open PDF in new window
-      const printWindow = window.open(blobUrl, '_blank');
-
-      if (printWindow) {
-        // Clean up the blob URL after a delay
+      if (useAIContent && aiWorksheetHtml) {
+        // Open AI-generated worksheet in new window for printing
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('Please allow popups to print worksheets');
+          return;
+        }
+        
+        printWindow.document.write(aiWorksheetHtml);
+        printWindow.document.close();
+        
+        // Trigger print dialog after content loads
         setTimeout(() => {
-          URL.revokeObjectURL(blobUrl);
-        }, 1000);
+          printWindow.print();
+        }, 250);
       } else {
-        // If popup blocked, try direct download
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `${studentInitials}_Grade${gradeLevel}_${subject.toUpperCase()}_Worksheet.pdf`;
-        link.click();
+        // Fallback to the original WorksheetGenerator for non-JSON content
+        console.log('Using fallback WorksheetGenerator');
+        const generator = new WorksheetGenerator();
 
-        setTimeout(() => {
-          URL.revokeObjectURL(blobUrl);
-        }, 1000);
+        // Extract session time from the timeSlot prop
+        let sessionTime = '';
+        let sessionDate = new Date();
+
+        // Check if this is a daily lesson or single session
+        if (timeSlot.includes('Daily Lessons')) {
+          sessionTime = 'Daily Practice';
+          const dateMatch = timeSlot.match(/Daily Lessons - (.+)/);
+          if (dateMatch) {
+            sessionDate = new Date(dateMatch[1] + ', ' + new Date().getFullYear());
+          }
+        } else {
+          sessionTime = timeSlot;
+        }
+
+        // Generate worksheet with session context
+        const worksheetData = await generator.generateWorksheet({
+          studentName: studentInitials,
+          subject: subject,
+          gradeLevel: gradeLevel as any,
+          sessionDate: sessionDate,
+          sessionTime: sessionTime
+        });
+
+        if (!worksheetData || worksheetData.length === 0) {
+          console.error('No worksheet data generated');
+          alert('Failed to generate worksheet - no data returned');
+          return;
+        }
+
+        // Convert data URI to blob
+        const base64Data = worksheetData.split(',')[1];
+        const binaryData = atob(base64Data);
+        const arrayBuffer = new ArrayBuffer(binaryData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        for (let i = 0; i < binaryData.length; i++) {
+          uint8Array[i] = binaryData.charCodeAt(i);
+        }
+
+        const blob = new Blob([uint8Array], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Open PDF in new window
+        const printWindow = window.open(blobUrl, '_blank');
+
+        if (printWindow) {
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+          }, 1000);
+        } else {
+          // If popup blocked, try direct download
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = `${studentInitials}_Grade${gradeLevel}_${subject.toUpperCase()}_Worksheet.pdf`;
+          link.click();
+
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+          }, 1000);
+        }
       }
     } catch (error) {
       console.error('Error generating worksheet:', error);
@@ -308,6 +365,47 @@ export function AIContentModal({
   // Helper function to generate worksheet data
   const generateWorksheetData = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
     try {
+      // First try to use AI-generated content
+      if (content) {
+        try {
+          const parsedContent = JSON.parse(content);
+          if (parsedContent.studentMaterials && Array.isArray(parsedContent.studentMaterials)) {
+            const studentMaterial = parsedContent.studentMaterials.find(
+              (m: any) => m.studentId === studentId
+            );
+            
+            if (studentMaterial && studentMaterial.worksheet) {
+              // Generate QR code
+              const worksheetCode = `ws_${Date.now()}_${studentId}_${subject}`;
+              const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
+              const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {
+                width: 80,
+                margin: 1,
+                errorCorrectionLevel: 'M',
+                color: {
+                  dark: '#000000',
+                  light: '#FFFFFF'
+                }
+              });
+              
+              // Use WorksheetRenderer for AI content - return HTML instead of PDF
+              const renderer = new WorksheetRenderer();
+              const htmlContent = renderer.renderStudentWorksheet(
+                studentMaterial,
+                studentInitials,
+                qrCodeDataUrl
+              );
+              
+              // Return HTML content with a special marker
+              return `html:${htmlContent}`;
+            }
+          }
+        } catch (parseError) {
+          console.log('Failed to parse AI content, using fallback');
+        }
+      }
+      
+      // Fallback to WorksheetGenerator
       const generator = new WorksheetGenerator();
       
       let sessionTime = '';
@@ -341,34 +439,54 @@ export function AIContentModal({
     for (let i = 0; i < worksheetDataArray.length; i++) {
       const worksheetData = worksheetDataArray[i];
       
-      // Convert data URI to blob
-      const base64Data = worksheetData.split(',')[1];
-      const binaryData = atob(base64Data);
-      const arrayBuffer = new ArrayBuffer(binaryData.length);
-      const uint8Array = new Uint8Array(arrayBuffer);
+      // Check if this is HTML content (from AI) or PDF data (from generator)
+      if (worksheetData.startsWith('html:')) {
+        // Handle HTML content from AI-generated worksheets
+        const htmlContent = worksheetData.substring(5); // Remove 'html:' prefix
+        const printWindow = window.open('', '_blank');
+        
+        if (printWindow) {
+          printWindow.document.write(htmlContent);
+          printWindow.document.close();
+          
+          // Trigger print dialog after content loads
+          setTimeout(() => {
+            printWindow.print();
+          }, 250);
+        } else {
+          console.error('Popup blocked for worksheet', i + 1);
+        }
+      } else {
+        // Handle PDF data from WorksheetGenerator
+        // Convert data URI to blob
+        const base64Data = worksheetData.split(',')[1];
+        const binaryData = atob(base64Data);
+        const arrayBuffer = new ArrayBuffer(binaryData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
 
-      for (let j = 0; j < binaryData.length; j++) {
-        uint8Array[j] = binaryData.charCodeAt(j);
+        for (let j = 0; j < binaryData.length; j++) {
+          uint8Array[j] = binaryData.charCodeAt(j);
+        }
+
+        const blob = new Blob([uint8Array], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Open each PDF in a new tab with a slight delay
+        const printWindow = window.open(blobUrl, '_blank');
+        
+        if (!printWindow) {
+          // If popup blocked, create download links
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = `Worksheet_${i + 1}.pdf`;
+          link.click();
+        }
+
+        // Clean up blob URL after delay
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 2000);
       }
-
-      const blob = new Blob([uint8Array], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Open each PDF in a new tab with a slight delay
-      const printWindow = window.open(blobUrl, '_blank');
-      
-      if (!printWindow) {
-        // If popup blocked, create download links
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `Worksheet_${i + 1}.pdf`;
-        link.click();
-      }
-
-      // Clean up blob URL after delay
-      setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-      }, 2000);
       
       // Add small delay between opening tabs to prevent browser blocking
       if (i < worksheetDataArray.length - 1) {
