@@ -2,6 +2,7 @@
 import QRCode from 'qrcode';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '../../src/types/database';
+import type { LessonResponse, StudentMaterial, WorksheetItem } from '../lessons/schema';
 
 interface WorksheetQuestion {
   id: string;
@@ -65,6 +66,22 @@ export async function generateWorksheetWithQR(
   };
 }
 
+// Helper function to escape HTML to prevent XSS attacks
+function escapeHtml(text: string): string {
+  const div = typeof document !== 'undefined' ? document.createElement('div') : null;
+  if (div) {
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  // Fallback for server-side rendering
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Helper function to extract worksheet content from lesson HTML
 export function extractWorksheetFromLesson(
   lessonContent: string,
@@ -72,14 +89,19 @@ export function extractWorksheetFromLesson(
   gradeLevel: string
 ): WorksheetContent | null {
   try {
+    // Validate JSON structure before parsing
+    if (!lessonContent || typeof lessonContent !== 'string') {
+      throw new Error('Invalid lesson content format');
+    }
+    
     // Try to parse as JSON lesson content
-    const lessonData = JSON.parse(lessonContent);
+    const lessonData = JSON.parse(lessonContent) as LessonResponse;
     
     // Check if this is a LessonResponse with studentMaterials
     if (lessonData && lessonData.studentMaterials && Array.isArray(lessonData.studentMaterials)) {
       // Find the worksheet for this specific student
-      const studentMaterial = lessonData.studentMaterials.find(
-        (material: any) => material.studentId === studentId
+      const studentMaterial: StudentMaterial | undefined = lessonData.studentMaterials.find(
+        (material) => material.studentId === studentId
       );
       
       if (studentMaterial && studentMaterial.worksheet) {
@@ -98,7 +120,7 @@ export function extractWorksheetFromLesson(
             // Handle both nested WorksheetContent and direct WorksheetItem
             const itemsToProcess = contentItem.items || [contentItem];
             
-            for (const item of itemsToProcess) {
+            for (const item of itemsToProcess as WorksheetItem[]) {
               if (!item.content) continue;
               
               // Determine question type based on item properties
@@ -106,7 +128,8 @@ export function extractWorksheetFromLesson(
               
               if (item.choices && item.choices.length > 0) {
                 questionType = 'multiple_choice';
-              } else if (item.content.includes('___') || item.content.includes('_')) {
+              } else if (item.content.includes('___') || /_{3,}/.test(item.content)) {
+                // Only match 3 or more consecutive underscores
                 questionType = 'fill_blank';
               } else if (item.type === 'problem' || item.content.includes('=')) {
                 questionType = 'fill_blank';
@@ -118,9 +141,9 @@ export function extractWorksheetFromLesson(
                 if (studentMaterial.answerKey.items && studentMaterial.answerKey.items[questionId - 1]) {
                   answer = studentMaterial.answerKey.items[questionId - 1].correctAnswer;
                 } else if (studentMaterial.answerKey.answers) {
-                  answer = studentMaterial.answerKey.answers[`q${questionId}`] || 
-                          studentMaterial.answerKey.answers[questionId.toString()] || 
-                          'varies';
+                  const answerValue = studentMaterial.answerKey.answers[`q${questionId}`] || 
+                                     studentMaterial.answerKey.answers[questionId.toString()];
+                  answer = Array.isArray(answerValue) ? answerValue[0] : (answerValue || 'varies');
                 }
               }
               
@@ -147,8 +170,8 @@ export function extractWorksheetFromLesson(
       }
     }
   } catch (e) {
-    // If JSON parsing fails or structure is not as expected, log error
-    console.error('Failed to extract worksheet from lesson content:', e);
+    // If JSON parsing fails or structure is not as expected, log sanitized error
+    console.error('Failed to extract worksheet from lesson content:', e instanceof Error ? e.message : 'Unknown error');
   }
   
   // Fallback to grade-appropriate template worksheets if extraction fails
@@ -304,14 +327,17 @@ export function generatePrintableWorksheet(
       </div>
 
       ${worksheet.questions.map((q, index) => {
+        // Escape HTML in questions and options to prevent XSS
+        const safeQuestion = escapeHtml(q.question);
+        
         if (q.type === 'multiple_choice') {
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
+              <p>${safeQuestion}</p>
               <div class="multiple-choice">
                 ${q.options?.map(option => 
-                  `<div class="choice">○ ${option}</div>`
+                  `<div class="choice">○ ${escapeHtml(option)}</div>`
                 ).join('')}
               </div>
             </div>
@@ -321,8 +347,8 @@ export function generatePrintableWorksheet(
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
-              ${!q.question.includes('___') && !q.question.includes('_') ? 
+              <p>${safeQuestion}</p>
+              ${!q.question.includes('___') && !/_{3,}/.test(q.question) ? 
                 '<br/><span class="answer-line"></span>' : ''}
             </div>
           `;
@@ -331,7 +357,7 @@ export function generatePrintableWorksheet(
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
+              <p>${safeQuestion}</p>
               <br/>
               ${Array.from({ length: 3 }).map(() => 
                 '<span class="answer-line" style="width: 100%; margin: 10px 0;"></span><br/>'
@@ -340,15 +366,16 @@ export function generatePrintableWorksheet(
           `;
         } else {
           // Default short_answer type - determine number of lines needed
+          const qLower = q.question.toLowerCase();
           const needsMultipleLines = q.question.length > 100 || 
-                                   q.question.toLowerCase().includes('explain') ||
-                                   q.question.toLowerCase().includes('describe');
+                                   qLower.includes('explain') ||
+                                   qLower.includes('describe');
           const lineCount = needsMultipleLines ? 3 : 1;
           
           return `
             <div class="question">
               <div class="question-number">Question ${index + 1}</div>
-              <p>${q.question}</p>
+              <p>${safeQuestion}</p>
               <br/>
               ${Array.from({ length: lineCount }).map(() => 
                 '<span class="answer-line" style="width: 100%; margin: 10px 0;"></span><br/>'
