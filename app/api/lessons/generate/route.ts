@@ -8,6 +8,7 @@ import {
   isValidTeacherRole 
 } from '@/lib/lessons/schema';
 import { withAuth } from '@/lib/api/with-auth';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
@@ -176,17 +177,7 @@ async function enrichStudentData(
     // Parse grade with support for Kindergarten
     let grade: number | undefined = student.grade;
     if (!grade && studentData?.grade) {
-      const gradeStr = String(studentData.grade).toLowerCase();
-      // Check for Kindergarten
-      if (/\bk(indergarten)?\b/.test(gradeStr)) {
-        grade = 0;
-      } else {
-        // Extract numeric grade
-        const gradeMatch = gradeStr.match(/\d+/);
-        if (gradeMatch) {
-          grade = parseInt(gradeMatch[0], 10);
-        }
-      }
+      grade = parseGradeLevel(studentData.grade);
     }
     
     // Parse reading level as number when possible

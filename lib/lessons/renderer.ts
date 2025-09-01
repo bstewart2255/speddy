@@ -12,8 +12,7 @@ export class WorksheetRenderer {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;')
-      .replace(/\//g, '&#x2F;');
+      .replace(/'/g, '&#039;');
   }
 
   /**
@@ -361,28 +360,6 @@ export class WorksheetRenderer {
     `;
   }
 
-  private renderGradeGroups(lesson: LessonResponse): string {
-    // Guard against missing metadata or gradeGroups
-    if (!lesson?.metadata?.gradeGroups || !Array.isArray(lesson.metadata.gradeGroups)) {
-      return '';
-    }
-    
-    const groups = lesson.metadata.gradeGroups;
-    
-    // Additional check for empty array
-    if (groups.length === 0) {
-      return '';
-    }
-    
-    return groups.map((group, index) => `
-      <div style="margin: 10px 0;">
-        <strong>Group ${index + 1}:</strong> 
-        Grades ${group.grades.join(', ')} 
-        (${group.studentIds.length} students) - 
-        Activity Level: ${group.activityLevel}
-      </div>
-    `).join('');
-  }
 
   /**
    * Renders answer key for teacher
@@ -469,14 +446,22 @@ export class WorksheetRenderer {
   }
 
   private renderGradeGroups(lesson: LessonResponse): string {
-    if (!lesson.metadata.gradeGroups || lesson.metadata.gradeGroups.length === 0) {
+    // Guard against missing metadata or gradeGroups
+    if (!lesson?.metadata?.gradeGroups || !Array.isArray(lesson.metadata.gradeGroups)) {
+      return '';
+    }
+    
+    const groups = lesson.metadata.gradeGroups;
+    
+    // Additional check for empty array
+    if (groups.length === 0) {
       return '';
     }
 
     return `
     <div class="section">
       <h2>Grade Groups</h2>
-      ${lesson.metadata.gradeGroups.map((group, index) => `
+      ${groups.map((group, index) => `
         <div class="role-specific">
           <h3>Group ${index + 1}: Grades ${this.escapeHtml(group.grades.join(', '))}</h3>
           ${group.readingLevels ? `<p><strong>Reading Levels:</strong> ${this.escapeHtml(group.readingLevels.join(', '))}</p>` : ''}

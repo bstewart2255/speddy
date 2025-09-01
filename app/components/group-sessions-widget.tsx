@@ -6,6 +6,7 @@ import { AIContentModal } from "./ai-content-modal";
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { getMinutesUntilFirstSession } from '../utils/date-helpers';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import type { Database } from '../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -232,23 +233,9 @@ export function GroupSessionsWidget() {
     try {
       // Transform students to match new API format
       const formattedStudents = students.map(student => {
-        // Parse grade level to number
-        let grade = 3; // Default grade
-        if (student.grade_level) {
-          const gradeStr = String(student.grade_level).toLowerCase();
-          if (/\bk(indergarten)?\b/.test(gradeStr)) {
-            grade = 0;
-          } else {
-            const gradeMatch = gradeStr.match(/\d+/);
-            if (gradeMatch) {
-              grade = parseInt(gradeMatch[0], 10);
-            }
-          }
-        }
-        
         return {
           id: student.id,
-          grade
+          grade: parseGradeLevel(student.grade_level)
         };
       });
 

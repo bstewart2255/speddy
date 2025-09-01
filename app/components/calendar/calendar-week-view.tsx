@@ -13,6 +13,7 @@ import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -492,23 +493,9 @@ export function CalendarWeekView({
     const studentList = Array.from(sessionStudents).map(studentId => {
       const student = students.get(studentId);
       
-      // Parse grade level to number for new API
-      let grade = 3; // Default grade
-      if (student?.grade_level) {
-        const gradeStr = String(student.grade_level).toLowerCase();
-        if (/\bk(indergarten)?\b/.test(gradeStr)) {
-          grade = 0;
-        } else {
-          const gradeMatch = gradeStr.match(/\d+/);
-          if (gradeMatch) {
-            grade = parseInt(gradeMatch[0], 10);
-          }
-        }
-      }
-      
       return {
         id: studentId,
-        grade
+        grade: parseGradeLevel(student?.grade_level)
       };
     });
     
@@ -575,7 +562,6 @@ export function CalendarWeekView({
           content: lessonContent,
           prompt: '',
           session_data: slotSessions,
-          lesson_id: data.lessonId, // Store reference to new lesson
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }, { onConflict: 'provider_id,lesson_date,time_slot' });

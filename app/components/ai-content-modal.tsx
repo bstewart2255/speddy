@@ -49,7 +49,7 @@ export function AIContentModal({
     if (!content) return false;
     try {
       const parsed = JSON.parse(content);
-      return parsed.lessonPlan && parsed.materials;
+      return parsed.lesson && parsed.studentMaterials;
     } catch {
       return false;
     }
