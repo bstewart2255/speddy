@@ -52,11 +52,23 @@ export default function CalendarPage() {
     
     const effectiveProviderId = providerIdParam || providerId || user.id;
     
-    const { data: eventsData, error } = await supabase
+    let eventsQuery = supabase
       .from('calendar_events')
       .select('*')
-      .eq('provider_id', effectiveProviderId)
-      .order('date', { ascending: true });
+      .eq('provider_id', effectiveProviderId);
+    
+    // Apply school filter if currentSchool is available
+    if (currentSchool) {
+      if (currentSchool.school_id) {
+        eventsQuery = eventsQuery.eq('school_id', currentSchool.school_id);
+      } else if (currentSchool.school_site && currentSchool.school_district) {
+        eventsQuery = eventsQuery
+          .eq('school_site', currentSchool.school_site)
+          .eq('school_district', currentSchool.school_district);
+      }
+    }
+    
+    const { data: eventsData, error } = await eventsQuery.order('date', { ascending: true });
     
     if (error) {
       console.error('Error fetching calendar events:', error);
@@ -64,7 +76,7 @@ export default function CalendarPage() {
     }
     
     return eventsData || [];
-  }, [supabase, providerId]);
+  }, [supabase, providerId, currentSchool]);
 
   // Navigation handlers
   const handlePreviousDay = () => {
@@ -119,20 +131,61 @@ export default function CalendarPage() {
       
       setProviderId(user.id);
 
-      // Fetch sessions
-      const { data: sessionData, error: sessionError } = await supabase
+      // Fetch sessions filtered by current school
+      let sessionQuery = supabase
         .from('schedule_sessions')
-        .select('*')
+        .select(`
+          *,
+          students!inner(
+            school_id,
+            district_id,
+            school_site,
+            school_district
+          )
+        `)
         .eq('provider_id', user.id);
 
-      if (sessionError) throw sessionError;
-      setSessions(sessionData || []);
+      // Apply school filter if currentSchool is available
+      if (currentSchool) {
+        if (currentSchool.school_id) {
+          sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
+        } else if (currentSchool.school_site && currentSchool.school_district) {
+          sessionQuery = sessionQuery
+            .eq('students.school_site', currentSchool.school_site)
+            .eq('students.school_district', currentSchool.school_district);
+        }
+      }
 
-      // Fetch students
-      const { data: studentData, error: studentError } = await supabase
+      const { data: sessionData, error: sessionError } = await sessionQuery;
+
+      if (sessionError) throw sessionError;
+      
+      // Extract just the session data (without the joined student data)
+      const sessions = sessionData?.map(item => {
+        const { students, ...session } = item;
+        return session;
+      }) || [];
+      
+      setSessions(sessions);
+
+      // Fetch students filtered by current school
+      let studentQuery = supabase
         .from('students')
         .select('id, initials, grade_level')
         .eq('provider_id', user.id);
+
+      // Apply school filter if currentSchool is available
+      if (currentSchool) {
+        if (currentSchool.school_id) {
+          studentQuery = studentQuery.eq('school_id', currentSchool.school_id);
+        } else if (currentSchool.school_site && currentSchool.school_district) {
+          studentQuery = studentQuery
+            .eq('school_site', currentSchool.school_site)
+            .eq('school_district', currentSchool.school_district);
+        }
+      }
+
+      const { data: studentData, error: studentError } = await studentQuery;
 
       if (studentError) throw studentError;
 
