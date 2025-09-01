@@ -43,17 +43,38 @@ export async function generateWorksheetQRCode(worksheetCode: string): Promise<st
 
 /**
  * Validates student material structure
+ * Supports both material.worksheet and material.worksheets.{math|ela|all}
  */
 export function validateStudentMaterial(material: any): boolean {
   if (!material || typeof material !== 'object') {
     return false;
   }
   
-  if (!material.worksheet || typeof material.worksheet !== 'object') {
+  // Find the worksheet to validate
+  let worksheet: any = null;
+  
+  // Prefer material.worksheet if present
+  if (material.worksheet && typeof material.worksheet === 'object') {
+    worksheet = material.worksheet;
+  } 
+  // Otherwise check for material.worksheets with math, ela, or all keys
+  else if (material.worksheets && typeof material.worksheets === 'object') {
+    // Check for any valid worksheet in worksheets object
+    if (material.worksheets.math && typeof material.worksheets.math === 'object') {
+      worksheet = material.worksheets.math;
+    } else if (material.worksheets.ela && typeof material.worksheets.ela === 'object') {
+      worksheet = material.worksheets.ela;
+    } else if (material.worksheets.all && typeof material.worksheets.all === 'object') {
+      worksheet = material.worksheets.all;
+    }
+  }
+  
+  // If no worksheet found in either location, return false
+  if (!worksheet) {
     return false;
   }
   
-  const worksheet = material.worksheet;
+  // Validate the worksheet structure
   if (!worksheet.title || !worksheet.instructions) {
     return false;
   }
