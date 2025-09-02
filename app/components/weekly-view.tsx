@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClient } from '@/lib/supabase/client';
 import { DraggableSessionBox } from '@/app/components/session/draggable-session-box';
+import { SessionDetailsPopup } from '@/app/components/session/session-details-popup';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
@@ -82,6 +83,12 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+  
+  // Session details popup state
+  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [assignedToInfo, setAssignedToInfo] = useState<any>(null);
+  const [showDetailsPopup, setShowDetailsPopup] = useState(false);
 
   // Reset to 'all' if the selected school is not filterable
   React.useEffect(() => {
@@ -349,6 +356,51 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     }
     
     return false;
+  }, [currentUser]);
+
+  // Handle session click to show details
+  const handleSessionClick = useCallback(async (session: any, student: any) => {
+    setSelectedSession(session);
+    setSelectedStudent(student);
+    
+    // Fetch assigned to info if there's an assigned SEA or specialist
+    if (session.assigned_to_sea_id || session.assigned_to_specialist_id) {
+      const supabase = createClient();
+      const assignedId = session.assigned_to_sea_id || session.assigned_to_specialist_id;
+      
+      const { data: assignedUser } = await supabase
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', assignedId)
+        .single();
+      
+      setAssignedToInfo(assignedUser);
+    } else {
+      setAssignedToInfo(null);
+    }
+    
+    setShowDetailsPopup(true);
+  }, []);
+
+  // Handle popup close and refresh sessions if updated
+  const handlePopupClose = useCallback(() => {
+    setShowDetailsPopup(false);
+    setSelectedSession(null);
+    setSelectedStudent(null);
+    setAssignedToInfo(null);
+  }, []);
+
+  const handleSessionUpdate = useCallback(async () => {
+    // Refresh sessions after update
+    const supabase = createClient();
+    const { data: updatedSessions } = await supabase
+      .from('schedule_sessions')
+      .select('*')
+      .eq('provider_id', currentUser?.id);
+    
+    if (updatedSessions) {
+      setSessions(updatedSessions);
+    }
   }, [currentUser]);
 
   // Check for conflicts after a session is moved
@@ -667,24 +719,29 @@ return (
                                     {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
                                   </span>
                                 ))}
-                                {sessionsInSlot.map((session) => (
-                              <DraggableSessionBox
-                                key={session.id}
-                                session={session}
-                                student={{
-                                  initials: students[session.student_id]?.initials || 'S',
-                                  grade_level: students[session.student_id]?.grade_level || '',
-                                  id: session.student_id
-                                }}
-                                isSeaSession={session.delivered_by === 'sea'}
-                                canEdit={canEditSession(session)}
-                                onDragStart={handleDragStart}
-                                onDragEnd={handleDragEnd}
-                                size="small"
-                                variant="pill"
-                                hasConflict={sessionConflicts[session.id] || false}
-                              />
-                            ))}
+                                {sessionsInSlot.map((session) => {
+                                  const studentData = {
+                                    initials: students[session.student_id]?.initials || 'S',
+                                    grade_level: students[session.student_id]?.grade_level || '',
+                                    id: session.student_id,
+                                    teacher_name: students[session.student_id]?.teacher_name
+                                  };
+                                  return (
+                                    <DraggableSessionBox
+                                      key={session.id}
+                                      session={session}
+                                      student={studentData}
+                                      isSeaSession={session.delivered_by === 'sea'}
+                                      canEdit={canEditSession(session)}
+                                      onDragStart={handleDragStart}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={() => handleSessionClick(session, studentData)}
+                                      size="small"
+                                      variant="pill"
+                                      hasConflict={sessionConflicts[session.id] || false}
+                                    />
+                                  );
+                                })}
                               </>
                             );
                           })()}
@@ -769,24 +826,29 @@ return (
                                     {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
                                   </span>
                                 ))}
-                                {sessionsInSlot.map((session) => (
-                              <DraggableSessionBox
-                                key={session.id}
-                                session={session}
-                                student={{
-                                  initials: students[session.student_id]?.initials || 'S',
-                                  grade_level: students[session.student_id]?.grade_level || '',
-                                  id: session.student_id
-                                }}
-                                isSeaSession={session.delivered_by === 'sea'}
-                                canEdit={canEditSession(session)}
-                                onDragStart={handleDragStart}
-                                onDragEnd={handleDragEnd}
-                                size="small"
-                                variant="pill"
-                                hasConflict={sessionConflicts[session.id] || false}
-                              />
-                            ))}
+                                {sessionsInSlot.map((session) => {
+                                  const studentData = {
+                                    initials: students[session.student_id]?.initials || 'S',
+                                    grade_level: students[session.student_id]?.grade_level || '',
+                                    id: session.student_id,
+                                    teacher_name: students[session.student_id]?.teacher_name
+                                  };
+                                  return (
+                                    <DraggableSessionBox
+                                      key={session.id}
+                                      session={session}
+                                      student={studentData}
+                                      isSeaSession={session.delivered_by === 'sea'}
+                                      canEdit={canEditSession(session)}
+                                      onDragStart={handleDragStart}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={() => handleSessionClick(session, studentData)}
+                                      size="small"
+                                      variant="pill"
+                                      hasConflict={sessionConflicts[session.id] || false}
+                                    />
+                                  );
+                                })}
                               </>
                             );
                           })()}
@@ -801,6 +863,18 @@ return (
           );
         })}
       </div>
+      
+      {/* Session Details Popup */}
+      {showDetailsPopup && selectedSession && selectedStudent && (
+        <SessionDetailsPopup
+          session={selectedSession}
+          student={selectedStudent}
+          assignedTo={assignedToInfo}
+          isOpen={showDetailsPopup}
+          onClose={handlePopupClose}
+          onUpdate={handleSessionUpdate}
+        />
+      )}
     </div>
   );
 }

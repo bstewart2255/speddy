@@ -529,6 +529,9 @@ export interface Database {
           session_date: string | null
           session_notes: string | null
           manually_placed: boolean
+          is_completed: boolean
+          student_absent: boolean
+          outside_schedule_conflict: boolean
         }
         Insert: {
           id?: string
@@ -547,6 +550,9 @@ export interface Database {
           session_date?: string | null
           session_notes?: string | null
           manually_placed?: boolean
+          is_completed?: boolean
+          student_absent?: boolean
+          outside_schedule_conflict?: boolean
         }
         Update: {
           id?: string
@@ -565,6 +571,9 @@ export interface Database {
           session_date?: string | null
           session_notes?: string | null
           manually_placed?: boolean
+          is_completed?: boolean
+          student_absent?: boolean
+          outside_schedule_conflict?: boolean
         }
       },
       lessons: {
