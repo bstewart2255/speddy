@@ -11,6 +11,7 @@ import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
+import { toLocalDateKey } from '@/lib/utils/date-time';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -58,13 +59,13 @@ export function CalendarWeekView({
 
   // Check if a date is a holiday
   const isHoliday = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     return holidays.some(h => h.date === dateStr);
   };
 
   // Get holiday name for a date
   const getHolidayName = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(date);
     const holiday = holidays.find(h => h.date === dateStr);
     return holiday?.name || 'Holiday';
   };
@@ -722,17 +723,15 @@ export function CalendarWeekView({
     }
   };
 
-  // Group sessions by day
-  const sessionsByDay = sessionsState.reduce(
-    (acc, session) => {
-      if (!acc[session.day_of_week]) {
-        acc[session.day_of_week] = [];
-      }
-      acc[session.day_of_week].push(session);
-      return acc;
-    },
-    {} as Record<number, ScheduleSession[]>,
-  );
+  // Group sessions by day, filtering out sessions without valid students
+  const sessionsByDay = React.useMemo(() => {
+    return sessionsState
+      .filter((session) => students.has(session.student_id))
+      .reduce((acc, session) => {
+        (acc[session.day_of_week] ||= []).push(session);
+        return acc;
+      }, {} as Record<number, ScheduleSession[]>);
+  }, [sessionsState, students]);
 
   // Sort sessions within each day
   Object.keys(sessionsByDay).forEach((day) => {
@@ -1226,7 +1225,7 @@ export function CalendarWeekView({
                           )}
                         >
                           <span className="select-none">
-                            {student?.initials || 'S'}
+                            {student?.initials || '?'}
                           </span>
                         </div>
                         <div className="flex-1 text-xs">

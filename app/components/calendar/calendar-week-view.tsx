@@ -902,7 +902,7 @@ export function CalendarWeekView({
     return weekDates.map((date, index) => {
       const dayOfWeek = index + 1; // 1-5 for Monday-Friday
       const daySessions = weekSessions.filter(
-        (s) => s.day_of_week === dayOfWeek
+        (s) => s.day_of_week === dayOfWeek && students.has(s.student_id)
       );
       const isHolidayDay = isHoliday(date);
       const holidayName = isHolidayDay ? getHolidayName(date) : null;
@@ -1290,7 +1290,7 @@ export function CalendarWeekView({
                                 {formatTime(session.start_time)}
                               </div>
                               <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
-                                {student?.initials || 'S'}
+                                {student?.initials || '?'}
                                 {session.delivered_by === 'sea' && (
                                   <div className="text-green-600 text-xs">SEA</div>
                                 )}

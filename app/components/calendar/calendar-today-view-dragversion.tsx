@@ -9,6 +9,7 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
+import { toLocalDateKey } from '@/lib/utils/date-time';
 
   type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -97,13 +98,13 @@ export function CalendarTodayView({
 
   // Check if current date is a holiday
   const isHoliday = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(currentDate);
     return holidays.some(h => h.date === dateStr);
   };
 
   // Get holiday name for current date
   const getHolidayName = () => {
-    const dateStr = currentDate.toISOString().split('T')[0];
+    const dateStr = toLocalDateKey(currentDate);
     const holiday = holidays.find(h => h.date === dateStr);
     return holiday?.name || 'Holiday';
   };
@@ -121,7 +122,10 @@ export function CalendarTodayView({
   // Filter sessions for the selected date (based on day_of_week)
   const selectedDayOfWeek = currentDate.getDay();
   const adjustedDayOfWeek = selectedDayOfWeek === 0 ? 7 : selectedDayOfWeek; // Convert Sunday (0) to 7
-  const todaySessions = sessions.filter(s => s.day_of_week === adjustedDayOfWeek);
+  const todaySessions = useMemo(
+    () => sessionsState.filter(s => s.day_of_week === adjustedDayOfWeek && students.has(s.student_id)),
+    [sessionsState, adjustedDayOfWeek, students]
+  );
 
   // Sort sessions by start time
   const sortedSessions = [...todaySessions].sort((a, b) => 
@@ -222,7 +226,7 @@ export function CalendarTodayView({
   }, [timeSlots]);
 
   // Drag and drop handlers
-  const handleDragStart = useCallback((session: ScheduleSession, event: DragEvent) => {
+  const handleDragStart = useCallback((session: ScheduleSession, event: React.DragEvent) => {
     setDraggedSession(session);
     // Validate all potential drop targets when drag starts
     validateAllDropTargets(session);
@@ -457,7 +461,7 @@ export function CalendarTodayView({
                               <DraggableSessionBox
                                 session={currentSession}
                                 student={{
-                                  initials: student?.initials || 'S',
+                                  initials: student?.initials || '?',
                                   grade_level: student?.grade_level || '',
                                   id: session.student_id
                                 }}
