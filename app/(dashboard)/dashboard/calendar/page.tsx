@@ -52,11 +52,27 @@ export default function CalendarPage() {
     
     const effectiveProviderId = providerIdParam || providerId || user.id;
     
-    const { data: eventsData, error } = await supabase
+    let eventsQuery = supabase
       .from('calendar_events')
       .select('*')
-      .eq('provider_id', effectiveProviderId)
-      .order('date', { ascending: true });
+      .eq('provider_id', effectiveProviderId);
+    
+    // Apply school filter if currentSchool is available (normalize aliases)
+    if (currentSchool) {
+      const schoolId = currentSchool.school_id ?? null;
+      const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+      const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+      
+      if (schoolId) {
+        eventsQuery = eventsQuery.eq('school_id', schoolId);
+      } else if (schoolSite && schoolDistrict) {
+        eventsQuery = eventsQuery
+          .eq('school_site', schoolSite)
+          .eq('school_district', schoolDistrict);
+      }
+    }
+    
+    const { data: eventsData, error } = await eventsQuery.order('date', { ascending: true });
     
     if (error) {
       console.error('Error fetching calendar events:', error);
@@ -64,7 +80,7 @@ export default function CalendarPage() {
     }
     
     return eventsData || [];
-  }, [supabase, providerId]);
+  }, [supabase, providerId, currentSchool]);
 
   // Navigation handlers
   const handlePreviousDay = () => {
@@ -119,24 +135,73 @@ export default function CalendarPage() {
       
       setProviderId(user.id);
 
-      // Fetch sessions
-      const { data: sessionData, error: sessionError } = await supabase
+      // Fetch sessions filtered by current school
+      let sessionQuery = supabase
         .from('schedule_sessions')
-        .select('*')
+        .select(`
+          *,
+          students!inner(
+            school_id,
+            district_id,
+            school_site,
+            school_district
+          )
+        `)
         .eq('provider_id', user.id);
 
-      if (sessionError) throw sessionError;
-      setSessions(sessionData || []);
+      // Apply school filter if currentSchool is available (normalize aliases)
+      if (currentSchool) {
+        const schoolId = currentSchool.school_id ?? null;
+        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+        
+        if (schoolId) {
+          sessionQuery = sessionQuery.eq('students.school_id', schoolId);
+        } else if (schoolSite && schoolDistrict) {
+          sessionQuery = sessionQuery
+            .eq('students.school_site', schoolSite)
+            .eq('students.school_district', schoolDistrict);
+        }
+      }
 
-      // Fetch students
-      const { data: studentData, error: studentError } = await supabase
+      const { data: sessionData, error: sessionError } = await sessionQuery;
+
+      if (sessionError) throw sessionError;
+      
+      // Extract just the session data (without the joined student data)
+      const sessionRows = sessionData?.map(item => {
+        const { students, ...session } = item;
+        return session;
+      }) || [];
+      
+      setSessions(sessionRows);
+
+      // Fetch students filtered by current school
+      let studentQuery = supabase
         .from('students')
         .select('id, initials, grade_level')
         .eq('provider_id', user.id);
 
+      // Apply school filter if currentSchool is available (normalize aliases)
+      if (currentSchool) {
+        const schoolId = currentSchool.school_id ?? null;
+        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+        
+        if (schoolId) {
+          studentQuery = studentQuery.eq('school_id', schoolId);
+        } else if (schoolSite && schoolDistrict) {
+          studentQuery = studentQuery
+            .eq('school_site', schoolSite)
+            .eq('school_district', schoolDistrict);
+        }
+      }
+
+      const { data: studentData, error: studentError } = await studentQuery;
+
       if (studentError) throw studentError;
 
-      const studentMap = new Map();
+      const studentMap = new Map<string, Student>();
       studentData?.forEach(student => {
         studentMap.set(student.id, student);
       });
