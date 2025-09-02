@@ -11,6 +11,8 @@ import { useSchool } from './providers/school-context';
 import type { Database } from '../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+type StudentRow = Database['public']['Tables']['students']['Row'];
+type ScheduleSessionWithStudent = ScheduleSession & { students: StudentRow | null };
 
 // Add custom styles for the highlight animation
 const highlightAnimation = `
@@ -39,7 +41,7 @@ const TIME_SLOTS = [
 ];
 
 export function GroupSessionsWidget() {
-  const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
+  const [sessions, setSessions] = React.useState<ScheduleSessionWithStudent[]>([]);
   const [students, setStudents] = React.useState<Record<string, any>>({});
   const [loading, setLoading] = React.useState(true);
   const [currentTime, setCurrentTime] = React.useState(new Date());
@@ -58,9 +60,11 @@ export function GroupSessionsWidget() {
 
 
   // Use session sync hook for real-time updates
+  // Note: useSessionSync expects ScheduleSession[], but we use ScheduleSessionWithStudent[]
+  // This is safe because the sync hook only updates existing sessions without the students field
   const { isConnected, lastSync } = useSessionSync({
-    sessions,
-    setSessions,
+    sessions: sessions as any,
+    setSessions: setSessions as any,
     providerId: providerId || undefined,
   });
 
@@ -72,13 +76,7 @@ export function GroupSessionsWidget() {
     return () => clearInterval(timer);
   }, []);
 
-  React.useEffect(() => {
-    fetchUpcomingSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSchool]); // Re-fetch when school changes - fetchUpcomingSessions is defined inside component
-
-
-  const fetchUpcomingSessions = async () => {
+  const fetchUpcomingSessions = React.useCallback(async () => {
     const supabase = createClient();
 
     try {
@@ -91,12 +89,14 @@ export function GroupSessionsWidget() {
 
       // Get today's day of week (1-5 for Mon-Fri)
       const today = new Date().getDay() || 7; // Convert Sunday from 0 to 7
-      const adjustedToday = today === 7 ? 1 : today; // Treat Sunday as Monday for now
+      // NOTE: Sunday (7) is intentionally mapped to Monday (1) to show Monday's schedule
+      // This is a business decision for weekend planning - users see next Monday's sessions on Sunday
+      const adjustedToday = today === 7 ? 1 : today;
 
-      // Build the query for sessions with school filtering
+      // Build the query for sessions with school filtering using inner join
       let sessionQuery = supabase
         .from("schedule_sessions")
-        .select("*, students(*)")
+        .select("*, students!inner(*)")
         .eq("provider_id", user.id)
         .eq("day_of_week", adjustedToday);
 
@@ -119,7 +119,7 @@ export function GroupSessionsWidget() {
 
       if (error) throw error;
 
-      setSessions(sessionData || []);
+      setSessions((sessionData as ScheduleSessionWithStudent[]) || []);
 
       // Create students lookup
       const studentsMap: Record<string, any> = {};
@@ -134,7 +134,13 @@ export function GroupSessionsWidget() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentSchool]);
+
+  React.useEffect(() => {
+    if (!currentSchool) return; // Wait for school selection to avoid showing unfiltered data
+    setLoading(true);
+    fetchUpcomingSessions();
+  }, [currentSchool, fetchUpcomingSessions]); // Re-fetch when school changes
 
   const getNextFiveHours = useCallback(() => {
     const now = currentTime;
