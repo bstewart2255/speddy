@@ -66,8 +66,8 @@ export class PromptAssembler {
     let totalConfidence = 0;
     let confidenceCount = 0;
 
-    // Build system prompt with constraints
-    const systemPrompt = this.buildSystemPrompt(context.lessonType);
+    // Build system prompt with constraints and subject-specific guidance
+    const systemPrompt = this.buildSystemPrompt(context.lessonType, context.subject);
     
     // Build user prompt with dynamic data
     let userPrompt = '';
@@ -96,12 +96,50 @@ export class PromptAssembler {
     };
   }
 
-  private buildSystemPrompt(lessonType: 'individual' | 'group'): string {
+  private buildSystemPrompt(lessonType: 'individual' | 'group', subject?: string): string {
+    let subjectGuidance = '';
+    
+    if (subject) {
+      const subjectLower = subject.toLowerCase();
+      if (subjectLower === 'math' || subjectLower === 'mathematics') {
+        subjectGuidance = `
+MATH-SPECIFIC REQUIREMENTS:
+- Include number lines, hundreds charts, or visual models for every problem
+- Progress from concrete to abstract representations
+- Include computation practice appropriate for grade level
+- Incorporate word problems with visual supports
+- Use manipulative representations (drawn on worksheet)
+- Include step-by-step examples for new concepts
+`;
+      } else if (subjectLower === 'ela' || subjectLower === 'reading' || subjectLower === 'english' || subjectLower === 'phonics') {
+        subjectGuidance = `
+ELA/READING-SPECIFIC REQUIREMENTS:
+- Match text complexity to student's actual reading level (not just grade level)
+- Include phonics patterns appropriate for developmental level
+- Incorporate sight word practice for younger grades
+- Use picture supports for vocabulary
+- Include comprehension questions at multiple levels (literal, inferential)
+- Provide word banks when appropriate
+- Use larger fonts for younger students
+`;
+      } else if (subjectLower === 'writing') {
+        subjectGuidance = `
+WRITING-SPECIFIC REQUIREMENTS:
+- Provide sentence starters and frames
+- Include word banks with topic-specific vocabulary
+- Use graphic organizers (printed on worksheet)
+- Include lined spaces appropriate for grade level
+- Provide examples of target writing skill
+- Break complex tasks into steps
+`;
+      }
+    }
+    
     return `You are an expert special education teacher creating ${lessonType} lessons with these STRICT requirements:
 
 MATERIAL CONSTRAINTS (ABSOLUTELY REQUIRED):
 ${this.materialConstraints.map(c => `- ${c}`).join('\n')}
-
+${subjectGuidance}
 OUTPUT FORMAT:
 1. Lesson Overview
    - Title
@@ -236,8 +274,19 @@ CRITICAL RULES:
     const assessments = context.assessments.get(studentId) || [];
     const performance = context.performance.get(studentId) || [];
     
-    // Add basic info (would need to fetch from DB in real implementation)
+    // Fetch student's actual grade level from database
+    const { data: student } = await this.supabase!
+      .from('students')
+      .select('grade_level')
+      .eq('id', studentId)
+      .single();
+    
+    // Add basic info
     profile += `- ID Reference: Student${studentNumber}\n`;
+    if (student?.grade_level) {
+      profile += `- Grade Level: ${student.grade_level}\n`;
+      dataUsed.push('grade_level');
+    }
 
     // Add assessment-based information
     if (assessments.length > 0) {

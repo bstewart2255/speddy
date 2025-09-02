@@ -123,6 +123,24 @@ export class AssessmentRegistry {
 
     // Get student details (contains IEP goals, reading level, etc.)
     const supabase = await createClient() as unknown as SupabaseClient;
+    
+    // First get the student's grade level from students table
+    const { data: student } = await supabase
+      .from('students')
+      .select('grade_level')
+      .eq('id', studentId)
+      .single();
+    
+    if (student?.grade_level) {
+      assessments.push({
+        studentId,
+        assessmentType: 'grade_level',
+        data: student.grade_level,
+        collectedAt: new Date(),
+        confidence: 1.0
+      });
+    }
+    
     const { data: studentDetails } = await supabase
       .from('student_details')
       .select('*')

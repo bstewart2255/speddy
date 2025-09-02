@@ -1,8 +1,9 @@
 // lib/worksheets/worksheet-generator.ts
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '../../src/types/database';
 import type { LessonResponse, StudentMaterial, WorksheetItem } from '../lessons/schema';
+import { standardizeGradeLevel } from '../utils/grade-level';
 
 interface WorksheetQuestion {
   id: string;
@@ -175,6 +176,12 @@ export function extractWorksheetFromLesson(
   }
   
   // Fallback to grade-appropriate template worksheets if extraction fails
+  // Standardize the grade level first
+  const standardizedGrade = standardizeGradeLevel(gradeLevel);
+  if (!standardizedGrade) {
+    return null;
+  }
+  
   const worksheetTemplates: Record<string, WorksheetContent> = {
     'K': {
       title: 'Letter Recognition Practice',
@@ -237,7 +244,7 @@ export function extractWorksheetFromLesson(
     }
   };
 
-  return worksheetTemplates[gradeLevel] || null;
+  return worksheetTemplates[standardizedGrade] || null;
 }
 
 // Generate printable HTML for worksheet
