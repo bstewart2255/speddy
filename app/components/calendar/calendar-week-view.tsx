@@ -124,6 +124,27 @@ export function CalendarWeekView({
     return hours * 60 + minutes;
   };
 
+  // Helper function to apply generated lessons to state
+  const applyGeneratedLessonsToState = (
+    prev: Map<string, any>,
+    dateKey: string,
+    lessons: Array<{ timeSlot: string; content: string; prompt: string; lessonId?: string }>
+  ) => {
+    const newMap = new Map(prev);
+    const dayLessons = { ...(newMap.get(dateKey) || {}) };
+    
+    lessons.forEach(lesson => {
+      dayLessons[lesson.timeSlot] = {
+        content: lesson.content,
+        prompt: lesson.prompt,
+        lessonId: lesson.lessonId
+      };
+    });
+    
+    newMap.set(dateKey, dayLessons);
+    return newMap;
+  };
+
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
     const sessionGenerator = new SessionGenerator();
@@ -479,24 +500,20 @@ export function CalendarWeekView({
     // Update the savedLessons state with all generated lessons
     if (generatedLessons.length > 0) {
       const dateStr = toLocalDateKey(date);
-      setSavedLessons(prev => {
-        const newMap = new Map(prev);
-        const dayLessons = newMap.get(dateStr) || {};
-        
-        generatedLessons.forEach(lesson => {
-          dayLessons[lesson.timeSlot] = {
-            content: lesson.content,
-            prompt: lesson.prompt,
-            lessonId: lesson.lessonId
-          };
-        });
-        
-        newMap.set(dateStr, dayLessons);
-        return newMap;
-      });
+      setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
     }
     
-    showToast(`Generated ${generatedLessons.length} AI lesson(s) for different time slots`, 'success');
+    const total = timeSlotGroups.size;
+    const succeeded = generatedLessons.length;
+    const failed = total - succeeded;
+    
+    if (failed === 0) {
+      showToast(`Successfully generated ${succeeded} AI lesson(s)`, 'success');
+    } else if (succeeded === 0) {
+      showToast('Failed to generate any lessons', 'error');
+    } else {
+      showToast(`Generated ${succeeded} lesson(s), ${failed} failed`, 'warning');
+    }
   };
 
   // Generate AI content for a specific time slot
@@ -527,7 +544,7 @@ export function CalendarWeekView({
       return null; // Skip empty time slots
     }
     
-    console.log(`Generating lesson for ${studentList.length} students in time slot ${timeSlot}`);
+    // Remove verbose logging in production
     
     try {
       // Determine subject based on time of day or use default
@@ -562,10 +579,20 @@ export function CalendarWeekView({
         throw new Error('No lesson received from API');
       }
 
-      console.log(`Saving lesson for ${timeSlot}, lessonId: ${data.lessonId}`);
+      // Validate lessonId
+      const lessonId = data.lessonId || null;
       
       // Store the JSON lesson directly
       const lessonContent = JSON.stringify(data.lesson);
+
+      // Prepare trimmed session data to avoid PII bloat
+      const trimmedSessions = slotSessions.map(s => ({
+        id: s.id,
+        student_id: s.student_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        service_type: s.service_type
+      }));
 
       // First try to delete any existing empty lesson
       await supabase
@@ -585,8 +612,7 @@ export function CalendarWeekView({
           time_slot: timeSlot,
           content: lessonContent,
           prompt: '',
-          session_data: slotSessions,
-          created_at: new Date().toISOString(),
+          session_data: trimmedSessions,
           updated_at: new Date().toISOString()
         }, { onConflict: 'provider_id,lesson_date,time_slot' });
 
@@ -599,7 +625,7 @@ export function CalendarWeekView({
         timeSlot,
         content: lessonContent,
         prompt: '',
-        lessonId: data.lessonId
+        lessonId
       };
     } catch (error) {
       console.error(`Error generating content for time slot ${timeSlot}:`, error);
@@ -637,24 +663,20 @@ export function CalendarWeekView({
       // Update the savedLessons state with all generated lessons
       if (generatedLessons.length > 0) {
         const dateStr = toLocalDateKey(date);
-        setSavedLessons(prev => {
-          const newMap = new Map(prev);
-          const dayLessons = newMap.get(dateStr) || {};
-          
-          generatedLessons.forEach(lesson => {
-            dayLessons[lesson.timeSlot] = {
-              content: lesson.content,
-              prompt: lesson.prompt,
-              lessonId: lesson.lessonId
-            };
-          });
-          
-          newMap.set(dateStr, dayLessons);
-          return newMap;
-        });
+        setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
       }
       
-      showToast(`Generated ${generatedLessons.length} AI lesson(s) for different time slots`, 'success');
+      const total = timeSlotGroups.size;
+      const succeeded = generatedLessons.length;
+      const failed = total - succeeded;
+      
+      if (failed === 0) {
+        showToast(`Successfully generated ${succeeded} AI lesson(s)`, 'success');
+      } else if (succeeded === 0) {
+        showToast('Failed to generate any lessons', 'error');
+      } else {
+        showToast(`Generated ${succeeded} lesson(s), ${failed} failed`, 'warning');
+      }
     } finally {
       setGeneratingContent(false);
     }
@@ -784,19 +806,15 @@ export function CalendarWeekView({
       if (lessonData) {
         // Update the savedLessons state
         const dateStr = toLocalDateKey(date);
-        setSavedLessons(prev => {
-          const newMap = new Map(prev);
-          const dayLessons = newMap.get(dateStr) || {};
-          dayLessons[timeSlot] = {
-            content: lessonData.content,
-            prompt: lessonData.prompt,
-            lessonId: lessonData.lessonId
-          };
-          newMap.set(dateStr, dayLessons);
-          return newMap;
-        });
+        setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, [lessonData]));
         
-        setAiContent(lessonData.content);
+        // Pretty-print JSON content for display
+        try {
+          const parsed = JSON.parse(lessonData.content);
+          setAiContent(JSON.stringify(parsed, null, 2));
+        } catch {
+          setAiContent(lessonData.content);
+        }
         showToast('AI lesson generated successfully', 'success');
       }
     } finally {
@@ -1016,22 +1034,7 @@ export function CalendarWeekView({
         if (generatedLessons.length > 0) {
           // Update the savedLessons state with all generated lessons
           const dateStr = toLocalDateKey(selectedLessonDate);
-          setSavedLessons(prev => {
-            const newMap = new Map(prev);
-            const dayLessons = newMap.get(dateStr) || {};
-            
-            // Add all generated lessons to the day
-            generatedLessons.forEach(lesson => {
-              dayLessons[lesson.timeSlot] = {
-                content: lesson.content,
-                prompt: lesson.prompt,
-                lessonId: lesson.lessonId
-              };
-            });
-            
-            newMap.set(dateStr, dayLessons);
-            return newMap;
-          });
+          setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
           
           // Show the enhanced modal with all generated lessons
           setEnhancedModalLessons(generatedLessons);
