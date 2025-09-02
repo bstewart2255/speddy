@@ -722,17 +722,19 @@ export function CalendarWeekView({
     }
   };
 
-  // Group sessions by day
-  const sessionsByDay = sessionsState.reduce(
-    (acc, session) => {
-      if (!acc[session.day_of_week]) {
-        acc[session.day_of_week] = [];
-      }
-      acc[session.day_of_week].push(session);
-      return acc;
-    },
-    {} as Record<number, ScheduleSession[]>,
-  );
+  // Group sessions by day, filtering out sessions without valid students
+  const sessionsByDay = sessionsState
+    .filter((session) => students.has(session.student_id))
+    .reduce(
+      (acc, session) => {
+        if (!acc[session.day_of_week]) {
+          acc[session.day_of_week] = [];
+        }
+        acc[session.day_of_week].push(session);
+        return acc;
+      },
+      {} as Record<number, ScheduleSession[]>,
+    );
 
   // Sort sessions within each day
   Object.keys(sessionsByDay).forEach((day) => {
@@ -1226,7 +1228,7 @@ export function CalendarWeekView({
                           )}
                         >
                           <span className="select-none">
-                            {student?.initials || 'S'}
+                            {student?.initials || '?'}
                           </span>
                         </div>
                         <div className="flex-1 text-xs">

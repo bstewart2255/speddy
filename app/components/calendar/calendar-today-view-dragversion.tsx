@@ -121,7 +121,7 @@ export function CalendarTodayView({
   // Filter sessions for the selected date (based on day_of_week)
   const selectedDayOfWeek = currentDate.getDay();
   const adjustedDayOfWeek = selectedDayOfWeek === 0 ? 7 : selectedDayOfWeek; // Convert Sunday (0) to 7
-  const todaySessions = sessions.filter(s => s.day_of_week === adjustedDayOfWeek);
+  const todaySessions = sessions.filter(s => s.day_of_week === adjustedDayOfWeek && students.has(s.student_id));
 
   // Sort sessions by start time
   const sortedSessions = [...todaySessions].sort((a, b) => 
@@ -457,7 +457,7 @@ export function CalendarTodayView({
                               <DraggableSessionBox
                                 session={currentSession}
                                 student={{
-                                  initials: student?.initials || 'S',
+                                  initials: student?.initials || '?',
                                   grade_level: student?.grade_level || '',
                                   id: session.student_id
                                 }}

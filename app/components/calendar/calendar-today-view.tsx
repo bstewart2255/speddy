@@ -360,12 +360,13 @@ export function CalendarTodayView({
       {!isHoliday() && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="divide-y divide-gray-100">
-            {sessionsState.length === 0 ? (
+            {sessionsState.filter((session) => students.has(session.student_id)).length === 0 ? (
               <div className="p-4 text-center text-gray-500">
                 No sessions scheduled for today
               </div>
             ) : (
               sessionsState
+                .filter((session) => students.has(session.student_id))
                 .sort((a, b) => a.start_time.localeCompare(b.start_time))
                 .map((session) => {
                   const student = students.get(session.student_id);
@@ -378,7 +379,7 @@ export function CalendarTodayView({
                             {formatTime(session.start_time)} - {formatTime(session.end_time)}
                           </div>
                           <div className="text-sm font-semibold text-gray-900">
-                            {student?.initials || 'S'}
+                            {student?.initials || '?'}
                           </div>
                         </div>
 
