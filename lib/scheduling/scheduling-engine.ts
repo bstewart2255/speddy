@@ -484,7 +484,10 @@ export class SchedulingEngine {
       completed_by: null,
       session_notes: null,
       session_date: null,
-      manually_placed: false
+      manually_placed: false,
+      is_completed: false,
+      student_absent: false,
+      outside_schedule_conflict: false
     }));
   }
 

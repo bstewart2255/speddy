@@ -223,7 +223,7 @@ export function CalendarTodayView({
     setValidDropTargets(valid);
     setInvalidDropTargets(invalid);
     setIsValidating(false);
-  }, [timeSlots]);
+  }, [timeSlots, addMinutesToTime]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((session: ScheduleSession, event: React.DragEvent) => {
@@ -288,7 +288,7 @@ export function CalendarTodayView({
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd]);
+  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd, addMinutesToTime]);
 
   // Handler for completing/uncompleting a session
     const handleCompleteToggle = async (sessionId: string, completed: boolean) => {

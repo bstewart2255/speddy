@@ -53,7 +53,7 @@ export default function Navbar() {
       }
     };
     getUser();
-  }, [supabase.auth]);
+  }, [supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OnboardingBanner } from './onboarding-banner';
 
@@ -10,11 +10,7 @@ export function OnboardingNotifications() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  useEffect(() => {
-    checkOnboardingStatus();
-  }, []);
-
-  const checkOnboardingStatus = async () => {
+  const checkOnboardingStatus = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -71,7 +67,11 @@ export function OnboardingNotifications() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+  
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, [checkOnboardingStatus]);
 
   const handleDismissSetupBanner = async () => {
     const { data: { user } } = await supabase.auth.getUser();

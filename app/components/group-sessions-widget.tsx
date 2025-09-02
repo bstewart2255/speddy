@@ -240,7 +240,7 @@ export function GroupSessionsWidget() {
       }
       return `in ${hours}h ${mins}m`;
     }
-  }, [currentTime, sessions, getSessionsForSlot]);
+  }, [currentTime, getSessionsForSlot]);
 
   const generateAIContent = async (students: any[], timeSlot: string) => {
     setGeneratingContent(true);
@@ -332,7 +332,7 @@ export function GroupSessionsWidget() {
     });
     
     return slotMap;
-  }, [sessions, visibleSlots, getSessionsForSlot]);
+  }, [visibleSlots, getSessionsForSlot]);
 
   if (loading) {
     return <div className="animate-pulse bg-gray-100 rounded-lg h-64"></div>;
