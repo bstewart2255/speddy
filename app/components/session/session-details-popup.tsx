@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ScheduleSession } from '@/src/types/database';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
+import { useToast } from '@/app/contexts/toast-context';
 
 interface SessionDetailsPopupProps {
   session: ScheduleSession & {
-    session_date?: string;
+    session_date?: string | null;
   };
   student: {
     initials: string;
@@ -32,6 +33,7 @@ export function SessionDetailsPopup({
   onClose,
   onUpdate
 }: SessionDetailsPopupProps) {
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     is_completed: session.is_completed || false,
@@ -49,14 +51,26 @@ export function SessionDetailsPopup({
     });
   }, [session]);
 
+  // Add escape key handler
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
   const handleSave = async () => {
     setLoading(true);
     const supabase = createClient();
 
     try {
-      const updateData: any = {
-        ...formData,
-        updated_at: new Date().toISOString()
+      const updateData: Partial<ScheduleSession> & {
+        completed_at?: string | null;
+        completed_by?: string | null;
+      } = {
+        ...formData
       };
 
       // If marking as completed, set completed_at and completed_by
@@ -77,13 +91,18 @@ export function SessionDetailsPopup({
         .update(updateData)
         .eq('id', session.id);
 
-      if (error) throw error;
-
-      if (onUpdate) {
-        onUpdate();
+      if (error) {
+        showToast('Failed to update session details. Please try again.', 'error');
+        console.error('Error updating session details:', error);
+      } else {
+        showToast('Session details updated successfully', 'success');
+        if (onUpdate) {
+          onUpdate();
+        }
+        onClose();
       }
-      onClose();
     } catch (error) {
+      showToast('An unexpected error occurred. Please try again.', 'error');
       console.error('Error updating session details:', error);
     } finally {
       setLoading(false);
@@ -92,16 +111,18 @@ export function SessionDetailsPopup({
 
   if (!isOpen) return null;
 
-  // Format session date if available
+  // Format session date if available - parse as date-only to avoid timezone issues
   const sessionDate = session.session_date 
-    ? format(new Date(session.session_date), 'EEEE, MMMM d, yyyy')
+    ? format(parse(session.session_date, 'yyyy-MM-dd', new Date()), 'EEEE, MMMM d, yyyy')
     : 'Today';
 
-  // Format times
-  const startTime = session.start_time ? 
-    format(new Date(`2000-01-01T${session.start_time}`), 'h:mm a') : '';
-  const endTime = session.end_time ? 
-    format(new Date(`2000-01-01T${session.end_time}`), 'h:mm a') : '';
+  // Format times - parse as time-only to avoid browser quirks
+  const startTime = session.start_time 
+    ? format(parse(session.start_time, 'HH:mm:ss', new Date()), 'h:mm a')
+    : '';
+  const endTime = session.end_time 
+    ? format(parse(session.end_time, 'HH:mm:ss', new Date()), 'h:mm a')
+    : '';
 
   return (
     <>
@@ -109,10 +130,16 @@ export function SessionDetailsPopup({
       <div 
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
         onClick={onClose}
+        aria-hidden="true"
       />
       
       {/* Popup */}
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+      <div 
+        className="fixed inset-0 flex items-center justify-center z-50 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Session details"
+      >
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="p-4 border-b">
@@ -126,6 +153,7 @@ export function SessionDetailsPopup({
               <button
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600"
+                aria-label="Close session details"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

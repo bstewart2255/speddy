@@ -55,9 +55,17 @@ export function DraggableSessionBox({
   };
 
   const handleDragEnd = () => {
-    setIsDragging(false);
+    // Delay resetting isDragging to prevent click after drag
+    setTimeout(() => setIsDragging(false), 50);
     if (onDragEnd) {
       onDragEnd();
+    }
+  };
+
+  const handleClick = () => {
+    // Prevent click if we're dragging or just finished dragging
+    if (!isDragging && onClick) {
+      onClick();
     }
   };
 
@@ -113,9 +121,15 @@ export function DraggableSessionBox({
       draggable={canEdit}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onClick={onClick}
-      role="button"
-      tabIndex={canEdit ? 0 : -1}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          if (!isDragging) onClick();
+        }
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick || canEdit ? 0 : -1}
       aria-label={`${isSeaSession ? 'SEA' : 'Provider'} session for ${student.initials}, grade ${student.grade_level}, ${session.service_type} from ${session.start_time} to ${session.end_time}`}
       aria-grabbed={isDragging}
       aria-disabled={!canEdit}

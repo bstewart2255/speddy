@@ -11,6 +11,7 @@ import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
 import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
 import { useSchool } from '@/app/components/providers/school-context';
+import { ScheduleSession } from '@/src/types/database';
 
 interface Holiday {
   date: string;
@@ -70,8 +71,13 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       : startOfWeek(today, { weekStartsOn: 1 });
   }, []); // Calculate once on mount
 
-  const [sessions, setSessions] = React.useState<any[]>([]);
-  const [students, setStudents] = React.useState<Record<string, any>>({});
+  const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
+  const [students, setStudents] = React.useState<Record<string, {
+    id: string;
+    initials: string;
+    grade_level: string;
+    teacher_name?: string;
+  }>>({});
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -79,15 +85,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
   
   // Drag and drop state
-  const [draggedSession, setDraggedSession] = useState<any>(null);
+  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
   
   // Session details popup state
-  const [selectedSession, setSelectedSession] = useState<any>(null);
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [assignedToInfo, setAssignedToInfo] = useState<any>(null);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<{
+    id: string;
+    initials: string;
+    grade_level: string;
+    teacher_name?: string;
+  } | null>(null);
+  const [assignedToInfo, setAssignedToInfo] = useState<{
+    full_name: string;
+    role: string;
+  } | null>(null);
   const [showDetailsPopup, setShowDetailsPopup] = useState(false);
 
   // Reset to 'all' if the selected school is not filterable
@@ -153,14 +167,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           sessionQuery = supabase
             .from("schedule_sessions")
             .select(`
-              id, 
-              day_of_week, 
-              start_time, 
-              end_time, 
-              student_id, 
-              delivered_by, 
-              assigned_to_sea_id, 
+              id,
+              day_of_week,
+              start_time,
+              end_time,
+              student_id,
+              delivered_by,
+              assigned_to_sea_id,
+              assigned_to_specialist_id,
               provider_id,
+              service_type,
+              session_date,
+              session_notes,
+              is_completed,
+              student_absent,
+              outside_schedule_conflict,
+              completed_at,
+              completed_by,
               students!inner(
                 id,
                 school_id
@@ -173,7 +196,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         } else {
           sessionQuery = supabase
             .from("schedule_sessions")
-            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
+            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, provider_id, service_type, session_date, session_notes, is_completed, student_absent, outside_schedule_conflict, completed_at, completed_by")
             .gte("day_of_week", 1)
             .lte("day_of_week", 5)
             .order("day_of_week")
@@ -230,7 +253,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             // Fetch all students in one query
             const { data: studentData, error: studentError } = await supabase
             .from("students")
-            .select("id, initials, grade_level")
+            .select("id, initials, grade_level, teacher_name")
             .in("id", studentIds);
 
             if (studentData && !studentError && isMounted) {
@@ -359,7 +382,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   }, [currentUser]);
 
   // Handle session click to show details
-  const handleSessionClick = useCallback(async (session: any, student: any) => {
+  const handleSessionClick = useCallback(async (
+    session: ScheduleSession, 
+    student: { id: string; initials: string; grade_level: string; teacher_name?: string }
+  ) => {
     setSelectedSession(session);
     setSelectedStudent(student);
     
@@ -391,17 +417,9 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   }, []);
 
   const handleSessionUpdate = useCallback(async () => {
-    // Refresh sessions after update
-    const supabase = createClient();
-    const { data: updatedSessions } = await supabase
-      .from('schedule_sessions')
-      .select('*')
-      .eq('provider_id', currentUser?.id);
-    
-    if (updatedSessions) {
-      setSessions(updatedSessions);
-    }
-  }, [currentUser]);
+    // Use forceRefresh to maintain filters and ordering
+    await forceRefresh();
+  }, [forceRefresh]);
 
   // Check for conflicts after a session is moved
   const checkSessionConflicts = useCallback(async (sessionId: string) => {
