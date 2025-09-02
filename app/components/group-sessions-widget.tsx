@@ -7,6 +7,7 @@ import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { getMinutesUntilFirstSession } from '../utils/date-helpers';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { useSchool } from './providers/school-context';
 import type { Database } from '../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -51,7 +52,9 @@ export function GroupSessionsWidget() {
   const [selectedStudents, setSelectedStudents] = React.useState<any[]>([]);
   const [aiContent, setAiContent] = React.useState<string | null>(null);
   const [generatingContent, setGeneratingContent] = React.useState(false);
-  const [currentSchool, setCurrentSchool] = React.useState<string>("");
+  
+  // Use school context to get the current school
+  const { currentSchool } = useSchool();
 
 
   // Use session sync hook for real-time updates
@@ -71,7 +74,8 @@ export function GroupSessionsWidget() {
 
   React.useEffect(() => {
     fetchUpcomingSessions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSchool]); // Re-fetch when school changes - fetchUpcomingSessions is defined inside component
 
 
   const fetchUpcomingSessions = async () => {
@@ -85,28 +89,33 @@ export function GroupSessionsWidget() {
       
       setProviderId(user.id);
 
-      // Get user's current school
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("school_site")
-        .eq("id", user.id)
-        .single();
-
-      if (profile) {
-        setCurrentSchool(profile.school_site);
-      }
-
       // Get today's day of week (1-5 for Mon-Fri)
       const today = new Date().getDay() || 7; // Convert Sunday from 0 to 7
       const adjustedToday = today === 7 ? 1 : today; // Treat Sunday as Monday for now
 
-      // Fetch today's sessions
-      const { data: sessionData, error } = await supabase
+      // Build the query for sessions with school filtering
+      let sessionQuery = supabase
         .from("schedule_sessions")
         .select("*, students(*)")
         .eq("provider_id", user.id)
-        .eq("day_of_week", adjustedToday)
-        .order("start_time");
+        .eq("day_of_week", adjustedToday);
+
+      // Apply school filter if we have a current school selected
+      if (currentSchool) {
+        // For migrated schools (have school_id)
+        if (currentSchool.school_id) {
+          sessionQuery = sessionQuery.eq("students.school_id", currentSchool.school_id);
+        } 
+        // For legacy schools (use school_site and school_district)
+        else if (currentSchool.school_site && currentSchool.school_district) {
+          sessionQuery = sessionQuery
+            .eq("students.school_site", currentSchool.school_site)
+            .eq("students.school_district", currentSchool.school_district);
+        }
+      }
+
+      // Execute the query
+      const { data: sessionData, error } = await sessionQuery.order("start_time");
 
       if (error) throw error;
 
