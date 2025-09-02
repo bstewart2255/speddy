@@ -279,6 +279,14 @@ export default function SchedulePage() {
     endDrag();
   }, [clearDragValidation, endDrag]);
 
+  // Helper function to convert pixels to time
+  const pixelsToTime = useCallback((pixels: number): string => {
+    const totalMinutes = Math.round((pixels * 60) / gridConfig.pixelsPerHour);
+    const hours = Math.floor(totalMinutes / 60) + gridConfig.startHour;
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  }, [gridConfig.pixelsPerHour, gridConfig.startHour]);
+
   // Handle drag over - Just update position
   const handleDragOver = useCallback((e: React.DragEvent, day: number) => {
     e.preventDefault();
@@ -297,7 +305,7 @@ export default function SchedulePage() {
       time,
       pixelY: (minutesFromStart * gridConfig.pixelsPerHour) / 60,
     });
-  }, [draggedSession, dragOffset, gridConfig, updateDragPosition]);
+  }, [draggedSession, dragOffset, gridConfig, updateDragPosition, pixelsToTime]);
 
   // Handle drop
   const handleDrop = useCallback(async (e: React.DragEvent, day: number) => {
@@ -341,14 +349,6 @@ export default function SchedulePage() {
       }
     }
   }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop]);
-
-  // Helper function to convert pixels to time
-  const pixelsToTime = useCallback((pixels: number): string => {
-    const totalMinutes = Math.round((pixels * 60) / gridConfig.pixelsPerHour);
-    const hours = Math.floor(totalMinutes / 60) + gridConfig.startHour;
-    const minutes = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  }, [gridConfig.pixelsPerHour, gridConfig.startHour]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {

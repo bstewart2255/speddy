@@ -580,7 +580,10 @@ export class OptimizedScheduler {
         completed_by: null,
         session_notes: null,
         session_date: null,
-        manually_placed: false
+        manually_placed: false,
+        is_completed: false,
+        student_absent: false,
+        outside_schedule_conflict: false
       });
     }
 
@@ -1054,6 +1057,9 @@ export class OptimizedScheduler {
         session_date: session.session_date,
         manually_placed: session.manually_placed || false,
         created_at: new Date().toISOString(),
+        is_completed: session.is_completed || false,
+        student_absent: session.student_absent || false,
+        outside_schedule_conflict: session.outside_schedule_conflict || false
       });
     }
   }

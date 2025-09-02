@@ -67,10 +67,10 @@ export function CalendarWeekView({
   const weekDates = getWeekDates();
 
   // Check if a date is a holiday
-  const isHoliday = (date: Date) => {
+  const isHoliday = useCallback((date: Date) => {
     const dateStr = toLocalDateKey(date);
     return holidays.some(h => h.date === dateStr);
-  };
+  }, [holidays]);
 
   // Get holiday name for a date
   const getHolidayName = (date: Date) => {
@@ -116,7 +116,6 @@ export function CalendarWeekView({
   const [enhancedModalDate, setEnhancedModalDate] = useState<Date>(new Date());
 
   const supabase = createClient<Database>();
-  const sessionGenerator = new SessionGenerator();
   const { showToast } = useToast();
 
   // Helper function for time conversion
@@ -127,6 +126,7 @@ export function CalendarWeekView({
 
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
+    const sessionGenerator = new SessionGenerator();
     const loadSessions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -159,7 +159,7 @@ export function CalendarWeekView({
     };
 
     loadSessions();
-  }, [weekOffset]);
+  }, [weekOffset, supabase]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
@@ -264,7 +264,7 @@ export function CalendarWeekView({
     };
 
     cleanupLegacyLessons();
-  }, []); // Run once on mount
+  }, [supabase]); // Run once on mount
 
   // Load saved AI lessons
   React.useEffect(() => {
@@ -325,7 +325,7 @@ export function CalendarWeekView({
     };
 
     loadSavedLessons();
-  }, [weekOffset]); // Change dependency to weekOffset instead of weekDates
+  }, [weekOffset, weekDates, supabase]);
 
   // Handler for saving notes
   const handleSaveNotes = async () => {

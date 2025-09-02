@@ -114,11 +114,11 @@ export function CalendarWeekView({
   const [lastSync, setLastSync] = useState<number | null>(null);
 
   const supabase = createClient<Database>();
-  const sessionGenerator = new SessionGenerator();
   const { showToast } = useToast();
 
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
+    const sessionGenerator = new SessionGenerator();
     const loadSessions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -151,7 +151,7 @@ export function CalendarWeekView({
     };
 
     loadSessions();
-  }, [weekOffset, sessionGenerator, supabase]);
+  }, [weekOffset, supabase]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
@@ -491,7 +491,7 @@ export function CalendarWeekView({
     if (weekDates.length > 0) {
       fetchSavedLessons();
     }
-  }, [weekOffset]); // Use weekOffset instead of mapped dates array 
+  }, [weekOffset, weekDates]); 
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":").map(Number);
@@ -651,7 +651,7 @@ export function CalendarWeekView({
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, validDropDays, optimisticUpdate, handleDragEnd]);
+  }, [draggedSession, validDropDays, optimisticUpdate, handleDragEnd, showToast]);
 
   const handleGenerateDailyAILesson = (
     date: Date,

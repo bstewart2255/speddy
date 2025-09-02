@@ -13,7 +13,7 @@ export interface DraggableSessionBoxProps {
   };
   isSeaSession: boolean;
   canEdit: boolean;
-  onDragStart?: (session: ScheduleSession, event: DragEvent) => void;
+  onDragStart?: (session: ScheduleSession, event: React.DragEvent) => void;
   onDragEnd?: () => void;
   onClick?: () => void;
   size?: 'small' | 'medium' | 'large';
@@ -50,7 +50,7 @@ export function DraggableSessionBox({
 
     // Call parent handler if provided
     if (onDragStart) {
-      onDragStart(session, event.nativeEvent);
+      onDragStart(session, event);
     }
   };
 

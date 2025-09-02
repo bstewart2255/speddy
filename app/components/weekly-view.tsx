@@ -440,7 +440,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     }));
   }, [sessions]);
 
-  const handleDragStart = useCallback((session: any, event: DragEvent) => {
+  const handleDragStart = useCallback((session: any, event: React.DragEvent) => {
     setDraggedSession(session);
   }, []);
 

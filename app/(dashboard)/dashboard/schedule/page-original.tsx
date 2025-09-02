@@ -216,7 +216,7 @@ export default function SchedulePage() {
     console.log('[daySessionColumns] Calculation time:', memoEndTime - memoStartTime, 'ms');
 
     return columns;
-  }, [sessions]);
+  }, [sessions, weekDays]);
 
   // Helper function to format time for display
   const formatTime = (time: string): string => {

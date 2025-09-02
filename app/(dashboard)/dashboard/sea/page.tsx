@@ -25,10 +25,6 @@ export default function SEADashboard() {
   const [todaysSessions, setTodaysSessions] = useState<AssignedSession[]>([]);
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchSEAData();
-  }, []);
-
   const fetchSEAData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -79,6 +75,10 @@ export default function SEADashboard() {
       setLoading(false);
     }
   }, [supabase]);
+
+  useEffect(() => {
+    fetchSEAData();
+  }, [fetchSEAData]);
 
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':');

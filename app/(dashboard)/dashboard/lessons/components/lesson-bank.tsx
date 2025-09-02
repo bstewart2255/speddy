@@ -230,14 +230,6 @@ export default function LessonBank() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchLessons();
-  }, []);
-
-  useEffect(() => {
-    filterLessons();
-  }, [lessons, filterSubject, filterGrade]);
-
   const fetchLessons = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -272,6 +264,14 @@ export default function LessonBank() {
     
     setFilteredLessons(filtered);
   }, [lessons, filterSubject, filterGrade]);
+
+  useEffect(() => {
+    fetchLessons();
+  }, [fetchLessons]);
+
+  useEffect(() => {
+    filterLessons();
+  }, [filterLessons]);
 
   const handleDelete = async (lessonId: string) => {
     try {
