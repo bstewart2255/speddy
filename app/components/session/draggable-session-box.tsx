@@ -15,6 +15,7 @@ export interface DraggableSessionBoxProps {
   canEdit: boolean;
   onDragStart?: (session: ScheduleSession, event: DragEvent) => void;
   onDragEnd?: () => void;
+  onClick?: () => void;
   size?: 'small' | 'medium' | 'large';
   variant?: 'box' | 'pill';
   hasConflict?: boolean;
@@ -27,6 +28,7 @@ export function DraggableSessionBox({
   canEdit,
   onDragStart,
   onDragEnd,
+  onClick,
   size = 'medium',
   variant = 'box',
   hasConflict = false
@@ -53,9 +55,17 @@ export function DraggableSessionBox({
   };
 
   const handleDragEnd = () => {
-    setIsDragging(false);
+    // Delay resetting isDragging to prevent click after drag
+    setTimeout(() => setIsDragging(false), 50);
     if (onDragEnd) {
       onDragEnd();
+    }
+  };
+
+  const handleClick = () => {
+    // Prevent click if we're dragging or just finished dragging
+    if (!isDragging && onClick) {
+      onClick();
     }
   };
 
@@ -111,12 +121,20 @@ export function DraggableSessionBox({
       draggable={canEdit}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      role="button"
-      tabIndex={canEdit ? 0 : -1}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          if (!isDragging) onClick();
+        }
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick || canEdit ? 0 : -1}
       aria-label={`${isSeaSession ? 'SEA' : 'Provider'} session for ${student.initials}, grade ${student.grade_level}, ${session.service_type} from ${session.start_time} to ${session.end_time}`}
       aria-grabbed={isDragging}
       aria-disabled={!canEdit}
       title={`${student.initials} - ${session.service_type} (${session.start_time}-${session.end_time})`}
+      style={{ cursor: onClick ? 'pointer' : (canEdit ? 'grab' : 'default') }}
     >
       <span className="select-none">
         {student.initials}

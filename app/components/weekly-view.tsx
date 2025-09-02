@@ -4,12 +4,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClient } from '@/lib/supabase/client';
 import { DraggableSessionBox } from '@/app/components/session/draggable-session-box';
+import { SessionDetailsPopup } from '@/app/components/session/session-details-popup';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
 import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
 import { useSchool } from '@/app/components/providers/school-context';
+import { ScheduleSession } from '@/src/types/database';
 
 interface Holiday {
   date: string;
@@ -69,8 +71,13 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       : startOfWeek(today, { weekStartsOn: 1 });
   }, []); // Calculate once on mount
 
-  const [sessions, setSessions] = React.useState<any[]>([]);
-  const [students, setStudents] = React.useState<Record<string, any>>({});
+  const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
+  const [students, setStudents] = React.useState<Record<string, {
+    id: string;
+    initials: string;
+    grade_level: string;
+    teacher_name?: string;
+  }>>({});
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -78,10 +85,24 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
   
   // Drag and drop state
-  const [draggedSession, setDraggedSession] = useState<any>(null);
+  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+  
+  // Session details popup state
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<{
+    id: string;
+    initials: string;
+    grade_level: string;
+    teacher_name?: string;
+  } | null>(null);
+  const [assignedToInfo, setAssignedToInfo] = useState<{
+    full_name: string;
+    role: string;
+  } | null>(null);
+  const [showDetailsPopup, setShowDetailsPopup] = useState(false);
 
   // Reset to 'all' if the selected school is not filterable
   React.useEffect(() => {
@@ -146,14 +167,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           sessionQuery = supabase
             .from("schedule_sessions")
             .select(`
-              id, 
-              day_of_week, 
-              start_time, 
-              end_time, 
-              student_id, 
-              delivered_by, 
-              assigned_to_sea_id, 
+              id,
+              day_of_week,
+              start_time,
+              end_time,
+              student_id,
+              delivered_by,
+              assigned_to_sea_id,
+              assigned_to_specialist_id,
               provider_id,
+              service_type,
+              session_date,
+              session_notes,
+              is_completed,
+              student_absent,
+              outside_schedule_conflict,
+              completed_at,
+              completed_by,
               students!inner(
                 id,
                 school_id
@@ -166,7 +196,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         } else {
           sessionQuery = supabase
             .from("schedule_sessions")
-            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, provider_id")
+            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, provider_id, service_type, session_date, session_notes, is_completed, student_absent, outside_schedule_conflict, completed_at, completed_by")
             .gte("day_of_week", 1)
             .lte("day_of_week", 5)
             .order("day_of_week")
@@ -223,7 +253,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             // Fetch all students in one query
             const { data: studentData, error: studentError } = await supabase
             .from("students")
-            .select("id, initials, grade_level")
+            .select("id, initials, grade_level, teacher_name")
             .in("id", studentIds);
 
             if (studentData && !studentError && isMounted) {
@@ -350,6 +380,46 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     
     return false;
   }, [currentUser]);
+
+  // Handle session click to show details
+  const handleSessionClick = useCallback(async (
+    session: ScheduleSession, 
+    student: { id: string; initials: string; grade_level: string; teacher_name?: string }
+  ) => {
+    setSelectedSession(session);
+    setSelectedStudent(student);
+    
+    // Fetch assigned to info if there's an assigned SEA or specialist
+    if (session.assigned_to_sea_id || session.assigned_to_specialist_id) {
+      const supabase = createClient();
+      const assignedId = session.assigned_to_sea_id || session.assigned_to_specialist_id;
+      
+      const { data: assignedUser } = await supabase
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', assignedId)
+        .single();
+      
+      setAssignedToInfo(assignedUser);
+    } else {
+      setAssignedToInfo(null);
+    }
+    
+    setShowDetailsPopup(true);
+  }, []);
+
+  // Handle popup close and refresh sessions if updated
+  const handlePopupClose = useCallback(() => {
+    setShowDetailsPopup(false);
+    setSelectedSession(null);
+    setSelectedStudent(null);
+    setAssignedToInfo(null);
+  }, []);
+
+  const handleSessionUpdate = useCallback(async () => {
+    // Use forceRefresh to maintain filters and ordering
+    await forceRefresh();
+  }, [forceRefresh]);
 
   // Check for conflicts after a session is moved
   const checkSessionConflicts = useCallback(async (sessionId: string) => {
@@ -667,24 +737,29 @@ return (
                                     {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
                                   </span>
                                 ))}
-                                {sessionsInSlot.map((session) => (
-                              <DraggableSessionBox
-                                key={session.id}
-                                session={session}
-                                student={{
-                                  initials: students[session.student_id]?.initials || 'S',
-                                  grade_level: students[session.student_id]?.grade_level || '',
-                                  id: session.student_id
-                                }}
-                                isSeaSession={session.delivered_by === 'sea'}
-                                canEdit={canEditSession(session)}
-                                onDragStart={handleDragStart}
-                                onDragEnd={handleDragEnd}
-                                size="small"
-                                variant="pill"
-                                hasConflict={sessionConflicts[session.id] || false}
-                              />
-                            ))}
+                                {sessionsInSlot.map((session) => {
+                                  const studentData = {
+                                    initials: students[session.student_id]?.initials || 'S',
+                                    grade_level: students[session.student_id]?.grade_level || '',
+                                    id: session.student_id,
+                                    teacher_name: students[session.student_id]?.teacher_name
+                                  };
+                                  return (
+                                    <DraggableSessionBox
+                                      key={session.id}
+                                      session={session}
+                                      student={studentData}
+                                      isSeaSession={session.delivered_by === 'sea'}
+                                      canEdit={canEditSession(session)}
+                                      onDragStart={handleDragStart}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={() => handleSessionClick(session, studentData)}
+                                      size="small"
+                                      variant="pill"
+                                      hasConflict={sessionConflicts[session.id] || false}
+                                    />
+                                  );
+                                })}
                               </>
                             );
                           })()}
@@ -769,24 +844,29 @@ return (
                                     {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
                                   </span>
                                 ))}
-                                {sessionsInSlot.map((session) => (
-                              <DraggableSessionBox
-                                key={session.id}
-                                session={session}
-                                student={{
-                                  initials: students[session.student_id]?.initials || 'S',
-                                  grade_level: students[session.student_id]?.grade_level || '',
-                                  id: session.student_id
-                                }}
-                                isSeaSession={session.delivered_by === 'sea'}
-                                canEdit={canEditSession(session)}
-                                onDragStart={handleDragStart}
-                                onDragEnd={handleDragEnd}
-                                size="small"
-                                variant="pill"
-                                hasConflict={sessionConflicts[session.id] || false}
-                              />
-                            ))}
+                                {sessionsInSlot.map((session) => {
+                                  const studentData = {
+                                    initials: students[session.student_id]?.initials || 'S',
+                                    grade_level: students[session.student_id]?.grade_level || '',
+                                    id: session.student_id,
+                                    teacher_name: students[session.student_id]?.teacher_name
+                                  };
+                                  return (
+                                    <DraggableSessionBox
+                                      key={session.id}
+                                      session={session}
+                                      student={studentData}
+                                      isSeaSession={session.delivered_by === 'sea'}
+                                      canEdit={canEditSession(session)}
+                                      onDragStart={handleDragStart}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={() => handleSessionClick(session, studentData)}
+                                      size="small"
+                                      variant="pill"
+                                      hasConflict={sessionConflicts[session.id] || false}
+                                    />
+                                  );
+                                })}
                               </>
                             );
                           })()}
@@ -801,6 +881,18 @@ return (
           );
         })}
       </div>
+      
+      {/* Session Details Popup */}
+      {showDetailsPopup && selectedSession && selectedStudent && (
+        <SessionDetailsPopup
+          session={selectedSession}
+          student={selectedStudent}
+          assignedTo={assignedToInfo}
+          isOpen={showDetailsPopup}
+          onClose={handlePopupClose}
+          onUpdate={handleSessionUpdate}
+        />
+      )}
     </div>
   );
 }
