@@ -57,14 +57,18 @@ export default function CalendarPage() {
       .select('*')
       .eq('provider_id', effectiveProviderId);
     
-    // Apply school filter if currentSchool is available
+    // Apply school filter if currentSchool is available (normalize aliases)
     if (currentSchool) {
-      if (currentSchool.school_id) {
-        eventsQuery = eventsQuery.eq('school_id', currentSchool.school_id);
-      } else if (currentSchool.school_site && currentSchool.school_district) {
+      const schoolId = currentSchool.school_id ?? null;
+      const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+      const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+      
+      if (schoolId) {
+        eventsQuery = eventsQuery.eq('school_id', schoolId);
+      } else if (schoolSite && schoolDistrict) {
         eventsQuery = eventsQuery
-          .eq('school_site', currentSchool.school_site)
-          .eq('school_district', currentSchool.school_district);
+          .eq('school_site', schoolSite)
+          .eq('school_district', schoolDistrict);
       }
     }
     
@@ -145,14 +149,18 @@ export default function CalendarPage() {
         `)
         .eq('provider_id', user.id);
 
-      // Apply school filter if currentSchool is available
+      // Apply school filter if currentSchool is available (normalize aliases)
       if (currentSchool) {
-        if (currentSchool.school_id) {
-          sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
-        } else if (currentSchool.school_site && currentSchool.school_district) {
+        const schoolId = currentSchool.school_id ?? null;
+        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+        
+        if (schoolId) {
+          sessionQuery = sessionQuery.eq('students.school_id', schoolId);
+        } else if (schoolSite && schoolDistrict) {
           sessionQuery = sessionQuery
-            .eq('students.school_site', currentSchool.school_site)
-            .eq('students.school_district', currentSchool.school_district);
+            .eq('students.school_site', schoolSite)
+            .eq('students.school_district', schoolDistrict);
         }
       }
 
@@ -161,12 +169,12 @@ export default function CalendarPage() {
       if (sessionError) throw sessionError;
       
       // Extract just the session data (without the joined student data)
-      const sessions = sessionData?.map(item => {
+      const sessionRows = sessionData?.map(item => {
         const { students, ...session } = item;
         return session;
       }) || [];
       
-      setSessions(sessions);
+      setSessions(sessionRows);
 
       // Fetch students filtered by current school
       let studentQuery = supabase
@@ -174,14 +182,18 @@ export default function CalendarPage() {
         .select('id, initials, grade_level')
         .eq('provider_id', user.id);
 
-      // Apply school filter if currentSchool is available
+      // Apply school filter if currentSchool is available (normalize aliases)
       if (currentSchool) {
-        if (currentSchool.school_id) {
-          studentQuery = studentQuery.eq('school_id', currentSchool.school_id);
-        } else if (currentSchool.school_site && currentSchool.school_district) {
+        const schoolId = currentSchool.school_id ?? null;
+        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+        
+        if (schoolId) {
+          studentQuery = studentQuery.eq('school_id', schoolId);
+        } else if (schoolSite && schoolDistrict) {
           studentQuery = studentQuery
-            .eq('school_site', currentSchool.school_site)
-            .eq('school_district', currentSchool.school_district);
+            .eq('school_site', schoolSite)
+            .eq('school_district', schoolDistrict);
         }
       }
 
@@ -189,7 +201,7 @@ export default function CalendarPage() {
 
       if (studentError) throw studentError;
 
-      const studentMap = new Map();
+      const studentMap = new Map<string, Student>();
       studentData?.forEach(student => {
         studentMap.set(student.id, student);
       });
