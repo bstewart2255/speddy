@@ -208,6 +208,11 @@ export function AIContentModalEnhanced({
         
         if (isValid && studentMaterial) {
           console.log('Found AI-generated worksheet for student:', student.initials);
+          console.log('StudentMaterial structure:', {
+            hasWorksheet: !!studentMaterial.worksheet,
+            hasWorksheets: !!studentMaterial.worksheets,
+            worksheetKeys: studentMaterial.worksheets ? Object.keys(studentMaterial.worksheets) : [],
+          });
           
           // Generate unique worksheet IDs and QR codes in parallel for better performance
           const mathWorksheetCode = generateWorksheetId(student.id, 'math');
@@ -221,15 +226,34 @@ export function AIContentModalEnhanced({
           
           aiMathWorksheetHtml = mathHtml;
           aiElaWorksheetHtml = elaHtml;
+          
+          if (!aiMathWorksheetHtml && !aiElaWorksheetHtml) {
+            console.error('Failed to generate both worksheets despite valid data:', {
+              studentId: student.id,
+              initials: student.initials,
+              materialStructure: studentMaterial
+            });
+          }
         } else {
           console.log(`No AI worksheet for ${student.initials}: ${error || 'Unknown error'}`);
         }
         
-        if (aiMathWorksheetHtml && aiElaWorksheetHtml) {
-          // Print AI-generated worksheets
-          printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
-          await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
-          printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
+        // Check each worksheet separately and print only if successfully generated
+        if (aiMathWorksheetHtml || aiElaWorksheetHtml) {
+          // Print math worksheet if available
+          if (aiMathWorksheetHtml) {
+            printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
+          } else {
+            console.warn(`Failed to generate Math worksheet for ${student.initials}`);
+          }
+          
+          // Print ELA worksheet if available
+          if (aiElaWorksheetHtml) {
+            printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
+          } else {
+            console.warn(`Failed to generate ELA worksheet for ${student.initials}`);
+          }
         } else {
           // Fallback to the original WorksheetGenerator for non-JSON content
           console.log('Using fallback WorksheetGenerator for student:', student.initials);
