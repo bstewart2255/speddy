@@ -489,7 +489,11 @@ async function createEnhancedPrompt(
   );
   
   // If a subject is specified, validate that at least one student has goals for that subject
-  if (subject && (subject.toLowerCase() === 'math' || subject.toLowerCase() === 'ela' || subject.toLowerCase() === 'english')) {
+  const subjectLower = subject?.toLowerCase() || '';
+  const isMathSubject = subjectLower && ['math', 'mathematics'].includes(subjectLower);
+  const isELASubject = subjectLower && ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+  
+  if (subject && (isMathSubject || isELASubject)) {
     const studentsWithSubjectGoals = studentDetailsArray.filter(details => {
       if (!details || !details.iep_goals) return false;
       return hasGoalsForSubject(details.iep_goals, subject);
@@ -534,9 +538,13 @@ async function createEnhancedPrompt(
         let relevantGoals = details?.iep_goals || [];
         
         // Filter goals by subject if a subject is specified
-        if (subject && (subject.toLowerCase() === 'math' || subject.toLowerCase() === 'ela' || subject.toLowerCase() === 'english')) {
+        const subjectLower = subject?.toLowerCase() || '';
+        const isMathSubject = subjectLower && ['math', 'mathematics'].includes(subjectLower);
+        const isELASubject = subjectLower && ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+        
+        if (subject && (isMathSubject || isELASubject)) {
           const classification = classifyIEPGoalsBySubject(relevantGoals);
-          if (subject.toLowerCase() === 'math') {
+          if (isMathSubject) {
             relevantGoals = classification.mathGoals;
           } else {
             relevantGoals = classification.elaGoals;
@@ -544,7 +552,7 @@ async function createEnhancedPrompt(
         }
         
         // Sanitize the filtered goals
-        const sanitizedGoals = relevantGoals.map(goal => 
+        const sanitizedGoals = relevantGoals?.map(goal => 
           goal.replace(/\b\d{4}\b/g, 'this year') // Replace years
               .replace(/January|February|March|April|May|June|July|August|September|October|November|December/gi, 'this term') // Replace months
               .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi, 'this term') // Replace abbreviated months

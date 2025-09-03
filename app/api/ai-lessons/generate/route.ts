@@ -49,7 +49,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate students have IEP goals for the requested subject
-    if (body.subject.toLowerCase() === 'math' || body.subject.toLowerCase() === 'ela' || body.subject.toLowerCase() === 'english') {
+    const subjectLower = body.subject.toLowerCase();
+    const isMathSubject = ['math', 'mathematics'].includes(subjectLower);
+    const isELASubject = ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+    
+    if (isMathSubject || isELASubject) {
       const studentsWithSubjectGoals: string[] = [];
       const studentsWithoutGoals: string[] = [];
       
@@ -63,7 +67,7 @@ export async function POST(request: NextRequest) {
             studentsWithoutGoals.push(studentId);
           }
         } catch (error) {
-          console.warn(`Failed to fetch details for student ${studentId}:`, error);
+          console.warn('Failed to fetch details for student:', { studentId, error });
           // If we can't fetch student details, allow the lesson to proceed
           studentsWithSubjectGoals.push(studentId);
         }
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
       
       // If some students don't have goals, return a warning but proceed with students who do have goals
       if (studentsWithoutGoals.length > 0) {
-        console.warn(`Some students don't have ${body.subject} goals:`, studentsWithoutGoals);
+        console.warn('Some students don\'t have goals for subject:', { subject: body.subject, studentsWithoutGoals });
         // Update the studentIds to only include students with goals
         body.studentIds = studentsWithSubjectGoals;
         

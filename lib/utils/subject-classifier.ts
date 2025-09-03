@@ -7,7 +7,7 @@ const MATH_KEYWORDS = [
   'math', 'mathematics', 'number', 'numeral', 'computation', 'calculate', 
   'algebra', 'geometry', 'fraction', 'decimal', 'percent', 'percentage',
   'add', 'addition', 'subtract', 'subtraction', 'multiply', 'multiplication', 
-  'divide', 'division', 'problem solving', 'data', 'measurement', 'measure',
+  'divide', 'division', 'problem solving', 'measurement', 'measure',
   'equation', 'graph', 'counting', 'quantity', 'arithmetic', 'numerical',
   'ratio', 'proportion', 'statistics', 'probability', 'pattern', 'sequence',
   'place value', 'rounding', 'estimation', 'mental math', 'fact fluency'
@@ -17,7 +17,7 @@ const MATH_KEYWORDS = [
 const ELA_KEYWORDS = [
   'reading', 'writing', 'language', 'english', 'ela', 'literacy',
   'comprehension', 'phonics', 'phonemic', 'vocabulary', 'grammar', 
-  'spelling', 'fluency', 'literature', 'text', 'sentence', 'paragraph',
+  'spelling', 'fluency', 'literature', 'sentence', 'paragraph',
   'decode', 'decoding', 'sight word', 'word recognition', 'phonological',
   'narrative', 'informational', 'argumentative', 'essay', 'story',
   'punctuation', 'capitalization', 'handwriting', 'editing', 'revising',
@@ -37,6 +37,15 @@ export interface ClassifiedIEPGoals {
   unclassifiedGoals: string[];
 }
 
+// Pre-compile regex patterns for better performance
+const MATH_PATTERNS = MATH_KEYWORDS.map(keyword => 
+  new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+);
+
+const ELA_PATTERNS = ELA_KEYWORDS.map(keyword => 
+  new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+);
+
 /**
  * Classifies a single IEP goal by subject
  * @param goal The IEP goal text to classify
@@ -45,18 +54,11 @@ export interface ClassifiedIEPGoals {
 function classifySingleGoal(goal: string): { isMath: boolean; isELA: boolean } {
   const lowerGoal = goal.toLowerCase();
   
-  // Check for math keywords
-  const isMath = MATH_KEYWORDS.some(keyword => {
-    // Use word boundary matching for better accuracy
-    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-    return regex.test(lowerGoal);
-  });
+  // Check for math keywords using pre-compiled patterns
+  const isMath = MATH_PATTERNS.some(pattern => pattern.test(lowerGoal));
   
-  // Check for ELA keywords
-  const isELA = ELA_KEYWORDS.some(keyword => {
-    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-    return regex.test(lowerGoal);
-  });
+  // Check for ELA keywords using pre-compiled patterns
+  const isELA = ELA_PATTERNS.some(pattern => pattern.test(lowerGoal));
   
   return { isMath, isELA };
 }
@@ -123,11 +125,13 @@ export function hasGoalsForSubject(
   const classification = classifyIEPGoalsBySubject(iepGoals);
   const lowerSubject = subject.toLowerCase();
   
-  if (lowerSubject === 'math' || lowerSubject === 'mathematics') {
+  // Math subjects
+  if (['math', 'mathematics'].includes(lowerSubject)) {
     return classification.hasMathGoals;
   }
   
-  if (lowerSubject === 'ela' || lowerSubject === 'english' || lowerSubject === 'reading' || lowerSubject === 'writing') {
+  // ELA subjects
+  if (['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(lowerSubject)) {
     return classification.hasELAGoals;
   }
   
@@ -148,11 +152,13 @@ export function filterGoalsBySubject(
   const classification = classifyIEPGoalsBySubject(iepGoals);
   const lowerSubject = subject.toLowerCase();
   
-  if (lowerSubject === 'math' || lowerSubject === 'mathematics') {
+  // Math subjects
+  if (['math', 'mathematics'].includes(lowerSubject)) {
     return classification.mathGoals;
   }
   
-  if (lowerSubject === 'ela' || lowerSubject === 'english' || lowerSubject === 'reading' || lowerSubject === 'writing') {
+  // ELA subjects
+  if (['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(lowerSubject)) {
     return classification.elaGoals;
   }
   
