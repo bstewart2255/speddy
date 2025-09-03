@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useStudentIEPGoals } from '@/app/hooks/useStudentIEPGoals';
 
 interface Student {
   id: string;
@@ -19,11 +20,50 @@ export function LessonGeneratorForm() {
   const [students, setStudents] = useState<Student[]>([]);
   const [generatedLesson, setGeneratedLesson] = useState<any>(null);
   const [error, setError] = useState('');
+  const [subjectWarning, setSubjectWarning] = useState('');
+
+  // Hook to fetch and validate IEP goals
+  const {
+    iepData,
+    loading: iepLoading,
+    hasAnyStudentGoalsForSubject,
+    getStudentsWithSubjectGoals,
+    getStudentsWithoutSubjectGoals
+  } = useStudentIEPGoals(selectedStudents);
 
   // Load students on component mount
   useEffect(() => {
     loadStudents();
   }, []);
+
+  // Validate IEP goals when subject or students change
+  useEffect(() => {
+    if (selectedStudents.length === 0) {
+      setSubjectWarning('');
+      return;
+    }
+
+    // Only validate for Math and ELA subjects
+    if (subject === 'math' || subject === 'reading' || subject === 'writing') {
+      const subjectForValidation = subject === 'reading' || subject === 'writing' ? 'ela' : subject;
+      
+      if (!hasAnyStudentGoalsForSubject(subjectForValidation)) {
+        setSubjectWarning(`None of the selected students have IEP goals for ${subject}. Please select students with ${subject} goals or choose a different subject.`);
+      } else {
+        const studentsWithoutGoals = getStudentsWithoutSubjectGoals(subjectForValidation);
+        if (studentsWithoutGoals.length > 0) {
+          const studentNames = studentsWithoutGoals
+            .map(id => students.find(s => s.id === id)?.initials || 'Unknown')
+            .join(', ');
+          setSubjectWarning(`Warning: The following students don't have ${subject} IEP goals: ${studentNames}`);
+        } else {
+          setSubjectWarning('');
+        }
+      }
+    } else {
+      setSubjectWarning('');
+    }
+  }, [subject, selectedStudents, iepData, students, hasAnyStudentGoalsForSubject, getStudentsWithoutSubjectGoals]);
 
   async function loadStudents() {
     const supabase = createClient();
@@ -51,6 +91,15 @@ export function LessonGeneratorForm() {
     if (lessonType === 'group' && (selectedStudents.length < 2 || selectedStudents.length > 6)) {
       setError('Group lessons require 2-6 students');
       return;
+    }
+
+    // Check if there's a blocking warning (no students with appropriate goals)
+    if (subject === 'math' || subject === 'reading' || subject === 'writing') {
+      const subjectForValidation = subject === 'reading' || subject === 'writing' ? 'ela' : subject;
+      if (!hasAnyStudentGoalsForSubject(subjectForValidation)) {
+        setError(`Cannot generate lesson: None of the selected students have IEP goals for ${subject}.`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -250,6 +299,18 @@ export function LessonGeneratorForm() {
           {loading ? 'Generating...' : 'Generate Lesson'}
         </button>
       </div>
+
+      {/* Warning Display */}
+      {subjectWarning && !error && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 p-4 rounded-lg mb-6">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>{subjectWarning}</div>
+          </div>
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (

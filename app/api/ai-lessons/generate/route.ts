@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { lessonGenerator, LessonGenerationRequest } from '@/lib/ai-lessons/lesson-generator';
 import { adjustmentQueue } from '@/lib/ai-lessons/adjustment-queue';
+import { hasGoalsForSubject } from '@/lib/utils/subject-classifier';
+import { getStudentDetails } from '@/lib/supabase/queries/student-details';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +46,55 @@ export async function POST(request: NextRequest) {
         { error: 'Subject is required' },
         { status: 400 }
       );
+    }
+
+    // Validate students have IEP goals for the requested subject
+    const subjectLower = body.subject.toLowerCase();
+    const isMathSubject = ['math', 'mathematics'].includes(subjectLower);
+    const isELASubject = ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+    
+    if (isMathSubject || isELASubject) {
+      const studentsWithSubjectGoals: string[] = [];
+      const studentsWithoutGoals: string[] = [];
+      
+      // Check each student's IEP goals
+      for (const studentId of body.studentIds) {
+        try {
+          const studentDetails = await getStudentDetails(studentId);
+          if (studentDetails && hasGoalsForSubject(studentDetails.iep_goals, body.subject)) {
+            studentsWithSubjectGoals.push(studentId);
+          } else {
+            studentsWithoutGoals.push(studentId);
+          }
+        } catch (error) {
+          console.warn('Failed to fetch details for student:', { studentId, error });
+          // If we can't fetch student details, allow the lesson to proceed
+          studentsWithSubjectGoals.push(studentId);
+        }
+      }
+      
+      // If no students have goals for this subject, return an error
+      if (studentsWithSubjectGoals.length === 0) {
+        return NextResponse.json(
+          { 
+            error: `None of the selected students have IEP goals for ${body.subject}`,
+            details: 'Please select students with appropriate IEP goals or choose a different subject.'
+          },
+          { status: 400 }
+        );
+      }
+      
+      // If some students don't have goals, return a warning but proceed with students who do have goals
+      if (studentsWithoutGoals.length > 0) {
+        console.warn('Some students don\'t have goals for subject:', { subject: body.subject, studentsWithoutGoals });
+        // Update the studentIds to only include students with goals
+        body.studentIds = studentsWithSubjectGoals;
+        
+        // If this reduces to just 1 student for a group lesson, change to individual
+        if (body.lessonType === 'group' && studentsWithSubjectGoals.length < 2) {
+          body.lessonType = 'individual';
+        }
+      }
     }
 
     // Set defaults

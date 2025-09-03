@@ -7,6 +7,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withAuth } from '@/lib/api/with-auth';
+import { classifyIEPGoalsBySubject, hasGoalsForSubject } from '../../../lib/utils/subject-classifier';
 
 // Curriculum mapping
 const CURRICULUM_DETAILS: Record<string, string> = {
@@ -282,7 +283,8 @@ Make it print-friendly and ready to use.`;
       duration, 
       recentLogs || [], 
       profile,
-      profile?.role || 'resource' // Pass the role, default to resource
+      profile?.role || 'resource', // Pass the role, default to resource
+      body.subject // Pass subject if specified
     );
     promptPerf.end();
     
@@ -467,7 +469,8 @@ async function createEnhancedPrompt(
   duration: number, 
   recentLogs: any[],
   profile: any,
-  userRole: string
+  userRole: string,
+  subject?: string
 ): Promise<string> {
   // Fetch all student details once
   const studentDetailsArray = await Promise.all(
@@ -484,6 +487,26 @@ async function createEnhancedPrompt(
       }
     })
   );
+  
+  // If a subject is specified, validate that at least one student has goals for that subject
+  const subjectLower = subject?.toLowerCase() || '';
+  const isMathSubject = subjectLower && ['math', 'mathematics'].includes(subjectLower);
+  const isELASubject = subjectLower && ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+  
+  if (subject && (isMathSubject || isELASubject)) {
+    const studentsWithSubjectGoals = studentDetailsArray.filter(details => {
+      if (!details || !details.iep_goals) return false;
+      return hasGoalsForSubject(details.iep_goals, subject);
+    });
+    
+    if (studentsWithSubjectGoals.length === 0) {
+      log.warn('No students have IEP goals for the requested subject', {
+        subject,
+        studentCount: students.length
+      });
+      throw new Error(`None of the selected students have IEP goals for ${subject}. Please select students with ${subject} goals or choose a different subject.`);
+    }
+  }
 
   // Create detailed student profiles with skills
   const studentProfiles = await Promise.all(students.map(async (student, index) => {
@@ -511,8 +534,25 @@ async function createEnhancedPrompt(
     // Anonymize student data before sending to AI
         const studentIndex = students.indexOf(student) + 1;
 
-        // Sanitize IEP goals if they exist
-        const sanitizedGoals = details?.iep_goals?.map(goal => 
+        // Filter and sanitize IEP goals based on subject if specified
+        let relevantGoals = details?.iep_goals || [];
+        
+        // Filter goals by subject if a subject is specified
+        const subjectLower = subject?.toLowerCase() || '';
+        const isMathSubject = subjectLower && ['math', 'mathematics'].includes(subjectLower);
+        const isELASubject = subjectLower && ['ela', 'english', 'reading', 'writing', 'phonics', 'spelling', 'literacy', 'language arts'].includes(subjectLower);
+        
+        if (subject && (isMathSubject || isELASubject)) {
+          const classification = classifyIEPGoalsBySubject(relevantGoals);
+          if (isMathSubject) {
+            relevantGoals = classification.mathGoals;
+          } else {
+            relevantGoals = classification.elaGoals;
+          }
+        }
+        
+        // Sanitize the filtered goals
+        const sanitizedGoals = relevantGoals?.map(goal => 
           goal.replace(/\b\d{4}\b/g, 'this year') // Replace years
               .replace(/January|February|March|April|May|June|July|August|September|October|November|December/gi, 'this term') // Replace months
               .replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi, 'this term') // Replace abbreviated months
