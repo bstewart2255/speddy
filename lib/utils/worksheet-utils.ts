@@ -185,11 +185,17 @@ export async function generateAIWorksheetHtml(
     // Generate QR code with error handling
     const qrCodeDataUrl = await generateWorksheetQRCode(worksheetCode);
     
-    // Check if we have subject-specific content
+    // Prepare worksheet content with proper structure
     let worksheetContent = studentMaterial;
     
-    // If subject is specified and we have subject-specific worksheets
-    if (subject && studentMaterial.worksheets) {
+    // Handle different data structures
+    // 1. Check if we already have a worksheet property
+    if (studentMaterial.worksheet) {
+      // Already in correct format, use as-is
+      worksheetContent = studentMaterial;
+    }
+    // 2. Check if we have subject-specific worksheets
+    else if (subject && studentMaterial.worksheets) {
       // Look for subject-specific worksheet (e.g., worksheets.math or worksheets.ela)
       if (studentMaterial.worksheets[subject]) {
         worksheetContent = {
@@ -202,7 +208,37 @@ export async function generateAIWorksheetHtml(
           ...studentMaterial,
           worksheet: studentMaterial.worksheets.all
         };
+      } else {
+        // No matching worksheet found
+        console.error(`No ${subject} worksheet found for student`);
+        return null;
       }
+    }
+    // 3. Check if we have general worksheets without subject specified
+    else if (studentMaterial.worksheets) {
+      // Try to find any available worksheet
+      const availableWorksheet = studentMaterial.worksheets.math || 
+                                 studentMaterial.worksheets.ela || 
+                                 studentMaterial.worksheets.all;
+      if (availableWorksheet) {
+        worksheetContent = {
+          ...studentMaterial,
+          worksheet: availableWorksheet
+        };
+      } else {
+        console.error('No worksheets found in studentMaterial.worksheets');
+        return null;
+      }
+    }
+    else {
+      console.error('No worksheet or worksheets property found in studentMaterial');
+      return null;
+    }
+    
+    // Validate that we have a worksheet before rendering
+    if (!worksheetContent.worksheet) {
+      console.error('Failed to extract worksheet from studentMaterial');
+      return null;
     }
     
     // Use WorksheetRenderer to generate HTML
@@ -223,20 +259,70 @@ export async function generateAIWorksheetHtml(
 /**
  * Opens and prints HTML worksheet in a new window
  */
-export function printHtmlWorksheet(html: string, title: string): void {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    console.error('Failed to open print window - popup blocked');
+export function printHtmlWorksheet(html: string | null, title: string): void {
+  // Validate HTML content before attempting to print
+  if (!html || html.trim().length === 0) {
+    console.error(`Cannot print empty worksheet for: ${title}`);
+    // Show user-friendly error message
+    // TODO: Replace with toast notification when available in calling components
+    const errorMessage = `Unable to generate worksheet content for ${title}. Please try again or contact support if the issue persists.`;
+    alert(errorMessage);
     return;
   }
   
-  printWindow.document.write(html);
-  printWindow.document.close();
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  if (!printWindow) {
+    console.error('Failed to open print window - popup blocked');
+    // TODO: Replace with toast notification when available in calling components
+    alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print worksheets, then try again.');
+    return;
+  }
   
-  // Trigger print dialog after content loads
-  setTimeout(() => {
-    printWindow.print();
-  }, 250);
+  try {
+    // Write content to the print window
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Flag to prevent duplicate print calls
+    let printTriggered = false;
+    
+    // Wait for content to load before triggering print
+    printWindow.onload = () => {
+      if (printTriggered) return;
+      
+      setTimeout(() => {
+        if (printTriggered) return;
+        printTriggered = true;
+        
+        try {
+          printWindow.print();
+        } catch (printError) {
+          console.error('Failed to trigger print dialog:', printError);
+        }
+      }, 500);
+    };
+    
+    // Fallback if onload doesn't fire
+    setTimeout(() => {
+      if (printTriggered) return;
+      if (printWindow && !printWindow.closed) {
+        printTriggered = true;
+        
+        try {
+          printWindow.print();
+        } catch (printError) {
+          console.error('Failed to trigger print dialog (fallback):', printError);
+        }
+      }
+    }, 1000);
+  } catch (error) {
+    console.error('Failed to write content to print window:', error);
+    // TODO: Replace with toast notification when available in calling components
+    alert(`Unable to prepare worksheet for printing (${title}). Please try again or contact support if the issue persists.`);
+    if (printWindow && !printWindow.closed) {
+      printWindow.close();
+    }
+  }
 }
 
 /**

@@ -94,8 +94,12 @@ export function AIContentModalEnhanced({
     const printContent = printRef.current;
     if (!printContent || !currentLesson) return;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!printWindow) {
+      console.error('Failed to open print window - popup blocked');
+      alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print lessons, then try again.');
+      return;
+    }
 
     // Get printable content using the centralized utility
     const printHtml = await getPrintableContent(currentLesson.content, currentLesson.students);
@@ -154,8 +158,12 @@ export function AIContentModalEnhanced({
       const printHtml = await getPrintableContent(lesson.content, lesson.students);
       
       setTimeout(() => {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+        if (!printWindow) {
+          console.error('Failed to open print window - popup blocked');
+          alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print lessons, then try again.');
+          return;
+        }
         const styles = `
           <style>
             @media print {
@@ -208,6 +216,11 @@ export function AIContentModalEnhanced({
         
         if (isValid && studentMaterial) {
           console.log('Found AI-generated worksheet for student:', student.initials);
+          console.log('StudentMaterial structure:', {
+            hasWorksheet: !!studentMaterial.worksheet,
+            hasWorksheets: !!studentMaterial.worksheets,
+            worksheetKeys: studentMaterial.worksheets ? Object.keys(studentMaterial.worksheets) : [],
+          });
           
           // Generate unique worksheet IDs and QR codes in parallel for better performance
           const mathWorksheetCode = generateWorksheetId(student.id, 'math');
@@ -221,18 +234,58 @@ export function AIContentModalEnhanced({
           
           aiMathWorksheetHtml = mathHtml;
           aiElaWorksheetHtml = elaHtml;
+          
+          if (!aiMathWorksheetHtml && !aiElaWorksheetHtml) {
+            console.error('Failed to generate both worksheets despite valid data:', {
+              studentId: student.id,
+              initials: student.initials,
+              materialStructure: studentMaterial
+            });
+          }
         } else {
           console.log(`No AI worksheet for ${student.initials}: ${error || 'Unknown error'}`);
         }
         
-        if (aiMathWorksheetHtml && aiElaWorksheetHtml) {
-          // Print AI-generated worksheets
-          printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
-          await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
-          printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
+        // Check each worksheet separately and print or fallback
+        if (aiMathWorksheetHtml || aiElaWorksheetHtml) {
+          const generator = new WorksheetGenerator();
+          
+          // Print or fallback for math worksheet
+          if (aiMathWorksheetHtml) {
+            printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
+          } else {
+            console.warn(`Failed to generate Math AI worksheet for ${student.initials}, using fallback PDF`);
+            // Generate math worksheet using fallback
+            const mathPdf = await generator.generateWorksheet({
+              studentName: student.initials,
+              gradeLevel: student.grade_level as any,
+              subject: 'math',
+              sessionTime: formatTimeSlot(lesson.timeSlot),
+              sessionDate: lessonDate
+            });
+            printPdfWorksheet(mathPdf, `Math Worksheet - ${student.initials}`);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
+          }
+          
+          // Print or fallback for ELA worksheet
+          if (aiElaWorksheetHtml) {
+            printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
+          } else {
+            console.warn(`Failed to generate ELA AI worksheet for ${student.initials}, using fallback PDF`);
+            // Generate ELA worksheet using fallback
+            const elaPdf = await generator.generateWorksheet({
+              studentName: student.initials,
+              gradeLevel: student.grade_level as any,
+              subject: 'ela',
+              sessionTime: formatTimeSlot(lesson.timeSlot),
+              sessionDate: lessonDate
+            });
+            printPdfWorksheet(elaPdf, `ELA Worksheet - ${student.initials}`);
+          }
         } else {
           // Fallback to the original WorksheetGenerator for non-JSON content
-          console.log('Using fallback WorksheetGenerator for student:', student.initials);
+          console.log('Using fallback WorksheetGenerator for both subjects for student:', student.initials);
           const generator = new WorksheetGenerator();
           
           // Generate math worksheet
