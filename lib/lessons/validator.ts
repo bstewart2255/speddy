@@ -104,12 +104,28 @@ export class MaterialsValidator {
       processedMaterials = processedMaterials.replace(/\bonly\b/gi, '');
     } while (processedMaterials.length !== previousLength);
     
-    // Remove common punctuation, then split on commas, 'and', and ampersands
-    return processedMaterials
+    // Check for specific compound phrases first before splitting
+    const compoundPhrases = ['whiteboard and markers', 'dry erase markers'];
+    const foundPhrases: string[] = [];
+    
+    for (const phrase of compoundPhrases) {
+      const regex = new RegExp(phrase, 'gi');
+      if (regex.test(processedMaterials)) {
+        foundPhrases.push(phrase);
+        processedMaterials = processedMaterials.replace(regex, '');
+      }
+    }
+    
+    // Remove common punctuation, then split on commas and ampersands
+    // Note: we no longer split on 'and' to preserve compound phrases
+    const splitMaterials = processedMaterials
       .replace(/[()]/g, '')
-      .split(/[,&]|\band\b/i)
+      .split(/[,&]/)
       .map(s => s.trim())
       .filter(s => s.length > 0 && s !== 'none');
+    
+    // Combine found compound phrases with split materials
+    return [...foundPhrases, ...splitMaterials];
   }
 
   // Helper to tokenize a material string into individual words
@@ -137,12 +153,29 @@ export class MaterialsValidator {
 
   // Helper to normalize material names for comparison
   private normalizeMaterial(s: string): string {
-    const t = (s || '').toLowerCase()
+    // First preserve compound phrases that should stay together
+    const preservedPhrases = [
+      'whiteboard and markers',
+      'dry erase markers',
+      'dry erase marker'
+    ];
+    
+    const lowerInput = (s || '').toLowerCase().trim();
+    
+    // Check if the entire string is a preserved phrase
+    for (const phrase of preservedPhrases) {
+      if (lowerInput === phrase) {
+        return phrase;
+      }
+    }
+    
+    // Otherwise, normalize as before
+    const t = lowerInput
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Fold common plurals to singular
+    // Fold common plurals to singular (but keep both forms in allowed list)
     let r = t
       .replace(/\bmarkers\b/g, 'marker')
       .replace(/\bpencils\b/g, 'pencil')

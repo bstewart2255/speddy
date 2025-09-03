@@ -146,7 +146,10 @@ export const ALLOWED_MATERIALS = [
   'pencil',
   'whiteboard',
   'dry erase marker',
+  'dry erase markers',
   'marker',
+  'markers',
+  'whiteboard and markers',
   'paper'
 ];
 
