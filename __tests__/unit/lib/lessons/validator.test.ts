@@ -145,5 +145,55 @@ describe('MaterialsValidator', () => {
       expect(result.isValid).toBe(true);
       expect(result.errors).toEqual([]);
     });
+
+    it('should accept hyphenated "dry-erase markers"', () => {
+      const lesson = createMockLesson(
+        'Worksheets, pencils, whiteboard and markers only',
+        ['dry-erase markers']
+      );
+      const result = validator.validateLesson(lesson as any);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('should accept hyphenated compound "whiteboard-and-markers"', () => {
+      const lesson = createMockLesson(
+        'Worksheets, pencils, whiteboard-and-markers only',
+        []
+      );
+      const result = validator.validateLesson(lesson as any);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('should reject materials string missing the word "only"', () => {
+      const lesson = createMockLesson(
+        'Worksheets, pencils, whiteboard and markers',
+        []
+      );
+      const result = validator.validateLesson(lesson as any);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/must specify "only"/i);
+    });
+
+    it('should correctly split "pencils and paper" after removing compound phrases', () => {
+      const lesson = createMockLesson(
+        'pencils and paper only',
+        ['pencils', 'paper']
+      );
+      const result = validator.validateLesson(lesson as any);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('should handle mixed regular and compound materials with "and"', () => {
+      const lesson = createMockLesson(
+        'whiteboard and markers, pencils and paper only',
+        ['whiteboard and markers', 'pencils', 'paper']
+      );
+      const result = validator.validateLesson(lesson as any);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
   });
 });

@@ -11,7 +11,22 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+// Compound phrases that should be preserved as single units during material parsing
+const COMPOUND_MATERIAL_PHRASES = [
+  'whiteboard and markers',
+  'whiteboard-and-markers',
+  'dry erase markers',
+  'dry-erase markers',
+  'dry erase marker',
+  'dry-erase marker'
+];
+
 export class MaterialsValidator {
+  // Helper to escape special regex characters
+  private escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   /**
    * Validates that a lesson response follows zero-prep rules
    */
@@ -105,22 +120,25 @@ export class MaterialsValidator {
     } while (processedMaterials.length !== previousLength);
     
     // Check for specific compound phrases first before splitting
-    const compoundPhrases = ['whiteboard and markers', 'dry erase markers'];
     const foundPhrases: string[] = [];
     
-    for (const phrase of compoundPhrases) {
-      const regex = new RegExp(phrase, 'gi');
-      if (regex.test(processedMaterials)) {
-        foundPhrases.push(phrase);
-        processedMaterials = processedMaterials.replace(regex, '');
+    for (const phrase of COMPOUND_MATERIAL_PHRASES) {
+      // Use word boundaries and escape special characters for safety
+      const regex = new RegExp(`\\b${this.escapeRegExp(phrase)}\\b`, 'gi');
+      const matches = processedMaterials.match(regex);
+      if (matches) {
+        foundPhrases.push(...matches.map(m => m.toLowerCase()));
+        // Replace with space to maintain word boundaries
+        // Create a new RegExp instance for replace to avoid state issues
+        processedMaterials = processedMaterials.replace(new RegExp(`\\b${this.escapeRegExp(phrase)}\\b`, 'gi'), ' ');
       }
     }
     
-    // Remove common punctuation, then split on commas and ampersands
-    // Note: we no longer split on 'and' to preserve compound phrases
+    // Remove common punctuation, then split on commas, ampersands, and 'and'
+    // Compound phrases have already been extracted, so we can safely split on 'and'
     const splitMaterials = processedMaterials
       .replace(/[()]/g, '')
-      .split(/[,&]/)
+      .split(/[,&]|\band\b/i)
       .map(s => s.trim())
       .filter(s => s.length > 0 && s !== 'none');
     
@@ -153,19 +171,24 @@ export class MaterialsValidator {
 
   // Helper to normalize material names for comparison
   private normalizeMaterial(s: string): string {
-    // First preserve compound phrases that should stay together
-    const preservedPhrases = [
-      'whiteboard and markers',
-      'dry erase markers',
-      'dry erase marker'
-    ];
-    
     const lowerInput = (s || '').toLowerCase().trim();
     
-    // Check if the entire string is a preserved phrase
-    for (const phrase of preservedPhrases) {
-      if (lowerInput === phrase) {
-        return phrase;
+    // Normalize punctuation/hyphens for preserved-phrase comparison
+    const normalizedForPreserve = lowerInput
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Check if the normalized string matches a preserved phrase
+    for (const phrase of COMPOUND_MATERIAL_PHRASES) {
+      const normalizedPhrase = phrase
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (normalizedForPreserve === normalizedPhrase) {
+        // Return the canonical form (without hyphens)
+        return normalizedPhrase;
       }
     }
     
@@ -393,10 +416,6 @@ export class MaterialsValidator {
         errors.push(`Lesson contains forbidden material/activity: "${matches[0]}"`);
       }
     });
-  }
-
-  private escapeRegExp(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private extractAllText(lesson: LessonResponse): string {
