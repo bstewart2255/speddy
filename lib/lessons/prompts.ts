@@ -17,7 +17,7 @@ CRITICAL REQUIREMENTS:
 6. Group students within 1 grade level for the same activities
 7. Worksheets MUST contain complete, detailed content - not placeholders
 
-JSON STRUCTURE (with example content):
+JSON STRUCTURE (no comments, no markdown, no trailing commas):
 {
   "lesson": {
     "title": "string",
@@ -25,61 +25,45 @@ JSON STRUCTURE (with example content):
     "objectives": ["string"],
     "materials": "Worksheets, pencils, whiteboard and markers only",
     "overview": "string",
-    "introduction": {
-      "description": "string",
-      "duration": number,
-      "instructions": ["string"],
-      "materials": ["worksheets", "pencils", "whiteboard"]
-    },
-    "mainActivity": { /* same structure */ },
-    "closure": { /* same structure */ },
-    "answerKey": { /* optional - answer key for the lesson */ },
-    "roleSpecificContent": { /* varies by role */ }
+    "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "mainActivity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "closure": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "answerKey": {},
+    "roleSpecificContent": {}
   },
   "studentMaterials": [{
     "studentId": "string",
     "gradeGroup": number,
     "worksheet": {
-      "title": "Worksheet Title (e.g., 'Story Elements Worksheet')",
-      "instructions": "Overall worksheet instructions",
+      "title": "string",
+      "instructions": "string",
       "sections": [{
-        "title": "Part 1: Reading",
-        "instructions": "Read the story below",
+        "title": "string",
+        "instructions": "string",
         "items": [{
-          "sectionType": "warmup|practice|assessment|enrichment",
-          "sectionTitle": "The Three Little Pigs",
-          "instructions": "Read this story carefully",
+          "sectionType": "warmup",
+          "sectionTitle": "string",
+          "instructions": "string",
           "items": [{
             "type": "visual",
-            "content": "Once upon a time, there were three little pigs who lived with their mother. One day, they decided to build their own houses. The first pig built his house of straw. The second pig built his house of sticks. The third pig built his house of bricks..."
-          }]
-        }]
-      }, {
-        "title": "Part 2: Questions",
-        "instructions": "Answer these questions about the story",
-        "items": [{
-          "sectionType": "assessment",
-          "sectionTitle": "Comprehension Questions",
-          "instructions": "Circle the correct answer",
-          "items": [{
-            "type": "question",
-            "content": "Who are the main characters in the story?",
-            "choices": ["A) The wolf", "B) The three pigs", "C) The mother pig", "D) All of the above"]
-          }, {
-            "type": "question",
-            "content": "What happened to the house made of straw?",
+            "content": "actual content text here",
+            "choices": ["optional for multiple choice"],
             "blankLines": 2
           }]
         }]
       }],
-      "accommodations": ["Larger font size", "Extra time"]
+      "accommodations": ["string"]
     }
   }],
   "metadata": {
-    "gradeGroups": [{ "grades": [numbers], "studentIds": ["strings"], "activityLevel": "below|on|above" }],
+    "gradeGroups": [{ "grades": [1], "studentIds": ["string"], "activityLevel": "on" }],
     "validationStatus": "passed"
   }
-}`;
+}
+
+IMPORTANT: 
+- Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.
+- Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role);

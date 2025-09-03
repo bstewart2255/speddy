@@ -33,6 +33,23 @@ function sanitizeAndLogDebug(context: string, content: string): void {
   console.debug(`[${context}] Response preview:`, truncated);
 }
 
+// Model token limits (input + output combined)
+const MODEL_MAX_TOKENS: Record<string, number> = {
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4-turbo': 128000,
+  'gpt-4-turbo-preview': 128000,
+  'gpt-4': 8192,
+  'gpt-3.5-turbo': 16385,
+  'claude-3-5-sonnet-20241022': 200000,
+  'claude-3-opus-20240229': 200000,
+  'claude-3-sonnet-20240229': 200000,
+  'claude-3-haiku-20240307': 200000
+};
+
+// Default max tokens for response (can be overridden by env var)
+const DEFAULT_MAX_RESPONSE_TOKENS = 16000;
+
 export interface AIProvider {
   generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
   getName(): string;
@@ -41,10 +58,20 @@ export interface AIProvider {
 export class OpenAIProvider implements AIProvider {
   private client: OpenAI;
   private model: string;
+  private maxTokens: number;
 
   constructor(apiKey: string, model: string = 'gpt-4o-mini') {
     this.client = new OpenAI({ apiKey });
     this.model = model;
+    
+    // Calculate safe max tokens for response
+    const modelLimit = MODEL_MAX_TOKENS[model] || 8192;
+    const envMaxTokens = parseInt(process.env.MAX_RESPONSE_TOKENS || String(DEFAULT_MAX_RESPONSE_TOKENS));
+    
+    // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
+    this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
+    
+    console.log(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
@@ -66,7 +93,7 @@ export class OpenAIProvider implements AIProvider {
           }
         ],
         temperature: 0.7,
-        max_tokens: 8000,
+        max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
 
@@ -82,16 +109,26 @@ export class OpenAIProvider implements AIProvider {
         // Log sanitized debug info only if debug is enabled
         sanitizeAndLogDebug('OpenAI Parse Error', content);
         
-        // Log generic error without exposing content
-        console.error('Failed to parse OpenAI response: Invalid JSON format');
-        throw new Error('Non-JSON response from OpenAI');
+        // Try to repair truncated JSON
+        const contentLength = content.length;
+        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
+        const repairedContent = this.attemptJsonRepair(content);
+        
+        if (repairedContent) {
+          try {
+            jsonResponse = JSON.parse(repairedContent);
+            console.log('Successfully repaired and parsed JSON');
+          } catch (repairError) {
+            console.error(`Failed to parse OpenAI response after repair attempt (original length: ${contentLength})`);
+            throw new Error('Non-JSON response from OpenAI - repair attempt failed');
+          }
+        } else {
+          console.error(`Failed to parse OpenAI response: Invalid JSON format (length: ${contentLength})`);
+          throw new Error('Non-JSON response from OpenAI - unable to repair');
+        }
       }
       
-      if (!isValidLessonResponse(jsonResponse)) {
-        throw new Error('Invalid lesson response structure from OpenAI');
-      }
-
-      // Add metadata safely
+      // Ensure metadata exists before validation
       const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
         ? jsonResponse.metadata
         : {};
@@ -100,11 +137,19 @@ export class OpenAIProvider implements AIProvider {
         ...baseMeta,
         modelUsed: 'OpenAI',
         modelVersion: this.model,
-        generationTime: Date.now() - startTime,
+        generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
         gradeGroups: (baseMeta as any).gradeGroups || [],
-        validationStatus: (baseMeta as any).validationStatus || 'passed'
+        validationStatus: 'passed' // Will be updated if validation fails
       };
+
+      if (!isValidLessonResponse(jsonResponse)) {
+        jsonResponse.metadata.validationStatus = 'failed';
+        throw new Error('Invalid lesson response structure from OpenAI');
+      }
+      
+      // Fill timing after successful validation
+      jsonResponse.metadata.generationTime = Date.now() - startTime;
 
       return jsonResponse;
     } catch (error) {
@@ -139,15 +184,57 @@ Generate a complete lesson plan with individualized worksheets for each student 
   getName(): string {
     return `OpenAI (${this.model})`;
   }
+  
+  /**
+   * Attempts to repair potentially truncated or malformed JSON
+   * @param content - The potentially malformed JSON string
+   * @returns Repaired JSON string if successful, null if repair failed
+   */
+  private attemptJsonRepair(content: string): string | null {
+    try {
+      // Remove any leading/trailing whitespace
+      let cleaned = content.trim();
+      
+      // Check if response appears truncated (doesn't end with })
+      if (!cleaned.endsWith('}')) {
+        // Count open and close braces to determine nesting level
+        const openBraces = (cleaned.match(/{/g) || []).length;
+        const closeBraces = (cleaned.match(/}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        
+        // Add missing closing brackets and braces
+        cleaned += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+        cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
+      }
+      
+      // Attempt to parse the repaired JSON
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch (e) {
+      // If repair fails, return null
+      return null;
+    }
+  }
 }
 
 export class AnthropicProvider implements AIProvider {
   private client: Anthropic;
   private model: string;
+  private maxTokens: number;
 
   constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
+    
+    // Calculate safe max tokens for response
+    const modelLimit = MODEL_MAX_TOKENS[model] || 200000;
+    const envMaxTokens = parseInt(process.env.MAX_RESPONSE_TOKENS || String(DEFAULT_MAX_RESPONSE_TOKENS));
+    
+    // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
+    this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
+    
+    console.log(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
@@ -158,7 +245,7 @@ export class AnthropicProvider implements AIProvider {
     try {
       const message = await this.client.messages.create({
         model: this.model,
-        max_tokens: 8000,
+        max_tokens: this.maxTokens,
         temperature: 0.7,
         system: systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.',
         messages: [
@@ -198,16 +285,26 @@ export class AnthropicProvider implements AIProvider {
         // Log sanitized debug info only if debug is enabled
         sanitizeAndLogDebug('Anthropic Parse Error', cleanedResponse);
         
-        // Log generic error without exposing content
-        console.error('Failed to parse Anthropic response: Invalid JSON format');
-        throw new Error('Non-JSON response from Anthropic');
+        // Try to repair truncated JSON
+        const contentLength = cleanedResponse.length;
+        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
+        const repairedContent = this.attemptJsonRepair(cleanedResponse);
+        
+        if (repairedContent) {
+          try {
+            jsonResponse = JSON.parse(repairedContent);
+            console.log('Successfully repaired and parsed JSON');
+          } catch (repairError) {
+            console.error(`Failed to parse Anthropic response after repair attempt (original length: ${contentLength})`);
+            throw new Error('Non-JSON response from Anthropic - repair attempt failed');
+          }
+        } else {
+          console.error(`Failed to parse Anthropic response: Invalid JSON format (length: ${contentLength})`);
+          throw new Error('Non-JSON response from Anthropic - unable to repair');
+        }
       }
       
-      if (!isValidLessonResponse(jsonResponse)) {
-        throw new Error('Invalid lesson response structure from Anthropic');
-      }
-
-      // Add metadata safely
+      // Ensure metadata exists before validation
       const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
         ? jsonResponse.metadata
         : {};
@@ -216,11 +313,19 @@ export class AnthropicProvider implements AIProvider {
         ...baseMeta,
         modelUsed: 'Anthropic',
         modelVersion: this.model,
-        generationTime: Date.now() - startTime,
+        generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
         gradeGroups: (baseMeta as any).gradeGroups || [],
-        validationStatus: (baseMeta as any).validationStatus || 'passed'
+        validationStatus: 'passed' // Will be updated if validation fails
       };
+
+      if (!isValidLessonResponse(jsonResponse)) {
+        jsonResponse.metadata.validationStatus = 'failed';
+        throw new Error('Invalid lesson response structure from Anthropic');
+      }
+      
+      // Fill timing after successful validation
+      jsonResponse.metadata.generationTime = Date.now() - startTime;
 
       return jsonResponse;
     } catch (error) {
@@ -256,6 +361,46 @@ Generate a complete lesson plan with individualized worksheets for each student 
   getName(): string {
     return `Anthropic (${this.model})`;
   }
+  
+  /**
+   * Attempts to repair potentially truncated or malformed JSON
+   * @param content - The potentially malformed JSON string
+   * @returns Repaired JSON string if successful, null if repair failed
+   */
+  private attemptJsonRepair(content: string): string | null {
+    try {
+      // Remove any leading/trailing whitespace
+      let cleaned = content.trim();
+      
+      // Quick shape check
+      if (!(cleaned.startsWith('{') || cleaned.startsWith('['))) {
+        return null;
+      }
+      
+      // Strip trailing commas before } or ]
+      cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Check if response appears truncated (doesn't end with })
+      if (!cleaned.endsWith('}')) {
+        // Count open and close braces to determine nesting level
+        const openBraces = (cleaned.match(/{/g) || []).length;
+        const closeBraces = (cleaned.match(/}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        
+        // Add missing closing brackets and braces
+        cleaned += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+        cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
+      }
+      
+      // Attempt to parse the repaired JSON
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch (e) {
+      // If repair fails, return null
+      return null;
+    }
+  }
 }
 
 // Factory function to create the appropriate provider
@@ -276,7 +421,8 @@ export function createAIProvider(): AIProvider {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY is required for OpenAI provider');
       }
-      const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      // Use gpt-4o for better performance with large responses, fallback to gpt-4o-mini
+      const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o';
       return new OpenAIProvider(process.env.OPENAI_API_KEY, openaiModel);
     }
   }
