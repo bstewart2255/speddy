@@ -264,7 +264,8 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
   if (!html || html.trim().length === 0) {
     console.error(`Cannot print empty worksheet for: ${title}`);
     // Show user-friendly error message
-    const errorMessage = `Failed to generate worksheet for ${title}. The worksheet content could not be created.`;
+    // TODO: Replace with toast notification when available in calling components
+    const errorMessage = `Unable to generate worksheet content for ${title}. Please try again or contact support if the issue persists.`;
     alert(errorMessage);
     return;
   }
@@ -272,7 +273,8 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
   const printWindow = window.open('', '_blank', 'noopener,noreferrer');
   if (!printWindow) {
     console.error('Failed to open print window - popup blocked');
-    alert('Please allow pop-ups for this site to print worksheets. Check your browser settings and try again.');
+    // TODO: Replace with toast notification when available in calling components
+    alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print worksheets, then try again.');
     return;
   }
   
@@ -281,9 +283,17 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     printWindow.document.write(html);
     printWindow.document.close();
     
+    // Flag to prevent duplicate print calls
+    let printTriggered = false;
+    
     // Wait for content to load before triggering print
     printWindow.onload = () => {
+      if (printTriggered) return;
+      
       setTimeout(() => {
+        if (printTriggered) return;
+        printTriggered = true;
+        
         try {
           printWindow.print();
         } catch (printError) {
@@ -294,7 +304,10 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     
     // Fallback if onload doesn't fire
     setTimeout(() => {
+      if (printTriggered) return;
       if (printWindow && !printWindow.closed) {
+        printTriggered = true;
+        
         try {
           printWindow.print();
         } catch (printError) {
@@ -304,7 +317,8 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     }, 1000);
   } catch (error) {
     console.error('Failed to write content to print window:', error);
-    alert(`Failed to prepare worksheet for printing: ${title}`);
+    // TODO: Replace with toast notification when available in calling components
+    alert(`Unable to prepare worksheet for printing (${title}). Please try again or contact support if the issue persists.`);
     if (printWindow && !printWindow.closed) {
       printWindow.close();
     }
