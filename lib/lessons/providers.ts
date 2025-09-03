@@ -83,7 +83,8 @@ export class OpenAIProvider implements AIProvider {
         sanitizeAndLogDebug('OpenAI Parse Error', content);
         
         // Try to repair truncated JSON
-        console.log('Attempting to repair potentially truncated JSON...');
+        const contentLength = content.length;
+        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
         const repairedContent = this.attemptJsonRepair(content);
         
         if (repairedContent) {
@@ -91,22 +92,16 @@ export class OpenAIProvider implements AIProvider {
             jsonResponse = JSON.parse(repairedContent);
             console.log('Successfully repaired and parsed JSON');
           } catch (repairError) {
-            // Log generic error without exposing content
-            console.error('Failed to parse OpenAI response even after repair attempt');
-            throw new Error('Non-JSON response from OpenAI');
+            console.error(`Failed to parse OpenAI response after repair attempt (original length: ${contentLength})`);
+            throw new Error('Non-JSON response from OpenAI - repair attempt failed');
           }
         } else {
-          // Log generic error without exposing content
-          console.error('Failed to parse OpenAI response: Invalid JSON format');
-          throw new Error('Non-JSON response from OpenAI');
+          console.error(`Failed to parse OpenAI response: Invalid JSON format (length: ${contentLength})`);
+          throw new Error('Non-JSON response from OpenAI - unable to repair');
         }
       }
       
-      if (!isValidLessonResponse(jsonResponse)) {
-        throw new Error('Invalid lesson response structure from OpenAI');
-      }
-
-      // Add metadata safely
+      // Ensure metadata exists before validation
       const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
         ? jsonResponse.metadata
         : {};
@@ -115,11 +110,19 @@ export class OpenAIProvider implements AIProvider {
         ...baseMeta,
         modelUsed: 'OpenAI',
         modelVersion: this.model,
-        generationTime: Date.now() - startTime,
+        generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
         gradeGroups: (baseMeta as any).gradeGroups || [],
-        validationStatus: (baseMeta as any).validationStatus || 'passed'
+        validationStatus: 'passed' // Will be updated if validation fails
       };
+
+      if (!isValidLessonResponse(jsonResponse)) {
+        jsonResponse.metadata.validationStatus = 'failed';
+        throw new Error('Invalid lesson response structure from OpenAI');
+      }
+      
+      // Fill timing after successful validation
+      jsonResponse.metadata.generationTime = Date.now() - startTime;
 
       return jsonResponse;
     } catch (error) {
@@ -155,6 +158,11 @@ Generate a complete lesson plan with individualized worksheets for each student 
     return `OpenAI (${this.model})`;
   }
   
+  /**
+   * Attempts to repair potentially truncated or malformed JSON
+   * @param content - The potentially malformed JSON string
+   * @returns Repaired JSON string if successful, null if repair failed
+   */
   private attemptJsonRepair(content: string): string | null {
     try {
       // Remove any leading/trailing whitespace
@@ -240,16 +248,26 @@ export class AnthropicProvider implements AIProvider {
         // Log sanitized debug info only if debug is enabled
         sanitizeAndLogDebug('Anthropic Parse Error', cleanedResponse);
         
-        // Log generic error without exposing content
-        console.error('Failed to parse Anthropic response: Invalid JSON format');
-        throw new Error('Non-JSON response from Anthropic');
+        // Try to repair truncated JSON
+        const contentLength = cleanedResponse.length;
+        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
+        const repairedContent = this.attemptJsonRepair(cleanedResponse);
+        
+        if (repairedContent) {
+          try {
+            jsonResponse = JSON.parse(repairedContent);
+            console.log('Successfully repaired and parsed JSON');
+          } catch (repairError) {
+            console.error(`Failed to parse Anthropic response after repair attempt (original length: ${contentLength})`);
+            throw new Error('Non-JSON response from Anthropic - repair attempt failed');
+          }
+        } else {
+          console.error(`Failed to parse Anthropic response: Invalid JSON format (length: ${contentLength})`);
+          throw new Error('Non-JSON response from Anthropic - unable to repair');
+        }
       }
       
-      if (!isValidLessonResponse(jsonResponse)) {
-        throw new Error('Invalid lesson response structure from Anthropic');
-      }
-
-      // Add metadata safely
+      // Ensure metadata exists before validation
       const baseMeta = (jsonResponse && typeof jsonResponse.metadata === 'object' && jsonResponse.metadata !== null)
         ? jsonResponse.metadata
         : {};
@@ -258,11 +276,19 @@ export class AnthropicProvider implements AIProvider {
         ...baseMeta,
         modelUsed: 'Anthropic',
         modelVersion: this.model,
-        generationTime: Date.now() - startTime,
+        generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
         gradeGroups: (baseMeta as any).gradeGroups || [],
-        validationStatus: (baseMeta as any).validationStatus || 'passed'
+        validationStatus: 'passed' // Will be updated if validation fails
       };
+
+      if (!isValidLessonResponse(jsonResponse)) {
+        jsonResponse.metadata.validationStatus = 'failed';
+        throw new Error('Invalid lesson response structure from Anthropic');
+      }
+      
+      // Fill timing after successful validation
+      jsonResponse.metadata.generationTime = Date.now() - startTime;
 
       return jsonResponse;
     } catch (error) {
@@ -297,6 +323,46 @@ Generate a complete lesson plan with individualized worksheets for each student 
 
   getName(): string {
     return `Anthropic (${this.model})`;
+  }
+  
+  /**
+   * Attempts to repair potentially truncated or malformed JSON
+   * @param content - The potentially malformed JSON string
+   * @returns Repaired JSON string if successful, null if repair failed
+   */
+  private attemptJsonRepair(content: string): string | null {
+    try {
+      // Remove any leading/trailing whitespace
+      let cleaned = content.trim();
+      
+      // Quick shape check
+      if (!(cleaned.startsWith('{') || cleaned.startsWith('['))) {
+        return null;
+      }
+      
+      // Strip trailing commas before } or ]
+      cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Check if response appears truncated (doesn't end with })
+      if (!cleaned.endsWith('}')) {
+        // Count open and close braces to determine nesting level
+        const openBraces = (cleaned.match(/{/g) || []).length;
+        const closeBraces = (cleaned.match(/}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        
+        // Add missing closing brackets and braces
+        cleaned += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+        cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
+      }
+      
+      // Attempt to parse the repaired JSON
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch (e) {
+      // If repair fails, return null
+      return null;
+    }
   }
 }
 

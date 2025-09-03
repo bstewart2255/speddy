@@ -1,8 +1,13 @@
 // Main lesson generator that orchestrates the JSON-first generation
-import { LessonRequest, LessonResponse, LessonMetadata, determineGradeGroups } from './schema';
+import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determineGradeGroups } from './schema';
 import { createAIProvider, AIProvider } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
+
+// Configuration constants
+const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
+const MAX_GENERATION_ATTEMPTS = 2;
+const SAMPLE_STUDENTS_FOR_BASE = 3;
 
 export class LessonGenerator {
   private provider: AIProvider;
@@ -12,14 +17,16 @@ export class LessonGenerator {
   }
 
   /**
-   * Generates a lesson based on the request
+   * Generates a lesson based on the request.
+   * For large student groups (>CHUNK_THRESHOLD), uses chunked generation strategy
+   * to work within token limits by generating base lesson and per-grade worksheets separately.
    */
   async generateLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
   }> {
     // Use chunked generation for large groups of students
-    if (request.students.length > 10) {
+    if (request.students.length > CHUNK_THRESHOLD) {
       return this.generateChunkedLesson(request);
     }
     
@@ -40,12 +47,11 @@ export class LessonGenerator {
       
       let lesson: LessonResponse | undefined;
       let attempts = 0;
-      const maxAttempts = 2;
       
       // Try generation with retry on failure
       let dynamicSystemPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
       
-      while (attempts < maxAttempts) {
+      while (attempts < MAX_GENERATION_ATTEMPTS) {
         attempts++;
         
         try {
@@ -71,7 +77,7 @@ export class LessonGenerator {
           } else {
             console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);
             
-            if (attempts < maxAttempts) {
+            if (attempts < MAX_GENERATION_ATTEMPTS) {
               console.log('Retrying with additional constraints...');
               
               // Persist additional constraints into the next attempt prompt
@@ -85,7 +91,7 @@ export class LessonGenerator {
         } catch (error) {
           console.error(`Generation attempt ${attempts} failed:`, error);
           
-          if (attempts >= maxAttempts) {
+          if (attempts >= MAX_GENERATION_ATTEMPTS) {
             throw error;
           }
         }
@@ -150,9 +156,13 @@ export class LessonGenerator {
       const gradeGroups = determineGradeGroups(request.students);
       
       // Generate the base lesson plan first (without student materials)
+      // Pick representative students from different grade groups
+      const representativeIds = gradeGroups
+        .flatMap(g => g.studentIds.slice(0, 1))
+        .slice(0, SAMPLE_STUDENTS_FOR_BASE);
       const lessonPlanRequest = {
         ...request,
-        students: request.students.slice(0, 3) // Use a small subset for the lesson plan
+        students: request.students.filter(s => representativeIds.includes(s.id))
       };
       
       const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole);
@@ -164,9 +174,9 @@ ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
       const baseLesson = await this.provider.generateLesson(lessonPlanRequest, systemPrompt + '\n\n' + lessonPlanPrompt);
       
       // Now generate student materials in chunks by grade group
-      const studentMaterials: any[] = [];
+      const studentMaterials: StudentMaterial[] = [];
       
-      for (const group of gradeGroups) {
+      for (const [groupIndex, group] of gradeGroups.entries()) {
         const groupStudents = request.students.filter(s => group.studentIds.includes(s.id));
         console.log(`Generating materials for grade group ${group.grades.join(', ')} (${groupStudents.length} students)`);
         
@@ -203,7 +213,7 @@ Return ONLY the worksheet content in this structure:
           for (const student of groupStudents) {
             studentMaterials.push({
               studentId: student.id,
-              gradeGroup: gradeGroups.indexOf(group),
+              gradeGroup: groupIndex,
               worksheet: {
                 ...worksheet,
                 accommodations: student.accommodations || []
@@ -216,7 +226,7 @@ Return ONLY the worksheet content in this structure:
           for (const student of groupStudents) {
             studentMaterials.push({
               studentId: student.id,
-              gradeGroup: gradeGroups.indexOf(group),
+              gradeGroup: groupIndex,
               worksheet: this.createMockWorksheet(student.grade, request.subject)
             });
           }

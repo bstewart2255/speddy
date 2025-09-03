@@ -208,13 +208,69 @@ export class MaterialsValidator {
 
     const worksheet = material.worksheet;
     
-    // Check worksheet content
+    // Check new sections structure (current format)
+    if (Array.isArray(worksheet.sections)) {
+      worksheet.sections.forEach((section: any, sectionIndex: number) => {
+        if (section.title) {
+          this.checkForbiddenInText(
+            section.title,
+            `${context} worksheet section ${sectionIndex + 1} title`,
+            errors
+          );
+        }
+        
+        if (section.instructions) {
+          this.checkForbiddenInText(
+            section.instructions,
+            `${context} worksheet section ${sectionIndex + 1} instructions`,
+            errors
+          );
+        }
+        
+        // Check items within sections
+        if (Array.isArray(section.items)) {
+          section.items.forEach((item: any, itemIndex: number) => {
+            // Each item can have nested structure
+            if (item.sectionTitle) {
+              this.checkForbiddenInText(
+                item.sectionTitle,
+                `${context} worksheet section ${sectionIndex + 1} item ${itemIndex + 1} title`,
+                errors
+              );
+            }
+            
+            if (item.instructions) {
+              this.checkForbiddenInText(
+                item.instructions,
+                `${context} worksheet section ${sectionIndex + 1} item ${itemIndex + 1} instructions`,
+                errors
+              );
+            }
+            
+            // Check nested items
+            if (Array.isArray(item.items)) {
+              item.items.forEach((nestedItem: any, nestedIndex: number) => {
+                if (nestedItem.content) {
+                  this.checkForbiddenInText(
+                    nestedItem.content,
+                    `${context} worksheet section ${sectionIndex + 1} item ${itemIndex + 1}.${nestedIndex + 1}`,
+                    errors
+                  );
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Check legacy content structure (backward compatibility)
     if (Array.isArray(worksheet.content)) {
       worksheet.content.forEach((section: any, index: number) => {
         if (section.instructions) {
           this.checkForbiddenInText(
             section.instructions, 
-            `${context} worksheet section ${index + 1}`, 
+            `${context} worksheet content ${index + 1}`, 
             errors
           );
         }
@@ -225,7 +281,7 @@ export class MaterialsValidator {
             if (item.content) {
               this.checkForbiddenInText(
                 item.content, 
-                `${context} worksheet item ${itemIndex + 1}`, 
+                `${context} worksheet content item ${itemIndex + 1}`, 
                 errors
               );
             }
@@ -349,6 +405,30 @@ export class MaterialsValidator {
           if (material.worksheet.title) texts.push(material.worksheet.title);
           if (material.worksheet.instructions) texts.push(material.worksheet.instructions);
         
+          // Extract from new sections structure
+          if (Array.isArray(material.worksheet.sections)) {
+            material.worksheet.sections.forEach(section => {
+              if (section?.title) texts.push(section.title);
+              if (section?.instructions) texts.push(section.instructions);
+              
+              if (Array.isArray(section?.items)) {
+                section.items.forEach(item => {
+                  if (item?.sectionTitle) texts.push(item.sectionTitle);
+                  if (item?.instructions) texts.push(item.instructions);
+                  
+                  // Check nested items
+                  if (Array.isArray(item?.items)) {
+                    item.items.forEach(nestedItem => {
+                      if (nestedItem?.content) texts.push(nestedItem.content);
+                      if (nestedItem?.visualSupport) texts.push(nestedItem.visualSupport);
+                    });
+                  }
+                });
+              }
+            });
+          }
+          
+          // Extract from legacy content structure (backward compatibility)
           if (Array.isArray(material.worksheet.content)) {
             material.worksheet.content.forEach(content => {
               if (content?.sectionTitle) texts.push(content.sectionTitle);

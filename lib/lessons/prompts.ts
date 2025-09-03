@@ -17,7 +17,7 @@ CRITICAL REQUIREMENTS:
 6. Group students within 1 grade level for the same activities
 7. Worksheets MUST contain complete, detailed content - not placeholders
 
-JSON STRUCTURE:
+JSON STRUCTURE (no comments, no markdown, no trailing commas):
 {
   "lesson": {
     "title": "string",
@@ -25,11 +25,11 @@ JSON STRUCTURE:
     "objectives": ["string"],
     "materials": "Worksheets, pencils, whiteboard and markers only",
     "overview": "string",
-    "introduction": { "description": "str", "duration": num, "instructions": ["str"], "materials": ["str"] },
-    "mainActivity": { /* same structure as introduction */ },
-    "closure": { /* same structure as introduction */ },
-    "answerKey": { /* optional */ },
-    "roleSpecificContent": { /* varies by role */ }
+    "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "mainActivity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "closure": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "answerKey": {},
+    "roleSpecificContent": {}
   },
   "studentMaterials": [{
     "studentId": "string",
@@ -41,14 +41,14 @@ JSON STRUCTURE:
         "title": "string",
         "instructions": "string",
         "items": [{
-          "sectionType": "warmup|practice|assessment|enrichment",
+          "sectionType": "warmup",
           "sectionTitle": "string",
           "instructions": "string",
           "items": [{
-            "type": "visual|question|problem|task|prompt",
+            "type": "visual",
             "content": "actual content text here",
             "choices": ["optional for multiple choice"],
-            "blankLines": 2 /* optional for written response */
+            "blankLines": 2
           }]
         }]
       }],
@@ -56,12 +56,14 @@ JSON STRUCTURE:
     }
   }],
   "metadata": {
-    "gradeGroups": [{ "grades": [num], "studentIds": ["str"], "activityLevel": "below|on|above" }],
+    "gradeGroups": [{ "grades": [1], "studentIds": ["string"], "activityLevel": "on" }],
     "validationStatus": "passed"
   }
 }
 
-IMPORTANT: Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.`;
+IMPORTANT: 
+- Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.
+- Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role);
