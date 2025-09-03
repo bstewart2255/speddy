@@ -2,6 +2,7 @@
 import { assessmentRegistry, StudentAssessmentData } from './assessment-registry';
 import { performanceAnalyzer, PerformanceData, AdjustmentRecommendation } from './performance-analyzer';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { filterGoalsBySubject } from '@/lib/utils/subject-classifier';
 
 export interface PromptContext {
   studentIds: string[];
@@ -351,9 +352,8 @@ CRITICAL RULES:
     // Add IEP goals if available
     const iepAssessment = assessments.find(a => a.assessmentType === 'iep_goals');
     if (iepAssessment && Array.isArray(iepAssessment.data)) {
-      const relevantGoals = iepAssessment.data.filter((goal: string) => 
-        goal.toLowerCase().includes(context.subject.toLowerCase())
-      );
+      // Use the subject classifier to properly filter goals by subject
+      const relevantGoals = filterGoalsBySubject(iepAssessment.data, context.subject);
       
       if (relevantGoals.length > 0) {
         profile += `\nIEP Goals:\n`;
