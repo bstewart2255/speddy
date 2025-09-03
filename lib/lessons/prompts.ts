@@ -17,7 +17,7 @@ CRITICAL REQUIREMENTS:
 6. Group students within 1 grade level for the same activities
 7. Worksheets MUST contain complete, detailed content - not placeholders
 
-JSON STRUCTURE (with example content):
+JSON STRUCTURE:
 {
   "lesson": {
     "title": "string",
@@ -25,61 +25,43 @@ JSON STRUCTURE (with example content):
     "objectives": ["string"],
     "materials": "Worksheets, pencils, whiteboard and markers only",
     "overview": "string",
-    "introduction": {
-      "description": "string",
-      "duration": number,
-      "instructions": ["string"],
-      "materials": ["worksheets", "pencils", "whiteboard"]
-    },
-    "mainActivity": { /* same structure */ },
-    "closure": { /* same structure */ },
-    "answerKey": { /* optional - answer key for the lesson */ },
+    "introduction": { "description": "str", "duration": num, "instructions": ["str"], "materials": ["str"] },
+    "mainActivity": { /* same structure as introduction */ },
+    "closure": { /* same structure as introduction */ },
+    "answerKey": { /* optional */ },
     "roleSpecificContent": { /* varies by role */ }
   },
   "studentMaterials": [{
     "studentId": "string",
     "gradeGroup": number,
     "worksheet": {
-      "title": "Worksheet Title (e.g., 'Story Elements Worksheet')",
-      "instructions": "Overall worksheet instructions",
+      "title": "string",
+      "instructions": "string",
       "sections": [{
-        "title": "Part 1: Reading",
-        "instructions": "Read the story below",
+        "title": "string",
+        "instructions": "string",
         "items": [{
           "sectionType": "warmup|practice|assessment|enrichment",
-          "sectionTitle": "The Three Little Pigs",
-          "instructions": "Read this story carefully",
+          "sectionTitle": "string",
+          "instructions": "string",
           "items": [{
-            "type": "visual",
-            "content": "Once upon a time, there were three little pigs who lived with their mother. One day, they decided to build their own houses. The first pig built his house of straw. The second pig built his house of sticks. The third pig built his house of bricks..."
-          }]
-        }]
-      }, {
-        "title": "Part 2: Questions",
-        "instructions": "Answer these questions about the story",
-        "items": [{
-          "sectionType": "assessment",
-          "sectionTitle": "Comprehension Questions",
-          "instructions": "Circle the correct answer",
-          "items": [{
-            "type": "question",
-            "content": "Who are the main characters in the story?",
-            "choices": ["A) The wolf", "B) The three pigs", "C) The mother pig", "D) All of the above"]
-          }, {
-            "type": "question",
-            "content": "What happened to the house made of straw?",
-            "blankLines": 2
+            "type": "visual|question|problem|task|prompt",
+            "content": "actual content text here",
+            "choices": ["optional for multiple choice"],
+            "blankLines": 2 /* optional for written response */
           }]
         }]
       }],
-      "accommodations": ["Larger font size", "Extra time"]
+      "accommodations": ["string"]
     }
   }],
   "metadata": {
-    "gradeGroups": [{ "grades": [numbers], "studentIds": ["strings"], "activityLevel": "below|on|above" }],
+    "gradeGroups": [{ "grades": [num], "studentIds": ["str"], "activityLevel": "below|on|above" }],
     "validationStatus": "passed"
   }
-}`;
+}
+
+IMPORTANT: Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role);

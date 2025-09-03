@@ -66,7 +66,7 @@ export class OpenAIProvider implements AIProvider {
           }
         ],
         temperature: 0.7,
-        max_tokens: 8000,
+        max_tokens: 16000, // Increased from 8000 to handle larger responses
         response_format: { type: 'json_object' } // Force JSON response
       });
 
@@ -82,9 +82,24 @@ export class OpenAIProvider implements AIProvider {
         // Log sanitized debug info only if debug is enabled
         sanitizeAndLogDebug('OpenAI Parse Error', content);
         
-        // Log generic error without exposing content
-        console.error('Failed to parse OpenAI response: Invalid JSON format');
-        throw new Error('Non-JSON response from OpenAI');
+        // Try to repair truncated JSON
+        console.log('Attempting to repair potentially truncated JSON...');
+        const repairedContent = this.attemptJsonRepair(content);
+        
+        if (repairedContent) {
+          try {
+            jsonResponse = JSON.parse(repairedContent);
+            console.log('Successfully repaired and parsed JSON');
+          } catch (repairError) {
+            // Log generic error without exposing content
+            console.error('Failed to parse OpenAI response even after repair attempt');
+            throw new Error('Non-JSON response from OpenAI');
+          }
+        } else {
+          // Log generic error without exposing content
+          console.error('Failed to parse OpenAI response: Invalid JSON format');
+          throw new Error('Non-JSON response from OpenAI');
+        }
       }
       
       if (!isValidLessonResponse(jsonResponse)) {
@@ -139,6 +154,33 @@ Generate a complete lesson plan with individualized worksheets for each student 
   getName(): string {
     return `OpenAI (${this.model})`;
   }
+  
+  private attemptJsonRepair(content: string): string | null {
+    try {
+      // Remove any leading/trailing whitespace
+      let cleaned = content.trim();
+      
+      // Check if response appears truncated (doesn't end with })
+      if (!cleaned.endsWith('}')) {
+        // Count open and close braces to determine nesting level
+        const openBraces = (cleaned.match(/{/g) || []).length;
+        const closeBraces = (cleaned.match(/}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        
+        // Add missing closing brackets and braces
+        cleaned += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
+        cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
+      }
+      
+      // Attempt to parse the repaired JSON
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch (e) {
+      // If repair fails, return null
+      return null;
+    }
+  }
 }
 
 export class AnthropicProvider implements AIProvider {
@@ -158,7 +200,7 @@ export class AnthropicProvider implements AIProvider {
     try {
       const message = await this.client.messages.create({
         model: this.model,
-        max_tokens: 8000,
+        max_tokens: 16000, // Increased from 8000 to handle larger responses
         temperature: 0.7,
         system: systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.',
         messages: [
@@ -276,7 +318,8 @@ export function createAIProvider(): AIProvider {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY is required for OpenAI provider');
       }
-      const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      // Use gpt-4o for better performance with large responses, fallback to gpt-4o-mini
+      const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o';
       return new OpenAIProvider(process.env.OPENAI_API_KEY, openaiModel);
     }
   }

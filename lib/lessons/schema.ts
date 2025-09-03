@@ -213,15 +213,82 @@ export function determineGradeGroups(students: StudentProfile[]): GradeGroup[] {
   return groups;
 }
 
-// Type guard functions
+// Type guard functions with deep validation
 export function isValidLessonResponse(data: any): data is LessonResponse {
-  return (
-    data &&
-    typeof data === 'object' &&
-    'lesson' in data &&
-    'studentMaterials' in data &&
-    'metadata' in data
-  );
+  // Check basic structure
+  if (!data || typeof data !== 'object') {
+    console.error('Lesson validation failed: Invalid data type');
+    return false;
+  }
+  
+  // Check top-level required fields
+  if (!('lesson' in data) || !('studentMaterials' in data) || !('metadata' in data)) {
+    console.error('Lesson validation failed: Missing required top-level fields');
+    return false;
+  }
+  
+  // Validate lesson object
+  const lesson = data.lesson;
+  if (!lesson || typeof lesson !== 'object') {
+    console.error('Lesson validation failed: Invalid lesson object');
+    return false;
+  }
+  
+  // Check required lesson fields
+  const requiredLessonFields = ['title', 'duration', 'objectives', 'materials', 'overview', 
+                                 'introduction', 'mainActivity', 'closure'];
+  for (const field of requiredLessonFields) {
+    if (!(field in lesson)) {
+      console.error(`Lesson validation failed: Missing lesson.${field}`);
+      return false;
+    }
+  }
+  
+  // Validate activity sections
+  const activitySections = ['introduction', 'mainActivity', 'closure'];
+  for (const section of activitySections) {
+    const activity = lesson[section];
+    if (!activity || typeof activity !== 'object' || 
+        !('description' in activity) || !('duration' in activity) || 
+        !('instructions' in activity) || !('materials' in activity)) {
+      console.error(`Lesson validation failed: Invalid ${section} structure`);
+      return false;
+    }
+  }
+  
+  // Validate studentMaterials array
+  if (!Array.isArray(data.studentMaterials)) {
+    console.error('Lesson validation failed: studentMaterials is not an array');
+    return false;
+  }
+  
+  // Check each student material
+  for (const material of data.studentMaterials) {
+    if (!material || typeof material !== 'object' || 
+        !('studentId' in material) || !('gradeGroup' in material) || 
+        !('worksheet' in material)) {
+      console.error('Lesson validation failed: Invalid student material structure');
+      return false;
+    }
+    
+    // Validate worksheet
+    const worksheet = material.worksheet;
+    if (!worksheet || typeof worksheet !== 'object' || 
+        !('title' in worksheet) || !('instructions' in worksheet)) {
+      console.error('Lesson validation failed: Invalid worksheet structure');
+      return false;
+    }
+  }
+  
+  // Validate metadata
+  const metadata = data.metadata;
+  if (!metadata || typeof metadata !== 'object' || 
+      !('gradeGroups' in metadata) || !('validationStatus' in metadata)) {
+    console.error('Lesson validation failed: Invalid metadata structure');
+    return false;
+  }
+  
+  return true;
 }
 
 export function isValidTeacherRole(role: string): role is LessonRequest['teacherRole'] {
