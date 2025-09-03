@@ -108,7 +108,7 @@ MATH-SPECIFIC REQUIREMENTS:
 - Progress from concrete to abstract representations
 - Include computation practice appropriate for grade level
 - Incorporate word problems with visual supports
-- Use manipulative representations (drawn on worksheet)
+- Use visual representations of concrete materials (drawn on worksheet)
 - Include step-by-step examples for new concepts
 `;
       } else if (subjectLower === 'ela' || subjectLower === 'reading' || subjectLower === 'english' || subjectLower === 'phonics') {
@@ -177,6 +177,16 @@ CRITICAL RULES:
   ): Promise<string> {
     let prompt = `Create a ${context.duration}-minute ${context.subject} lesson for a group of ${context.studentIds.length} students.\n\n`;
     
+    // Batch fetch all student grade levels to avoid N+1 queries
+    const { data: students } = await this.supabase!
+      .from('students')
+      .select('id, grade_level')
+      .in('id', context.studentIds);
+    
+    const studentGradeMap = new Map(
+      students?.map(s => [s.id, s.grade_level]) || []
+    );
+    
     // Add each student's profile
     prompt += 'STUDENT PROFILES:\n\n';
     
@@ -186,7 +196,8 @@ CRITICAL RULES:
         studentId,
         i + 1,
         context,
-        dataUsed
+        dataUsed,
+        studentGradeMap.get(studentId)
       );
       prompt += studentPrompt + '\n';
     }
@@ -266,7 +277,8 @@ CRITICAL RULES:
     studentId: string,
     studentNumber: number,
     context: PromptContext,
-    dataUsed: string[]
+    dataUsed: string[],
+    gradeLevel?: string
   ): Promise<string> {
     let profile = `STUDENT ${studentNumber}:\n`;
     
@@ -274,17 +286,21 @@ CRITICAL RULES:
     const assessments = context.assessments.get(studentId) || [];
     const performance = context.performance.get(studentId) || [];
     
-    // Fetch student's actual grade level from database
-    const { data: student } = await this.supabase!
-      .from('students')
-      .select('grade_level')
-      .eq('id', studentId)
-      .single();
+    // Use provided grade level or fetch if not provided (for individual lessons)
+    let studentGradeLevel = gradeLevel;
+    if (!studentGradeLevel) {
+      const { data: student } = await this.supabase!
+        .from('students')
+        .select('grade_level')
+        .eq('id', studentId)
+        .single();
+      studentGradeLevel = student?.grade_level;
+    }
     
     // Add basic info
     profile += `- ID Reference: Student${studentNumber}\n`;
-    if (student?.grade_level) {
-      profile += `- Grade Level: ${student.grade_level}\n`;
+    if (studentGradeLevel) {
+      profile += `- Grade Level: ${studentGradeLevel}\n`;
       dataUsed.push('grade_level');
     }
 

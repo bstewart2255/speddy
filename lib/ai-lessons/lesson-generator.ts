@@ -206,9 +206,13 @@ export class LessonGenerator {
   private parseAIResponse(response: string, request: LessonGenerationRequest): Omit<GeneratedLesson, 'id' | 'worksheetIds' | 'qrCodes'> {
     // Try to parse as JSON first (if AI returns structured JSON)
     try {
-      const jsonResponse = JSON.parse(response);
+      // First try to extract JSON from markdown code blocks
+      const jsonMatch = response.match(/```json\s*([\s\S]*?)```/i);
+      const jsonStr = jsonMatch ? jsonMatch[1] : response;
+      
+      const jsonResponse = JSON.parse(jsonStr);
       if (jsonResponse.content && jsonResponse.content.studentMaterials) {
-        return jsonResponse;
+        return this.normalizeParsedJson(jsonResponse, request);
       }
     } catch {
       // If not JSON, parse as markdown/text format
@@ -273,6 +277,37 @@ export class LessonGenerator {
       },
       differentiationMap,
       dataConfidence: 0.7
+    };
+  }
+
+  private normalizeParsedJson(json: any, request: LessonGenerationRequest): Omit<GeneratedLesson, 'id' | 'worksheetIds' | 'qrCodes'> {
+    // Normalize teacher guidance Maps
+    const teacherGuidance: TeacherGuidance = {
+      overview: json.content?.teacherGuidance?.overview ?? 'AI-generated lesson with differentiated materials',
+      differentiationNotes: new Map(Object.entries(json.content?.teacherGuidance?.differentiationNotes ?? {})),
+      checkInPriorities: json.content?.teacherGuidance?.checkInPriorities ?? [],
+      expectedCompletionTimes: new Map(Object.entries(json.content?.teacherGuidance?.expectedCompletionTimes ?? {})),
+      supportLevels: new Map(Object.entries(json.content?.teacherGuidance?.supportLevels ?? {})),
+    };
+    
+    // Normalize differentiation map
+    const differentiationMap = new Map<string, DifferentiationData>();
+    Object.entries(json.differentiationMap ?? {}).forEach(([key, value]) => {
+      differentiationMap.set(key, value as DifferentiationData);
+    });
+    
+    return {
+      lessonType: json.lessonType ?? request.lessonType,
+      content: {
+        title: json.content?.title ?? 'AI-Generated Lesson',
+        objectives: json.content?.objectives ?? ['Practice target skills', 'Build confidence', 'Apply learning'],
+        duration: json.content?.duration ?? (request.duration || 30),
+        materials: json.content?.materials ?? 'All materials included on worksheets - just print!',
+        teacherGuidance,
+        studentMaterials: json.content?.studentMaterials ?? [],
+      },
+      differentiationMap,
+      dataConfidence: typeof json.dataConfidence === 'number' ? json.dataConfidence : 0.7,
     };
   }
 

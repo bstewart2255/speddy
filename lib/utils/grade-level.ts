@@ -12,14 +12,14 @@ export function standardizeGradeLevel(grade: string | null | undefined): string 
   
   const gradeStr = grade.toString().toLowerCase().trim();
   
+  // Handle pre-K first (must come before kindergarten check)
+  if (gradeStr.includes('pre') && (gradeStr.includes('k') || gradeStr.includes('kind'))) {
+    return 'PreK';
+  }
+  
   // Handle kindergarten
   if (gradeStr.includes('kind') || gradeStr === 'k') {
     return 'K';
-  }
-  
-  // Handle pre-K
-  if (gradeStr.includes('pre') && (gradeStr.includes('k') || gradeStr.includes('kind'))) {
-    return 'PreK';
   }
   
   // Extract numeric grade
@@ -120,6 +120,9 @@ export function compareGradeLevels(grade1: string, grade2: string): number {
   
   const order1 = gradeOrder[std1] ?? parseInt(std1);
   const order2 = gradeOrder[std2] ?? parseInt(std2);
+  
+  // Check for NaN in case of non-numeric standardized grades
+  if (isNaN(order1) || isNaN(order2)) return 0;
   
   return order1 - order2;
 }
