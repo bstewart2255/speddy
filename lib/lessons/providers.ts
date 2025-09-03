@@ -33,6 +33,23 @@ function sanitizeAndLogDebug(context: string, content: string): void {
   console.debug(`[${context}] Response preview:`, truncated);
 }
 
+// Model token limits (input + output combined)
+const MODEL_MAX_TOKENS: Record<string, number> = {
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4-turbo': 128000,
+  'gpt-4-turbo-preview': 128000,
+  'gpt-4': 8192,
+  'gpt-3.5-turbo': 16385,
+  'claude-3-5-sonnet-20241022': 200000,
+  'claude-3-opus-20240229': 200000,
+  'claude-3-sonnet-20240229': 200000,
+  'claude-3-haiku-20240307': 200000
+};
+
+// Default max tokens for response (can be overridden by env var)
+const DEFAULT_MAX_RESPONSE_TOKENS = 16000;
+
 export interface AIProvider {
   generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
   getName(): string;
@@ -41,10 +58,20 @@ export interface AIProvider {
 export class OpenAIProvider implements AIProvider {
   private client: OpenAI;
   private model: string;
+  private maxTokens: number;
 
   constructor(apiKey: string, model: string = 'gpt-4o-mini') {
     this.client = new OpenAI({ apiKey });
     this.model = model;
+    
+    // Calculate safe max tokens for response
+    const modelLimit = MODEL_MAX_TOKENS[model] || 8192;
+    const envMaxTokens = parseInt(process.env.MAX_RESPONSE_TOKENS || String(DEFAULT_MAX_RESPONSE_TOKENS));
+    
+    // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
+    this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
+    
+    console.log(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
@@ -66,7 +93,7 @@ export class OpenAIProvider implements AIProvider {
           }
         ],
         temperature: 0.7,
-        max_tokens: 16000, // Increased from 8000 to handle larger responses
+        max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
 
@@ -194,10 +221,20 @@ Generate a complete lesson plan with individualized worksheets for each student 
 export class AnthropicProvider implements AIProvider {
   private client: Anthropic;
   private model: string;
+  private maxTokens: number;
 
   constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
+    
+    // Calculate safe max tokens for response
+    const modelLimit = MODEL_MAX_TOKENS[model] || 200000;
+    const envMaxTokens = parseInt(process.env.MAX_RESPONSE_TOKENS || String(DEFAULT_MAX_RESPONSE_TOKENS));
+    
+    // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
+    this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
+    
+    console.log(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
@@ -208,7 +245,7 @@ export class AnthropicProvider implements AIProvider {
     try {
       const message = await this.client.messages.create({
         model: this.model,
-        max_tokens: 16000, // Increased from 8000 to handle larger responses
+        max_tokens: this.maxTokens,
         temperature: 0.7,
         system: systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.',
         messages: [

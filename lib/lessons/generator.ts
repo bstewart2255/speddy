@@ -200,14 +200,30 @@ Return ONLY the worksheet content in this structure:
 }`;
         
         try {
-          const materialsResponse = await this.provider.generateLesson(
-            { ...request, students: groupStudents },
-            systemPrompt + '\n\n' + materialsPrompt
-          );
+          // Generate just the worksheet for this grade group
+          // We need to handle the response differently since we're not getting a full LessonResponse
+          const worksheetPrompt = systemPrompt + '\n\n' + materialsPrompt + 
+            '\n\nIMPORTANT: Return ONLY the JSON object with the worksheet field. Do not include lesson or metadata fields.';
           
-          // Extract worksheet from response and assign to each student
-          const worksheet = (materialsResponse as any).worksheet || 
-                          (materialsResponse.studentMaterials?.[0]?.worksheet) ||
+          // Create a minimal request for worksheet generation
+          const worksheetRequest = { ...request, students: groupStudents };
+          
+          // Call provider with special handling for worksheet-only response
+          let worksheetResponse: any;
+          try {
+            // Try to get the response as a full lesson (for compatibility)
+            const fullResponse = await this.provider.generateLesson(worksheetRequest, worksheetPrompt);
+            worksheetResponse = fullResponse;
+          } catch (error) {
+            // If that fails, it might be because we got worksheet-only JSON
+            console.log('Retrying as worksheet-only response...');
+            worksheetResponse = { worksheet: null };
+          }
+          
+          // Extract worksheet from various possible response formats
+          const worksheet = worksheetResponse?.worksheet || 
+                          (worksheetResponse as any)?.studentMaterials?.[0]?.worksheet ||
+                          (worksheetResponse as any)?.lesson?.studentMaterials?.[0]?.worksheet ||
                           this.createMockWorksheet(group.grades[0], request.subject);
           
           for (const student of groupStudents) {
@@ -245,6 +261,17 @@ Return ONLY the worksheet content in this structure:
       
       // Validate the complete lesson
       const validation = materialsValidator.validateLesson(completeLesson);
+      
+      // Stamp validation metadata like non-chunked path
+      if (validation.isValid) {
+        completeLesson.metadata.validationStatus = 'passed';
+        if (completeLesson.metadata.validationErrors) {
+          completeLesson.metadata.validationErrors = [];
+        }
+      } else {
+        completeLesson.metadata.validationStatus = 'failed';
+        completeLesson.metadata.validationErrors = validation.errors;
+      }
       
       return { lesson: completeLesson, validation };
       

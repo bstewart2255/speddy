@@ -234,7 +234,7 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     return false;
   }
   
-  // Check required lesson fields
+  // Check required lesson fields and their types
   const requiredLessonFields = ['title', 'duration', 'objectives', 'materials', 'overview', 
                                  'introduction', 'mainActivity', 'closure'];
   for (const field of requiredLessonFields) {
@@ -244,47 +244,160 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     }
   }
   
-  // Validate activity sections
+  // Validate field types
+  if (typeof lesson.title !== 'string' || lesson.title.trim() === '') {
+    console.error(`Lesson validation failed: lesson.title must be a non-empty string, got: ${typeof lesson.title}`);
+    return false;
+  }
+  
+  if (typeof lesson.duration !== 'number' || lesson.duration <= 0) {
+    console.error(`Lesson validation failed: lesson.duration must be a positive number, got: ${lesson.duration}`);
+    return false;
+  }
+  
+  if (!Array.isArray(lesson.objectives) || lesson.objectives.length === 0) {
+    console.error(`Lesson validation failed: lesson.objectives must be a non-empty array, got: ${typeof lesson.objectives}`);
+    return false;
+  }
+  
+  // Check each objective is a string
+  for (let i = 0; i < lesson.objectives.length; i++) {
+    if (typeof lesson.objectives[i] !== 'string') {
+      console.error(`Lesson validation failed: lesson.objectives[${i}] must be a string, got: ${typeof lesson.objectives[i]}`);
+      return false;
+    }
+  }
+  
+  if (typeof lesson.materials !== 'string') {
+    console.error(`Lesson validation failed: lesson.materials must be a string, got: ${typeof lesson.materials}`);
+    return false;
+  }
+  
+  if (typeof lesson.overview !== 'string') {
+    console.error(`Lesson validation failed: lesson.overview must be a string, got: ${typeof lesson.overview}`);
+    return false;
+  }
+  
+  // Validate activity sections with type checking
   const activitySections = ['introduction', 'mainActivity', 'closure'];
   for (const section of activitySections) {
     const activity = lesson[section];
-    if (!activity || typeof activity !== 'object' || 
-        !('description' in activity) || !('duration' in activity) || 
-        !('instructions' in activity) || !('materials' in activity)) {
-      console.error(`Lesson validation failed: Invalid ${section} structure`);
+    if (!activity || typeof activity !== 'object') {
+      console.error(`Lesson validation failed: ${section} must be an object, got: ${typeof activity}`);
+      return false;
+    }
+    
+    if (!('description' in activity) || typeof activity.description !== 'string') {
+      console.error(`Lesson validation failed: ${section}.description must be a string, got: ${typeof activity.description}`);
+      return false;
+    }
+    
+    if (!('duration' in activity) || typeof activity.duration !== 'number' || activity.duration <= 0) {
+      console.error(`Lesson validation failed: ${section}.duration must be a positive number, got: ${activity.duration}`);
+      return false;
+    }
+    
+    if (!('instructions' in activity) || !Array.isArray(activity.instructions)) {
+      console.error(`Lesson validation failed: ${section}.instructions must be an array, got: ${typeof activity.instructions}`);
+      return false;
+    }
+    
+    if (!('materials' in activity) || !Array.isArray(activity.materials)) {
+      console.error(`Lesson validation failed: ${section}.materials must be an array, got: ${typeof activity.materials}`);
       return false;
     }
   }
   
   // Validate studentMaterials array
   if (!Array.isArray(data.studentMaterials)) {
-    console.error('Lesson validation failed: studentMaterials is not an array');
+    console.error('Lesson validation failed: studentMaterials must be an array');
     return false;
   }
   
-  // Check each student material
-  for (const material of data.studentMaterials) {
-    if (!material || typeof material !== 'object' || 
-        !('studentId' in material) || !('gradeGroup' in material) || 
-        !('worksheet' in material)) {
-      console.error('Lesson validation failed: Invalid student material structure');
+  if (data.studentMaterials.length === 0) {
+    console.error('Lesson validation failed: studentMaterials cannot be empty');
+    return false;
+  }
+  
+  // Check each student material with detailed validation
+  for (let i = 0; i < data.studentMaterials.length; i++) {
+    const material = data.studentMaterials[i];
+    if (!material || typeof material !== 'object') {
+      console.error(`Lesson validation failed: studentMaterials[${i}] must be an object`);
       return false;
     }
     
-    // Validate worksheet
+    if (!('studentId' in material) || typeof material.studentId !== 'string') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].studentId must be a string, got: ${typeof material.studentId}`);
+      return false;
+    }
+    
+    if (!('gradeGroup' in material) || typeof material.gradeGroup !== 'number') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].gradeGroup must be a number, got: ${typeof material.gradeGroup}`);
+      return false;
+    }
+    
+    if (!('worksheet' in material) || !material.worksheet || typeof material.worksheet !== 'object') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].worksheet must be an object`);
+      return false;
+    }
+    
+    // Validate worksheet structure
     const worksheet = material.worksheet;
-    if (!worksheet || typeof worksheet !== 'object' || 
-        !('title' in worksheet) || !('instructions' in worksheet)) {
-      console.error('Lesson validation failed: Invalid worksheet structure');
+    if (!('title' in worksheet) || typeof worksheet.title !== 'string') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].worksheet.title must be a string`);
+      return false;
+    }
+    
+    if (!('instructions' in worksheet) || typeof worksheet.instructions !== 'string') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].worksheet.instructions must be a string`);
+      return false;
+    }
+    
+    if ('accommodations' in worksheet && !Array.isArray(worksheet.accommodations)) {
+      console.error(`Lesson validation failed: studentMaterials[${i}].worksheet.accommodations must be an array if present`);
       return false;
     }
   }
   
-  // Validate metadata
+  // Validate metadata with detailed type checking
   const metadata = data.metadata;
-  if (!metadata || typeof metadata !== 'object' || 
-      !('gradeGroups' in metadata) || !('validationStatus' in metadata)) {
-    console.error('Lesson validation failed: Invalid metadata structure');
+  if (!metadata || typeof metadata !== 'object') {
+    console.error('Lesson validation failed: metadata must be an object');
+    return false;
+  }
+  
+  if (!('gradeGroups' in metadata) || !Array.isArray(metadata.gradeGroups)) {
+    console.error(`Lesson validation failed: metadata.gradeGroups must be an array, got: ${typeof metadata.gradeGroups}`);
+    return false;
+  }
+  
+  // Validate each grade group
+  for (let i = 0; i < metadata.gradeGroups.length; i++) {
+    const group = metadata.gradeGroups[i];
+    if (!group || typeof group !== 'object') {
+      console.error(`Lesson validation failed: metadata.gradeGroups[${i}] must be an object`);
+      return false;
+    }
+    
+    if (!('grades' in group) || !Array.isArray(group.grades)) {
+      console.error(`Lesson validation failed: metadata.gradeGroups[${i}].grades must be an array`);
+      return false;
+    }
+    
+    if (!('studentIds' in group) || !Array.isArray(group.studentIds)) {
+      console.error(`Lesson validation failed: metadata.gradeGroups[${i}].studentIds must be an array`);
+      return false;
+    }
+    
+    if (!('activityLevel' in group) || !['below', 'on', 'above'].includes(group.activityLevel)) {
+      console.error(`Lesson validation failed: metadata.gradeGroups[${i}].activityLevel must be 'below', 'on', or 'above', got: ${group.activityLevel}`);
+      return false;
+    }
+  }
+  
+  if (!('validationStatus' in metadata) || !['passed', 'failed'].includes(metadata.validationStatus)) {
+    console.error(`Lesson validation failed: metadata.validationStatus must be 'passed' or 'failed', got: ${metadata.validationStatus}`);
     return false;
   }
   
