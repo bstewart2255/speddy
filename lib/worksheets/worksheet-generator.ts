@@ -1,8 +1,9 @@
 // lib/worksheets/worksheet-generator.ts
 import QRCode from 'qrcode';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 import type { Database } from '../../src/types/database';
 import type { LessonResponse, StudentMaterial, WorksheetItem } from '../lessons/schema';
+import { standardizeGradeLevel } from '../utils/grade-level';
 
 interface WorksheetQuestion {
   id: string;
@@ -25,7 +26,7 @@ export async function generateWorksheetWithQR(
   worksheetType: string,
   content: WorksheetContent
 ): Promise<{ worksheetId: string; qrCodeDataUrl: string }> {
-  const supabase = createClient<Database>();
+  const supabase = await createClient();
 
   // Generate unique worksheet code (not the full URL)
   const worksheetCode = `WS-${lessonId.slice(0, 8)}-${studentId.slice(0, 8)}-${Date.now()}`;
@@ -237,7 +238,26 @@ export function extractWorksheetFromLesson(
     }
   };
 
-  return worksheetTemplates[gradeLevel] || null;
+  // Standardize the grade level first and resolve to nearest available template
+  const standardizedGrade = standardizeGradeLevel(gradeLevel);
+  const available = Object.keys(worksheetTemplates);
+  
+  const resolveGrade = (g: string | null): string => {
+    if (!g) return available.includes('2') ? '2' : available[0];
+    if (available.includes(g)) return g;
+    if (g === 'PreK') return available.includes('K') ? 'K' : available[0];
+    const n = Number(g);
+    if (!Number.isNaN(n)) {
+      const numeric = available.filter(k => /^\d+$/.test(k)).map(Number).sort((a,b)=>a-b);
+      if (numeric.length === 0) return available[0];
+      const clamped = Math.min(Math.max(n, numeric[0]), numeric[numeric.length-1]);
+      return numeric.includes(n) ? String(n) : String(clamped);
+    }
+    return available.includes('2') ? '2' : available[0];
+  };
+
+  const resolvedGrade = resolveGrade(standardizedGrade);
+  return worksheetTemplates[resolvedGrade];
 }
 
 // Generate printable HTML for worksheet

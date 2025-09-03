@@ -51,7 +51,9 @@
       "mcp__github__get_issue",
       "Bash(gh repo view:*)",
       "mcp__github__create_issue",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git restore:*)",
+      "mcp__supabase__list_tables"
     ],
     "deny": []
   },

@@ -128,7 +128,7 @@ export function CalendarWeekView({
   const applyGeneratedLessonsToState = (
     prev: Map<string, any>,
     dateKey: string,
-    lessons: Array<{ timeSlot: string; content: string; prompt: string; lessonId?: string }>
+    lessons: Array<{ timeSlot: string; content: string; prompt: string; lessonId?: string; students?: Array<{ id: string; initials: string; grade_level: string; teacher_name: string }> }>
   ) => {
     const newMap = new Map(prev);
     const dayLessons = { ...(newMap.get(dateKey) || {}) };
@@ -1016,14 +1016,17 @@ export function CalendarWeekView({
         for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
           const lessonData = await generateAIContentForTimeSlot(selectedLessonDate, slotSessions, timeSlot);
           if (lessonData) {
-            // Add student information to the lesson data
-            lessonData.students = slotSessions.map(session => ({
-              id: session.student_id || '',
-              initials: students.get(session.student_id || '')?.initials || '',
-              grade_level: students.get(session.student_id || '')?.grade_level || '',
-              teacher_name: ''
-            }));
-            generatedLessons.push(lessonData);
+            // Create a new object with student information
+            const lessonWithStudents = {
+              ...lessonData,
+              students: slotSessions.map(session => ({
+                id: session.student_id || '',
+                initials: students.get(session.student_id || '')?.initials || '',
+                grade_level: students.get(session.student_id || '')?.grade_level || '',
+                teacher_name: ''
+              }))
+            };
+            generatedLessons.push(lessonWithStudents);
           }
         }
         
