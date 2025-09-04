@@ -890,8 +890,6 @@ export function CalendarWeekView({
     if (!dayLessons) return;
 
     try {
-      const supabase = createClient();
-      
       // Delete all AI lessons for this date
       const { error } = await supabase
         .from('ai_generated_lessons')
@@ -1133,8 +1131,50 @@ export function CalendarWeekView({
         setModalOpen(false);
         
         if (generatedLessons.length > 0) {
-          // Update the savedLessons state with all generated lessons
+          // Save lessons to database
           const dateStr = toLocalDateKey(selectedLessonDate);
+          
+          // Save each lesson to the database
+          for (const lesson of generatedLessons) {
+            try {
+              // Prepare trimmed session data to avoid PII bloat
+              const trimmedSessions = lesson.students.map((s: any) => ({
+                id: s.id,
+                student_id: s.id,
+                // We don't have full session data here, just basic info
+              }));
+              
+              // Delete any existing empty lesson for this slot
+              await supabase
+                .from('ai_generated_lessons')
+                .delete()
+                .eq('provider_id', currentUser.id)
+                .eq('lesson_date', dateStr)
+                .eq('time_slot', lesson.timeSlot)
+                .eq('content', '');
+              
+              // Save the generated lesson with time slot
+              const { error } = await supabase
+                .from('ai_generated_lessons')
+                .upsert({
+                  provider_id: currentUser.id,
+                  lesson_date: dateStr,
+                  time_slot: lesson.timeSlot,
+                  content: lesson.content,
+                  prompt: lesson.prompt || '',
+                  session_data: trimmedSessions,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'provider_id,lesson_date,time_slot' });
+              
+              if (error) {
+                console.error(`Failed to save lesson for time slot ${lesson.timeSlot}:`, error);
+              }
+            } catch (error) {
+              console.error(`Error saving lesson for time slot ${lesson.timeSlot}:`, error);
+            }
+          }
+          
+          // Update the savedLessons state with all generated lessons
           setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
           
           // Show the enhanced modal with all generated lessons
@@ -1146,7 +1186,12 @@ export function CalendarWeekView({
           const failed = total - generatedLessons.length;
           
           if (failed === 0) {
-            showToast(`Successfully generated ${generatedLessons.length} AI lesson(s) in ${batchResponseData?.summary?.timeMs || 0}ms`, 'success');
+            const timeMs = batchResponseData?.summary?.timeMs;
+            showToast(
+              `Successfully generated ${generatedLessons.length} AI lesson(s)` + 
+              (typeof timeMs === 'number' ? ` in ${timeMs}ms` : ''),
+              'success'
+            );
           } else {
             showToast(`Generated ${generatedLessons.length} lesson(s), ${failed} failed`, 'warning');
           }

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
           .eq('id', userId)
           .single();
         
-        const defaultTeacherRole = profile?.role || 'resource';
+        const defaultTeacherRole = isValidTeacherRole(profile?.role) ? profile.role : 'resource';
         
         // Collect all unique student IDs for batch enrichment
         const allStudentIds = new Set<string>();
@@ -241,7 +241,11 @@ export async function POST(request: NextRequest) {
       console.error('Lesson generation error:', error);
       
       // Add timeout handling
-      if (error instanceof Error && error.message.includes('timeout')) {
+      const errorName = (error as any)?.name;
+      const errorCode = (error as any)?.code;
+      const errorMsg = String((error as any)?.message || '');
+      
+      if (errorName === 'AbortError' || errorCode === 'ETIMEDOUT' || /timeout/i.test(errorMsg)) {
         return NextResponse.json(
           { 
             error: 'Request timeout', 
@@ -296,10 +300,7 @@ function validateRequest(body: any): { isValid: boolean; errors: string[] } {
       if (!student.id && !student.studentId) {
         errors.push(`Student ${index + 1} must have an id or studentId`);
       }
-      
-      if (!student.grade && student.grade !== 0) {
-        errors.push(`Student ${index + 1} must have a grade`);
-      }
+      // Grade is optional - will be enriched from DB or defaulted later
     });
   }
   
@@ -320,9 +321,10 @@ async function enrichStudentDataFromMap(
     const studentId = student.id || student.studentId;
     const studentData = studentDataMap.get(studentId);
     
-    // Parse grade with support for Kindergarten
-    let grade: number | undefined = student.grade;
-    if (!grade && studentData?.grade_level) {
+    // Parse grade with support for Kindergarten (grade 0)
+    let grade: number | undefined = 
+      typeof student.grade === 'number' ? student.grade : undefined;
+    if (grade == null && studentData?.grade_level) {
       grade = parseGradeLevel(studentData.grade_level);
     }
     
