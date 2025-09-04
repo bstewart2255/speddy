@@ -52,6 +52,47 @@ const timeDurationOptions = [
   '60 minutes',
 ];
 
+// Helper function to format worksheet as HTML
+function formatWorksheetAsHtml(worksheet: any): string {
+  let html = '';
+  
+  if (worksheet.title) {
+    html += `<h3>${worksheet.title}</h3>`;
+  }
+  
+  if (worksheet.instructions) {
+    html += `<p class="instructions">${worksheet.instructions}</p>`;
+  }
+  
+  if (worksheet.sections && Array.isArray(worksheet.sections)) {
+    worksheet.sections.forEach((section: any) => {
+      html += '<div class="worksheet-section">';
+      if (section.title) {
+        html += `<h4>${section.title}</h4>`;
+      }
+      if (section.instructions) {
+        html += `<p>${section.instructions}</p>`;
+      }
+      if (section.items && Array.isArray(section.items)) {
+        html += '<ol>';
+        section.items.forEach((item: any) => {
+          if (typeof item === 'string') {
+            html += `<li>${item}</li>`;
+          } else if (item.content) {
+            html += `<li>${item.content}</li>`;
+          } else if (item.question) {
+            html += `<li>${item.question}</li>`;
+          }
+        });
+        html += '</ol>';
+      }
+      html += '</div>';
+    });
+  }
+  
+  return html;
+}
+
 export default function LessonBuilder() {
   const { showToast } = useToast();
   const [formData, setFormData] = useState<FormData>({
@@ -82,20 +123,48 @@ export default function LessonBuilder() {
 
     setIsGenerating(true);
     try {
-      const response = await fetch('/api/generate-lesson', {
+      // Use the structured API with a generic student profile
+      const response = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          students: [{
+            id: 'generic-' + Date.now(),
+            grade: parseInt(formData.grade) || 3
+          }],
+          subject: formData.subject,
+          topic: formData.topic,
+          duration: parseInt(formData.timeDuration) || 15,
+          teacherRole: 'resource'
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate lesson');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate lesson');
       }
 
       const data = await response.json();
+      // Extract HTML content from the structured lesson
+      let htmlContent = '';
+      if (data.lesson) {
+        // Convert structured lesson to HTML for display
+        htmlContent = `
+          <div class="lesson-content">
+            <h2>${data.lesson.lesson?.title || formData.topic}</h2>
+            <div class="duration">Duration: ${data.lesson.lesson?.duration || formData.timeDuration} minutes</div>
+            ${data.lesson.lesson?.overview ? `<div class="overview">${data.lesson.lesson.overview}</div>` : ''}
+            ${data.lesson.studentMaterials?.[0]?.worksheet ? 
+              formatWorksheetAsHtml(data.lesson.studentMaterials[0].worksheet) : 
+              '<p>No worksheet content available</p>'
+            }
+          </div>
+        `;
+      }
+      
       setGeneratedLesson({
-        content: data.content,
-        title: formData.topic,
+        content: htmlContent || data.content || '<p>No content generated</p>',
+        title: data.lesson?.lesson?.title || formData.topic,
       });
       setShowModal(true);
     } catch (error) {

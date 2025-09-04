@@ -24,6 +24,7 @@ export class LessonGenerator {
   async generateLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
+    metadata?: any;
   }> {
     // Use chunked generation for large groups of students
     if (request.students.length > CHUNK_THRESHOLD) {
@@ -73,7 +74,11 @@ export class LessonGenerator {
               (lesson.metadata as any).validationErrors = [];
             }
             
-            return { lesson, validation };
+            return { 
+              lesson, 
+              validation,
+              metadata: this.provider.getLastGenerationMetadata()
+            };
           } else {
             console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);
             
@@ -148,6 +153,7 @@ export class LessonGenerator {
   private async generateChunkedLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
+    metadata?: any;
   }> {
     console.log(`Using chunked generation for ${request.students.length} students`);
     
@@ -273,7 +279,11 @@ Return ONLY the worksheet content in this structure:
         completeLesson.metadata.validationErrors = validation.errors;
       }
       
-      return { lesson: completeLesson, validation };
+      return { 
+        lesson: completeLesson, 
+        validation,
+        metadata: this.provider.getLastGenerationMetadata()
+      };
       
     } catch (error) {
       console.error('Chunked generation failed:', error);
