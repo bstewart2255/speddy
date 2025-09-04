@@ -10,6 +10,8 @@ import {
 import { withAuth } from '@/lib/api/with-auth';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
+export const maxDuration = 120; // 2 minutes timeout for Vercel
+
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
@@ -18,6 +20,158 @@ export async function POST(request: NextRequest) {
       // Parse request body
       const body = await req.json();
       
+      // Check if this is a batch request
+      if (body.batch && Array.isArray(body.batch)) {
+        // Handle batch lesson generation
+        console.log(`Processing batch request with ${body.batch.length} lesson groups`);
+        const startTime = Date.now();
+        
+        // Get teacher's role from profile once
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .single();
+        
+        const defaultTeacherRole = isValidTeacherRole(profile?.role) ? profile.role : 'resource';
+        
+        // Collect all unique student IDs for batch enrichment
+        const allStudentIds = new Set<string>();
+        body.batch.forEach((group: any) => {
+          if (group.students && Array.isArray(group.students)) {
+            group.students.forEach((student: any) => {
+              const id = student.id || student.studentId;
+              if (id) allStudentIds.add(id);
+            });
+          }
+        });
+        
+        // Batch fetch all student data
+        const studentDataMap = new Map<string, any>();
+        if (allStudentIds.size > 0) {
+          const { data: studentsData } = await supabase
+            .from('students')
+            .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+            .in('id', Array.from(allStudentIds));
+          
+          if (studentsData) {
+            studentsData.forEach((sd: any) => {
+              studentDataMap.set(sd.id, sd);
+            });
+          }
+        }
+        
+        // Process all lesson requests in parallel
+        const lessonPromises = body.batch.map(async (group: any) => {
+          try {
+            // Validate each group request
+            const validation = validateRequest(group);
+            if (!validation.isValid) {
+              return {
+                success: false,
+                error: 'Invalid request',
+                details: validation.errors,
+                group
+              };
+            }
+            
+            const teacherRole = group.teacherRole || defaultTeacherRole;
+            
+            if (!isValidTeacherRole(teacherRole)) {
+              return {
+                success: false,
+                error: 'Invalid teacher role',
+                details: `Role "${teacherRole}" is not supported`,
+                group
+              };
+            }
+            
+            // Enrich student data from cached map
+            const students = await enrichStudentDataFromMap(group.students, studentDataMap);
+            
+            // Create lesson request
+            const lessonRequest: LessonRequest = {
+              students,
+              teacherRole: teacherRole as LessonRequest['teacherRole'],
+              subject: group.subject,
+              topic: group.topic,
+              duration: group.duration || 30,
+              focusSkills: group.focusSkills
+            };
+            
+            // Generate lesson
+            console.log('Generating lesson for group:', {
+              studentCount: students.length,
+              role: teacherRole,
+              subject: group.subject,
+              duration: lessonRequest.duration
+            });
+            
+            const { lesson, validation: lessonValidation } = await lessonGenerator.generateLesson(lessonRequest);
+            
+            // Save lesson to database
+            const savedLesson = await saveLessonToDatabase(
+              lesson,
+              lessonRequest,
+              userId,
+              supabase
+            );
+            
+            return {
+              success: true,
+              lessonId: savedLesson.id,
+              lesson,
+              validation: lessonValidation,
+              renderUrl: `/api/lessons/${savedLesson.id}/render`,
+              group
+            };
+          } catch (error) {
+            console.error('Error generating lesson for group:', error);
+            return {
+              success: false,
+              error: 'Failed to generate lesson',
+              details: error instanceof Error ? error.message : 'Unknown error',
+              group
+            };
+          }
+        });
+        
+        // Wait for all lessons to complete
+        const results = await Promise.allSettled(lessonPromises);
+        
+        const lessons = results.map((result, index) => {
+          if (result.status === 'fulfilled') {
+            return result.value;
+          } else {
+            return {
+              success: false,
+              error: 'Generation failed',
+              details: result.reason?.message || 'Unknown error',
+              group: body.batch[index]
+            };
+          }
+        });
+        
+        const successful = lessons.filter(l => l.success).length;
+        const failed = lessons.length - successful;
+        const totalTime = Date.now() - startTime;
+        
+        console.log(`Batch generation completed: ${successful} succeeded, ${failed} failed in ${totalTime}ms`);
+        
+        return NextResponse.json({
+          success: failed === 0,
+          batch: true,
+          lessons,
+          summary: {
+            total: lessons.length,
+            successful,
+            failed,
+            timeMs: totalTime
+          }
+        });
+      }
+      
+      // Single lesson request (original logic)
       // Validate request
       const validation = validateRequest(body);
       if (!validation.isValid) {
@@ -86,6 +240,21 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('Lesson generation error:', error);
       
+      // Add timeout handling
+      const errorName = (error as any)?.name;
+      const errorCode = (error as any)?.code;
+      const errorMsg = String((error as any)?.message || '');
+      
+      if (errorName === 'AbortError' || errorCode === 'ETIMEDOUT' || /timeout/i.test(errorMsg)) {
+        return NextResponse.json(
+          { 
+            error: 'Request timeout', 
+            details: 'The lesson generation took too long. Please try with fewer students or shorter duration.' 
+          },
+          { status: 504 }
+        );
+      }
+      
       return NextResponse.json(
         { 
           error: 'Failed to generate lesson', 
@@ -131,10 +300,7 @@ function validateRequest(body: any): { isValid: boolean; errors: string[] } {
       if (!student.id && !student.studentId) {
         errors.push(`Student ${index + 1} must have an id or studentId`);
       }
-      
-      if (!student.grade && student.grade !== 0) {
-        errors.push(`Student ${index + 1} must have a grade`);
-      }
+      // Grade is optional - will be enriched from DB or defaulted later
     });
   }
   
@@ -145,38 +311,20 @@ function validateRequest(body: any): { isValid: boolean; errors: string[] } {
 }
 
 /**
- * Enriches student data with information from the database
+ * Enriches student data with information from a pre-fetched map
  */
-async function enrichStudentData(
+async function enrichStudentDataFromMap(
   students: any[],
-  supabase: any
+  studentDataMap: Map<string, any>
 ): Promise<StudentProfile[]> {
-  // Collect all student IDs for batch query, filtering out invalid ones
-  const studentIds = students
-    .map(s => s.id || s.studentId)
-    .filter(Boolean);
-  
-  // Batch fetch all student data in one query
-  const { data: studentsData } = await supabase
-    .from('students')
-    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
-    .in('id', studentIds);
-  
-  // Create a map for quick lookup
-  const studentDataMap = new Map<string, any>();
-  if (studentsData) {
-    studentsData.forEach((sd: any) => {
-      studentDataMap.set(sd.id, sd);
-    });
-  }
-  
   return students.map((student: any) => {
     const studentId = student.id || student.studentId;
     const studentData = studentDataMap.get(studentId);
     
-    // Parse grade with support for Kindergarten
-    let grade: number | undefined = student.grade;
-    if (!grade && studentData?.grade_level) {
+    // Parse grade with support for Kindergarten (grade 0)
+    let grade: number | undefined = 
+      typeof student.grade === 'number' ? student.grade : undefined;
+    if (grade == null && studentData?.grade_level) {
       grade = parseGradeLevel(studentData.grade_level);
     }
     
@@ -215,6 +363,35 @@ async function enrichStudentData(
       accommodations
     } as StudentProfile;
   });
+}
+
+/**
+ * Enriches student data with information from the database
+ */
+async function enrichStudentData(
+  students: any[],
+  supabase: any
+): Promise<StudentProfile[]> {
+  // Collect all student IDs for batch query, filtering out invalid ones
+  const studentIds = students
+    .map(s => s.id || s.studentId)
+    .filter(Boolean);
+  
+  // Batch fetch all student data in one query
+  const { data: studentsData } = await supabase
+    .from('students')
+    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+    .in('id', studentIds);
+  
+  // Create a map for quick lookup
+  const studentDataMap = new Map<string, any>();
+  if (studentsData) {
+    studentsData.forEach((sd: any) => {
+      studentDataMap.set(sd.id, sd);
+    });
+  }
+  
+  return enrichStudentDataFromMap(students, studentDataMap);
 }
 
 /**
