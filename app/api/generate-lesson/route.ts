@@ -353,7 +353,13 @@ Make it print-friendly and ready to use.`;
               content: content,
               prompt: promptContent.substring(0, 2000), // Keep existing field for backward compatibility
               full_prompt_sent: fullPromptSent,
-              ai_raw_response: completion as any,
+              ai_raw_response: {
+                id: completion.id,
+                model: completion.model,
+                created: completion.created,
+                choices: completion.choices,
+                usage: completion.usage
+              },
               model_used: 'gpt-4o-mini',
               prompt_tokens: completion.usage?.prompt_tokens || 0,
               completion_tokens: completion.usage?.completion_tokens || 0,
@@ -645,7 +651,7 @@ async function createEnhancedPrompt(
     // Get the role-specific prompt or default to resource
     const rolePrompt = ROLE_SPECIFIC_PROMPTS[userRole] || ROLE_SPECIFIC_PROMPTS.resource;
     
-    return `${rolePrompt}
+    const promptContent = `${rolePrompt}
 
 Duration: ${duration} minutes
 
