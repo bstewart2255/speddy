@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
@@ -114,6 +115,7 @@ export function CalendarWeekView({
   const [enhancedModalOpen, setEnhancedModalOpen] = useState(false);
   const [enhancedModalLessons, setEnhancedModalLessons] = useState<any[]>([]);
   const [enhancedModalDate, setEnhancedModalDate] = useState<Date>(new Date());
+  const [shouldShowModalAfterGeneration, setShouldShowModalAfterGeneration] = useState(false);
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -144,6 +146,18 @@ export function CalendarWeekView({
     newMap.set(dateKey, dayLessons);
     return newMap;
   };
+
+  // Effect to handle showing modal after generation
+  useEffect(() => {
+    if (shouldShowModalAfterGeneration && enhancedModalLessons.length > 0) {
+      // Small delay to ensure state updates have propagated
+      const timer = setTimeout(() => {
+        setEnhancedModalOpen(true);
+        setShouldShowModalAfterGeneration(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [enhancedModalLessons, shouldShowModalAfterGeneration]);
 
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
@@ -1174,13 +1188,21 @@ export function CalendarWeekView({
             }
           }
           
-          // Update the savedLessons state with all generated lessons
-          setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
+          // Force immediate state updates using flushSync
+          flushSync(() => {
+            // Update the savedLessons state with all generated lessons
+            setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
+            
+            // Set the lessons and date for the modal
+            setEnhancedModalLessons(generatedLessons);
+            setEnhancedModalDate(selectedLessonDate);
+          });
           
-          // Show the enhanced modal with all generated lessons
-          setEnhancedModalLessons(generatedLessons);
-          setEnhancedModalDate(selectedLessonDate);
-          setEnhancedModalOpen(true);
+          // Log for debugging
+          console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
+          
+          // Trigger the modal to open via the useEffect after state is updated
+          setShouldShowModalAfterGeneration(true);
           
           const total = batchRequests.length;
           const failed = total - generatedLessons.length;
@@ -1189,11 +1211,16 @@ export function CalendarWeekView({
             const timeMs = batchResponseData?.summary?.timeMs;
             showToast(
               `Successfully generated ${generatedLessons.length} AI lesson(s)` + 
-              (typeof timeMs === 'number' ? ` in ${timeMs}ms` : ''),
+              (typeof timeMs === 'number' ? ` in ${timeMs}ms` : '') +
+              '. Click the purple "Saved AI Lesson" button to view.',
               'success'
             );
           } else {
-            showToast(`Generated ${generatedLessons.length} lesson(s), ${failed} failed`, 'warning');
+            showToast(
+              `Generated ${generatedLessons.length} lesson(s), ${failed} failed. ` +
+              'Click the purple "Saved AI Lesson" button to view.',
+              'warning'
+            );
           }
         } else {
           showToast('Failed to generate any lessons', 'error');
