@@ -24,8 +24,8 @@ CREATE INDEX IF NOT EXISTS idx_lessons_model ON lessons(model_used);
 
 -- Add similar columns to differentiated_lessons for the Anthropic path
 ALTER TABLE differentiated_lessons 
-ADD COLUMN IF NOT EXISTS full_prompt_sent JSONB,  -- JSONB since it has system and user prompts
-ADD COLUMN IF NOT EXISTS ai_raw_response TEXT,
+ADD COLUMN IF NOT EXISTS full_prompt_sent TEXT,  -- Standardized to TEXT for consistency
+ADD COLUMN IF NOT EXISTS ai_raw_response JSONB,  -- Standardized to JSONB for consistency
 ADD COLUMN IF NOT EXISTS model_used VARCHAR(50),
 ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER,
 ADD COLUMN IF NOT EXISTS completion_tokens INTEGER,

@@ -65,9 +65,10 @@ export interface DifferentiationData {
 export class LessonGenerator {
   private supabase: SupabaseClient | null = null;
   private anthropic: Anthropic | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    this.initPromise = this.initialize();
   }
 
   private async initialize() {
@@ -80,7 +81,15 @@ export class LessonGenerator {
     }
   }
 
+  private async ensureInitialized() {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+  }
+
   async generateLesson(request: LessonGenerationRequest): Promise<GeneratedLesson> {
+    await this.ensureInitialized();
+    
     // Collect all student data
     const assessments = new Map<string, any>();
     const performance = new Map<string, any>();
@@ -185,6 +194,8 @@ export class LessonGenerator {
   }
 
   private async callAIForLesson(prompt: any): Promise<string> {
+    await this.ensureInitialized();
+    
     if (!this.anthropic) {
       throw new Error('AI service is not configured. Please ensure ANTHROPIC_API_KEY is set.');
     }
@@ -392,6 +403,7 @@ export class LessonGenerator {
     confidenceReport: any,
     aiRawResponse?: string
   ): Promise<any> {
+    await this.ensureInitialized();
     // First create a basic lesson record
     const { data: lessonRecord, error: lessonError } = await this.supabase!
       .from('lessons')
@@ -438,8 +450,8 @@ export class LessonGenerator {
           answerKeys: true
         },
         // Add prompt and response logging
-        full_prompt_sent: prompt,
-        ai_raw_response: aiRawResponse,
+        full_prompt_sent: JSON.stringify(prompt),  // Convert to string for TEXT column
+        ai_raw_response: aiRawResponse ? { content: aiRawResponse } : null,  // Wrap in object for JSONB column
         model_used: 'claude-3-5-sonnet-20241022',
         generation_metadata: {
           timestamp: new Date().toISOString(),
@@ -464,6 +476,8 @@ export class LessonGenerator {
     lessonId: string,
     adjustments: Map<string, any>
   ): Promise<GeneratedLesson> {
+    await this.ensureInitialized();
+    
     // Get original lesson
     const { data: originalLesson } = await this.supabase!
       .from('differentiated_lessons')

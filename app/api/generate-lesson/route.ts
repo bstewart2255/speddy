@@ -278,7 +278,7 @@ Make it print-friendly and ready to use.`;
 
     // Create enhanced prompt with role information
     const promptPerf = measurePerformanceWithAlerts('create_prompt', 'api');
-    const promptContent = await createEnhancedPrompt(
+    const { promptContent, studentDetailsArray } = await createEnhancedPrompt(
       students, 
       duration, 
       recentLogs || [], 
@@ -513,12 +513,9 @@ async function createEnhancedPrompt(
   profile: any,
   userRole: string,
   subject?: string
-): Promise<string> {
-  // Store studentDetailsArray at module scope for access in the completion handler
-  let studentDetailsArray: any[] = [];
-  
+): Promise<{ promptContent: string; studentDetailsArray: any[] }> {
   // Fetch all student details once
-  studentDetailsArray = await Promise.all(
+  const studentDetailsArray = await Promise.all(
     students.map(async (student) => {
       const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
       try {
@@ -771,5 +768,7 @@ ${userRole === 'counseling' ? `
 - For younger students: Use play-based interventions, social stories, visual supports
 - For older students: Include problem-solving, conflict resolution, self-advocacy skills` : ''}
 ` : ''}
-${personalizationInstructions}}`;
+${personalizationInstructions}`;
+
+  return { promptContent, studentDetailsArray };
 }
