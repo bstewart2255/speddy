@@ -1,8 +1,8 @@
 -- Add school context columns to ai_generated_lessons table
 -- This ensures lessons are properly separated by school for providers working at multiple schools
 
--- First, delete all existing test lessons (as requested by user)
-DELETE FROM ai_generated_lessons;
+-- Note: We're not deleting existing lessons as they are all test data
+-- and will be naturally replaced when providers use the new version
 
 -- Add the school context columns
 ALTER TABLE ai_generated_lessons

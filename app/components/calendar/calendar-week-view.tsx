@@ -337,14 +337,13 @@ export function CalendarWeekView({
           .gte('lesson_date', startDate)
           .lte('lesson_date', endDate);
         
-        // Add school filter if available
+        // Add school filter if available; otherwise safely filter to avoid cross-school leakage
         if (currentSchool?.school_id) {
           query = query.eq('school_id', currentSchool.school_id);
-        } else if (currentSchool?.school_site) {
-          // Fallback to text-based filtering if not migrated
-          console.warn('Using legacy school_site filtering for AI lessons');
-          // For now, we can't filter by school_site since the column doesn't exist
-          // This will be resolved once all users are migrated to school_id
+        } else {
+          // No school_id available - filter to NULL to avoid cross-school data leakage
+          console.warn('No school_id available; filtering to NULL school_id to avoid cross-school leakage');
+          query = query.is('school_id', null);
         }
         
         const { data, error } = await query;
@@ -659,13 +658,15 @@ export function CalendarWeekView({
       await deleteEmptyQuery;
 
       // Log school context for debugging
-      console.log('Current school context:', {
-        school_id: currentSchool?.school_id,
-        district_id: currentSchool?.district_id,
-        state_id: currentSchool?.state_id,
-        school_site: currentSchool?.school_site,
-        is_migrated: currentSchool?.is_migrated
-      });
+      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        console.log('Current school context:', {
+          school_id: currentSchool?.school_id,
+          district_id: currentSchool?.district_id,
+          state_id: currentSchool?.state_id,
+          school_site: currentSchool?.school_site,
+          is_migrated: currentSchool?.is_migrated
+        });
+      }
       
       // Save the generated lesson with time slot and school context
       const lessonData = {
@@ -684,7 +685,9 @@ export function CalendarWeekView({
       
       const { data: savedLesson, error } = await supabase
         .from('ai_generated_lessons')
-        .upsert(lessonData)
+        .upsert(lessonData, { 
+          onConflict: 'provider_id,school_id,lesson_date,time_slot' 
+        })
         .select();
 
       if (error) {
@@ -695,11 +698,18 @@ export function CalendarWeekView({
           details: error.details,
           hint: error.hint
         });
-        console.error('Lesson data that failed to save:', lessonData);
+        console.error('Lesson failed to save (redacted).', {
+          provider_id: lessonData.provider_id,
+          lesson_date: lessonData.lesson_date,
+          time_slot: lessonData.time_slot,
+          school_id: lessonData.school_id,
+        });
         throw error;
       }
       
-      console.log('Successfully saved lesson to database:', savedLesson);
+      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        console.log('Successfully saved lesson to database:', savedLesson?.[0]?.id ?? savedLesson);
+      }
 
       // Return the generated lesson data
       return {
@@ -978,9 +988,12 @@ export function CalendarWeekView({
         .eq('provider_id', currentUser!.id)
         .eq('lesson_date', dateStr);
       
-      // Add school filter for deletion
+      // Add school filter for deletion to avoid cross-school deletions
       if (currentSchool?.school_id) {
         deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
+      } else {
+        // No school_id - only delete records with NULL school_id
+        deleteQuery = deleteQuery.is('school_id', null);
       }
       
       const { error } = await deleteQuery;
@@ -1277,7 +1290,9 @@ export function CalendarWeekView({
               
               const { data: savedLesson, error } = await supabase
                 .from('ai_generated_lessons')
-                .upsert(lessonData)
+                .upsert(lessonData, {
+                  onConflict: 'provider_id,school_id,lesson_date,time_slot'
+                })
                 .select();
               
               if (error) {
@@ -1288,9 +1303,14 @@ export function CalendarWeekView({
                   details: error.details,
                   hint: error.hint
                 });
-                console.error('Lesson data that failed to save:', lessonData);
-              } else if (savedLesson) {
-                console.log(`Successfully saved lesson for time slot ${lesson.timeSlot}`, savedLesson);
+                console.error('Lesson failed to save (redacted).', {
+          provider_id: lessonData.provider_id,
+          lesson_date: lessonData.lesson_date,
+          time_slot: lessonData.time_slot,
+          school_id: lessonData.school_id,
+        });
+              } else if (savedLesson && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                console.log(`Successfully saved lesson for time slot ${lesson.timeSlot}`, savedLesson?.[0]?.id ?? savedLesson);
               }
             } catch (error) {
               console.error(`Error saving lesson for time slot ${lesson.timeSlot}:`, error);
@@ -1366,6 +1386,9 @@ export function CalendarWeekView({
         .insert({
           provider_id: currentUser.id,
           lesson_date: lessonDate,
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
@@ -1448,6 +1471,9 @@ export function CalendarWeekView({
       const { data, error } = await supabase
         .from('manual_lesson_plans')
         .update({
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
