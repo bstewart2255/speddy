@@ -11,6 +11,28 @@ interface FormData {
   timeDuration: string;
 }
 
+interface WorksheetSection {
+  title?: string;
+  instructions?: string;
+  items?: Array<string | { content?: string; question?: string }>;
+}
+
+interface Worksheet {
+  title?: string;
+  instructions?: string;
+  sections?: WorksheetSection[];
+}
+
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const gradeOptions = [
   'Kindergarten',
   '1st Grade',
@@ -52,36 +74,36 @@ const timeDurationOptions = [
   '60 minutes',
 ];
 
-// Helper function to format worksheet as HTML
-function formatWorksheetAsHtml(worksheet: any): string {
+// Helper function to format worksheet as HTML with proper escaping
+function formatWorksheetAsHtml(worksheet: Worksheet): string {
   let html = '';
   
   if (worksheet.title) {
-    html += `<h3>${worksheet.title}</h3>`;
+    html += `<h3>${escapeHtml(worksheet.title)}</h3>`;
   }
   
   if (worksheet.instructions) {
-    html += `<p class="instructions">${worksheet.instructions}</p>`;
+    html += `<p class="instructions">${escapeHtml(worksheet.instructions)}</p>`;
   }
   
   if (worksheet.sections && Array.isArray(worksheet.sections)) {
-    worksheet.sections.forEach((section: any) => {
+    worksheet.sections.forEach((section: WorksheetSection) => {
       html += '<div class="worksheet-section">';
       if (section.title) {
-        html += `<h4>${section.title}</h4>`;
+        html += `<h4>${escapeHtml(section.title)}</h4>`;
       }
       if (section.instructions) {
-        html += `<p>${section.instructions}</p>`;
+        html += `<p>${escapeHtml(section.instructions)}</p>`;
       }
       if (section.items && Array.isArray(section.items)) {
         html += '<ol>';
-        section.items.forEach((item: any) => {
+        section.items.forEach((item) => {
           if (typeof item === 'string') {
-            html += `<li>${item}</li>`;
+            html += `<li>${escapeHtml(item)}</li>`;
           } else if (item.content) {
-            html += `<li>${item.content}</li>`;
+            html += `<li>${escapeHtml(item.content)}</li>`;
           } else if (item.question) {
-            html += `<li>${item.question}</li>`;
+            html += `<li>${escapeHtml(item.question)}</li>`;
           }
         });
         html += '</ol>';
@@ -145,15 +167,19 @@ export default function LessonBuilder() {
       }
 
       const data = await response.json();
-      // Extract HTML content from the structured lesson
+      // Extract HTML content from the structured lesson with proper escaping
       let htmlContent = '';
       if (data.lesson) {
         // Convert structured lesson to HTML for display
+        const title = escapeHtml(data.lesson.lesson?.title || formData.topic);
+        const duration = escapeHtml(String(data.lesson.lesson?.duration || formData.timeDuration));
+        const overview = data.lesson.lesson?.overview ? escapeHtml(data.lesson.lesson.overview) : '';
+        
         htmlContent = `
           <div class="lesson-content">
-            <h2>${data.lesson.lesson?.title || formData.topic}</h2>
-            <div class="duration">Duration: ${data.lesson.lesson?.duration || formData.timeDuration} minutes</div>
-            ${data.lesson.lesson?.overview ? `<div class="overview">${data.lesson.lesson.overview}</div>` : ''}
+            <h2>${title}</h2>
+            <div class="duration">Duration: ${duration} minutes</div>
+            ${overview ? `<div class="overview">${overview}</div>` : ''}
             ${data.lesson.studentMaterials?.[0]?.worksheet ? 
               formatWorksheetAsHtml(data.lesson.studentMaterials[0].worksheet) : 
               '<p>No worksheet content available</p>'

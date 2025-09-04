@@ -232,13 +232,14 @@ export async function POST(request: NextRequest) {
       );
       
       // Return response
+      // Note: renderUrl removed since we're now saving to ai_generated_lessons table
+      // and the render endpoint expects lessons table
       return NextResponse.json({
         success: true,
         lessonId: savedLesson.id,
         lesson,
         validation: lessonValidation,
-        generationMetadata,
-        renderUrl: `/api/lessons/${savedLesson.id}/render`
+        generationMetadata
       });
       
     } catch (error) {
@@ -420,11 +421,11 @@ async function saveLessonToDatabase(
     .from('ai_generated_lessons')
     .insert({
       provider_id: userId,
-      lesson_date: new Date().toISOString().split('T')[0],
-      time_slot: 'structured', // Mark as structured lesson
+      lesson_date: request.lessonDate || new Date().toISOString().split('T')[0],
+      time_slot: request.timeSlot || 'structured', // Use provided time slot or default to 'structured'
       content: JSON.stringify(lesson), // Store entire JSON structure as string
       prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
-      session_data: request.students.map(s => ({ id: s.id, student_id: s.id })),
+      session_data: request.students.map(s => ({ student_id: s.id })), // Simplified to avoid redundancy
       school_id: profile?.school_id || null,
       district_id: profile?.district_id || null,
       state_id: profile?.state_id || null,
