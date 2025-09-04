@@ -316,6 +316,9 @@ Make it print-friendly and ready to use.`;
         'lesson plans'
       }. You have deep knowledge of evidence-based practices, developmental milestones, and therapeutic interventions specific to your field. Always create practical, engaging activities appropriate for the school setting.`;
 
+      // Capture the full prompt for logging
+      const fullPromptSent = `System: ${systemContent}\n\nUser: ${promptContent}`;
+      
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -338,6 +341,45 @@ Make it print-friendly and ready to use.`;
 
         // Extract the text content from OpenAI's response
         content = completion.choices[0]?.message?.content || '';
+        
+        // Save prompt and response to database
+        try {
+          const { error: saveError } = await supabase
+            .from('ai_generated_lessons')
+            .insert({
+              provider_id: userId,
+              lesson_date: new Date().toISOString().split('T')[0],
+              time_slot: timeSlot || 'unspecified',
+              content: content,
+              prompt: promptContent.substring(0, 2000), // Keep existing field for backward compatibility
+              full_prompt_sent: fullPromptSent,
+              ai_raw_response: completion as any,
+              model_used: 'gpt-4o-mini',
+              prompt_tokens: completion.usage?.prompt_tokens || 0,
+              completion_tokens: completion.usage?.completion_tokens || 0,
+              generation_metadata: {
+                role: userRole,
+                duration_ms: Math.round(aiDuration),
+                student_count: students.length,
+                has_iep_goals: studentDetailsArray.some(d => d?.iep_goals?.length > 0),
+                has_working_skills: studentDetailsArray.some(d => d?.working_skills?.length > 0),
+                timestamp: new Date().toISOString()
+              },
+              session_data: students.map(s => ({ id: s.id, student_id: s.id }))
+            });
+            
+          if (saveError) {
+            log.error('Failed to save lesson prompt/response to database', saveError, { userId });
+          } else {
+            log.info('Saved lesson prompt and response to database', { 
+              userId, 
+              model: 'gpt-4o-mini',
+              promptLength: fullPromptSent.length 
+            });
+          }
+        } catch (dbError) {
+          log.error('Error saving to database', dbError, { userId });
+        }
 
         // Map student numbers back to initials for display
         students.forEach((student, index) => {
@@ -472,8 +514,11 @@ async function createEnhancedPrompt(
   userRole: string,
   subject?: string
 ): Promise<string> {
+  // Store studentDetailsArray at module scope for access in the completion handler
+  let studentDetailsArray: any[] = [];
+  
   // Fetch all student details once
-  const studentDetailsArray = await Promise.all(
+  studentDetailsArray = await Promise.all(
     students.map(async (student) => {
       const detailsPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
       try {
