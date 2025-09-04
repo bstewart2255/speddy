@@ -11,27 +11,51 @@ const SAMPLE_STUDENTS_FOR_BASE = 3;
 
 /**
  * Safe metadata type for client exposure
- * Only includes non-sensitive fields that are safe to send to the client
- * Full metadata with PII should only be used server-side for logging/debugging
+ * Only includes minimal metrics that are safe to send to the client
+ * Excludes all PII such as prompts, responses, and content arrays
  */
-export type SafeGenerationMetadata = Pick<GenerationMetadata, 
-  'modelUsed' | 'promptTokens' | 'completionTokens'
->;
+export interface SafeGenerationMetadata {
+  // Model information
+  modelUsed: string;
+  
+  // Token metrics
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  
+  // Timing metrics (if available)
+  generationTimeMs?: number;
+}
 
 /**
- * SERVER-ONLY: Converts full metadata to safe metadata for client exposure
- * This function should only be called on the server side
+ * SERVER-ONLY: Sanitizes full metadata to safe metadata for client exposure
+ * This function extracts only minimal metrics and omits sensitive fields
  * @param metadata Full generation metadata (may contain PII)
- * @returns Safe metadata without sensitive information
+ * @returns Sanitized metadata containing only safe metrics
  */
 function toSafeMetadata(metadata: GenerationMetadata | null | undefined): SafeGenerationMetadata | undefined {
   if (!metadata) return undefined;
   
-  return {
+  // Extract only safe fields - no prompts, responses, or content arrays
+  const safeMetadata: SafeGenerationMetadata = {
+    // Model identifier
     modelUsed: metadata.modelUsed,
-    promptTokens: metadata.promptTokens,
-    completionTokens: metadata.completionTokens
+    
+    // Token counts
+    promptTokens: metadata.promptTokens || 0,
+    completionTokens: metadata.completionTokens || 0,
+    totalTokens: (metadata.promptTokens || 0) + (metadata.completionTokens || 0),
   };
+  
+  // Add timing data if available (from nested generationMetadata)
+  if (metadata.generationMetadata && typeof metadata.generationMetadata === 'object') {
+    const nestedMeta = metadata.generationMetadata as any;
+    if (typeof nestedMeta.generationTimeMs === 'number') {
+      safeMetadata.generationTimeMs = nestedMeta.generationTimeMs;
+    }
+  }
+  
+  return safeMetadata;
 }
 
 export class LessonGenerator {
