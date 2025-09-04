@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import LessonPreviewModal from './lesson-preview-modal';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 interface FormData {
   grade: string;
@@ -152,7 +153,7 @@ export default function LessonBuilder() {
         body: JSON.stringify({
           students: [{
             id: 'generic-' + Date.now(),
-            grade: parseInt(formData.grade) || 3
+            grade: parseGradeLevel(formData.grade) || 3
           }],
           subject: formData.subject,
           topic: formData.topic,
