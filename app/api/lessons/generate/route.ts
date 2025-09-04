@@ -220,18 +220,21 @@ export async function POST(request: NextRequest) {
         duration: lessonRequest.duration
       });
       
-      const { lesson, validation: lessonValidation, metadata: generationMetadata } = await lessonGenerator.generateLesson(lessonRequest);
+      const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
       
-      // Save lesson to database
+      // Get full metadata for server-side storage only (contains PII)
+      const fullMetadataForLogging = lessonGenerator.getFullMetadataForLogging();
+      
+      // Save lesson to database with full metadata
       const savedLesson = await saveLessonToDatabase(
         lesson,
         lessonRequest,
         userId,
         supabase,
-        generationMetadata
+        fullMetadataForLogging  // Use full metadata for database storage
       );
       
-      // Return response
+      // Return response with only safe metadata
       // Note: renderUrl removed since we're now saving to ai_generated_lessons table
       // and the render endpoint expects lessons table
       return NextResponse.json({
@@ -239,7 +242,7 @@ export async function POST(request: NextRequest) {
         lessonId: savedLesson.id,
         lesson,
         validation: lessonValidation,
-        generationMetadata
+        generationMetadata: safeMetadata  // Only expose safe metadata to client
       });
       
     } catch (error) {

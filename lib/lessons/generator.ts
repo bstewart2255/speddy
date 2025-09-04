@@ -1,6 +1,6 @@
 // Main lesson generator that orchestrates the JSON-first generation
 import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determineGradeGroups } from './schema';
-import { createAIProvider, AIProvider } from './providers';
+import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
 
@@ -8,6 +8,31 @@ import { materialsValidator, ValidationResult } from './validator';
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
 const MAX_GENERATION_ATTEMPTS = 2;
 const SAMPLE_STUDENTS_FOR_BASE = 3;
+
+/**
+ * Safe metadata type for client exposure
+ * Only includes non-sensitive fields that are safe to send to the client
+ * Full metadata with PII should only be used server-side for logging/debugging
+ */
+export type SafeGenerationMetadata = Pick<GenerationMetadata, 
+  'modelUsed' | 'promptTokens' | 'completionTokens'
+>;
+
+/**
+ * SERVER-ONLY: Converts full metadata to safe metadata for client exposure
+ * This function should only be called on the server side
+ * @param metadata Full generation metadata (may contain PII)
+ * @returns Safe metadata without sensitive information
+ */
+function toSafeMetadata(metadata: GenerationMetadata | null | undefined): SafeGenerationMetadata | undefined {
+  if (!metadata) return undefined;
+  
+  return {
+    modelUsed: metadata.modelUsed,
+    promptTokens: metadata.promptTokens,
+    completionTokens: metadata.completionTokens
+  };
+}
 
 export class LessonGenerator {
   private provider: AIProvider;
@@ -17,14 +42,26 @@ export class LessonGenerator {
   }
 
   /**
+   * SERVER-ONLY: Gets the full generation metadata from the last generation
+   * WARNING: This contains sensitive information (prompts, raw responses) and should
+   * NEVER be exposed to the client. Only use for server-side logging/storage.
+   */
+  getFullMetadataForLogging(): GenerationMetadata | null {
+    return this.provider.getLastGenerationMetadata();
+  }
+
+  /**
    * Generates a lesson based on the request.
    * For large student groups (>CHUNK_THRESHOLD), uses chunked generation strategy
    * to work within token limits by generating base lesson and per-grade worksheets separately.
+   * 
+   * NOTE: Returns only safe metadata for client exposure.
+   * Full metadata with PII is available server-side via provider.getLastGenerationMetadata()
    */
   async generateLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
-    metadata?: any;
+    metadata?: SafeGenerationMetadata;
   }> {
     // Use chunked generation for large groups of students
     if (request.students.length > CHUNK_THRESHOLD) {
@@ -77,7 +114,7 @@ export class LessonGenerator {
             return { 
               lesson, 
               validation,
-              metadata: this.provider.getLastGenerationMetadata()
+              metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
             };
           } else {
             console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);
@@ -149,11 +186,14 @@ export class LessonGenerator {
 
   /**
    * Generates a lesson using chunked approach for large student groups
+   * 
+   * NOTE: Returns only safe metadata for client exposure.
+   * Full metadata with PII is available server-side via provider.getLastGenerationMetadata()
    */
   private async generateChunkedLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
-    metadata?: any;
+    metadata?: SafeGenerationMetadata;
   }> {
     console.log(`Using chunked generation for ${request.students.length} students`);
     
@@ -282,7 +322,7 @@ Return ONLY the worksheet content in this structure:
       return { 
         lesson: completeLesson, 
         validation,
-        metadata: this.provider.getLastGenerationMetadata()
+        metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
       };
       
     } catch (error) {
