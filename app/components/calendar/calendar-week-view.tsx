@@ -1006,28 +1006,126 @@ export function CalendarWeekView({
       // Group sessions by time slot for AI generation
       const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
 
-      // Generate AI lessons for each time slot
+      // Generate AI lessons for each time slot using batch API
       setGeneratingContent(true);
       setModalOpen(true);
       
-      const generatedLessons: any[] = [];
+      // Show progress notification
+      showToast(`Generating ${timeSlotGroups.size} lesson${timeSlotGroups.size > 1 ? 's' : ''}...`, 'info');
+      
+      // Declare variables outside try block
+      let generatedLessons: any[] = [];
+      let batchResponseData: any = null;
       
       try {
+        // Prepare batch request
+        const batchRequests: any[] = [];
+        const timeSlotMapping = new Map<number, { timeSlot: string; slotSessions: ScheduleSession[] }>();
+        let index = 0;
+        
         for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
-          const lessonData = await generateAIContentForTimeSlot(selectedLessonDate, slotSessions, timeSlot);
-          if (lessonData) {
-            // Create a new object with student information
-            const lessonWithStudents = {
-              ...lessonData,
-              students: slotSessions.map(session => ({
-                id: session.student_id || '',
-                initials: students.get(session.student_id || '')?.initials || '',
-                grade_level: students.get(session.student_id || '')?.grade_level || '',
-                teacher_name: ''
-              }))
+          // Extract unique students from the sessions
+          const sessionStudents = new Set<string>();
+          slotSessions.forEach(session => {
+            if (session.student_id) {
+              sessionStudents.add(session.student_id);
+            }
+          });
+          
+          // Get student details for the new API format
+          const studentList = Array.from(sessionStudents).map(studentId => {
+            const student = students.get(studentId);
+            return {
+              id: studentId,
+              grade: parseGradeLevel(student?.grade_level)
             };
-            generatedLessons.push(lessonWithStudents);
+          });
+          
+          if (studentList.length > 0) {
+            const subject = 'English Language Arts'; // Default subject, can be made configurable
+            const duration = calculateDurationFromTimeSlot(timeSlot);
+            
+            batchRequests.push({
+              students: studentList,
+              subject,
+              duration,
+              topic: `Session for ${formatTimeSlot(timeSlot)}`,
+              teacherRole: userProfile?.role || 'resource'
+            });
+            
+            // Store mapping for later use
+            timeSlotMapping.set(index, { timeSlot, slotSessions });
+            index++;
           }
+        }
+        
+        if (batchRequests.length === 0) {
+          showToast('No valid time slots to generate lessons for', 'warning');
+          setGeneratingContent(false);
+          setModalOpen(false);
+          return;
+        }
+        
+        // Make batch API call with timeout
+        console.log(`Sending batch request for ${batchRequests.length} lesson groups`);
+        
+        // Create an AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+        
+        try {
+          const response = await fetch('/api/lessons/generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              batch: batchRequests
+            }),
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to generate lessons');
+          }
+          
+          const data = await response.json();
+          batchResponseData = data;
+          
+          // Process the results
+          generatedLessons = [];
+          
+          if (data.batch && data.lessons) {
+            data.lessons.forEach((result: any, idx: number) => {
+              if (result.success && result.lesson) {
+                const mapping = timeSlotMapping.get(idx);
+                if (mapping) {
+                  const lessonData = {
+                    timeSlot: mapping.timeSlot,
+                    content: JSON.stringify(result.lesson),
+                    prompt: result.group?.topic || '',
+                    lessonId: result.lessonId,
+                    students: mapping.slotSessions.map(session => ({
+                      id: session.student_id || '',
+                      initials: students.get(session.student_id || '')?.initials || '',
+                      grade_level: students.get(session.student_id || '')?.grade_level || '',
+                      teacher_name: ''
+                    }))
+                  };
+                  generatedLessons.push(lessonData);
+                }
+              }
+            });
+          }
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId);
+          if (fetchError.name === 'AbortError') {
+            throw new Error('Request timeout: Lesson generation took too long. Please try with fewer students.');
+          }
+          throw fetchError;
         }
         
         // Close the generating modal
@@ -1044,11 +1142,11 @@ export function CalendarWeekView({
           setEnhancedModalDate(selectedLessonDate);
           setEnhancedModalOpen(true);
           
-          const total = timeSlotGroups.size;
+          const total = batchRequests.length;
           const failed = total - generatedLessons.length;
           
           if (failed === 0) {
-            showToast(`Successfully generated ${generatedLessons.length} AI lesson(s)`, 'success');
+            showToast(`Successfully generated ${generatedLessons.length} AI lesson(s) in ${batchResponseData?.summary?.timeMs || 0}ms`, 'success');
           } else {
             showToast(`Generated ${generatedLessons.length} lesson(s), ${failed} failed`, 'warning');
           }
@@ -1057,7 +1155,7 @@ export function CalendarWeekView({
         }
       } catch (error) {
         console.error('Error generating AI lessons:', error);
-        showToast('An unexpected error occurred', 'error');
+        showToast(error instanceof Error ? error.message : 'An unexpected error occurred', 'error');
         setGeneratingContent(false);
         setModalOpen(false);
       }
