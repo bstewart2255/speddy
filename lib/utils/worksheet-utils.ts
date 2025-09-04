@@ -257,7 +257,7 @@ export async function generateAIWorksheetHtml(
 }
 
 /**
- * Opens and prints HTML worksheet in a new window
+ * Opens and prints HTML worksheet using iframe (avoids pop-up blockers)
  */
 export function printHtmlWorksheet(html: string | null, title: string): void {
   // Validate HTML content before attempting to print
@@ -270,92 +270,168 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     return;
   }
   
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    console.error('Failed to open print window - popup blocked');
-    // TODO: Replace with toast notification when available in calling components
-    alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print worksheets, then try again.');
-    return;
-  }
+  // Create a hidden iframe for printing
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  iframe.style.visibility = 'hidden';
+  
+  // Add iframe to document
+  document.body.appendChild(iframe);
   
   try {
-    // Write content to the print window
-    printWindow.document.write(html);
-    printWindow.document.close();
+    // Write content to iframe
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Unable to access iframe document');
+    }
     
-    // Flag to prevent duplicate print calls
-    let printTriggered = false;
+    iframeDoc.write(html);
+    iframeDoc.close();
     
-    // Wait for content to load before triggering print
-    printWindow.onload = () => {
-      if (printTriggered) return;
-      
-      setTimeout(() => {
-        if (printTriggered) return;
-        printTriggered = true;
-        
-        try {
-          printWindow.print();
-        } catch (printError) {
-          console.error('Failed to trigger print dialog:', printError);
-        }
-      }, 500);
+    // Wait for content to load then print
+    const printAndCleanup = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (printError) {
+        console.error('Failed to trigger print dialog:', printError);
+      } finally {
+        // Remove iframe after a delay to ensure print dialog has opened
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      }
     };
     
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      if (printTriggered) return;
-      if (printWindow && !printWindow.closed) {
-        printTriggered = true;
-        
-        try {
-          printWindow.print();
-        } catch (printError) {
-          console.error('Failed to trigger print dialog (fallback):', printError);
-        }
-      }
-    }, 1000);
+    // Check if content is loaded
+    if (iframe.contentWindow?.document.readyState === 'complete') {
+      printAndCleanup();
+    } else {
+      iframe.onload = printAndCleanup;
+      // Fallback timeout
+      setTimeout(printAndCleanup, 1500);
+    }
   } catch (error) {
-    console.error('Failed to write content to print window:', error);
+    console.error('Failed to prepare worksheet for printing:', error);
+    // Clean up iframe on error
+    if (iframe.parentNode) {
+      document.body.removeChild(iframe);
+    }
     // TODO: Replace with toast notification when available in calling components
     alert(`Unable to prepare worksheet for printing (${title}). Please try again or contact support if the issue persists.`);
-    if (printWindow && !printWindow.closed) {
-      printWindow.close();
-    }
   }
 }
 
 /**
- * Opens and prints PDF worksheet with proper print trigger
+ * Downloads a worksheet as HTML file
  */
-export function printPdfWorksheet(pdfDataUrl: string, title: string): void {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    console.error('Failed to open print window - popup blocked');
+export function downloadHtmlWorksheet(html: string | null, title: string): void {
+  if (!html || html.trim().length === 0) {
+    console.error(`Cannot download empty worksheet for: ${title}`);
+    alert(`Unable to generate worksheet content for ${title}. Please try again.`);
     return;
   }
   
+  // Create blob and download link
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Downloads a worksheet as PDF file
+ */
+export function downloadPdfWorksheet(pdfDataUrl: string, title: string): void {
+  // Convert data URL to blob if needed
+  const link = document.createElement('a');
+  link.href = pdfDataUrl;
+  link.download = `${title.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
+ * Opens and prints PDF worksheet using iframe (avoids pop-up blockers)
+ */
+export function printPdfWorksheet(pdfDataUrl: string, title: string): void {
   const escapeHtml = (s: string) =>
     String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
   
   const safeTitle = escapeHtml(title);
   const safeSrc = escapeHtml(pdfDataUrl);
   
-  // Wrap PDF in HTML with auto-print
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${safeTitle}</title>
-        <style>
-          body { margin: 0; padding: 0; }
-          iframe { border: none; width: 100%; height: 100vh; }
-        </style>
-      </head>
-      <body>
-        <iframe src="${safeSrc}" onload="setTimeout(() => { window.print(); }, 500);"></iframe>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
+  // Create a hidden iframe for printing
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  iframe.style.visibility = 'hidden';
+  
+  // Add iframe to document
+  document.body.appendChild(iframe);
+  
+  try {
+    // Write PDF wrapper HTML to iframe
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Unable to access iframe document');
+    }
+    
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${safeTitle}</title>
+          <style>
+            body { margin: 0; padding: 0; }
+            embed { width: 100%; height: 100vh; }
+          </style>
+        </head>
+        <body>
+          <embed src="${safeSrc}" type="application/pdf" />
+        </body>
+      </html>
+    `);
+    iframeDoc.close();
+    
+    // Wait for PDF to load then print
+    const printAndCleanup = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (printError) {
+        console.error('Failed to trigger print dialog for PDF:', printError);
+      } finally {
+        // Remove iframe after a delay to ensure print dialog has opened
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      }
+    };
+    
+    // Give PDF time to load, then print
+    setTimeout(printAndCleanup, 1000);
+  } catch (error) {
+    console.error('Failed to prepare PDF for printing:', error);
+    // Clean up iframe on error
+    if (iframe.parentNode) {
+      document.body.removeChild(iframe);
+    }
+    alert(`Unable to prepare PDF for printing (${title}). Please try again.`);
+  }
 }

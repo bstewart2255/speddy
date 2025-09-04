@@ -15,6 +15,7 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { useSchool } from '../providers/school-context';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -45,7 +46,9 @@ export function CalendarWeekView({
   onAddEvent,
   onEventClick
   }: CalendarWeekViewProps) {
-  const getWeekDates = () => {
+  // Get school context for filtering lessons
+  const { currentSchool } = useSchool();
+  const weekDates = useMemo(() => {
     const today = new Date();
     // Apply week offset
     today.setDate(today.getDate() + (weekOffset * 7));
@@ -55,17 +58,15 @@ export function CalendarWeekView({
     const monday = new Date(today);
     monday.setDate(today.getDate() + diff);
 
-    const weekDates: Date[] = [];
+    const weekDatesArray: Date[] = [];
     for (let i = 0; i < 5; i++) {
       // Monday to Friday only
       const date = new Date(monday);
       date.setDate(monday.getDate() + i);
-      weekDates.push(date);
+      weekDatesArray.push(date);
     }
-    return weekDates;
-  };
-
-  const weekDates = getWeekDates();
+    return weekDatesArray;
+  }, [weekOffset]);
 
   // Check if a date is a holiday
   const isHoliday = useCallback((date: Date) => {
@@ -88,6 +89,7 @@ export function CalendarWeekView({
   const [generatingContent, setGeneratingContent] = useState(false);
   const [savedLessons, setSavedLessons] = useState<Map<string, any>>(new Map());
   const [loadingSavedLessons, setLoadingSavedLessons] = useState(false);
+  const loadingLessonsRef = React.useRef(false);
   const [viewingSavedLesson, setViewingSavedLesson] = useState(false);
   
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -194,7 +196,7 @@ export function CalendarWeekView({
     };
 
     loadSessions();
-  }, [weekOffset, supabase]);
+  }, [weekOffset]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
@@ -284,11 +286,21 @@ export function CalendarWeekView({
 
       try {
         // Delete lessons without time_slot as they are no longer needed
-        const { error } = await supabase
+        let deleteQuery = supabase
           .from('ai_generated_lessons')
           .delete()
           .eq('provider_id', user.id)
           .is('time_slot', null);
+        
+        // Add school filter to prevent cross-school deletions
+        if (currentSchool?.school_id) {
+          deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
+        } else {
+          // No school_id - only delete records with NULL school_id
+          deleteQuery = deleteQuery.is('school_id', null);
+        }
+        
+        const { error } = await deleteQuery;
 
         if (error && error.code !== '42P01') {
           console.error('Failed to cleanup legacy lessons:', error);
@@ -299,18 +311,26 @@ export function CalendarWeekView({
     };
 
     cleanupLegacyLessons();
-  }, [supabase]); // Run once on mount
+  }, []); // Run once on mount
 
   // Load saved AI lessons
   React.useEffect(() => {
     // Skip if weekDates is not ready
     if (!weekDates || weekDates.length === 0) return;
 
-
+    // Prevent rapid reloads
+    let cancelled = false;
+    
     const loadSavedLessons = async () => {
+      if (cancelled) return;
+      
+      // Don't reload if already loading
+      if (loadingLessonsRef.current) return;
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      loadingLessonsRef.current = true;
       setLoadingSavedLessons(true);
       try {
         const weekStart = weekDates[0];
@@ -319,12 +339,24 @@ export function CalendarWeekView({
         const startDate = toLocalDateKey(weekStart);
         const endDate = toLocalDateKey(weekEnd);
 
-        const { data, error } = await supabase
+        // Filter by both provider and school
+        let query = supabase
           .from('ai_generated_lessons')
           .select('*')
           .eq('provider_id', user.id)
           .gte('lesson_date', startDate)
           .lte('lesson_date', endDate);
+        
+        // Add school filter if available; otherwise safely filter to avoid cross-school leakage
+        if (currentSchool?.school_id) {
+          query = query.eq('school_id', currentSchool.school_id);
+        } else {
+          // No school_id available - filter to NULL to avoid cross-school data leakage
+          console.warn('No school_id available; filtering to NULL school_id to avoid cross-school leakage');
+          query = query.is('school_id', null);
+        }
+        
+        const { data, error } = await query;
 
         if (error) {
           // Check if it's a "table doesn't exist" error
@@ -356,11 +388,22 @@ export function CalendarWeekView({
         console.error('Failed to load saved lessons:', error);
       } finally {
         setLoadingSavedLessons(false);
+        loadingLessonsRef.current = false;
       }
     };
 
-    loadSavedLessons();
-  }, [weekOffset, weekDates, supabase]);
+    // Add a small delay to prevent rapid reloads
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        loadSavedLessons();
+      }
+    }, 100);
+    
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [weekOffset, weekDates, currentSchool?.school_id]);
 
   // Handler for saving notes
   const handleSaveNotes = async () => {
@@ -609,29 +652,76 @@ export function CalendarWeekView({
       }));
 
       // First try to delete any existing empty lesson
-      await supabase
+      let deleteEmptyQuery = supabase
         .from('ai_generated_lessons')
         .delete()
         .eq('provider_id', currentUser.id)
         .eq('lesson_date', toLocalDateKey(date))
         .eq('time_slot', timeSlot)
         .eq('content', '');
+      
+      // Add school filter to prevent cross-school deletions
+      if (currentSchool?.school_id) {
+        deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
+      } else {
+        // No school_id - only delete records with NULL school_id
+        deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
+      }
+      
+      await deleteEmptyQuery;
 
-      // Save the generated lesson with time slot
-      const { error } = await supabase
+      // Log school context for debugging
+      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        console.log('Current school context:', {
+          school_id: currentSchool?.school_id,
+          district_id: currentSchool?.district_id,
+          state_id: currentSchool?.state_id,
+          school_site: currentSchool?.school_site,
+          is_migrated: currentSchool?.is_migrated
+        });
+      }
+      
+      // Save the generated lesson with time slot and school context
+      const lessonData = {
+        provider_id: currentUser.id,
+        lesson_date: toLocalDateKey(date),
+        time_slot: timeSlot,
+        content: lessonContent,
+        prompt: '',
+        session_data: trimmedSessions,
+        updated_at: new Date().toISOString(),
+        // Add school context
+        school_id: currentSchool?.school_id || null,
+        district_id: currentSchool?.district_id || null,
+        state_id: currentSchool?.state_id || null
+      };
+      
+      const { data: savedLesson, error } = await supabase
         .from('ai_generated_lessons')
-        .upsert({
-          provider_id: currentUser.id,
-          lesson_date: toLocalDateKey(date),
-          time_slot: timeSlot,
-          content: lessonContent,
-          prompt: '',
-          session_data: trimmedSessions,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'provider_id,lesson_date,time_slot' });
+        .upsert(lessonData, { 
+          onConflict: 'provider_id,school_id,lesson_date,time_slot' 
+        })
+        .select();
 
       if (error) {
+        console.error('Failed to save AI lesson to database:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        console.error('Lesson failed to save (redacted).', {
+          provider_id: lessonData.provider_id,
+          lesson_date: lessonData.lesson_date,
+          time_slot: lessonData.time_slot,
+          school_id: lessonData.school_id,
+        });
         throw error;
+      }
+      
+      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+        console.log('Successfully saved lesson to database:', savedLesson?.[0]?.id ?? savedLesson);
       }
 
       // Return the generated lesson data
@@ -904,12 +994,22 @@ export function CalendarWeekView({
     if (!dayLessons) return;
 
     try {
-      // Delete all AI lessons for this date
-      const { error } = await supabase
+      // Delete all AI lessons for this date at the current school
+      let deleteQuery = supabase
         .from('ai_generated_lessons')
         .delete()
         .eq('provider_id', currentUser!.id)
         .eq('lesson_date', dateStr);
+      
+      // Add school filter for deletion to avoid cross-school deletions
+      if (currentSchool?.school_id) {
+        deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
+      } else {
+        // No school_id - only delete records with NULL school_id
+        deleteQuery = deleteQuery.is('school_id', null);
+      }
+      
+      const { error } = await deleteQuery;
 
       if (error) throw error;
 
@@ -1149,7 +1249,8 @@ export function CalendarWeekView({
           const dateStr = toLocalDateKey(selectedLessonDate);
           
           // Save each lesson to the database
-          for (const lesson of generatedLessons) {
+          for (let idx = 0; idx < generatedLessons.length; idx++) {
+            const lesson = generatedLessons[idx];
             try {
               // Prepare trimmed session data to avoid PII bloat
               const trimmedSessions = lesson.students.map((s: any) => ({
@@ -1159,7 +1260,7 @@ export function CalendarWeekView({
               }));
               
               // Delete any existing empty lesson for this slot
-              await supabase
+              let deleteEmptyQuery = supabase
                 .from('ai_generated_lessons')
                 .delete()
                 .eq('provider_id', currentUser.id)
@@ -1167,21 +1268,64 @@ export function CalendarWeekView({
                 .eq('time_slot', lesson.timeSlot)
                 .eq('content', '');
               
-              // Save the generated lesson with time slot
-              const { error } = await supabase
+              // Add school filter to prevent cross-school deletions
+              if (currentSchool?.school_id) {
+                deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
+              } else {
+                // No school_id - only delete records with NULL school_id
+                deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
+              }
+              
+              await deleteEmptyQuery;
+              
+              // Log school context for debugging (in batch generation)
+              if (idx === 0 && currentSchool && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                console.log('Current school context (batch):', {
+                  school_id: currentSchool.school_id,
+                  district_id: currentSchool.district_id,
+                  state_id: currentSchool.state_id,
+                  // Omit sensitive fields like school_site
+                });
+              }
+              
+              // Save the generated lesson with time slot and school context
+              const lessonData = {
+                provider_id: currentUser.id,
+                lesson_date: dateStr,
+                time_slot: lesson.timeSlot,
+                content: lesson.content,
+                prompt: lesson.prompt || '',
+                session_data: trimmedSessions,
+                updated_at: new Date().toISOString(),
+                // Add school context
+                school_id: currentSchool?.school_id || null,
+                district_id: currentSchool?.district_id || null,
+                state_id: currentSchool?.state_id || null
+              };
+              
+              const { data: savedLesson, error } = await supabase
                 .from('ai_generated_lessons')
-                .upsert({
-                  provider_id: currentUser.id,
-                  lesson_date: dateStr,
-                  time_slot: lesson.timeSlot,
-                  content: lesson.content,
-                  prompt: lesson.prompt || '',
-                  session_data: trimmedSessions,
-                  updated_at: new Date().toISOString()
-                }, { onConflict: 'provider_id,lesson_date,time_slot' });
+                .upsert(lessonData, {
+                  onConflict: 'provider_id,school_id,lesson_date,time_slot'
+                })
+                .select();
               
               if (error) {
                 console.error(`Failed to save lesson for time slot ${lesson.timeSlot}:`, error);
+                console.error('Error details:', {
+                  code: error.code,
+                  message: error.message,
+                  details: error.details,
+                  hint: error.hint
+                });
+                console.error('Lesson failed to save (redacted).', {
+          provider_id: lessonData.provider_id,
+          lesson_date: lessonData.lesson_date,
+          time_slot: lessonData.time_slot,
+          school_id: lessonData.school_id,
+        });
+              } else if (savedLesson && process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                console.log(`Successfully saved lesson for time slot ${lesson.timeSlot}`, savedLesson?.[0]?.id ?? savedLesson);
               }
             } catch (error) {
               console.error(`Error saving lesson for time slot ${lesson.timeSlot}:`, error);
@@ -1257,6 +1401,9 @@ export function CalendarWeekView({
         .insert({
           provider_id: currentUser.id,
           lesson_date: lessonDate,
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
@@ -1339,6 +1486,9 @@ export function CalendarWeekView({
       const { data, error } = await supabase
         .from('manual_lesson_plans')
         .update({
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
