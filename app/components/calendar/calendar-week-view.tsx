@@ -1279,13 +1279,12 @@ export function CalendarWeekView({
               await deleteEmptyQuery;
               
               // Log school context for debugging (in batch generation)
-              if (idx === 0) {
+              if (idx === 0 && currentSchool && process.env.NEXT_PUBLIC_DEBUG === 'true') {
                 console.log('Current school context (batch):', {
-                  school_id: currentSchool?.school_id,
-                  district_id: currentSchool?.district_id,
-                  state_id: currentSchool?.state_id,
-                  school_site: currentSchool?.school_site,
-                  is_migrated: currentSchool?.is_migrated
+                  school_id: currentSchool.school_id,
+                  district_id: currentSchool.district_id,
+                  state_id: currentSchool.state_id,
+                  // Omit sensitive fields like school_site
                 });
               }
               
