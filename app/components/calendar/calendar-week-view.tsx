@@ -286,11 +286,21 @@ export function CalendarWeekView({
 
       try {
         // Delete lessons without time_slot as they are no longer needed
-        const { error } = await supabase
+        let deleteQuery = supabase
           .from('ai_generated_lessons')
           .delete()
           .eq('provider_id', user.id)
           .is('time_slot', null);
+        
+        // Add school filter to prevent cross-school deletions
+        if (currentSchool?.school_id) {
+          deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
+        } else {
+          // No school_id - only delete records with NULL school_id
+          deleteQuery = deleteQuery.is('school_id', null);
+        }
+        
+        const { error } = await deleteQuery;
 
         if (error && error.code !== '42P01') {
           console.error('Failed to cleanup legacy lessons:', error);
@@ -650,9 +660,12 @@ export function CalendarWeekView({
         .eq('time_slot', timeSlot)
         .eq('content', '');
       
-      // Add school filter
+      // Add school filter to prevent cross-school deletions
       if (currentSchool?.school_id) {
         deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
+      } else {
+        // No school_id - only delete records with NULL school_id
+        deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
       }
       
       await deleteEmptyQuery;
@@ -1255,9 +1268,12 @@ export function CalendarWeekView({
                 .eq('time_slot', lesson.timeSlot)
                 .eq('content', '');
               
-              // Add school filter
+              // Add school filter to prevent cross-school deletions
               if (currentSchool?.school_id) {
                 deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
+              } else {
+                // No school_id - only delete records with NULL school_id
+                deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
               }
               
               await deleteEmptyQuery;
