@@ -185,7 +185,7 @@ Make it print-friendly and ready to use.`;
         const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
-          max_completion_tokens: 5000,
+          max_tokens: 5000,
           messages: [
             {
               role: "system",
@@ -202,6 +202,56 @@ Make it print-friendly and ready to use.`;
         });
 
         const content = completion.choices[0]?.message?.content || '';
+        
+        // Save generic lesson to database with logging data
+        const fullPromptSent = `System: ${systemContent}\n\nUser: ${promptContent}`;
+        
+        try {
+          const { error: saveError } = await supabase
+            .from('ai_generated_lessons')
+            .insert({
+              provider_id: userId,
+              lesson_date: new Date().toISOString().split('T')[0],
+              time_slot: 'generic', // Mark as generic lesson
+              content: content,
+              prompt: promptContent.substring(0, 2000), // Keep existing field for backward compatibility
+              full_prompt_sent: fullPromptSent,
+              ai_raw_response: {
+                id: completion.id,
+                model: completion.model,
+                created: completion.created,
+                choices: completion.choices,
+                usage: completion.usage
+              },
+              model_used: 'gpt-4o-mini',
+              prompt_tokens: completion.usage?.prompt_tokens || 0,
+              completion_tokens: completion.usage?.completion_tokens || 0,
+              generation_metadata: {
+                type: 'generic',
+                grade: grade,
+                subject: subject,
+                topic: topic,
+                time_duration: timeDuration,
+                duration_ms: Math.round(aiDuration),
+                timestamp: new Date().toISOString()
+              }
+            });
+          
+          if (saveError) {
+            log.error('Failed to save generic lesson to database', saveError, { userId, grade, subject, topic });
+          } else {
+            log.info('Saved generic lesson to database', { 
+              userId, 
+              grade,
+              subject,
+              topic,
+              model: 'gpt-4o-mini',
+              promptLength: fullPromptSent.length 
+            });
+          }
+        } catch (dbError) {
+          log.error('Error saving generic lesson to database', dbError, { userId });
+        }
         
         log.info('Generic lesson generated successfully', {
           userId,
@@ -278,7 +328,7 @@ Make it print-friendly and ready to use.`;
 
     // Create enhanced prompt with role information
     const promptPerf = measurePerformanceWithAlerts('create_prompt', 'api');
-    const promptContent = await createEnhancedPrompt(
+    const { promptContent, studentDetailsArray } = await createEnhancedPrompt(
       students, 
       duration, 
       recentLogs || [], 
@@ -316,6 +366,9 @@ Make it print-friendly and ready to use.`;
         'lesson plans'
       }. You have deep knowledge of evidence-based practices, developmental milestones, and therapeutic interventions specific to your field. Always create practical, engaging activities appropriate for the school setting.`;
 
+      // Capture the full prompt for logging
+      const fullPromptSent = `System: ${systemContent}\n\nUser: ${promptContent}`;
+      
       const aiPerf = measurePerformanceWithAlerts('openai_api_call', 'api');
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -336,36 +389,81 @@ Make it print-friendly and ready to use.`;
         role: userRole 
       });
 
-        // Extract the text content from OpenAI's response
-        content = completion.choices[0]?.message?.content || '';
-
-        // Map student numbers back to initials for display
-        students.forEach((student, index) => {
-          const studentNum = `Student ${index + 1}`;
-          const studentInitials = student.initials;
-          // Replace all instances of "Student 1" with actual initials
-          content = content.replace(
-            new RegExp(studentNum, 'g'), 
-            studentInitials
-          );
-        });
-
-        // Log API usage
-        log.info('OpenAI API success', {
-          userId,
-          inputTokens: completion.usage?.prompt_tokens || 0,
-          outputTokens: completion.usage?.completion_tokens || 0,
-          totalTokens: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0),
-          duration: Math.round(aiDuration)
-        });
+      // Extract the text content from OpenAI's response
+      content = completion.choices[0]?.message?.content || '';
+      
+      // Save prompt and response to database
+      try {
+        const { error: saveError } = await supabase
+          .from('ai_generated_lessons')
+          .insert({
+            provider_id: userId,
+            lesson_date: new Date().toISOString().split('T')[0],
+            time_slot: timeSlot || 'unspecified',
+            content: content,
+            prompt: promptContent.substring(0, 2000), // Keep existing field for backward compatibility
+            full_prompt_sent: fullPromptSent,
+            ai_raw_response: {
+              id: completion.id,
+              model: completion.model,
+              created: completion.created,
+              choices: completion.choices,
+              usage: completion.usage
+            },
+            model_used: 'gpt-4o-mini',
+            prompt_tokens: completion.usage?.prompt_tokens || 0,
+            completion_tokens: completion.usage?.completion_tokens || 0,
+            generation_metadata: {
+              role: userRole,
+              duration_ms: Math.round(aiDuration),
+              student_count: students.length,
+              has_iep_goals: studentDetailsArray.some(d => d?.iep_goals?.length > 0),
+              has_working_skills: studentDetailsArray.some(d => d?.working_skills?.length > 0),
+              timestamp: new Date().toISOString()
+            },
+            session_data: students.map(s => ({ id: s.id, student_id: s.id }))
+          });
         
-        track.event('lesson_generated', {
-          userId,
-          studentCount: students.length,
-          duration,
-          role: userRole,
-          tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0)
-        });
+        if (saveError) {
+          log.error('Failed to save lesson prompt/response to database', saveError, { userId });
+        } else {
+          log.info('Saved lesson prompt and response to database', { 
+            userId, 
+            model: 'gpt-4o-mini',
+            promptLength: fullPromptSent.length 
+          });
+        }
+      } catch (dbError) {
+        log.error('Error saving to database', dbError, { userId });
+      }
+
+      // Map student numbers back to initials for display
+      students.forEach((student, index) => {
+        const studentNum = `Student ${index + 1}`;
+        const studentInitials = student.initials;
+        // Replace all instances of "Student 1" with actual initials
+        content = content.replace(
+          new RegExp(studentNum, 'g'), 
+          studentInitials
+        );
+      });
+
+      // Log API usage
+      log.info('OpenAI API success', {
+        userId,
+        inputTokens: completion.usage?.prompt_tokens || 0,
+        outputTokens: completion.usage?.completion_tokens || 0,
+        totalTokens: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0),
+        duration: Math.round(aiDuration)
+      });
+      
+      track.event('lesson_generated', {
+        userId,
+        studentCount: students.length,
+        duration,
+        role: userRole,
+        tokensUsed: (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0)
+      });
 
       } catch (apiError: any) {
         log.error('OpenAI API error', apiError, { 
@@ -471,7 +569,7 @@ async function createEnhancedPrompt(
   profile: any,
   userRole: string,
   subject?: string
-): Promise<string> {
+): Promise<{ promptContent: string; studentDetailsArray: any[] }> {
   // Fetch all student details once
   const studentDetailsArray = await Promise.all(
     students.map(async (student) => {
@@ -603,7 +701,7 @@ async function createEnhancedPrompt(
     // Get the role-specific prompt or default to resource
     const rolePrompt = ROLE_SPECIFIC_PROMPTS[userRole] || ROLE_SPECIFIC_PROMPTS.resource;
     
-    return `${rolePrompt}
+    const promptContent = `${rolePrompt}
 
 Duration: ${duration} minutes
 
@@ -726,5 +824,7 @@ ${userRole === 'counseling' ? `
 - For younger students: Use play-based interventions, social stories, visual supports
 - For older students: Include problem-solving, conflict resolution, self-advocacy skills` : ''}
 ` : ''}
-${personalizationInstructions}}`;
+${personalizationInstructions}`;
+
+  return { promptContent, studentDetailsArray };
 }

@@ -65,9 +65,10 @@ export interface DifferentiationData {
 export class LessonGenerator {
   private supabase: SupabaseClient | null = null;
   private anthropic: Anthropic | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initialize();
+    this.initPromise = this.initialize();
   }
 
   private async initialize() {
@@ -80,11 +81,21 @@ export class LessonGenerator {
     }
   }
 
+  private async ensureInitialized() {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+  }
+
   async generateLesson(request: LessonGenerationRequest): Promise<GeneratedLesson> {
+    await this.ensureInitialized();
+    
     // Collect all student data
     const assessments = new Map<string, any>();
     const performance = new Map<string, any>();
     const adjustments = new Map<string, any>();
+    let fullPromptSent: any = null;
+    let aiRawResponse: string = '';
 
     // If manual adjustments are provided (e.g., from regeneration), use them
     if (request.manualAdjustments && request.manualAdjustments.size > 0) {
@@ -132,12 +143,14 @@ export class LessonGenerator {
 
     // Assemble the prompt
     const assembledPrompt = await promptAssembler.assemblePrompt(context);
+    fullPromptSent = assembledPrompt; // Store for database
 
     // Generate confidence report
     const confidenceReport = await promptAssembler.generateDataConfidenceReport(context);
 
     // Call AI to generate lesson content
     const lessonContent = await this.callAIForLesson(assembledPrompt);
+    aiRawResponse = lessonContent; // Store raw response
 
     // Parse AI response into structured format
     const parsedLesson = this.parseAIResponse(lessonContent, request);
@@ -162,12 +175,13 @@ export class LessonGenerator {
       qrCodes.set(material.studentId, qrCodeDataUrl);
     }
 
-    // Save lesson to database
+    // Save lesson to database with prompt and response
     const savedLesson = await this.saveLessonToDatabase(
       parsedLesson,
       request,
-      assembledPrompt,
-      confidenceReport
+      fullPromptSent,
+      confidenceReport,
+      aiRawResponse
     );
 
     return {
@@ -180,6 +194,8 @@ export class LessonGenerator {
   }
 
   private async callAIForLesson(prompt: any): Promise<string> {
+    await this.ensureInitialized();
+    
     if (!this.anthropic) {
       throw new Error('AI service is not configured. Please ensure ANTHROPIC_API_KEY is set.');
     }
@@ -212,9 +228,12 @@ export class LessonGenerator {
       
       const jsonResponse = JSON.parse(jsonStr);
       if (jsonResponse.content && jsonResponse.content.studentMaterials) {
+        console.log('[AI Lesson] Successfully parsed JSON response');
         return this.normalizeParsedJson(jsonResponse, request);
       }
-    } catch {
+    } catch (error) {
+      // Log when fallback is triggered
+      console.log('[AI Lesson] JSON parsing failed, using fallback parser', error);
       // If not JSON, parse as markdown/text format
     }
     
@@ -381,8 +400,10 @@ export class LessonGenerator {
     lesson: any,
     request: LessonGenerationRequest,
     prompt: any,
-    confidenceReport: any
+    confidenceReport: any,
+    aiRawResponse?: string
   ): Promise<any> {
+    await this.ensureInitialized();
     // First create a basic lesson record
     const { data: lessonRecord, error: lessonError } = await this.supabase!
       .from('lessons')
@@ -398,7 +419,7 @@ export class LessonGenerator {
 
     if (lessonError) throw lessonError;
 
-    // Save differentiated lesson details
+    // Save differentiated lesson details with prompt and response
     const { data: diffLesson, error: diffError } = await this.supabase!
       .from('differentiated_lessons')
       .insert({
@@ -427,6 +448,17 @@ export class LessonGenerator {
           visualSupports: true,
           exitTickets: true,
           answerKeys: true
+        },
+        // Add prompt and response logging
+        full_prompt_sent: JSON.stringify(prompt),  // Convert to string for TEXT column
+        ai_raw_response: aiRawResponse ? { content: aiRawResponse } : null,  // Wrap in object for JSONB column
+        model_used: 'claude-3-5-sonnet-20241022',
+        generation_metadata: {
+          timestamp: new Date().toISOString(),
+          confidence: confidenceReport.overall,
+          student_count: request.studentIds.length,
+          lesson_type: request.lessonType,
+          has_manual_adjustments: !!(request.manualAdjustments && request.manualAdjustments.size > 0)
         }
       })
       .select()
@@ -444,6 +476,8 @@ export class LessonGenerator {
     lessonId: string,
     adjustments: Map<string, any>
   ): Promise<GeneratedLesson> {
+    await this.ensureInitialized();
+    
     // Get original lesson
     const { data: originalLesson } = await this.supabase!
       .from('differentiated_lessons')
