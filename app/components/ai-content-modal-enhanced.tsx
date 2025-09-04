@@ -94,13 +94,6 @@ export function AIContentModalEnhanced({
     const printContent = printRef.current;
     if (!printContent || !currentLesson) return;
 
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-    if (!printWindow) {
-      console.error('Failed to open print window - popup blocked');
-      alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print lessons, then try again.');
-      return;
-    }
-
     // Get printable content using the centralized utility
     const printHtml = await getPrintableContent(currentLesson.content, currentLesson.students);
 
@@ -116,7 +109,7 @@ export function AIContentModalEnhanced({
       </style>
     `;
 
-    printWindow.document.write(`
+    const fullHtml = `
       <html>
         <head>
           <title>Lesson Plan - ${formatTimeSlot(currentLesson.timeSlot)}</title>
@@ -133,20 +126,55 @@ export function AIContentModalEnhanced({
           ${printHtml}
         </body>
       </html>
-    `);
+    `;
 
-    printWindow.document.close();
-    printWindow.focus();
-
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-      
-      // If user chose to include worksheets, generate them
-      if (includeWorksheets) {
-        generateWorksheetsForLesson(currentLesson);
+    // Create a hidden iframe for printing
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.visibility = 'hidden';
+    
+    document.body.appendChild(iframe);
+    
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        throw new Error('Unable to access iframe document');
       }
-    }, 250);
+      
+      iframeDoc.write(fullHtml);
+      iframeDoc.close();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (printError) {
+          console.error('Failed to trigger print dialog:', printError);
+        } finally {
+          // Remove iframe after a delay
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+          
+          // If user chose to include worksheets, generate them
+          if (includeWorksheets) {
+            generateWorksheetsForLesson(currentLesson);
+          }
+        }
+      }, 250);
+    } catch (error) {
+      console.error('Failed to prepare lesson for printing:', error);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      alert('Unable to prepare lesson for printing. Please try again.');
+    }
   };
 
   const printAllLessons = async () => {
@@ -158,12 +186,6 @@ export function AIContentModalEnhanced({
       const printHtml = await getPrintableContent(lesson.content, lesson.students);
       
       setTimeout(() => {
-        const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-        if (!printWindow) {
-          console.error('Failed to open print window - popup blocked');
-          alert('Pop-up blocked: Please enable pop-ups for this site in your browser settings to print lessons, then try again.');
-          return;
-        }
         const styles = `
           <style>
             @media print {
@@ -175,7 +197,7 @@ export function AIContentModalEnhanced({
           </style>
         `;
 
-        printWindow.document.write(`
+        const fullHtml = `
           <html>
             <head>
               <title>Lesson Plan ${index + 1} - ${formatTimeSlot(lesson.timeSlot)}</title>
@@ -191,15 +213,49 @@ export function AIContentModalEnhanced({
               ${printHtml}
             </body>
           </html>
-        `);
+        `;
 
-        printWindow.document.close();
-        printWindow.focus();
-
-        setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 250);
+        // Create a hidden iframe for printing
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        iframe.style.visibility = 'hidden';
+        
+        document.body.appendChild(iframe);
+        
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!iframeDoc) {
+            throw new Error('Unable to access iframe document');
+          }
+          
+          iframeDoc.write(fullHtml);
+          iframeDoc.close();
+          
+          // Wait for content to load then print
+          setTimeout(() => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch (printError) {
+              console.error('Failed to trigger print dialog:', printError);
+            } finally {
+              // Remove iframe after a delay
+              setTimeout(() => {
+                if (iframe.parentNode) {
+                  document.body.removeChild(iframe);
+                }
+              }, 1000);
+            }
+          }, 250);
+        } catch (error) {
+          console.error('Failed to prepare lesson for printing:', error);
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }
       }, index * 500); // Delay between windows to prevent blocking
     }
   };
