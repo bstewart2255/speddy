@@ -1,6 +1,6 @@
 // Main lesson generator that orchestrates the JSON-first generation
 import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determineGradeGroups } from './schema';
-import { createAIProvider, AIProvider } from './providers';
+import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
 
@@ -8,6 +8,55 @@ import { materialsValidator, ValidationResult } from './validator';
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
 const MAX_GENERATION_ATTEMPTS = 2;
 const SAMPLE_STUDENTS_FOR_BASE = 3;
+
+/**
+ * Safe metadata type for client exposure
+ * Only includes minimal metrics that are safe to send to the client
+ * Excludes all PII such as prompts, responses, and content arrays
+ */
+export interface SafeGenerationMetadata {
+  // Model information
+  modelUsed: string;
+  
+  // Token metrics
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  
+  // Timing metrics (if available)
+  generationTimeMs?: number;
+}
+
+/**
+ * SERVER-ONLY: Sanitizes full metadata to safe metadata for client exposure
+ * This function extracts only minimal metrics and omits sensitive fields
+ * @param metadata Full generation metadata (may contain PII)
+ * @returns Sanitized metadata containing only safe metrics
+ */
+function toSafeMetadata(metadata: GenerationMetadata | null | undefined): SafeGenerationMetadata | undefined {
+  if (!metadata) return undefined;
+  
+  // Extract only safe fields - no prompts, responses, or content arrays
+  const safeMetadata: SafeGenerationMetadata = {
+    // Model identifier
+    modelUsed: metadata.modelUsed,
+    
+    // Token counts
+    promptTokens: metadata.promptTokens || 0,
+    completionTokens: metadata.completionTokens || 0,
+    totalTokens: (metadata.promptTokens || 0) + (metadata.completionTokens || 0),
+  };
+  
+  // Add timing data if available (from nested generationMetadata)
+  if (metadata.generationMetadata && typeof metadata.generationMetadata === 'object') {
+    const nestedMeta = metadata.generationMetadata as any;
+    if (typeof nestedMeta.generationTimeMs === 'number') {
+      safeMetadata.generationTimeMs = nestedMeta.generationTimeMs;
+    }
+  }
+  
+  return safeMetadata;
+}
 
 export class LessonGenerator {
   private provider: AIProvider;
@@ -17,13 +66,26 @@ export class LessonGenerator {
   }
 
   /**
+   * SERVER-ONLY: Gets the full generation metadata from the last generation
+   * WARNING: This contains sensitive information (prompts, raw responses) and should
+   * NEVER be exposed to the client. Only use for server-side logging/storage.
+   */
+  getFullMetadataForLogging(): GenerationMetadata | null {
+    return this.provider.getLastGenerationMetadata();
+  }
+
+  /**
    * Generates a lesson based on the request.
    * For large student groups (>CHUNK_THRESHOLD), uses chunked generation strategy
    * to work within token limits by generating base lesson and per-grade worksheets separately.
+   * 
+   * NOTE: Returns only safe metadata for client exposure.
+   * Full metadata with PII is available server-side via provider.getLastGenerationMetadata()
    */
   async generateLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
+    metadata?: SafeGenerationMetadata;
   }> {
     // Use chunked generation for large groups of students
     if (request.students.length > CHUNK_THRESHOLD) {
@@ -73,7 +135,11 @@ export class LessonGenerator {
               (lesson.metadata as any).validationErrors = [];
             }
             
-            return { lesson, validation };
+            return { 
+              lesson, 
+              validation,
+              metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
+            };
           } else {
             console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);
             
@@ -144,10 +210,14 @@ export class LessonGenerator {
 
   /**
    * Generates a lesson using chunked approach for large student groups
+   * 
+   * NOTE: Returns only safe metadata for client exposure.
+   * Full metadata with PII is available server-side via provider.getLastGenerationMetadata()
    */
   private async generateChunkedLesson(request: LessonRequest): Promise<{
     lesson: LessonResponse;
     validation: ValidationResult;
+    metadata?: SafeGenerationMetadata;
   }> {
     console.log(`Using chunked generation for ${request.students.length} students`);
     
@@ -273,7 +343,11 @@ Return ONLY the worksheet content in this structure:
         completeLesson.metadata.validationErrors = validation.errors;
       }
       
-      return { lesson: completeLesson, validation };
+      return { 
+        lesson: completeLesson, 
+        validation,
+        metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
+      };
       
     } catch (error) {
       console.error('Chunked generation failed:', error);

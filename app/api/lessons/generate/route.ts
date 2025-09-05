@@ -107,14 +107,15 @@ export async function POST(request: NextRequest) {
               duration: lessonRequest.duration
             });
             
-            const { lesson, validation: lessonValidation } = await lessonGenerator.generateLesson(lessonRequest);
+            const { lesson, validation: lessonValidation, metadata: generationMetadata } = await lessonGenerator.generateLesson(lessonRequest);
             
             // Save lesson to database
             const savedLesson = await saveLessonToDatabase(
               lesson,
               lessonRequest,
               userId,
-              supabase
+              supabase,
+              generationMetadata
             );
             
             return {
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
               lessonId: savedLesson.id,
               lesson,
               validation: lessonValidation,
+              generationMetadata,
               renderUrl: `/api/lessons/${savedLesson.id}/render`,
               group
             };
@@ -218,23 +220,29 @@ export async function POST(request: NextRequest) {
         duration: lessonRequest.duration
       });
       
-      const { lesson, validation: lessonValidation } = await lessonGenerator.generateLesson(lessonRequest);
+      const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
       
-      // Save lesson to database
+      // Get full metadata for server-side storage only (contains PII)
+      const fullMetadataForLogging = lessonGenerator.getFullMetadataForLogging();
+      
+      // Save lesson to database with full metadata
       const savedLesson = await saveLessonToDatabase(
         lesson,
         lessonRequest,
         userId,
-        supabase
+        supabase,
+        fullMetadataForLogging  // Use full metadata for database storage
       );
       
-      // Return response
+      // Return response with only safe metadata
+      // Note: renderUrl removed since we're now saving to ai_generated_lessons table
+      // and the render endpoint expects lessons table
       return NextResponse.json({
         success: true,
         lessonId: savedLesson.id,
         lesson,
         validation: lessonValidation,
-        renderUrl: `/api/lessons/${savedLesson.id}/render`
+        generationMetadata: safeMetadata  // Only expose safe metadata to client
       });
       
     } catch (error) {
@@ -401,27 +409,44 @@ async function saveLessonToDatabase(
   lesson: any,
   request: LessonRequest,
   userId: string,
-  supabase: any
+  supabase: any,
+  generationMetadata?: any
 ): Promise<{ id: string }> {
-  // Create lesson record
+  // Get current user's school context
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('school_id, district_id, state_id')
+    .eq('id', userId)
+    .single();
+
+  // Save to ai_generated_lessons with full metadata
   const { data: lessonRecord, error } = await supabase
-    .from('lessons')
+    .from('ai_generated_lessons')
     .insert({
       provider_id: userId,
-      lesson_type: request.students.length === 1 ? 'individual' : 'group',
-      subject: request.subject,
-      topic: request.topic || null,
-      duration: request.duration,
-      content: lesson, // Store entire JSON structure
-      student_ids: request.students.map(s => s.id), // This is a text array in the DB
-      metadata: {
+      lesson_date: request.lessonDate || new Date().toISOString().split('T')[0],
+      time_slot: request.timeSlot || 'structured', // Use provided time slot or default to 'structured'
+      content: JSON.stringify(lesson), // Store entire JSON structure as string
+      prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
+      session_data: request.students.map(s => ({ student_id: s.id })), // Simplified to avoid redundancy
+      school_id: profile?.school_id || null,
+      district_id: profile?.district_id || null,
+      state_id: profile?.state_id || null,
+      // Add the new logging fields if metadata is available
+      full_prompt_sent: generationMetadata?.fullPromptSent || null,
+      ai_raw_response: generationMetadata?.aiRawResponse || null,
+      model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
+      prompt_tokens: generationMetadata?.promptTokens || null,
+      completion_tokens: generationMetadata?.completionTokens || null,
+      generation_metadata: generationMetadata?.generationMetadata || {
         teacherRole: request.teacherRole,
         focusSkills: request.focusSkills,
+        studentCount: request.students.length,
         generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
-        modelUsed: lesson?.metadata?.modelUsed || 'unknown',
         validationStatus: lesson?.metadata?.validationStatus || 'passed'
       },
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     })
     .select('id')
     .single();

@@ -636,100 +636,30 @@ export function CalendarWeekView({
         throw new Error('No lesson received from API');
       }
 
-      // Validate lessonId
+      // Lesson is already saved to ai_generated_lessons by the API with all metadata
       const lessonId = data.lessonId || null;
       
-      // Store the JSON lesson directly
+      // Store the JSON lesson reference
       const lessonContent = JSON.stringify(data.lesson);
 
-      // Prepare trimmed session data to avoid PII bloat
-      const trimmedSessions = slotSessions.map(s => ({
-        id: s.id,
-        student_id: s.student_id,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        service_type: s.service_type
-      }));
+      // Extract student info for this time slot  
+      const slotStudents = slotSessions.map(s => {
+        const student = students.get(s.student_id!);
+        return {
+          id: s.student_id || '',
+          initials: student?.initials || 'Unknown',
+          grade_level: student?.grade_level || '',
+          teacher_name: '' // Required by type but not used
+        };
+      });
 
-      // First try to delete any existing empty lesson
-      let deleteEmptyQuery = supabase
-        .from('ai_generated_lessons')
-        .delete()
-        .eq('provider_id', currentUser.id)
-        .eq('lesson_date', toLocalDateKey(date))
-        .eq('time_slot', timeSlot)
-        .eq('content', '');
-      
-      // Add school filter to prevent cross-school deletions
-      if (currentSchool?.school_id) {
-        deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
-      } else {
-        // No school_id - only delete records with NULL school_id
-        deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
-      }
-      
-      await deleteEmptyQuery;
-
-      // Log school context for debugging
-      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-        console.log('Current school context:', {
-          school_id: currentSchool?.school_id,
-          district_id: currentSchool?.district_id,
-          state_id: currentSchool?.state_id,
-          school_site: currentSchool?.school_site,
-          is_migrated: currentSchool?.is_migrated
-        });
-      }
-      
-      // Save the generated lesson with time slot and school context
-      const lessonData = {
-        provider_id: currentUser.id,
-        lesson_date: toLocalDateKey(date),
-        time_slot: timeSlot,
-        content: lessonContent,
-        prompt: '',
-        session_data: trimmedSessions,
-        updated_at: new Date().toISOString(),
-        // Add school context
-        school_id: currentSchool?.school_id || null,
-        district_id: currentSchool?.district_id || null,
-        state_id: currentSchool?.state_id || null
-      };
-      
-      const { data: savedLesson, error } = await supabase
-        .from('ai_generated_lessons')
-        .upsert(lessonData, { 
-          onConflict: 'provider_id,school_id,lesson_date,time_slot' 
-        })
-        .select();
-
-      if (error) {
-        console.error('Failed to save AI lesson to database:', error);
-        console.error('Error details:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
-        console.error('Lesson failed to save (redacted).', {
-          provider_id: lessonData.provider_id,
-          lesson_date: lessonData.lesson_date,
-          time_slot: lessonData.time_slot,
-          school_id: lessonData.school_id,
-        });
-        throw error;
-      }
-      
-      if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-        console.log('Successfully saved lesson to database:', savedLesson?.[0]?.id ?? savedLesson);
-      }
-
-      // Return the generated lesson data
+      // Return the generated lesson data for display
       return {
         timeSlot,
         content: lessonContent,
         prompt: '',
-        lessonId
+        lessonId,
+        students: slotStudents
       };
     } catch (error) {
       console.error(`Error generating content for time slot ${timeSlot}:`, error);
@@ -791,53 +721,48 @@ export function CalendarWeekView({
 
     setGeneratingContent(true);
     try {
-      const response = await fetch('/api/generate-lesson', {
+      // Use structured API for custom prompt generation
+      const studentList = selectedDaySessions
+        .map(session => session.student_id)
+        .filter((id): id is string => id !== null)
+        .map(id => ({
+          id,
+          grade: parseGradeLevel(students.get(id)?.grade_level)
+        }));
+      
+      const response = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          date: selectedDate.toISOString(),
-          sessions: selectedDaySessions,
-          students: Array.from(students.entries()).map(([id, student]) => ({
-            id,
-            ...student,
-          })),
-          additionalContext: prompt,
+          students: studentList,
+          subject: 'Custom',
+          topic: prompt,
+          duration: 30,
+          teacherRole: userProfile?.role || 'resource'
         }),
       });
 
       if (!response.ok) throw new Error('Failed to generate content');
 
       const data = await response.json();
-      setAiContent(data.content);
+      // Convert structured lesson to HTML content
+      const htmlContent = data.lesson ? JSON.stringify(data.lesson, null, 2) : data.content;
+      setAiContent(htmlContent);
 
-      // Save the generated lesson
-      const { error } = await supabase
-        .from('ai_generated_lessons')
-        .upsert({
-          provider_id: currentUser.id,
-          lesson_date: toLocalDateKey(selectedDate),
-          content: data.content,
-          prompt: prompt,
-          session_data: selectedDaySessions,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-
-      // Update saved lessons
+      // Lesson is already saved by the API
+      // Update local saved lessons state
       setSavedLessons(prev => {
         const newMap = new Map(prev);
         newMap.set(toLocalDateKey(selectedDate), {
-          content: data.content,
+          content: htmlContent,
           prompt: prompt
         });
         return newMap;
       });
 
-      showToast('AI lesson generated and saved successfully', 'success');
+      showToast('AI lesson generated successfully', 'success');
     } catch (error) {
       console.error('Error generating content:', error);
       showToast('Failed to generate AI content', 'error');
@@ -1245,92 +1170,8 @@ export function CalendarWeekView({
         setModalOpen(false);
         
         if (generatedLessons.length > 0) {
-          // Save lessons to database
+          // Lessons are already saved to ai_generated_lessons by the API
           const dateStr = toLocalDateKey(selectedLessonDate);
-          
-          // Save each lesson to the database
-          for (let idx = 0; idx < generatedLessons.length; idx++) {
-            const lesson = generatedLessons[idx];
-            try {
-              // Prepare trimmed session data to avoid PII bloat
-              const trimmedSessions = lesson.students.map((s: any) => ({
-                id: s.id,
-                student_id: s.id,
-                // We don't have full session data here, just basic info
-              }));
-              
-              // Delete any existing empty lesson for this slot
-              let deleteEmptyQuery = supabase
-                .from('ai_generated_lessons')
-                .delete()
-                .eq('provider_id', currentUser.id)
-                .eq('lesson_date', dateStr)
-                .eq('time_slot', lesson.timeSlot)
-                .eq('content', '');
-              
-              // Add school filter to prevent cross-school deletions
-              if (currentSchool?.school_id) {
-                deleteEmptyQuery = deleteEmptyQuery.eq('school_id', currentSchool.school_id);
-              } else {
-                // No school_id - only delete records with NULL school_id
-                deleteEmptyQuery = deleteEmptyQuery.is('school_id', null);
-              }
-              
-              await deleteEmptyQuery;
-              
-              // Log school context for debugging (in batch generation)
-              if (idx === 0 && currentSchool && process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                console.log('Current school context (batch):', {
-                  school_id: currentSchool.school_id,
-                  district_id: currentSchool.district_id,
-                  state_id: currentSchool.state_id,
-                  // Omit sensitive fields like school_site
-                });
-              }
-              
-              // Save the generated lesson with time slot and school context
-              const lessonData = {
-                provider_id: currentUser.id,
-                lesson_date: dateStr,
-                time_slot: lesson.timeSlot,
-                content: lesson.content,
-                prompt: lesson.prompt || '',
-                session_data: trimmedSessions,
-                updated_at: new Date().toISOString(),
-                // Add school context
-                school_id: currentSchool?.school_id || null,
-                district_id: currentSchool?.district_id || null,
-                state_id: currentSchool?.state_id || null
-              };
-              
-              const { data: savedLesson, error } = await supabase
-                .from('ai_generated_lessons')
-                .upsert(lessonData, {
-                  onConflict: 'provider_id,school_id,lesson_date,time_slot'
-                })
-                .select();
-              
-              if (error) {
-                console.error(`Failed to save lesson for time slot ${lesson.timeSlot}:`, error);
-                console.error('Error details:', {
-                  code: error.code,
-                  message: error.message,
-                  details: error.details,
-                  hint: error.hint
-                });
-                console.error('Lesson failed to save (redacted).', {
-          provider_id: lessonData.provider_id,
-          lesson_date: lessonData.lesson_date,
-          time_slot: lessonData.time_slot,
-          school_id: lessonData.school_id,
-        });
-              } else if (savedLesson && process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                console.log(`Successfully saved lesson for time slot ${lesson.timeSlot}`, savedLesson?.[0]?.id ?? savedLesson);
-              }
-            } catch (error) {
-              console.error(`Error saving lesson for time slot ${lesson.timeSlot}:`, error);
-            }
-          }
           
           // Force immediate state updates using flushSync
           flushSync(() => {

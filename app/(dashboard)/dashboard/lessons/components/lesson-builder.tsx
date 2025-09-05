@@ -3,12 +3,35 @@
 import { useState } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import LessonPreviewModal from './lesson-preview-modal';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 interface FormData {
   grade: string;
   subject: string;
   topic: string;
   timeDuration: string;
+}
+
+interface WorksheetSection {
+  title?: string;
+  instructions?: string;
+  items?: Array<string | { content?: string; question?: string }>;
+}
+
+interface Worksheet {
+  title?: string;
+  instructions?: string;
+  sections?: WorksheetSection[];
+}
+
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 const gradeOptions = [
@@ -52,6 +75,47 @@ const timeDurationOptions = [
   '60 minutes',
 ];
 
+// Helper function to format worksheet as HTML with proper escaping
+function formatWorksheetAsHtml(worksheet: Worksheet): string {
+  let html = '';
+  
+  if (worksheet.title) {
+    html += `<h3>${escapeHtml(worksheet.title)}</h3>`;
+  }
+  
+  if (worksheet.instructions) {
+    html += `<p class="instructions">${escapeHtml(worksheet.instructions)}</p>`;
+  }
+  
+  if (worksheet.sections && Array.isArray(worksheet.sections)) {
+    worksheet.sections.forEach((section: WorksheetSection) => {
+      html += '<div class="worksheet-section">';
+      if (section.title) {
+        html += `<h4>${escapeHtml(section.title)}</h4>`;
+      }
+      if (section.instructions) {
+        html += `<p>${escapeHtml(section.instructions)}</p>`;
+      }
+      if (section.items && Array.isArray(section.items)) {
+        html += '<ol>';
+        section.items.forEach((item) => {
+          if (typeof item === 'string') {
+            html += `<li>${escapeHtml(item)}</li>`;
+          } else if (item.content) {
+            html += `<li>${escapeHtml(item.content)}</li>`;
+          } else if (item.question) {
+            html += `<li>${escapeHtml(item.question)}</li>`;
+          }
+        });
+        html += '</ol>';
+      }
+      html += '</div>';
+    });
+  }
+  
+  return html;
+}
+
 export default function LessonBuilder() {
   const { showToast } = useToast();
   const [formData, setFormData] = useState<FormData>({
@@ -82,20 +146,52 @@ export default function LessonBuilder() {
 
     setIsGenerating(true);
     try {
-      const response = await fetch('/api/generate-lesson', {
+      // Use the structured API with a generic student profile
+      const response = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          students: [{
+            id: 'generic-' + Date.now(),
+            grade: parseGradeLevel(formData.grade) || 3
+          }],
+          subject: formData.subject,
+          topic: formData.topic,
+          duration: parseInt(formData.timeDuration) || 15,
+          teacherRole: 'resource'
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate lesson');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate lesson');
       }
 
       const data = await response.json();
+      // Extract HTML content from the structured lesson with proper escaping
+      let htmlContent = '';
+      if (data.lesson) {
+        // Convert structured lesson to HTML for display
+        const title = escapeHtml(data.lesson.lesson?.title || formData.topic);
+        const duration = escapeHtml(String(data.lesson.lesson?.duration || formData.timeDuration));
+        const overview = data.lesson.lesson?.overview ? escapeHtml(data.lesson.lesson.overview) : '';
+        
+        htmlContent = `
+          <div class="lesson-content">
+            <h2>${title}</h2>
+            <div class="duration">Duration: ${duration} minutes</div>
+            ${overview ? `<div class="overview">${overview}</div>` : ''}
+            ${data.lesson.studentMaterials?.[0]?.worksheet ? 
+              formatWorksheetAsHtml(data.lesson.studentMaterials[0].worksheet) : 
+              '<p>No worksheet content available</p>'
+            }
+          </div>
+        `;
+      }
+      
       setGeneratedLesson({
-        content: data.content,
-        title: formData.topic,
+        content: htmlContent || data.content || '<p>No content generated</p>',
+        title: data.lesson?.lesson?.title || formData.topic,
       });
       setShowModal(true);
     } catch (error) {

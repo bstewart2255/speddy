@@ -16,6 +16,8 @@ export interface LessonRequest {
   topic?: string;
   duration: number; // in minutes
   focusSkills?: string[]; // Optional: specific skills to target
+  lessonDate?: string; // Optional: date for the lesson (YYYY-MM-DD)
+  timeSlot?: string; // Optional: time slot identifier
 }
 
 export interface LessonResponse {

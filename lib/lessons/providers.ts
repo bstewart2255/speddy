@@ -3,6 +3,39 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { LessonRequest, LessonResponse, isValidLessonResponse } from './schema';
 
+// Environment flags for controlling sensitive data capture
+const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
+const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+
+/**
+ * Redacts student-identifying information from text
+ * Used to sanitize prompts and responses before storage
+ */
+function redactStudentPII(text: string): string {
+  if (!text) return '';
+  
+  return text
+    // Student IDs (various formats)
+    .replace(/student[-_]?\d+/gi, 'student-[ID_REDACTED]')
+    .replace(/"id"\s*:\s*"[^"]+"/g, '"id":"[REDACTED]"')
+    .replace(/\bid:\s*['"]?[\w-]+['"]?/gi, 'id: [REDACTED]')
+    // IEP/FERPA sensitive content
+    .replace(/\bIEP\s+goals?[^.]*\./gi, 'IEP goals [REDACTED].')
+    .replace(/\baccommodat\w+[^.]*\./gi, 'Accommodations [REDACTED].')
+    .replace(/\bread\w+\s+level[^.]*\./gi, 'Reading level [REDACTED].')
+    // Student names in common patterns
+    .replace(/\bstudent\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/gi, 'Student [NAME_REDACTED]')
+    .replace(/"name"\s*:\s*"[^"]+"/g, '"name":"[REDACTED]"')
+    // Email addresses
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL_REDACTED]')
+    // SSN patterns
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN_REDACTED]')
+    // Phone numbers
+    .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE_REDACTED]')
+    // Long numeric IDs (more than 8 digits)
+    .replace(/\b\d{9,}\b/g, '[ID_REDACTED]');
+}
+
 // Debug logging helper with PII sanitization
 function sanitizeAndLogDebug(context: string, content: string): void {
   const isDebugEnabled = process.env.DEBUG_OPENAI === 'true' || process.env.NODE_ENV === 'development';
@@ -11,19 +44,8 @@ function sanitizeAndLogDebug(context: string, content: string): void {
     return;
   }
   
-  // Sanitize PII patterns
-  let sanitized = content
-    // Email addresses
-    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL_REDACTED]')
-    // SSN patterns
-    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN_REDACTED]')
-    // Phone numbers
-    .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE_REDACTED]')
-    // Long numeric IDs (more than 8 digits)
-    .replace(/\b\d{9,}\b/g, '[ID_REDACTED]')
-    // Student names in common patterns
-    .replace(/Student\s+[A-Z][a-z]+\s+[A-Z][a-z]+/g, 'Student [NAME_REDACTED]')
-    .replace(/"name"\s*:\s*"[^"]+"/g, '"name":"[REDACTED]"');
+  // Apply PII redaction
+  const sanitized = redactStudentPII(content);
   
   // Truncate to first 200 chars
   const truncated = sanitized.length > 200 
@@ -53,12 +75,23 @@ const DEFAULT_MAX_RESPONSE_TOKENS = 16000;
 export interface AIProvider {
   generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
   getName(): string;
+  getLastGenerationMetadata(): GenerationMetadata | null;
+}
+
+export interface GenerationMetadata {
+  fullPromptSent: string;
+  aiRawResponse: any;
+  modelUsed: string;
+  promptTokens: number;
+  completionTokens: number;
+  generationMetadata: any;
 }
 
 export class OpenAIProvider implements AIProvider {
   private client: OpenAI;
   private model: string;
   private maxTokens: number;
+  private lastGenerationMetadata: GenerationMetadata | null = null;
 
   constructor(apiKey: string, model: string = 'gpt-4o-mini') {
     this.client = new OpenAI({ apiKey });
@@ -79,13 +112,16 @@ export class OpenAIProvider implements AIProvider {
     
     const userPrompt = this.buildUserPrompt(request);
     
+    // Build system prompt
+    const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
+    
     try {
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
           {
             role: 'system',
-            content: systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.'
+            content: fullSystemPrompt
           },
           {
             role: 'user',
@@ -96,6 +132,39 @@ export class OpenAIProvider implements AIProvider {
         max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
+
+      // Capture metadata for logging (with environment flag gating)
+      this.lastGenerationMetadata = {
+        // Only capture full prompts if explicitly enabled via environment flag
+        fullPromptSent: CAPTURE_FULL_PROMPTS 
+          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
+          : '[PROMPTS_NOT_CAPTURED]',
+        // Only capture raw AI response if explicitly enabled via environment flag  
+        aiRawResponse: CAPTURE_AI_RAW
+          ? {
+              id: completion.id,
+              model: completion.model,
+              created: completion.created,
+              choices: completion.choices.map(choice => ({
+                ...choice,
+                message: {
+                  ...choice.message,
+                  content: redactStudentPII(choice.message?.content || '')
+                }
+              })),
+              usage: completion.usage
+            }
+          : { model: completion.model, usage: completion.usage }, // Minimal info only
+        modelUsed: this.model,
+        promptTokens: completion.usage?.prompt_tokens || 0,
+        completionTokens: completion.usage?.completion_tokens || 0,
+        generationMetadata: {
+          provider: 'OpenAI',
+          temperature: 0.7,
+          maxTokens: this.maxTokens,
+          generationTimeMs: Date.now() - startTime
+        }
+      };
 
       const content = completion.choices[0]?.message?.content;
       if (!content) {
@@ -184,6 +253,10 @@ Generate a complete lesson plan with individualized worksheets for each student 
   getName(): string {
     return `OpenAI (${this.model})`;
   }
+
+  getLastGenerationMetadata(): GenerationMetadata | null {
+    return this.lastGenerationMetadata;
+  }
   
   /**
    * Attempts to repair potentially truncated or malformed JSON
@@ -222,6 +295,7 @@ export class AnthropicProvider implements AIProvider {
   private client: Anthropic;
   private model: string;
   private maxTokens: number;
+  private lastGenerationMetadata: GenerationMetadata | null = null;
 
   constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
     this.client = new Anthropic({ apiKey });
@@ -242,12 +316,15 @@ export class AnthropicProvider implements AIProvider {
     
     const userPrompt = this.buildUserPrompt(request);
     
+    // Build system prompt
+    const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.';
+    
     try {
       const message = await this.client.messages.create({
         model: this.model,
         max_tokens: this.maxTokens,
         temperature: 0.7,
-        system: systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.',
+        system: fullSystemPrompt,
         messages: [
           {
             role: 'user',
@@ -255,6 +332,38 @@ export class AnthropicProvider implements AIProvider {
           }
         ]
       });
+
+      // Capture metadata for logging (with environment flag gating)
+      this.lastGenerationMetadata = {
+        // Only capture full prompts if explicitly enabled via environment flag
+        fullPromptSent: CAPTURE_FULL_PROMPTS 
+          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
+          : '[PROMPTS_NOT_CAPTURED]',
+        // Only capture raw AI response if explicitly enabled via environment flag
+        aiRawResponse: CAPTURE_AI_RAW
+          ? {
+              id: message.id,
+              model: message.model,
+              role: message.role,
+              content: message.content.map((block: any) => {
+                if (block.type === 'text' && typeof block.text === 'string') {
+                  return { ...block, text: redactStudentPII(block.text) };
+                }
+                return block;
+              }),
+              usage: message.usage
+            }
+          : { model: message.model, usage: message.usage }, // Minimal info only
+        modelUsed: this.model,
+        promptTokens: message.usage?.input_tokens || 0,
+        completionTokens: message.usage?.output_tokens || 0,
+        generationMetadata: {
+          provider: 'Anthropic',
+          temperature: 0.7,
+          maxTokens: this.maxTokens,
+          generationTimeMs: Date.now() - startTime
+        }
+      };
 
       // Extract text from Anthropic response safely with type assertions
       interface TextBlock {
@@ -360,6 +469,10 @@ Generate a complete lesson plan with individualized worksheets for each student 
 
   getName(): string {
     return `Anthropic (${this.model})`;
+  }
+
+  getLastGenerationMetadata(): GenerationMetadata | null {
+    return this.lastGenerationMetadata;
   }
   
   /**
