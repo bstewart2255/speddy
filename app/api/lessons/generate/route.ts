@@ -23,7 +23,15 @@ export async function POST(request: NextRequest) {
       // Check if this is a batch request
       if (body.batch && Array.isArray(body.batch)) {
         // Handle batch lesson generation
-        console.log(`Processing batch request with ${body.batch.length} lesson groups`);
+        console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups at ${new Date().toISOString()}`);
+        console.log(`[DEBUG] Batch request summary:`, body.batch.map((group, i) => ({
+          index: i,
+          lessonDate: group.lessonDate,
+          timeSlot: group.timeSlot,
+          subject: group.subject,
+          studentCount: group.students?.length || 0
+        })));
+        
         const startTime = Date.now();
         
         // Get teacher's role from profile once
@@ -62,11 +70,21 @@ export async function POST(request: NextRequest) {
         }
         
         // Process all lesson requests in parallel
-        const lessonPromises = body.batch.map(async (group: any) => {
+        const lessonPromises = body.batch.map(async (group: any, groupIndex: number) => {
           try {
+            // Debug logging for each group in the batch
+            console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
+              lessonDate: group.lessonDate,
+              timeSlot: group.timeSlot,
+              subject: group.subject,
+              studentCount: group.students?.length || 0,
+              groupData: JSON.stringify(group, null, 2)
+            });
+            
             // Validate each group request
             const validation = validateRequest(group);
             if (!validation.isValid) {
+              console.error(`[DEBUG] Validation failed for group ${groupIndex}:`, validation.errors);
               return {
                 success: false,
                 error: 'Invalid request',
@@ -78,6 +96,7 @@ export async function POST(request: NextRequest) {
             const teacherRole = group.teacherRole || defaultTeacherRole;
             
             if (!isValidTeacherRole(teacherRole)) {
+              console.error(`[DEBUG] Invalid teacher role for group ${groupIndex}:`, teacherRole);
               return {
                 success: false,
                 error: 'Invalid teacher role',
@@ -100,6 +119,24 @@ export async function POST(request: NextRequest) {
               lessonDate: group.lessonDate,
               timeSlot: group.timeSlot
             };
+            
+            // Debug logging for duplicate key investigation
+            console.log(`[DEBUG] Processing batch group ${index}:`, {
+              lessonDate: group.lessonDate,
+              timeSlot: group.timeSlot,
+              subject: group.subject,
+              topic: group.topic,
+              studentCount: students.length
+            });
+            
+            // Debug logging for lesson request
+            console.log(`[DEBUG] Created lesson request for group ${groupIndex}:`, {
+              lessonDate: lessonRequest.lessonDate,
+              timeSlot: lessonRequest.timeSlot,
+              subject: lessonRequest.subject,
+              studentCount: students.length,
+              duration: lessonRequest.duration
+            });
             
             // Generate lesson
             console.log('Generating lesson for group:', {
@@ -144,7 +181,9 @@ export async function POST(request: NextRequest) {
         });
         
         // Wait for all lessons to complete
+        console.log(`[DEBUG] Waiting for ${lessonPromises.length} lesson generation promises to complete...`);
         const results = await Promise.allSettled(lessonPromises);
+        console.log(`[DEBUG] All lesson generation promises completed. Processing results...`);
         
         const lessons = results.map((result, index) => {
           if (result.status === 'fulfilled') {
@@ -424,13 +463,30 @@ async function saveLessonToDatabase(
     .eq('id', userId)
     .single();
 
+  // Prepare the lesson data for insertion
+  const lessonDate = request.lessonDate || new Date().toISOString().split('T')[0];
+  const timeSlot = request.timeSlot || 'structured';
+  
+  // Debug logging before database insertion
+  console.log(`[DEBUG] Saving lesson to database:`, {
+    provider_id: userId,
+    lesson_date: lessonDate,
+    time_slot: timeSlot,
+    school_id: profile?.school_id,
+    district_id: profile?.district_id,
+    state_id: profile?.state_id,
+    subject: request.subject,
+    topic: request.topic,
+    studentCount: request.students.length
+  });
+
   // Save to ai_generated_lessons with full metadata
   const { data: lessonRecord, error } = await supabase
     .from('ai_generated_lessons')
     .insert({
       provider_id: userId,
-      lesson_date: request.lessonDate || new Date().toISOString().split('T')[0],
-      time_slot: request.timeSlot || 'structured', // Use provided time slot or default to 'structured'
+      lesson_date: lessonDate,
+      time_slot: timeSlot, // Use provided time slot or default to 'structured'
       content: JSON.stringify(lesson), // Store entire JSON structure as string
       prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
       session_data: request.students.map(s => ({ student_id: s.id })), // Simplified to avoid redundancy
@@ -457,8 +513,28 @@ async function saveLessonToDatabase(
     .single();
   
   if (error) {
-    console.error('Error saving lesson to database:', error);
-    throw new Error('Failed to save lesson to database');
+    console.error(`[DEBUG] Database error when saving lesson:`, {
+      error,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorHint: error.hint,
+      errorDetails: error.details,
+      constraintName: error.constraint || 'unknown',
+      attemptedData: {
+        provider_id: userId,
+        lesson_date: lessonDate,
+        time_slot: timeSlot,
+        school_id: profile?.school_id,
+        subject: request.subject
+      }
+    });
+    
+    // Check if it's a duplicate key constraint violation
+    if (error.code === '23505' && error.constraint === 'ai_generated_lessons_unique_lesson') {
+      throw new Error(`Duplicate lesson detected: A lesson already exists for provider ${userId}, school ${profile?.school_id}, date ${lessonDate}, time slot '${timeSlot}'. Constraint: ${error.constraint}`);
+    }
+    
+    throw new Error(`Failed to save lesson to database: ${error.message || 'Unknown error'}`);
   }
   
   return lessonRecord;
