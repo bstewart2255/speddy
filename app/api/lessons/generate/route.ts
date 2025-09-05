@@ -189,8 +189,9 @@ export async function POST(request: NextRequest) {
               lesson,
               validation: lessonValidation,
               generationMetadata: safeMetadata,
-              renderUrl: `/api/lessons/${savedLesson.id}/render`,
               group
+              // Note: renderUrl removed since we're now saving to ai_generated_lessons table
+              // and the render endpoint expects lessons table
             };
           } catch (error) {
             console.error('Error generating lesson for group:', error);
