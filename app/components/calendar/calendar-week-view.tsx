@@ -1088,7 +1088,7 @@ export function CalendarWeekView({
           if (studentList.length > 0) {
             const subject = 'English Language Arts'; // Default subject, can be made configurable
             const duration = calculateDurationFromTimeSlot(timeSlot);
-            const lessonDate = selectedLessonDate.toISOString().split('T')[0];
+            const lessonDate = toLocalDateKey(selectedLessonDate);
             
             const batchRequest = {
               students: studentList,
@@ -1122,7 +1122,7 @@ export function CalendarWeekView({
         console.log(`[DEBUG Frontend] Final batch requests summary:`, {
           totalRequests: batchRequests.length,
           timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
-          lessonDate: selectedLessonDate.toISOString().split('T')[0]
+          lessonDate: toLocalDateKey(selectedLessonDate)
         });
         
         if (batchRequests.length === 0) {
