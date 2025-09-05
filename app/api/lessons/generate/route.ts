@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         if (allStudentIds.size > 0) {
           const { data: studentsData } = await supabase
             .from('students')
-            .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+            .select('id, grade_level, student_details(iep_goals)')
             .in('id', Array.from(allStudentIds));
           
           if (studentsData) {
@@ -410,32 +410,22 @@ async function enrichStudentDataFromMap(
       grade = parseGradeLevel(studentData.grade_level);
     }
     
-    // Parse reading level as number when possible
+    // Parse reading level from request (not stored in database currently)
     let readingLevel: number | undefined = 
       typeof student.readingLevel === 'number' 
         ? student.readingLevel
-        : studentData?.student_details?.reading_level != null
-        ? Number(studentData.student_details.reading_level)
         : undefined;
-    if (Number.isNaN(readingLevel)) {
-      readingLevel = undefined;
-    }
     
-    // Parse IEP goals with fallback to database
+    // Parse IEP goals with fallback to database (from student_details)
     const iepGoals: string[] = student.iepGoals ||
-      (Array.isArray(studentData?.iep_goals) 
-        ? studentData.iep_goals 
-        : studentData?.iep_goals 
-        ? [studentData.iep_goals] 
+      (Array.isArray(studentData?.student_details?.iep_goals) 
+        ? studentData.student_details.iep_goals 
+        : studentData?.student_details?.iep_goals 
+        ? [studentData.student_details.iep_goals] 
         : []);
     
-    // Parse accommodations with fallback to database
-    const accommodations: string[] = student.accommodations ||
-      (Array.isArray(studentData?.accommodations)
-        ? studentData.accommodations
-        : studentData?.accommodations
-        ? String(studentData.accommodations).split(',').map((a: string) => a.trim()).filter(Boolean)
-        : []);
+    // Parse accommodations (currently not stored in database, only from request)
+    const accommodations: string[] = student.accommodations || [];
     
     return {
       id: studentId,
@@ -462,7 +452,7 @@ async function enrichStudentData(
   // Batch fetch all student data in one query
   const { data: studentsData } = await supabase
     .from('students')
-    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+    .select('id, grade_level, student_details(iep_goals)')
     .in('id', studentIds);
   
   // Create a map for quick lookup
