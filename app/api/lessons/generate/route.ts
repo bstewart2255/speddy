@@ -485,6 +485,10 @@ async function saveLessonToDatabase(
   supabase: any,
   generationMetadata?: any
 ): Promise<{ id: string }> {
+  // Re-read environment flags for metadata capture within function scope
+  const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
+  const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+  const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
   // Get current user's school context
   const { data: profile } = await supabase
     .from('profiles')
@@ -499,45 +503,68 @@ async function saveLessonToDatabase(
   // Debug logging before database insertion (no PII)
   const DEBUG_LOG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
   if (DEBUG_LOG) {
-    console.log(`[DEBUG] Saving lesson to database:`, {
+    const debugData: any = {
       lesson_date: lessonDate,
       time_slot: timeSlot,
       subject: request.subject,
       studentCount: request.students.length,
       hasSchoolContext: !!profile?.school_id,
-      hasTeacherRole: !!request.teacherRole
-    });
+      hasTeacherRole: !!request.teacherRole,
+      metadataCaptureEnabled: SHOULD_CAPTURE_METADATA
+    };
+    
+    // Only log sensitive field status if capture is enabled
+    if (SHOULD_CAPTURE_METADATA) {
+      debugData.willCapturePrompt = CAPTURE_FULL_PROMPTS && !!generationMetadata?.fullPromptSent;
+      debugData.willCaptureResponse = CAPTURE_AI_RAW && !!generationMetadata?.aiRawResponse;
+    }
+    
+    console.log(`[DEBUG] Saving lesson to database:`, debugData);
   }
 
-  // Save to ai_generated_lessons with full metadata
+  // Build the database record conditionally based on environment flags
+  const dbRecord: any = {
+    provider_id: userId,
+    lesson_date: lessonDate,
+    time_slot: timeSlot,
+    content: JSON.stringify(lesson),
+    prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
+    session_data: request.students.map(s => ({ student_id: s.id })),
+    school_id: profile?.school_id || null,
+    district_id: profile?.district_id || null,
+    state_id: profile?.state_id || null,
+    model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
+    prompt_tokens: generationMetadata?.promptTokens || null,
+    completion_tokens: generationMetadata?.completionTokens || null,
+    generation_metadata: generationMetadata?.generationMetadata || {
+      teacherRole: request.teacherRole,
+      focusSkills: request.focusSkills,
+      studentCount: request.students.length,
+      generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
+      validationStatus: lesson?.metadata?.validationStatus || 'passed'
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  
+  // Only include sensitive fields if explicitly enabled via environment flags
+  // These use the same flags defined at the top of the file
+  if (CAPTURE_FULL_PROMPTS && generationMetadata?.fullPromptSent) {
+    dbRecord.full_prompt_sent = generationMetadata.fullPromptSent;
+  } else {
+    dbRecord.full_prompt_sent = null;
+  }
+  
+  if (CAPTURE_AI_RAW && generationMetadata?.aiRawResponse) {
+    dbRecord.ai_raw_response = generationMetadata.aiRawResponse;
+  } else {
+    dbRecord.ai_raw_response = null;
+  }
+  
+  // Save to ai_generated_lessons
   const { data: lessonRecord, error } = await supabase
     .from('ai_generated_lessons')
-    .insert({
-      provider_id: userId,
-      lesson_date: lessonDate,
-      time_slot: timeSlot, // Use provided time slot or default to 'structured'
-      content: JSON.stringify(lesson), // Store entire JSON structure as string
-      prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
-      session_data: request.students.map(s => ({ student_id: s.id })), // Simplified to avoid redundancy
-      school_id: profile?.school_id || null,
-      district_id: profile?.district_id || null,
-      state_id: profile?.state_id || null,
-      // Add the new logging fields if metadata is available
-      full_prompt_sent: generationMetadata?.fullPromptSent || null,
-      ai_raw_response: generationMetadata?.aiRawResponse || null,
-      model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
-      prompt_tokens: generationMetadata?.promptTokens || null,
-      completion_tokens: generationMetadata?.completionTokens || null,
-      generation_metadata: generationMetadata?.generationMetadata || {
-        teacherRole: request.teacherRole,
-        focusSkills: request.focusSkills,
-        studentCount: request.students.length,
-        generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
-        validationStatus: lesson?.metadata?.validationStatus || 'passed'
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
+    .insert(dbRecord)
     .select('id')
     .single();
   
