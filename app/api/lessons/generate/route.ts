@@ -15,10 +15,23 @@ export const maxDuration = 120; // 2 minutes timeout for Vercel
 // Debug logging only in development
 const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
 
+// Metadata capture flags - must be explicitly enabled to capture PII
+const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
+const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
+
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
       const supabase = await createClient();
+      
+      // Log metadata capture status on startup (only in debug mode)
+      if (DEBUG && SHOULD_CAPTURE_METADATA) {
+        console.log('[DEBUG] Full metadata capture is ENABLED:', {
+          CAPTURE_FULL_PROMPTS,
+          CAPTURE_AI_RAW
+        });
+      }
       
       // Parse request body
       const body = await req.json();
@@ -156,8 +169,10 @@ export async function POST(request: NextRequest) {
             
             const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
             
-            // Get full metadata for database logging (server-side only)
-            const fullMetadata = lessonGenerator.getFullMetadataForLogging();
+            // Only capture full metadata if explicitly enabled via env flags
+            const fullMetadata = SHOULD_CAPTURE_METADATA 
+              ? lessonGenerator.getFullMetadataForLogging()
+              : null;
             
             // Save lesson to database
             const savedLesson = await saveLessonToDatabase(
@@ -278,16 +293,18 @@ export async function POST(request: NextRequest) {
       
       const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
       
-      // Get full metadata for server-side storage only (contains PII)
-      const fullMetadataForLogging = lessonGenerator.getFullMetadataForLogging();
+      // Only capture full metadata if explicitly enabled via env flags
+      const fullMetadataForLogging = SHOULD_CAPTURE_METADATA
+        ? lessonGenerator.getFullMetadataForLogging()
+        : null;
       
-      // Save lesson to database with full metadata
+      // Save lesson to database with conditional metadata
       const savedLesson = await saveLessonToDatabase(
         lesson,
         lessonRequest,
         userId,
         supabase,
-        fullMetadataForLogging  // Use full metadata for database storage
+        fullMetadataForLogging  // May be null if capture is disabled
       );
       
       // Return response with only safe metadata
