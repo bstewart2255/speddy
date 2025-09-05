@@ -2,10 +2,12 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { LessonRequest, LessonResponse, isValidLessonResponse } from './schema';
+import { logger } from '@/lib/logger';
 
 // Environment flags for controlling sensitive data capture
 const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
 const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+const DEBUG_OPENAI = process.env.DEBUG_OPENAI === 'true';
 
 /**
  * Redacts student-identifying information from text
@@ -231,23 +233,64 @@ export class OpenAIProvider implements AIProvider {
       return jsonResponse;
     } catch (error) {
       const timeElapsed = Date.now() - startTime;
-      console.error(`[OpenAI] Generation failed after ${timeElapsed}ms:`, error);
       
-      // Check for specific error types
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          throw new Error(`OpenAI API timeout after ${timeElapsed}ms. Please try again.`);
-        } else if (error.message.includes('401') || error.message.includes('authentication')) {
-          throw new Error('OpenAI API authentication failed. Please check your API key.');
-        } else if (error.message.includes('429')) {
-          throw new Error('OpenAI API rate limit exceeded. Please try again later.');
-        } else if (error.message.includes('500') || error.message.includes('503')) {
-          throw new Error('OpenAI API is temporarily unavailable. Please try again.');
-        }
+      // Log detailed error info only when DEBUG_OPENAI is enabled
+      if (DEBUG_OPENAI) {
+        logger.debug('[OpenAI] Generation failed', {
+          timeElapsed,
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            ...error
+          } : error
+        });
       }
       
-      const msg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to generate lesson with OpenAI: ${msg}`);
+      // Extract error details from various error structures
+      let errorMessage = '';
+      let statusCode: number | undefined;
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check for status/code in error object
+        const errorWithStatus = error as any;
+        statusCode = errorWithStatus.status || errorWithStatus.code || errorWithStatus.response?.status;
+      }
+      
+      // Map errors to user-friendly messages
+      if (errorMessage.includes('timeout') || statusCode === 408) {
+        logger.warn('OpenAI API timeout', { timeElapsed });
+        throw new Error(`Request timed out after ${Math.round(timeElapsed / 1000)}s. Please try again.`);
+      } else if (errorMessage.includes('401') || statusCode === 401 || errorMessage.includes('authentication')) {
+        logger.error('OpenAI API authentication failed', error);
+        throw new Error('Authentication failed. Please contact support.');
+      } else if (errorMessage.includes('402') || statusCode === 402 || errorMessage.includes('quota') || errorMessage.includes('exhausted')) {
+        logger.error('OpenAI API quota exceeded', error);
+        throw new Error('API quota exceeded. Please try again later or contact support.');
+      } else if (errorMessage.includes('413') || statusCode === 413 || errorMessage.includes('payload too large')) {
+        logger.warn('OpenAI API payload too large', { timeElapsed });
+        throw new Error('Request too large. Please try with fewer students or shorter content.');
+      } else if (errorMessage.includes('429') || statusCode === 429) {
+        logger.warn('OpenAI API rate limit exceeded', { timeElapsed });
+        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+      } else if (errorMessage.includes('500') || statusCode === 500) {
+        logger.error('OpenAI API internal server error', error);
+        throw new Error('Service error occurred. Please try again.');
+      } else if (errorMessage.includes('502') || statusCode === 502) {
+        logger.error('OpenAI API bad gateway', error);
+        throw new Error('Connection error. Please try again.');
+      } else if (errorMessage.includes('503') || statusCode === 503) {
+        logger.warn('OpenAI API service unavailable', { timeElapsed });
+        throw new Error('Service temporarily unavailable. Please try again in a few moments.');
+      } else if (errorMessage.includes('504') || statusCode === 504) {
+        logger.error('OpenAI API gateway timeout', error);
+        throw new Error('Gateway timeout. Please try again.');
+      } else {
+        // Log unknown errors to Sentry for investigation
+        logger.error('OpenAI API unknown error', error, { timeElapsed });
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to generate lesson: ${msg}`);
+      }
     }
   }
 

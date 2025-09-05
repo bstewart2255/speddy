@@ -322,8 +322,8 @@ export function GroupSessionsWidget() {
 
       const data = await response.json();
       
-      // Process batch response
-      if (data.batch && data.lessons && data.lessons.length > 0) {
+      // Process response - only require data.lessons to exist
+      if (data.lessons && data.lessons.length > 0) {
         const result = data.lessons[0];
         if (result.success && result.lesson) {
           // Format lesson for enhanced modal
@@ -340,7 +340,6 @@ export function GroupSessionsWidget() {
           
           // Set data for enhanced modal
           setEnhancedModalLessons([lessonData]);
-          setSelectedDate(displayDate);
           
           // Close generating modal and open enhanced modal
           setModalOpen(false);
@@ -349,6 +348,8 @@ export function GroupSessionsWidget() {
           throw new Error(result.error || "Failed to generate lesson");
         }
       } else {
+        // Log for debugging if lessons array is missing or empty
+        console.warn("Response data structure:", data);
         throw new Error("No lesson content received");
       }
     } catch (error) {
