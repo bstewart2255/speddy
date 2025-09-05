@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         if (allStudentIds.size > 0) {
           const { data: studentsData } = await supabase
             .from('students')
-            .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+            .select('id, grade_level, student_details(iep_goals)')
             .in('id', Array.from(allStudentIds));
           
           if (studentsData) {
@@ -410,32 +410,55 @@ async function enrichStudentDataFromMap(
       grade = parseGradeLevel(studentData.grade_level);
     }
     
-    // Parse reading level as number when possible
+    // Parse reading level from request (not stored in database currently)
     let readingLevel: number | undefined = 
       typeof student.readingLevel === 'number' 
         ? student.readingLevel
-        : studentData?.student_details?.reading_level != null
-        ? Number(studentData.student_details.reading_level)
         : undefined;
-    if (Number.isNaN(readingLevel)) {
-      readingLevel = undefined;
+    
+    // Parse IEP goals with robust normalization for all possible data shapes
+    let iepGoals: string[] = [];
+    
+    // First try to get from student request object
+    if (student.iepGoals) {
+      if (Array.isArray(student.iepGoals)) {
+        iepGoals = student.iepGoals.filter(g => typeof g === 'string' && g.trim());
+      } else if (typeof student.iepGoals === 'string' && student.iepGoals.trim()) {
+        iepGoals = [student.iepGoals];
+      }
+    } 
+    
+    // If no IEP goals from request, try to get from database
+    if (iepGoals.length === 0 && studentData?.student_details) {
+      const details = studentData.student_details;
+      
+      // Handle student_details being either an object or an array
+      const detailsArray = Array.isArray(details) ? details : [details];
+      
+      // Extract and normalize IEP goals from all detail records
+      const allGoals: string[] = [];
+      for (const detail of detailsArray) {
+        if (detail?.iep_goals) {
+          if (Array.isArray(detail.iep_goals)) {
+            // It's already an array
+            allGoals.push(...detail.iep_goals.filter(g => typeof g === 'string' && g.trim()));
+          } else if (typeof detail.iep_goals === 'string' && detail.iep_goals.trim()) {
+            // It's a single string - check if it needs splitting (e.g., semicolon-separated)
+            if (detail.iep_goals.includes(';')) {
+              allGoals.push(...detail.iep_goals.split(';').map(g => g.trim()).filter(Boolean));
+            } else {
+              allGoals.push(detail.iep_goals);
+            }
+          }
+        }
+      }
+      
+      // Deduplicate goals while preserving order
+      iepGoals = [...new Set(allGoals)];
     }
     
-    // Parse IEP goals with fallback to database
-    const iepGoals: string[] = student.iepGoals ||
-      (Array.isArray(studentData?.iep_goals) 
-        ? studentData.iep_goals 
-        : studentData?.iep_goals 
-        ? [studentData.iep_goals] 
-        : []);
-    
-    // Parse accommodations with fallback to database
-    const accommodations: string[] = student.accommodations ||
-      (Array.isArray(studentData?.accommodations)
-        ? studentData.accommodations
-        : studentData?.accommodations
-        ? String(studentData.accommodations).split(',').map((a: string) => a.trim()).filter(Boolean)
-        : []);
+    // Parse accommodations (currently not stored in database, only from request)
+    const accommodations: string[] = student.accommodations || [];
     
     return {
       id: studentId,
@@ -462,7 +485,7 @@ async function enrichStudentData(
   // Batch fetch all student data in one query
   const { data: studentsData } = await supabase
     .from('students')
-    .select('id, grade_level, iep_goals, accommodations, student_details(reading_level)')
+    .select('id, grade_level, student_details(iep_goals)')
     .in('id', studentIds);
   
   // Create a map for quick lookup
