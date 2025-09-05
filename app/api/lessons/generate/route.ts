@@ -12,6 +12,9 @@ import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 export const maxDuration = 120; // 2 minutes timeout for Vercel
 
+// Debug logging only in development
+const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
+
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
@@ -23,14 +26,18 @@ export async function POST(request: NextRequest) {
       // Check if this is a batch request
       if (body.batch && Array.isArray(body.batch)) {
         // Handle batch lesson generation
-        console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups at ${new Date().toISOString()}`);
-        console.log(`[DEBUG] Batch request summary:`, body.batch.map((group, i) => ({
-          index: i,
-          lessonDate: group.lessonDate,
-          timeSlot: group.timeSlot,
-          subject: group.subject,
-          studentCount: group.students?.length || 0
-        })));
+        if (DEBUG) {
+          console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups`);
+          // Log only non-sensitive summary data
+          console.log(`[DEBUG] Batch request summary:`, body.batch.map((group, i) => ({
+            index: i,
+            lessonDate: group.lessonDate || 'not-provided',
+            timeSlot: group.timeSlot || 'not-provided',
+            subject: group.subject || 'not-provided',
+            studentCount: group.students?.length || 0,
+            hasTeacherRole: !!group.teacherRole
+          })));
+        }
         
         const startTime = Date.now();
         
@@ -72,19 +79,24 @@ export async function POST(request: NextRequest) {
         // Process all lesson requests in parallel
         const lessonPromises = body.batch.map(async (group: any, groupIndex: number) => {
           try {
-            // Debug logging for each group in the batch
-            console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
-              lessonDate: group.lessonDate,
-              timeSlot: group.timeSlot,
-              subject: group.subject,
-              studentCount: group.students?.length || 0,
-              groupData: JSON.stringify(group, null, 2)
-            });
+            // Debug logging for each group (no PII)
+            if (DEBUG) {
+              console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
+                lessonDate: group.lessonDate || 'not-provided',
+                timeSlot: group.timeSlot || 'not-provided',
+                subject: group.subject || 'not-provided',
+                studentCount: group.students?.length || 0,
+                duration: group.duration || 30
+                // Removed: groupData which contained full student details
+              });
+            }
             
             // Validate each group request
             const validation = validateRequest(group);
             if (!validation.isValid) {
-              console.error(`[DEBUG] Validation failed for group ${groupIndex}:`, validation.errors);
+              if (DEBUG) {
+                console.error(`[DEBUG] Validation failed for group ${groupIndex}:`, validation.errors);
+              }
               return {
                 success: false,
                 error: 'Invalid request',
@@ -96,7 +108,9 @@ export async function POST(request: NextRequest) {
             const teacherRole = group.teacherRole || defaultTeacherRole;
             
             if (!isValidTeacherRole(teacherRole)) {
-              console.error(`[DEBUG] Invalid teacher role for group ${groupIndex}:`, teacherRole);
+              if (DEBUG) {
+                console.error(`[DEBUG] Invalid teacher role for group ${groupIndex}`);
+              }
               return {
                 success: false,
                 error: 'Invalid teacher role',
@@ -120,23 +134,17 @@ export async function POST(request: NextRequest) {
               timeSlot: group.timeSlot
             };
             
-            // Debug logging for duplicate key investigation
-            console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
-              lessonDate: group.lessonDate,
-              timeSlot: group.timeSlot,
-              subject: group.subject,
-              topic: group.topic,
-              studentCount: students.length
-            });
+            // Debug logging for lesson request (no PII)
+            if (DEBUG) {
+              console.log(`[DEBUG] Lesson request for group ${groupIndex}:`, {
+                lessonDate: lessonRequest.lessonDate || 'not-provided',
+                timeSlot: lessonRequest.timeSlot || 'not-provided',
+                subject: lessonRequest.subject,
+                duration: lessonRequest.duration,
+                studentCount: students.length
+              });
+            }
             
-            // Debug logging for lesson request
-            console.log(`[DEBUG] Created lesson request for group ${groupIndex}:`, {
-              lessonDate: lessonRequest.lessonDate,
-              timeSlot: lessonRequest.timeSlot,
-              subject: lessonRequest.subject,
-              studentCount: students.length,
-              duration: lessonRequest.duration
-            });
             
             // Generate lesson
             console.log('Generating lesson for group:', {
@@ -181,9 +189,13 @@ export async function POST(request: NextRequest) {
         });
         
         // Wait for all lessons to complete
-        console.log(`[DEBUG] Waiting for ${lessonPromises.length} lesson generation promises to complete...`);
+        if (DEBUG) {
+          console.log(`[DEBUG] Waiting for ${lessonPromises.length} lesson generation promises...`);
+        }
         const results = await Promise.allSettled(lessonPromises);
-        console.log(`[DEBUG] All lesson generation promises completed. Processing results...`);
+        if (DEBUG) {
+          console.log(`[DEBUG] All promises completed. Processing results...`);
+        }
         
         const lessons = results.map((result, index) => {
           if (result.status === 'fulfilled') {
@@ -467,18 +479,18 @@ async function saveLessonToDatabase(
   const lessonDate = request.lessonDate || new Date().toISOString().split('T')[0];
   const timeSlot = request.timeSlot || 'structured';
   
-  // Debug logging before database insertion
-  console.log(`[DEBUG] Saving lesson to database:`, {
-    provider_id: userId,
-    lesson_date: lessonDate,
-    time_slot: timeSlot,
-    school_id: profile?.school_id,
-    district_id: profile?.district_id,
-    state_id: profile?.state_id,
-    subject: request.subject,
-    topic: request.topic,
-    studentCount: request.students.length
-  });
+  // Debug logging before database insertion (no PII)
+  const DEBUG_LOG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
+  if (DEBUG_LOG) {
+    console.log(`[DEBUG] Saving lesson to database:`, {
+      lesson_date: lessonDate,
+      time_slot: timeSlot,
+      subject: request.subject,
+      studentCount: request.students.length,
+      hasSchoolContext: !!profile?.school_id,
+      hasTeacherRole: !!request.teacherRole
+    });
+  }
 
   // Save to ai_generated_lessons with full metadata
   const { data: lessonRecord, error } = await supabase
@@ -513,25 +525,26 @@ async function saveLessonToDatabase(
     .single();
   
   if (error) {
-    console.error(`[DEBUG] Database error when saving lesson:`, {
-      error,
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorHint: error.hint,
-      errorDetails: error.details,
-      constraintName: error.constraint || 'unknown',
-      attemptedData: {
-        provider_id: userId,
-        lesson_date: lessonDate,
-        time_slot: timeSlot,
-        school_id: profile?.school_id,
-        subject: request.subject
-      }
-    });
+    if (DEBUG_LOG) {
+      console.error(`[DEBUG] Database error when saving lesson:`, {
+        errorCode: error.code,
+        errorMessage: error.message,
+        constraintName: error.constraint || 'unknown',
+        attemptedData: {
+          lesson_date: lessonDate,
+          time_slot: timeSlot,
+          subject: request.subject,
+          studentCount: request.students.length,
+          hasSchoolContext: !!profile?.school_id
+        }
+      });
+    } else {
+      console.error('Failed to save lesson to database:', error.code);
+    }
     
     // Check if it's a duplicate key constraint violation
     if (error.code === '23505' && error.constraint === 'ai_generated_lessons_unique_lesson') {
-      throw new Error(`Duplicate lesson detected: A lesson already exists for provider ${userId}, school ${profile?.school_id}, date ${lessonDate}, time slot '${timeSlot}'. Constraint: ${error.constraint}`);
+      throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
     }
     
     throw new Error(`Failed to save lesson to database: ${error.message || 'Unknown error'}`);
