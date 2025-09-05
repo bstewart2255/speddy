@@ -94,7 +94,11 @@ export class OpenAIProvider implements AIProvider {
   private lastGenerationMetadata: GenerationMetadata | null = null;
 
   constructor(apiKey: string, model: string = 'gpt-4o-mini') {
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({ 
+      apiKey,
+      timeout: 60000, // 60 second timeout
+      maxRetries: 2
+    });
     this.model = model;
     
     // Calculate safe max tokens for response
@@ -116,6 +120,8 @@ export class OpenAIProvider implements AIProvider {
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
     
     try {
+      console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
+      
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -132,6 +138,8 @@ export class OpenAIProvider implements AIProvider {
         max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
+      
+      console.log(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
 
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
@@ -222,7 +230,22 @@ export class OpenAIProvider implements AIProvider {
 
       return jsonResponse;
     } catch (error) {
-      console.error('OpenAI generation error:', error);
+      const timeElapsed = Date.now() - startTime;
+      console.error(`[OpenAI] Generation failed after ${timeElapsed}ms:`, error);
+      
+      // Check for specific error types
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          throw new Error(`OpenAI API timeout after ${timeElapsed}ms. Please try again.`);
+        } else if (error.message.includes('401') || error.message.includes('authentication')) {
+          throw new Error('OpenAI API authentication failed. Please check your API key.');
+        } else if (error.message.includes('429')) {
+          throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+        } else if (error.message.includes('500') || error.message.includes('503')) {
+          throw new Error('OpenAI API is temporarily unavailable. Please try again.');
+        }
+      }
+      
       const msg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to generate lesson with OpenAI: ${msg}`);
     }
