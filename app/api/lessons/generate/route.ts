@@ -96,7 +96,9 @@ export async function POST(request: NextRequest) {
               subject: group.subject,
               topic: group.topic,
               duration: group.duration || 30,
-              focusSkills: group.focusSkills
+              focusSkills: group.focusSkills,
+              lessonDate: group.lessonDate,
+              timeSlot: group.timeSlot
             };
             
             // Generate lesson

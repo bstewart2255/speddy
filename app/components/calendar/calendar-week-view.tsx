@@ -1087,7 +1087,9 @@ export function CalendarWeekView({
               subject,
               duration,
               topic: `Session for ${formatTimeSlot(timeSlot)}`,
-              teacherRole: userProfile?.role || 'resource'
+              teacherRole: userProfile?.role || 'resource',
+              lessonDate: selectedLessonDate.toISOString().split('T')[0],
+              timeSlot: timeSlot // Pass the actual time slot
             });
             
             // Store mapping for later use
