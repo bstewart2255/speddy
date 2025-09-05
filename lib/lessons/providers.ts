@@ -2,10 +2,12 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { LessonRequest, LessonResponse, isValidLessonResponse } from './schema';
+import { logger } from '@/lib/logger';
 
 // Environment flags for controlling sensitive data capture
 const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
 const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+const DEBUG_OPENAI = process.env.DEBUG_OPENAI === 'true';
 
 /**
  * Redacts student-identifying information from text
@@ -94,7 +96,11 @@ export class OpenAIProvider implements AIProvider {
   private lastGenerationMetadata: GenerationMetadata | null = null;
 
   constructor(apiKey: string, model: string = 'gpt-4o-mini') {
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({ 
+      apiKey,
+      timeout: 60000, // 60 second timeout
+      maxRetries: 2
+    });
     this.model = model;
     
     // Calculate safe max tokens for response
@@ -116,6 +122,8 @@ export class OpenAIProvider implements AIProvider {
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
     
     try {
+      console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
+      
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -132,6 +140,8 @@ export class OpenAIProvider implements AIProvider {
         max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
+      
+      console.log(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
 
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
@@ -222,9 +232,65 @@ export class OpenAIProvider implements AIProvider {
 
       return jsonResponse;
     } catch (error) {
-      console.error('OpenAI generation error:', error);
-      const msg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to generate lesson with OpenAI: ${msg}`);
+      const timeElapsed = Date.now() - startTime;
+      
+      // Log detailed error info only when DEBUG_OPENAI is enabled
+      if (DEBUG_OPENAI) {
+        logger.debug('[OpenAI] Generation failed', {
+          timeElapsed,
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            ...error
+          } : error
+        });
+      }
+      
+      // Extract error details from various error structures
+      let errorMessage = '';
+      let statusCode: number | undefined;
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check for status/code in error object
+        const errorWithStatus = error as any;
+        statusCode = errorWithStatus.status || errorWithStatus.code || errorWithStatus.response?.status;
+      }
+      
+      // Map errors to user-friendly messages
+      if (errorMessage.includes('timeout') || statusCode === 408) {
+        logger.warn('OpenAI API timeout', { timeElapsed });
+        throw new Error(`Request timed out after ${Math.round(timeElapsed / 1000)}s. Please try again.`);
+      } else if (errorMessage.includes('401') || statusCode === 401 || errorMessage.includes('authentication')) {
+        logger.error('OpenAI API authentication failed', error);
+        throw new Error('Authentication failed. Please contact support.');
+      } else if (errorMessage.includes('402') || statusCode === 402 || errorMessage.includes('quota') || errorMessage.includes('exhausted')) {
+        logger.error('OpenAI API quota exceeded', error);
+        throw new Error('API quota exceeded. Please try again later or contact support.');
+      } else if (errorMessage.includes('413') || statusCode === 413 || errorMessage.includes('payload too large')) {
+        logger.warn('OpenAI API payload too large', { timeElapsed });
+        throw new Error('Request too large. Please try with fewer students or shorter content.');
+      } else if (errorMessage.includes('429') || statusCode === 429) {
+        logger.warn('OpenAI API rate limit exceeded', { timeElapsed });
+        throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+      } else if (errorMessage.includes('500') || statusCode === 500) {
+        logger.error('OpenAI API internal server error', error);
+        throw new Error('Service error occurred. Please try again.');
+      } else if (errorMessage.includes('502') || statusCode === 502) {
+        logger.error('OpenAI API bad gateway', error);
+        throw new Error('Connection error. Please try again.');
+      } else if (errorMessage.includes('503') || statusCode === 503) {
+        logger.warn('OpenAI API service unavailable', { timeElapsed });
+        throw new Error('Service temporarily unavailable. Please try again in a few moments.');
+      } else if (errorMessage.includes('504') || statusCode === 504) {
+        logger.error('OpenAI API gateway timeout', error);
+        throw new Error('Gateway timeout. Please try again.');
+      } else {
+        // Log unknown errors to Sentry for investigation
+        logger.error('OpenAI API unknown error', error, { timeElapsed });
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to generate lesson: ${msg}`);
+      }
     }
   }
 

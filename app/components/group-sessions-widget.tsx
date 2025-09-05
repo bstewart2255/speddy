@@ -3,6 +3,7 @@
 import React, { useMemo, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { AIContentModal } from "./ai-content-modal";
+import { AIContentModalEnhanced } from "./ai-content-modal-enhanced";
 import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { getMinutesUntilFirstSession } from '../utils/date-helpers';
@@ -54,6 +55,12 @@ export function GroupSessionsWidget() {
   const [selectedStudents, setSelectedStudents] = React.useState<any[]>([]);
   const [aiContent, setAiContent] = React.useState<string | null>(null);
   const [generatingContent, setGeneratingContent] = React.useState(false);
+  
+  // Enhanced modal state for proper lesson display
+  const [enhancedModalOpen, setEnhancedModalOpen] = React.useState(false);
+  const [enhancedModalLessons, setEnhancedModalLessons] = React.useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
+  const [userProfile, setUserProfile] = React.useState<any>(null);
   
   // Use school context to get the current school
   const { currentSchool } = useSchool();
@@ -141,6 +148,25 @@ export function GroupSessionsWidget() {
     setLoading(true);
     fetchUpcomingSessions();
   }, [currentSchool, fetchUpcomingSessions]); // Re-fetch when school changes
+  
+  // Fetch user profile for teacher role
+  React.useEffect(() => {
+    const fetchUserProfile = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      setUserProfile(profile);
+    };
+    
+    fetchUserProfile();
+  }, []);
 
   const getNextFiveHours = useCallback(() => {
     const now = currentTime;
@@ -246,7 +272,7 @@ export function GroupSessionsWidget() {
     setGeneratingContent(true);
 
     try {
-      // Transform students to match new API format
+      // Transform students to match new API format with IEP goals enrichment
       const formattedStudents = students.map(student => {
         return {
           id: student.id,
@@ -254,18 +280,38 @@ export function GroupSessionsWidget() {
         };
       });
 
-      // Use the new JSON lesson API
+      // Calculate duration from time slot (30 minutes default)
+      const duration = 30;
+      
+      // Get the displayed schedule date (adjust Sunday to Monday)
+      const today = new Date();
+      const currentDayOfWeek = today.getDay() || 7; // Convert Sunday from 0 to 7
+      let displayDate = new Date(today);
+      
+      // If it's Sunday, adjust to show Monday's date
+      if (currentDayOfWeek === 7) {
+        displayDate.setDate(displayDate.getDate() + 1); // Move to Monday
+      }
+      
+      // Format the display date for lesson date
+      const lessonDate = `${displayDate.getFullYear()}-${String(displayDate.getMonth() + 1).padStart(2, '0')}-${String(displayDate.getDate()).padStart(2, '0')}`;
+
+      // Use the batch API for consistency with weekly calendar
       const response = await fetch("/api/lessons/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          students: formattedStudents,
-          subject: 'English Language Arts', // Default subject
-          duration: 30,
-          topic: `Group session for ${selectedTimeSlot}`,
-          teacherRole: 'resource' // Default role
+          batch: [{
+            students: formattedStudents,
+            subject: 'English Language Arts', // Default subject, could be made configurable
+            duration: duration,
+            topic: `Group session for ${formatTime(timeSlot)}`,
+            teacherRole: userProfile?.role || 'resource',
+            lessonDate: lessonDate,
+            timeSlot: timeSlot
+          }]
         }),
       });
 
@@ -276,10 +322,34 @@ export function GroupSessionsWidget() {
 
       const data = await response.json();
       
-      // Store the JSON lesson data
-      if (data.lesson) {
-        setAiContent(JSON.stringify(data.lesson));
+      // Process response - only require data.lessons to exist
+      if (data.lessons && data.lessons.length > 0) {
+        const result = data.lessons[0];
+        if (result.success && result.lesson) {
+          // Format lesson for enhanced modal
+          const lessonData = {
+            timeSlot: timeSlot,
+            content: JSON.stringify(result.lesson),
+            students: students.map(s => ({
+              id: s.id,
+              initials: s.initials || 'Unknown',
+              grade_level: s.grade_level || '',
+              teacher_name: s.teacher_name || ''
+            }))
+          };
+          
+          // Set data for enhanced modal
+          setEnhancedModalLessons([lessonData]);
+          
+          // Close generating modal and open enhanced modal
+          setModalOpen(false);
+          setEnhancedModalOpen(true);
+        } else {
+          throw new Error(result.error || "Failed to generate lesson");
+        }
       } else {
+        // Log for debugging if lessons array is missing or empty
+        console.warn("Response data structure:", data);
         throw new Error("No lesson content received");
       }
     } catch (error) {
@@ -479,6 +549,16 @@ export function GroupSessionsWidget() {
         content={aiContent}
         isLoading={generatingContent}
         hideControls={true}  // Add this line to hide controls in upcoming sessions widget
+      />
+      
+      <AIContentModalEnhanced
+        isOpen={enhancedModalOpen}
+        onClose={() => setEnhancedModalOpen(false)}
+        lessons={enhancedModalLessons}
+        isLoading={false}
+        schoolSite={currentSchool?.school_site}
+        lessonDate={selectedDate}
+        hideControls={false} // Allow viewing and editing in the enhanced modal
       />
     </>
   );
