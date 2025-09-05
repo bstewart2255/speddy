@@ -109,7 +109,10 @@ export async function POST(request: NextRequest) {
               duration: lessonRequest.duration
             });
             
-            const { lesson, validation: lessonValidation, metadata: generationMetadata } = await lessonGenerator.generateLesson(lessonRequest);
+            const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
+            
+            // Get full metadata for database logging (server-side only)
+            const fullMetadata = lessonGenerator.getFullMetadataForLogging();
             
             // Save lesson to database
             const savedLesson = await saveLessonToDatabase(
@@ -117,7 +120,7 @@ export async function POST(request: NextRequest) {
               lessonRequest,
               userId,
               supabase,
-              generationMetadata
+              fullMetadata
             );
             
             return {
@@ -125,7 +128,7 @@ export async function POST(request: NextRequest) {
               lessonId: savedLesson.id,
               lesson,
               validation: lessonValidation,
-              generationMetadata,
+              generationMetadata: safeMetadata,
               renderUrl: `/api/lessons/${savedLesson.id}/render`,
               group
             };
