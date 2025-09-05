@@ -12,10 +12,26 @@ import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 export const maxDuration = 120; // 2 minutes timeout for Vercel
 
+// Debug logging only in development
+const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
+
+// Metadata capture flags - must be explicitly enabled to capture PII
+const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
+const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
+
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
       const supabase = await createClient();
+      
+      // Log metadata capture status on startup (only in debug mode)
+      if (DEBUG && SHOULD_CAPTURE_METADATA) {
+        console.log('[DEBUG] Full metadata capture is ENABLED:', {
+          CAPTURE_FULL_PROMPTS,
+          CAPTURE_AI_RAW
+        });
+      }
       
       // Parse request body
       const body = await req.json();
@@ -23,7 +39,19 @@ export async function POST(request: NextRequest) {
       // Check if this is a batch request
       if (body.batch && Array.isArray(body.batch)) {
         // Handle batch lesson generation
-        console.log(`Processing batch request with ${body.batch.length} lesson groups`);
+        if (DEBUG) {
+          console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups`);
+          // Log only non-sensitive summary data
+          console.log(`[DEBUG] Batch request summary:`, body.batch.map((group, i) => ({
+            index: i,
+            lessonDate: group.lessonDate || 'not-provided',
+            timeSlot: group.timeSlot || 'not-provided',
+            subject: group.subject || 'not-provided',
+            studentCount: group.students?.length || 0,
+            hasTeacherRole: !!group.teacherRole
+          })));
+        }
+        
         const startTime = Date.now();
         
         // Get teacher's role from profile once
@@ -62,11 +90,26 @@ export async function POST(request: NextRequest) {
         }
         
         // Process all lesson requests in parallel
-        const lessonPromises = body.batch.map(async (group: any) => {
+        const lessonPromises = body.batch.map(async (group: any, groupIndex: number) => {
           try {
+            // Debug logging for each group (no PII)
+            if (DEBUG) {
+              console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
+                lessonDate: group.lessonDate || 'not-provided',
+                timeSlot: group.timeSlot || 'not-provided',
+                subject: group.subject || 'not-provided',
+                studentCount: group.students?.length || 0,
+                duration: group.duration || 30
+                // Removed: groupData which contained full student details
+              });
+            }
+            
             // Validate each group request
             const validation = validateRequest(group);
             if (!validation.isValid) {
+              if (DEBUG) {
+                console.error(`[DEBUG] Validation failed for group ${groupIndex}:`, validation.errors);
+              }
               return {
                 success: false,
                 error: 'Invalid request',
@@ -78,6 +121,9 @@ export async function POST(request: NextRequest) {
             const teacherRole = group.teacherRole || defaultTeacherRole;
             
             if (!isValidTeacherRole(teacherRole)) {
+              if (DEBUG) {
+                console.error(`[DEBUG] Invalid teacher role for group ${groupIndex}`);
+              }
               return {
                 success: false,
                 error: 'Invalid teacher role',
@@ -96,8 +142,22 @@ export async function POST(request: NextRequest) {
               subject: group.subject,
               topic: group.topic,
               duration: group.duration || 30,
-              focusSkills: group.focusSkills
+              focusSkills: group.focusSkills,
+              lessonDate: group.lessonDate,
+              timeSlot: group.timeSlot
             };
+            
+            // Debug logging for lesson request (no PII)
+            if (DEBUG) {
+              console.log(`[DEBUG] Lesson request for group ${groupIndex}:`, {
+                lessonDate: lessonRequest.lessonDate || 'not-provided',
+                timeSlot: lessonRequest.timeSlot || 'not-provided',
+                subject: lessonRequest.subject,
+                duration: lessonRequest.duration,
+                studentCount: students.length
+              });
+            }
+            
             
             // Generate lesson
             console.log('Generating lesson for group:', {
@@ -107,7 +167,12 @@ export async function POST(request: NextRequest) {
               duration: lessonRequest.duration
             });
             
-            const { lesson, validation: lessonValidation, metadata: generationMetadata } = await lessonGenerator.generateLesson(lessonRequest);
+            const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
+            
+            // Only capture full metadata if explicitly enabled via env flags
+            const fullMetadata = SHOULD_CAPTURE_METADATA 
+              ? lessonGenerator.getFullMetadataForLogging()
+              : null;
             
             // Save lesson to database
             const savedLesson = await saveLessonToDatabase(
@@ -115,7 +180,7 @@ export async function POST(request: NextRequest) {
               lessonRequest,
               userId,
               supabase,
-              generationMetadata
+              fullMetadata
             );
             
             return {
@@ -123,9 +188,10 @@ export async function POST(request: NextRequest) {
               lessonId: savedLesson.id,
               lesson,
               validation: lessonValidation,
-              generationMetadata,
-              renderUrl: `/api/lessons/${savedLesson.id}/render`,
+              generationMetadata: safeMetadata,
               group
+              // Note: renderUrl removed since we're now saving to ai_generated_lessons table
+              // and the render endpoint expects lessons table
             };
           } catch (error) {
             console.error('Error generating lesson for group:', error);
@@ -139,7 +205,13 @@ export async function POST(request: NextRequest) {
         });
         
         // Wait for all lessons to complete
+        if (DEBUG) {
+          console.log(`[DEBUG] Waiting for ${lessonPromises.length} lesson generation promises...`);
+        }
         const results = await Promise.allSettled(lessonPromises);
+        if (DEBUG) {
+          console.log(`[DEBUG] All promises completed. Processing results...`);
+        }
         
         const lessons = results.map((result, index) => {
           if (result.status === 'fulfilled') {
@@ -222,16 +294,18 @@ export async function POST(request: NextRequest) {
       
       const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
       
-      // Get full metadata for server-side storage only (contains PII)
-      const fullMetadataForLogging = lessonGenerator.getFullMetadataForLogging();
+      // Only capture full metadata if explicitly enabled via env flags
+      const fullMetadataForLogging = SHOULD_CAPTURE_METADATA
+        ? lessonGenerator.getFullMetadataForLogging()
+        : null;
       
-      // Save lesson to database with full metadata
+      // Save lesson to database with conditional metadata
       const savedLesson = await saveLessonToDatabase(
         lesson,
         lessonRequest,
         userId,
         supabase,
-        fullMetadataForLogging  // Use full metadata for database storage
+        fullMetadataForLogging  // May be null if capture is disabled
       );
       
       // Return response with only safe metadata
@@ -412,6 +486,10 @@ async function saveLessonToDatabase(
   supabase: any,
   generationMetadata?: any
 ): Promise<{ id: string }> {
+  // Re-read environment flags for metadata capture within function scope
+  const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
+  const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
+  const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
   // Get current user's school context
   const { data: profile } = await supabase
     .from('profiles')
@@ -419,41 +497,102 @@ async function saveLessonToDatabase(
     .eq('id', userId)
     .single();
 
-  // Save to ai_generated_lessons with full metadata
+  // Prepare the lesson data for insertion
+  const lessonDate = request.lessonDate || new Date().toISOString().split('T')[0];
+  const timeSlot = request.timeSlot || 'structured';
+  
+  // Debug logging before database insertion (no PII)
+  const DEBUG_LOG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
+  if (DEBUG_LOG) {
+    const debugData: any = {
+      lesson_date: lessonDate,
+      time_slot: timeSlot,
+      subject: request.subject,
+      studentCount: request.students.length,
+      hasSchoolContext: !!profile?.school_id,
+      hasTeacherRole: !!request.teacherRole,
+      metadataCaptureEnabled: SHOULD_CAPTURE_METADATA
+    };
+    
+    // Only log sensitive field status if capture is enabled
+    if (SHOULD_CAPTURE_METADATA) {
+      debugData.willCapturePrompt = CAPTURE_FULL_PROMPTS && !!generationMetadata?.fullPromptSent;
+      debugData.willCaptureResponse = CAPTURE_AI_RAW && !!generationMetadata?.aiRawResponse;
+    }
+    
+    console.log(`[DEBUG] Saving lesson to database:`, debugData);
+  }
+
+  // Build the database record conditionally based on environment flags
+  const dbRecord: any = {
+    provider_id: userId,
+    lesson_date: lessonDate,
+    time_slot: timeSlot,
+    content: JSON.stringify(lesson),
+    prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
+    session_data: request.students.map(s => ({ student_id: s.id })),
+    school_id: profile?.school_id || null,
+    district_id: profile?.district_id || null,
+    state_id: profile?.state_id || null,
+    model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
+    prompt_tokens: generationMetadata?.promptTokens || null,
+    completion_tokens: generationMetadata?.completionTokens || null,
+    generation_metadata: generationMetadata?.generationMetadata || {
+      teacherRole: request.teacherRole,
+      focusSkills: request.focusSkills,
+      studentCount: request.students.length,
+      generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
+      validationStatus: lesson?.metadata?.validationStatus || 'passed'
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  
+  // Only include sensitive fields if explicitly enabled via environment flags
+  // These use the same flags defined at the top of the file
+  if (CAPTURE_FULL_PROMPTS && generationMetadata?.fullPromptSent) {
+    dbRecord.full_prompt_sent = generationMetadata.fullPromptSent;
+  } else {
+    dbRecord.full_prompt_sent = null;
+  }
+  
+  if (CAPTURE_AI_RAW && generationMetadata?.aiRawResponse) {
+    dbRecord.ai_raw_response = generationMetadata.aiRawResponse;
+  } else {
+    dbRecord.ai_raw_response = null;
+  }
+  
+  // Save to ai_generated_lessons
   const { data: lessonRecord, error } = await supabase
     .from('ai_generated_lessons')
-    .insert({
-      provider_id: userId,
-      lesson_date: request.lessonDate || new Date().toISOString().split('T')[0],
-      time_slot: request.timeSlot || 'structured', // Use provided time slot or default to 'structured'
-      content: JSON.stringify(lesson), // Store entire JSON structure as string
-      prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
-      session_data: request.students.map(s => ({ student_id: s.id })), // Simplified to avoid redundancy
-      school_id: profile?.school_id || null,
-      district_id: profile?.district_id || null,
-      state_id: profile?.state_id || null,
-      // Add the new logging fields if metadata is available
-      full_prompt_sent: generationMetadata?.fullPromptSent || null,
-      ai_raw_response: generationMetadata?.aiRawResponse || null,
-      model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
-      prompt_tokens: generationMetadata?.promptTokens || null,
-      completion_tokens: generationMetadata?.completionTokens || null,
-      generation_metadata: generationMetadata?.generationMetadata || {
-        teacherRole: request.teacherRole,
-        focusSkills: request.focusSkills,
-        studentCount: request.students.length,
-        generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
-        validationStatus: lesson?.metadata?.validationStatus || 'passed'
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
+    .insert(dbRecord)
     .select('id')
     .single();
   
   if (error) {
-    console.error('Error saving lesson to database:', error);
-    throw new Error('Failed to save lesson to database');
+    if (DEBUG_LOG) {
+      console.error(`[DEBUG] Database error when saving lesson:`, {
+        errorCode: error.code,
+        errorMessage: error.message,
+        constraintName: error.constraint || 'unknown',
+        attemptedData: {
+          lesson_date: lessonDate,
+          time_slot: timeSlot,
+          subject: request.subject,
+          studentCount: request.students.length,
+          hasSchoolContext: !!profile?.school_id
+        }
+      });
+    } else {
+      console.error('Failed to save lesson to database:', error.code);
+    }
+    
+    // Check if it's a duplicate key constraint violation
+    if (error.code === '23505' && error.constraint === 'ai_generated_lessons_unique_lesson') {
+      throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
+    }
+    
+    throw new Error(`Failed to save lesson to database: ${error.message || 'Unknown error'}`);
   }
   
   return lessonRecord;

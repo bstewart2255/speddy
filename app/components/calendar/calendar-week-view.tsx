@@ -1060,7 +1060,14 @@ export function CalendarWeekView({
         const timeSlotMapping = new Map<number, { timeSlot: string; slotSessions: ScheduleSession[] }>();
         let index = 0;
         
+        // Debug logging: List all time slots found
+        console.log(`[DEBUG Frontend] Found ${timeSlotGroups.size} time slot groups:`, 
+          Array.from(timeSlotGroups.keys())
+        );
+        
         for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
+          console.log(`[DEBUG Frontend] Processing time slot: "${timeSlot}" with ${slotSessions.length} sessions`);
+          
           // Extract unique students from the sessions
           const sessionStudents = new Set<string>();
           slotSessions.forEach(session => {
@@ -1081,20 +1088,42 @@ export function CalendarWeekView({
           if (studentList.length > 0) {
             const subject = 'English Language Arts'; // Default subject, can be made configurable
             const duration = calculateDurationFromTimeSlot(timeSlot);
+            const lessonDate = toLocalDateKey(selectedLessonDate);
             
-            batchRequests.push({
+            const batchRequest = {
               students: studentList,
               subject,
               duration,
               topic: `Session for ${formatTimeSlot(timeSlot)}`,
-              teacherRole: userProfile?.role || 'resource'
+              teacherRole: userProfile?.role || 'resource',
+              lessonDate: lessonDate,
+              timeSlot: timeSlot // Pass the actual time slot
+            };
+            
+            // Debug logging for each batch request
+            console.log(`[DEBUG Frontend] Adding batch request ${index}:`, {
+              timeSlot: timeSlot,
+              lessonDate: lessonDate,
+              studentCount: studentList.length,
+              duration: duration,
+              subject: subject
             });
+            
+            batchRequests.push(batchRequest);
             
             // Store mapping for later use
             timeSlotMapping.set(index, { timeSlot, slotSessions });
             index++;
+          } else {
+            console.log(`[DEBUG Frontend] Skipping time slot "${timeSlot}" - no students found`);
           }
         }
+        
+        console.log(`[DEBUG Frontend] Final batch requests summary:`, {
+          totalRequests: batchRequests.length,
+          timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
+          lessonDate: toLocalDateKey(selectedLessonDate)
+        });
         
         if (batchRequests.length === 0) {
           showToast('No valid time slots to generate lessons for', 'warning');
