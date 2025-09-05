@@ -283,9 +283,18 @@ export function GroupSessionsWidget() {
       // Calculate duration from time slot (30 minutes default)
       const duration = 30;
       
-      // Format today's date for lesson date
+      // Get the displayed schedule date (adjust Sunday to Monday)
       const today = new Date();
-      const lessonDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const currentDayOfWeek = today.getDay() || 7; // Convert Sunday from 0 to 7
+      let displayDate = new Date(today);
+      
+      // If it's Sunday, adjust to show Monday's date
+      if (currentDayOfWeek === 7) {
+        displayDate.setDate(displayDate.getDate() + 1); // Move to Monday
+      }
+      
+      // Format the display date for lesson date
+      const lessonDate = `${displayDate.getFullYear()}-${String(displayDate.getMonth() + 1).padStart(2, '0')}-${String(displayDate.getDate()).padStart(2, '0')}`;
 
       // Use the batch API for consistency with weekly calendar
       const response = await fetch("/api/lessons/generate", {
@@ -331,7 +340,7 @@ export function GroupSessionsWidget() {
           
           // Set data for enhanced modal
           setEnhancedModalLessons([lessonData]);
-          setSelectedDate(today);
+          setSelectedDate(displayDate);
           
           // Close generating modal and open enhanced modal
           setModalOpen(false);
