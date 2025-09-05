@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
             };
             
             // Debug logging for duplicate key investigation
-            console.log(`[DEBUG] Processing batch group ${index}:`, {
+            console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
               lessonDate: group.lessonDate,
               timeSlot: group.timeSlot,
               subject: group.subject,
