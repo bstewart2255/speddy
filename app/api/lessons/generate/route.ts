@@ -416,13 +416,46 @@ async function enrichStudentDataFromMap(
         ? student.readingLevel
         : undefined;
     
-    // Parse IEP goals with fallback to database (from student_details)
-    const iepGoals: string[] = student.iepGoals ||
-      (Array.isArray(studentData?.student_details?.iep_goals) 
-        ? studentData.student_details.iep_goals 
-        : studentData?.student_details?.iep_goals 
-        ? [studentData.student_details.iep_goals] 
-        : []);
+    // Parse IEP goals with robust normalization for all possible data shapes
+    let iepGoals: string[] = [];
+    
+    // First try to get from student request object
+    if (student.iepGoals) {
+      if (Array.isArray(student.iepGoals)) {
+        iepGoals = student.iepGoals.filter(g => typeof g === 'string' && g.trim());
+      } else if (typeof student.iepGoals === 'string' && student.iepGoals.trim()) {
+        iepGoals = [student.iepGoals];
+      }
+    } 
+    
+    // If no IEP goals from request, try to get from database
+    if (iepGoals.length === 0 && studentData?.student_details) {
+      const details = studentData.student_details;
+      
+      // Handle student_details being either an object or an array
+      const detailsArray = Array.isArray(details) ? details : [details];
+      
+      // Extract and normalize IEP goals from all detail records
+      const allGoals: string[] = [];
+      for (const detail of detailsArray) {
+        if (detail?.iep_goals) {
+          if (Array.isArray(detail.iep_goals)) {
+            // It's already an array
+            allGoals.push(...detail.iep_goals.filter(g => typeof g === 'string' && g.trim()));
+          } else if (typeof detail.iep_goals === 'string' && detail.iep_goals.trim()) {
+            // It's a single string - check if it needs splitting (e.g., semicolon-separated)
+            if (detail.iep_goals.includes(';')) {
+              allGoals.push(...detail.iep_goals.split(';').map(g => g.trim()).filter(Boolean));
+            } else {
+              allGoals.push(detail.iep_goals);
+            }
+          }
+        }
+      }
+      
+      // Deduplicate goals while preserving order
+      iepGoals = [...new Set(allGoals)];
+    }
     
     // Parse accommodations (currently not stored in database, only from request)
     const accommodations: string[] = student.accommodations || [];
