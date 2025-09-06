@@ -77,9 +77,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         assessment: insertData.assessment
       },
       notes: insertData.notes,
-      school_id: insertData.school_id,
-      district_id: insertData.district_id,
-      state_id: insertData.state_id
+      school_id: insertData.school_id || null,
+      district_id: insertData.district_id || null,
+      state_id: insertData.state_id || null
     };
     
     const { data, error } = await supabase

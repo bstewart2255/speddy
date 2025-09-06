@@ -622,7 +622,7 @@ async function saveLessonToDatabase(
     }
     
     // Check if it's a duplicate key constraint violation
-    if (error.code === '23505' && error.constraint === 'lessons_unique_calendar') {
+    if (error.code === '23505' && (error.constraint === 'lessons_unique_calendar_timeslot' || error.constraint === 'lessons_unique_calendar')) {
       throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
     }
     

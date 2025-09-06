@@ -113,11 +113,14 @@ export async function PUT(
     // Restructure data for unified lessons table if needed
     const unifiedUpdateData = { ...fieldsToUpdate };
     if (fieldsToUpdate.objectives || fieldsToUpdate.materials || fieldsToUpdate.activities || fieldsToUpdate.assessment) {
+      // Merge with existing content to avoid overwriting fields not being updated
+      const existingContent = existingLesson.content || {};
       unifiedUpdateData.content = {
-        objectives: fieldsToUpdate.objectives,
-        materials: fieldsToUpdate.materials,
-        activities: fieldsToUpdate.activities,
-        assessment: fieldsToUpdate.assessment
+        ...existingContent,
+        ...(fieldsToUpdate.objectives !== undefined && { objectives: fieldsToUpdate.objectives }),
+        ...(fieldsToUpdate.materials !== undefined && { materials: fieldsToUpdate.materials }),
+        ...(fieldsToUpdate.activities !== undefined && { activities: fieldsToUpdate.activities }),
+        ...(fieldsToUpdate.assessment !== undefined && { assessment: fieldsToUpdate.assessment })
       };
       delete unifiedUpdateData.objectives;
       delete unifiedUpdateData.materials;

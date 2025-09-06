@@ -327,11 +327,16 @@ export default function LessonPreviewModal({
       // Get student initials (for now using Student # as we don't have the actual initials in this context)
       const studentInitials = `Student ${studentIdx + 1}`;
       
-      // Generate HTML for the worksheet
+      // Generate HTML for the worksheet with subject handling
+      const subjectType = formData.subject?.toLowerCase().includes('math') ? 'math' : 
+                         formData.subject?.toLowerCase().includes('english') || 
+                         formData.subject?.toLowerCase().includes('ela') ? 'ela' : undefined;
+      
       const html = await generateAIWorksheetHtml(
         studentMaterial,
         studentInitials,
-        worksheetId
+        worksheetId,
+        subjectType as 'math' | 'ela' | undefined
       );
 
       if (html) {
@@ -526,7 +531,7 @@ export default function LessonPreviewModal({
                         <strong> Duration:</strong> {formData.timeDuration}
                       </p>
                       <p className="text-sm text-gray-700 mt-1">
-                        <strong>Students:</strong> {lesson.formData.studentIds.length} selected
+                        <strong>Students:</strong> {formData.studentIds.length} selected
                       </p>
                     </div>
                   </div>
