@@ -53,7 +53,11 @@
       "mcp__github__create_issue",
       "Bash(git fetch:*)",
       "Bash(git restore:*)",
-      "mcp__supabase__list_tables"
+      "mcp__supabase__list_tables",
+      "Bash(gh project create:*)",
+      "Bash(gh project field-create:*)",
+      "Bash(gh project item-add:*)",
+      "Bash(gh project item-create:*)"
     ],
     "deny": []
   },
