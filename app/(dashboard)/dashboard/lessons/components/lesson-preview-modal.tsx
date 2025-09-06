@@ -2,96 +2,280 @@
 
 import { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, PrinterIcon, BookmarkIcon } from '@heroicons/react/24/outline';
-import { useToast } from '@/app/contexts/toast-context';
+import { XMarkIcon, DocumentArrowDownIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { createClient } from '@/lib/supabase/client';
-import { getSanitizedHTML } from '@/lib/sanitize-html';
+import { 
+  generateWorksheetId, 
+  generateAIWorksheetHtml,
+  printHtmlWorksheet 
+} from '@/lib/utils/worksheet-utils';
 
 interface LessonPreviewModalProps {
   lesson: {
-    content: string;
+    content: any;
     title: string;
+    formData: {
+      studentIds: string[];
+      subject: string;
+      topic: string;
+      timeDuration: string;
+    };
+    lessonId?: string;
   };
-  formData: {
-    grade: string;
-    subject: string;
-    topic: string;
-    timeDuration: string;
-  };
+  formData: any;
   onClose: () => void;
+  showToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function LessonPreviewModal({ lesson, formData, onClose }: LessonPreviewModalProps) {
-  const { showToast } = useToast();
+export default function LessonPreviewModal({ 
+  lesson, 
+  formData, 
+  onClose, 
+  showToast 
+}: LessonPreviewModalProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'worksheets'>('overview');
   const supabase = createClient();
-  const sanitizedContent = getSanitizedHTML(lesson.content);
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      showToast('Please allow popups to print the lesson', 'error');
-      return;
+  // Function to render JSON content as readable HTML
+  const renderLessonContent = () => {
+    const content = lesson.content;
+    
+    if (!content) {
+      return <p className="text-gray-500">No content available</p>;
     }
 
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${lesson.title} - ${formData.grade} ${formData.subject}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            h1, h2, h3 {
-              color: #2c3e50;
-            }
-            .header {
-              border-bottom: 2px solid #3498db;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-            }
-            .meta-info {
-              color: #666;
-              font-size: 14px;
-              margin-bottom: 20px;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 20px;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${lesson.title}</h1>
-            <div class="meta-info">
-              <strong>Grade:</strong> ${formData.grade} | 
-              <strong>Subject:</strong> ${formData.subject} | 
-              <strong>Duration:</strong> ${formData.timeDuration}
+    // If it's already structured lesson data
+    if (content.lesson) {
+      const lessonData = content.lesson;
+      return (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-xl font-semibold">{lessonData.title || lesson.title}</h3>
+            <p className="text-gray-600">Duration: {lessonData.duration || formData.timeDuration} minutes</p>
+          </div>
+          
+          {lessonData.overview && (
+            <div>
+              <h4 className="font-semibold mb-2">Overview</h4>
+              <p className="text-gray-700">{lessonData.overview}</p>
             </div>
-          </div>
-          <div class="content">
-            ${sanitizedContent.__html}
-          </div>
-        </body>
-      </html>
-    `;
+          )}
+          
+          {lessonData.objectives && (
+            <div>
+              <h4 className="font-semibold mb-2">Learning Objectives</h4>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.objectives.map((obj: string, i: number) => (
+                  <li key={i} className="text-gray-700">{obj}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-    printWindow.document.write(printContent);
-    printWindow.document.close();
+          {lessonData.materials && (
+            <div>
+              <h4 className="font-semibold mb-2">Materials Needed</h4>
+              <p className="text-gray-700">{lessonData.materials}</p>
+            </div>
+          )}
+
+          {lessonData.introduction && (
+            <div>
+              <h4 className="font-semibold mb-2">Introduction ({lessonData.introduction.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.introduction.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.introduction.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {lessonData.mainActivity && (
+            <div>
+              <h4 className="font-semibold mb-2">Main Activity ({lessonData.mainActivity.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.mainActivity.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.mainActivity.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {lessonData.closure && (
+            <div>
+              <h4 className="font-semibold mb-2">Closure ({lessonData.closure.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.closure.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.closure.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {content.studentMaterials && content.studentMaterials.length > 0 && (
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-semibold text-lg">Student Worksheets</h4>
+                <button
+                  onClick={async () => {
+                    for (let idx = 0; idx < content.studentMaterials.length; idx++) {
+                      const material = content.studentMaterials[idx];
+                      await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
+                      // Small delay between prints to avoid overwhelming the browser
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                  }}
+                  className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
+                  title="Print all student worksheets"
+                >
+                  <PrinterIcon className="h-4 w-4 mr-1" />
+                  Print All Worksheets
+                </button>
+              </div>
+              {content.studentMaterials.map((material: any, idx: number) => (
+                <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex justify-between items-start mb-2">
+                    <h5 className="font-semibold">
+                      Student {idx + 1} (Grade {material.gradeGroup})
+                    </h5>
+                    <button
+                      onClick={() => handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx)}
+                      className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                      title="Print this student's worksheet"
+                    >
+                      <PrinterIcon className="h-4 w-4 mr-1" />
+                      Print Worksheet
+                    </button>
+                  </div>
+                  {renderWorksheet(material.worksheet)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {lessonData.answerKey && (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-2">Answer Key</h4>
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => (
+                  <div key={key}>
+                    <p className="font-medium">{key}:</p>
+                    <p className="text-gray-700">
+                      {Array.isArray(value.answers) 
+                        ? value.answers.join(', ')
+                        : JSON.stringify(value)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
     
-    // Wait for content to load before printing
-    printWindow.onload = () => {
-      printWindow.print();
-    };
+    // Fallback for other content structures
+    return (
+      <div className="prose max-w-none">
+        <pre className="whitespace-pre-wrap text-sm">
+          {JSON.stringify(content, null, 2)}
+        </pre>
+      </div>
+    );
+  };
+
+  const renderWorksheet = (worksheet: any) => {
+    if (!worksheet) return null;
+    
+    return (
+      <div className="space-y-4">
+        {worksheet.title && <h5 className="font-medium text-lg">{worksheet.title}</h5>}
+        {worksheet.instructions && <p className="text-gray-600 italic mb-4">{worksheet.instructions}</p>}
+        
+        {worksheet.sections?.map((section: any, i: number) => {
+          // Handle nested structure with items array containing section objects
+          if (section.items && Array.isArray(section.items) && section.items[0]?.sectionType) {
+            return (
+              <div key={i} className="space-y-4">
+                <h6 className="font-semibold text-base">{section.title}</h6>
+                {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
+                
+                {section.items.map((subSection: any, j: number) => (
+                  <div key={j} className="ml-4 space-y-2">
+                    <p className="font-medium">{subSection.sectionTitle}</p>
+                    {subSection.instructions && (
+                      <p className="text-sm text-gray-600 italic">{subSection.instructions}</p>
+                    )}
+                    <div className="space-y-3">
+                      {subSection.items?.map((problem: any, k: number) => (
+                        <div key={k} className="ml-4">
+                          {problem.type === 'visual' ? (
+                            <div className="font-mono text-lg bg-white p-2 rounded border">
+                              {problem.content}
+                            </div>
+                          ) : (
+                            <p className="text-gray-700">
+                              {k + 1}. {problem.question || problem.content || problem}
+                            </p>
+                          )}
+                          {problem.blankLines && (
+                            <div className="ml-4 space-y-1">
+                              {[...Array(problem.blankLines)].map((_, idx) => (
+                                <div key={idx} className="border-b border-gray-300 h-6"></div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          
+          // Handle simpler structure
+          return (
+            <div key={i} className="space-y-2">
+              {section.title && <h6 className="font-medium">{section.title}</h6>}
+              {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
+              {section.items && (
+                <div className="space-y-2">
+                  {section.items.map((item: any, j: number) => (
+                    <div key={j} className="ml-4">
+                      {typeof item === 'string' ? (
+                        <p>{j + 1}. {item}</p>
+                      ) : item.type === 'visual' ? (
+                        <div className="font-mono text-lg bg-white p-2 rounded border">
+                          {item.content}
+                        </div>
+                      ) : (
+                        <p>{j + 1}. {item.question || item.content}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        
+        {worksheet.accommodations && worksheet.accommodations.length > 0 && (
+          <div className="mt-4 p-3 bg-blue-50 rounded">
+            <p className="text-sm font-medium">Accommodations:</p>
+            <ul className="text-sm text-gray-700">
+              {worksheet.accommodations.map((acc: string, i: number) => (
+                <li key={i}>• {acc}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleSave = async () => {
@@ -103,30 +287,190 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
         return;
       }
 
-      const response = await fetch('/api/lessons', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: lesson.title,
-          subject: formData.subject,
-          grade: formData.grade,
-          time_duration: formData.timeDuration,
-          content: lesson.content,
-          user_id: user.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save lesson');
+      // Since the lesson is already saved during generation, we just need to confirm
+      if (lesson.lessonId) {
+        showToast('Lesson already saved!', 'success');
+        onClose();
+      } else {
+        // Fallback: save manually if for some reason it wasn't saved during generation
+        showToast('Lesson saved during generation', 'info');
+        onClose();
       }
-
-      showToast('Lesson saved successfully!', 'success');
-      onClose();
     } catch (error) {
       showToast('Failed to save lesson. Please try again.', 'error');
       console.error('Error saving lesson:', error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePrintWorksheet = async (studentId: string, studentIdx: number) => {
+    try {
+      const content = lesson.content;
+      if (!content?.studentMaterials) {
+        showToast('No worksheet available for this student', 'error');
+        return;
+      }
+
+      const studentMaterial = content.studentMaterials.find((m: any) => 
+        m.studentId === studentId || content.studentMaterials[studentIdx] === m
+      );
+
+      if (!studentMaterial) {
+        showToast('No worksheet found for this student', 'error');
+        return;
+      }
+
+      // Generate unique worksheet ID
+      const worksheetId = generateWorksheetId(studentId, formData.subject);
+      
+      // Get student initials (for now using Student # as we don't have the actual initials in this context)
+      const studentInitials = `Student ${studentIdx + 1}`;
+      
+      // Generate HTML for the worksheet with subject handling
+      const subjectType = formData.subject?.toLowerCase().includes('math') ? 'math' : 
+                         formData.subject?.toLowerCase().includes('english') || 
+                         formData.subject?.toLowerCase().includes('ela') ? 'ela' : undefined;
+      
+      const html = await generateAIWorksheetHtml(
+        studentMaterial,
+        studentInitials,
+        worksheetId,
+        subjectType as 'math' | 'ela' | undefined
+      );
+
+      if (html) {
+        printHtmlWorksheet(html, `${studentInitials}_${formData.subject}_Worksheet`);
+      } else {
+        showToast('Failed to generate worksheet', 'error');
+      }
+    } catch (error) {
+      console.error('Error printing worksheet:', error);
+      showToast('Failed to print worksheet', 'error');
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${lesson.title}</title>
+            <style>
+              body { 
+                font-family: Arial, sans-serif; 
+                padding: 20px; 
+                line-height: 1.6;
+              }
+              h3 { 
+                color: #333; 
+                font-size: 24px;
+                margin-bottom: 10px;
+              }
+              h4 { 
+                color: #555; 
+                margin-top: 20px;
+                font-size: 18px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+              }
+              h5 {
+                font-size: 16px;
+                margin-top: 15px;
+                color: #444;
+              }
+              h6 {
+                font-size: 14px;
+                font-weight: bold;
+                margin-top: 10px;
+              }
+              .text-gray-600 { color: #666; }
+              .text-gray-700 { color: #777; }
+              .font-medium { font-weight: 500; }
+              .font-semibold { font-weight: 600; }
+              .italic { font-style: italic; }
+              ul, ol { padding-left: 20px; margin: 10px 0; }
+              li { margin: 5px 0; }
+              .bg-gray-50 { 
+                background: #f9f9f9; 
+                padding: 15px; 
+                border-radius: 5px;
+                margin: 15px 0;
+                page-break-inside: avoid;
+              }
+              .bg-yellow-50 {
+                background: #fef3c7;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 15px 0;
+              }
+              .bg-blue-50 {
+                background: #dbeafe;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 10px 0;
+              }
+              .border-t {
+                border-top: 2px solid #ddd;
+                padding-top: 20px;
+                margin-top: 20px;
+              }
+              .font-mono {
+                font-family: 'Courier New', monospace;
+                font-size: 16px;
+                background: white;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+                display: block;
+                margin: 10px 0;
+              }
+              .ml-4 { margin-left: 20px; }
+              .space-y-1 > * { margin-top: 5px; }
+              .space-y-2 > * { margin-top: 10px; }
+              .space-y-3 > * { margin-top: 15px; }
+              .space-y-4 > * { margin-top: 20px; }
+              .space-y-6 > * { margin-top: 30px; }
+              .mb-2 { margin-bottom: 10px; }
+              .mb-4 { margin-bottom: 20px; }
+              .border-b {
+                border-bottom: 1px solid #999;
+                height: 25px;
+                margin: 5px 0;
+              }
+              @media print {
+                body { padding: 10px; }
+                .bg-gray-50, .bg-yellow-50, .bg-blue-50 {
+                  background: white;
+                  border: 1px solid #ddd;
+                }
+                h4 { page-break-after: avoid; }
+                h5 { page-break-after: avoid; }
+                .border-t { page-break-before: auto; }
+              }
+            </style>
+          </head>
+          <body>
+            <div id="content"></div>
+          </body>
+        </html>
+      `);
+      
+      const contentDiv = printWindow.document.getElementById('content');
+      if (contentDiv) {
+        // Clone the lesson preview content
+        const lessonContent = document.getElementById('lesson-preview-content');
+        if (lessonContent) {
+          contentDiv.innerHTML = lessonContent.innerHTML;
+        }
+      }
+      
+      printWindow.document.close();
+      // Small delay to ensure styles are applied
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
     }
   };
 
@@ -146,7 +490,7 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
         </Transition.Child>
 
         <div className="fixed inset-0 z-10 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4 text-center sm:items-center sm:p-0">
+          <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-300"
@@ -156,76 +500,68 @@ export default function LessonPreviewModal({ lesson, formData, onClose }: Lesson
               leaveFrom="opacity-100 translate-y-0 sm:scale-100"
               leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
             >
-              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl">
-                <div className="bg-white">
-                  {/* Header */}
-                  <div className="border-b border-gray-200 px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
-                          Lesson Preview
-                        </Dialog.Title>
-                        <p className="mt-1 text-sm text-gray-500">
-                          {formData.grade} • {formData.subject} • {formData.timeDuration}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onClick={onClose}
-                      >
-                        <span className="sr-only">Close</span>
-                        <XMarkIcon className="h-6 w-6" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
+              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl sm:p-6">
+                <div className="absolute right-0 top-0 pr-4 pt-4">
+                  <button
+                    type="button"
+                    className="rounded-md bg-white text-gray-400 hover:text-gray-500"
+                    onClick={onClose}
+                  >
+                    <span className="sr-only">Close</span>
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
 
-                  {/* Content */}
-                  <div className="px-6 py-4 max-h-[60vh] overflow-y-auto">
-                    <div className="prose max-w-none">
-                      <h2 className="text-xl font-semibold mb-4">{lesson.title}</h2>
-                      <div 
-                        dangerouslySetInnerHTML={sanitizedContent}
-                        className="lesson-content"
-                      />
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
+                    <Dialog.Title as="h3" className="text-2xl font-semibold leading-6 text-gray-900 mb-4">
+                      Lesson Preview
+                    </Dialog.Title>
+                    
+                    {/* Lesson Content */}
+                    <div id="lesson-preview-content" className="mt-4 max-h-[600px] overflow-y-auto bg-gray-50 p-4 rounded-lg">
+                      {renderLessonContent()}
                     </div>
-                  </div>
 
-                  {/* Actions */}
-                  <div className="border-t border-gray-200 px-6 py-4">
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        type="button"
-                        onClick={onClose}
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                      >
-                        Close
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handlePrint}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                      >
-                        <PrinterIcon className="w-4 h-4 mr-2" />
-                        Print
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className={`
-                          inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white
-                          ${isSaving 
-                            ? 'bg-gray-400 cursor-not-allowed' 
-                            : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                          }
-                        `}
-                      >
-                        <BookmarkIcon className="w-4 h-4 mr-2" />
-                        {isSaving ? 'Saving...' : 'Save to Library'}
-                      </button>
+                    {/* Lesson Details */}
+                    <div className="mt-4 bg-blue-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-700">
+                        <strong>Subject:</strong> {formData.subject} | 
+                        <strong> Topic:</strong> {formData.topic} | 
+                        <strong> Duration:</strong> {formData.timeDuration}
+                      </p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        <strong>Students:</strong> {formData.studentIds.length} selected
+                      </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:w-auto disabled:bg-gray-300"
+                  >
+                    {isSaving ? 'Confirming...' : 'Confirm Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="inline-flex w-full justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 sm:w-auto"
+                    title="Print the complete lesson plan for the teacher"
+                  >
+                    <DocumentArrowDownIcon className="h-5 w-5 mr-1" />
+                    Print Lesson Plan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                  >
+                    Close
+                  </button>
                 </div>
               </Dialog.Panel>
             </Transition.Child>

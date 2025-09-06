@@ -38,9 +38,10 @@ export async function PUT(
     // First, verify ownership
     const verifyPerf = measurePerformanceWithAlerts('verify_lesson_ownership', 'database');
     const { data: existingLesson, error: fetchError } = await supabase
-      .from('manual_lesson_plans')
-      .select('id, provider_id')
+      .from('lessons')
+      .select('id, provider_id, content')
       .eq('id', lessonId)
+      .eq('lesson_source', 'manual')
       .single();
     verifyPerf.end({ success: !fetchError });
 
@@ -108,11 +109,32 @@ export async function PUT(
 
     // Update the lesson - updated_at will be handled by the trigger
     const updatePerf = measurePerformanceWithAlerts('update_manual_lesson_db', 'database');
+    
+    // Restructure data for unified lessons table if needed
+    const unifiedUpdateData = { ...fieldsToUpdate };
+    if ('objectives' in fieldsToUpdate || 'materials' in fieldsToUpdate || 
+        'activities' in fieldsToUpdate || 'assessment' in fieldsToUpdate) {
+      // Merge with existing content to avoid overwriting fields not being updated
+      const existingContent = existingLesson.content || {};
+      unifiedUpdateData.content = {
+        ...existingContent,
+        ...('objectives' in fieldsToUpdate && { objectives: fieldsToUpdate.objectives }),
+        ...('materials' in fieldsToUpdate && { materials: fieldsToUpdate.materials }),
+        ...('activities' in fieldsToUpdate && { activities: fieldsToUpdate.activities }),
+        ...('assessment' in fieldsToUpdate && { assessment: fieldsToUpdate.assessment })
+      };
+      delete unifiedUpdateData.objectives;
+      delete unifiedUpdateData.materials;
+      delete unifiedUpdateData.activities;
+      delete unifiedUpdateData.assessment;
+    }
+    
     const { data, error } = await supabase
-      .from('manual_lesson_plans')
-      .update(fieldsToUpdate)
+      .from('lessons')
+      .update(unifiedUpdateData)
       .eq('id', lessonId)
       .eq('provider_id', userId) // Extra safety check
+      .eq('lesson_source', 'manual')
       .select('*')
       .single();
     updatePerf.end({ success: !error });
@@ -198,9 +220,10 @@ export async function DELETE(
     // First, verify ownership
     const verifyPerf = measurePerformanceWithAlerts('verify_lesson_ownership_delete', 'database');
     const { data: existingLesson, error: fetchError } = await supabase
-      .from('manual_lesson_plans')
+      .from('lessons')
       .select('id, provider_id, title')
       .eq('id', lessonId)
+      .eq('lesson_source', 'manual')
       .single();
     verifyPerf.end({ success: !fetchError });
 
@@ -240,10 +263,11 @@ export async function DELETE(
     // Delete the lesson - RLS will provide additional security
     const deletePerf = measurePerformanceWithAlerts('delete_manual_lesson_db', 'database');
     const { error } = await supabase
-      .from('manual_lesson_plans')
+      .from('lessons')
       .delete()
       .eq('id', lessonId)
-      .eq('provider_id', userId); // Extra safety check
+      .eq('provider_id', userId) // Extra safety check
+      .eq('lesson_source', 'manual');
     deletePerf.end({ success: !error });
 
     if (error) {

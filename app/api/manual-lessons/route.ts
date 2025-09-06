@@ -58,11 +58,33 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       notes: lessonData.notes || null
     };
 
-    // Save the manual lesson
+    // Save the manual lesson to unified lessons table
     const savePerf = measurePerformanceWithAlerts('save_manual_lesson_db', 'database');
+    
+    // Restructure data for unified lessons table
+    const unifiedLessonData = {
+      provider_id: insertData.provider_id,
+      lesson_source: 'manual',
+      lesson_date: insertData.lesson_date,
+      title: insertData.title,
+      subject: insertData.subject,
+      grade_levels: insertData.grade_levels,
+      duration_minutes: insertData.duration_minutes,
+      content: {
+        objectives: insertData.objectives,
+        materials: insertData.materials,
+        activities: insertData.activities,
+        assessment: insertData.assessment
+      },
+      notes: insertData.notes,
+      school_id: insertData.school_id || null,
+      district_id: insertData.district_id || null,
+      state_id: insertData.state_id || null
+    };
+    
     const { data, error } = await supabase
-      .from('manual_lesson_plans')
-      .insert(insertData)
+      .from('lessons')
+      .insert(unifiedLessonData)
       .select('*')
       .single();
     savePerf.end({ success: !error });
@@ -142,12 +164,13 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
       endDate
     });
 
-    // Fetch lessons for the date range
+    // Fetch lessons for the date range from unified lessons table
     const fetchPerf = measurePerformanceWithAlerts('fetch_manual_lessons_db', 'database');
     const { data, error } = await supabase
-      .from('manual_lesson_plans')
+      .from('lessons')
       .select('*')
       .eq('provider_id', userId)
+      .eq('lesson_source', 'manual')
       .gte('lesson_date', startDate)
       .lte('lesson_date', endDate)
       .order('lesson_date', { ascending: true });

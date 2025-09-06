@@ -341,9 +341,10 @@ export function CalendarWeekView({
 
         // Filter by both provider and school
         let query = supabase
-          .from('ai_generated_lessons')
+          .from('lessons')
           .select('*')
           .eq('provider_id', user.id)
+          .eq('lesson_source', 'ai_generated')
           .gte('lesson_date', startDate)
           .lte('lesson_date', endDate);
         
@@ -921,9 +922,10 @@ export function CalendarWeekView({
     try {
       // Delete all AI lessons for this date at the current school
       let deleteQuery = supabase
-        .from('ai_generated_lessons')
+        .from('lessons')
         .delete()
         .eq('provider_id', currentUser!.id)
+        .eq('lesson_source', 'ai_generated')
         .eq('lesson_date', dateStr);
       
       // Add school filter for deletion to avoid cross-school deletions
@@ -1267,9 +1269,10 @@ export function CalendarWeekView({
       const lessonDate = toLocalDateKey(selectedLessonDate);
       
       const { data, error } = await supabase
-        .from('manual_lesson_plans')
+        .from('lessons')
         .insert({
           provider_id: currentUser.id,
+          lesson_source: 'manual',
           lesson_date: lessonDate,
           school_id: currentSchool?.school_id || null,
           district_id: currentSchool?.district_id || null,
@@ -1278,10 +1281,12 @@ export function CalendarWeekView({
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          objectives: lessonData.learningObjectives,
-          materials: lessonData.materialsNeeded,
-          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-          assessment: lessonData.assessmentMethods,
+          content: {
+            objectives: lessonData.learningObjectives,
+            materials: lessonData.materialsNeeded,
+            activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+            assessment: lessonData.assessmentMethods
+          },
           notes: lessonData.notes,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -1317,9 +1322,10 @@ export function CalendarWeekView({
 
     try {
       const { error } = await supabase
-        .from('manual_lesson_plans')
+        .from('lessons')
         .delete()
-        .eq('id', lessonId);
+        .eq('id', lessonId)
+        .eq('lesson_source', 'manual');
 
       if (error) throw error;
 
@@ -1354,7 +1360,7 @@ export function CalendarWeekView({
 
     try {
       const { data, error } = await supabase
-        .from('manual_lesson_plans')
+        .from('lessons')
         .update({
           school_id: currentSchool?.school_id || null,
           district_id: currentSchool?.district_id || null,
@@ -1363,14 +1369,17 @@ export function CalendarWeekView({
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          objectives: lessonData.learningObjectives,
-          materials: lessonData.materialsNeeded,
-          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-          assessment: lessonData.assessmentMethods,
+          content: {
+            objectives: lessonData.learningObjectives,
+            materials: lessonData.materialsNeeded,
+            activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+            assessment: lessonData.assessmentMethods
+          },
           notes: lessonData.notes,
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedManualLesson.id)
+        .eq('lesson_source', 'manual')
         .select()
         .single();
 
