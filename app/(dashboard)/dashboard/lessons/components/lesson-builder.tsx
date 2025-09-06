@@ -1,54 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import LessonPreviewModal from './lesson-preview-modal';
-import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { createClient } from '@/lib/supabase/client';
 
 interface FormData {
-  grade: string;
+  studentIds: string[];
   subject: string;
   topic: string;
   timeDuration: string;
 }
 
-interface WorksheetSection {
-  title?: string;
-  instructions?: string;
-  items?: Array<string | { content?: string; question?: string }>;
+interface Student {
+  id: string;
+  initials: string;
+  grade_level: number;
 }
 
-interface Worksheet {
-  title?: string;
-  instructions?: string;
-  sections?: WorksheetSection[];
+interface GeneratedLesson {
+  content: any; // JSON content
+  title: string;
+  formData: FormData;
+  lessonId?: string;
 }
-
-// Helper function to escape HTML to prevent XSS
-function escapeHtml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-const gradeOptions = [
-  'Kindergarten',
-  '1st Grade',
-  '2nd Grade',
-  '3rd Grade',
-  '4th Grade',
-  '5th Grade',
-  '6th Grade',
-  '7th Grade',
-  '8th Grade',
-  '9th Grade',
-  '10th Grade',
-  '11th Grade',
-  '12th Grade',
-];
 
 const subjectOptions = [
   'Math',
@@ -75,86 +50,84 @@ const timeDurationOptions = [
   '60 minutes',
 ];
 
-// Helper function to format worksheet as HTML with proper escaping
-function formatWorksheetAsHtml(worksheet: Worksheet): string {
-  let html = '';
-  
-  if (worksheet.title) {
-    html += `<h3>${escapeHtml(worksheet.title)}</h3>`;
-  }
-  
-  if (worksheet.instructions) {
-    html += `<p class="instructions">${escapeHtml(worksheet.instructions)}</p>`;
-  }
-  
-  if (worksheet.sections && Array.isArray(worksheet.sections)) {
-    worksheet.sections.forEach((section: WorksheetSection) => {
-      html += '<div class="worksheet-section">';
-      if (section.title) {
-        html += `<h4>${escapeHtml(section.title)}</h4>`;
-      }
-      if (section.instructions) {
-        html += `<p>${escapeHtml(section.instructions)}</p>`;
-      }
-      if (section.items && Array.isArray(section.items)) {
-        html += '<ol>';
-        section.items.forEach((item) => {
-          if (typeof item === 'string') {
-            html += `<li>${escapeHtml(item)}</li>`;
-          } else if (item.content) {
-            html += `<li>${escapeHtml(item.content)}</li>`;
-          } else if (item.question) {
-            html += `<li>${escapeHtml(item.question)}</li>`;
-          }
-        });
-        html += '</ol>';
-      }
-      html += '</div>';
-    });
-  }
-  
-  return html;
-}
-
 export default function LessonBuilder() {
   const { showToast } = useToast();
   const [formData, setFormData] = useState<FormData>({
-    grade: '',
+    studentIds: [],
     subject: '',
     topic: '',
-    timeDuration: '',
+    timeDuration: '15 minutes',
   });
+  const [students, setStudents] = useState<Student[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [generatedLesson, setGeneratedLesson] = useState<{
-    content: string;
-    title: string;
-  } | null>(null);
+  const [generatedLesson, setGeneratedLesson] = useState<GeneratedLesson | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
-  const handleInputChange = (field: keyof FormData, value: string) => {
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  async function loadStudents() {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      const { data } = await supabase
+        .from('students')
+        .select('id, initials, grade_level')
+        .eq('provider_id', user.id)
+        .order('initials');
+      
+      if (data) {
+        setStudents(data);
+      }
+    }
+  }
+
+  const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validate form
-    if (!formData.grade || !formData.subject || !formData.topic || !formData.timeDuration) {
-      showToast('Please fill in all fields', 'error');
+  const handleStudentToggle = (studentId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      studentIds: prev.studentIds.includes(studentId)
+        ? prev.studentIds.filter(id => id !== studentId)
+        : [...prev.studentIds, studentId]
+    }));
+  };
+
+  const handleGenerate = async () => {
+    // Validation
+    if (formData.studentIds.length === 0) {
+      showToast('Please select at least one student', 'error');
+      return;
+    }
+
+    if (!formData.subject) {
+      showToast('Please select a subject', 'error');
+      return;
+    }
+
+    if (!formData.topic.trim()) {
+      showToast('Please enter a topic', 'error');
       return;
     }
 
     setIsGenerating(true);
     try {
-      // Use the structured API with a generic student profile
+      // Get selected student details
+      const selectedStudents = students.filter(s => formData.studentIds.includes(s.id));
+      
+      // Use the unified lessons API with actual student data
       const response = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          students: [{
-            id: 'generic-' + Date.now(),
-            grade: parseGradeLevel(formData.grade) || 3
-          }],
+          students: selectedStudents.map(s => ({
+            id: s.id,
+            grade: s.grade_level
+          })),
           subject: formData.subject,
           topic: formData.topic,
           duration: parseInt(formData.timeDuration) || 15,
@@ -168,167 +141,139 @@ export default function LessonBuilder() {
       }
 
       const data = await response.json();
-      // Extract HTML content from the structured lesson with proper escaping
-      let htmlContent = '';
-      if (data.lesson) {
-        // Convert structured lesson to HTML for display
-        const title = escapeHtml(data.lesson.lesson?.title || formData.topic);
-        const duration = escapeHtml(String(data.lesson.lesson?.duration || formData.timeDuration));
-        const overview = data.lesson.lesson?.overview ? escapeHtml(data.lesson.lesson.overview) : '';
-        
-        htmlContent = `
-          <div class="lesson-content">
-            <h2>${title}</h2>
-            <div class="duration">Duration: ${duration} minutes</div>
-            ${overview ? `<div class="overview">${overview}</div>` : ''}
-            ${data.lesson.studentMaterials?.[0]?.worksheet ? 
-              formatWorksheetAsHtml(data.lesson.studentMaterials[0].worksheet) : 
-              '<p>No worksheet content available</p>'
-            }
-          </div>
-        `;
-      }
       
       setGeneratedLesson({
-        content: htmlContent || data.content || '<p>No content generated</p>',
+        content: data.lesson || data,
         title: data.lesson?.lesson?.title || formData.topic,
+        formData,
+        lessonId: data.lessonId
       });
-      setShowModal(true);
+      setShowPreview(true);
+      showToast('Lesson generated successfully!', 'success');
     } catch (error) {
-      showToast('Failed to generate lesson. Please try again.', 'error');
       console.error('Error generating lesson:', error);
+      showToast('Failed to generate lesson. Please try again.', 'error');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleModalClose = () => {
-    setShowModal(false);
-    setGeneratedLesson(null);
-    // Reset form
-    setFormData({
-      grade: '',
-      subject: '',
-      topic: '',
-      timeDuration: '',
-    });
-  };
-
   return (
-    <>
-      <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold mb-6">AI Lesson Builder</h2>
+        
+        {/* Student Selection */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Create a New Lesson</h2>
-          <p className="text-gray-600">Fill in the details below to generate an AI-powered worksheet for your students.</p>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Students *
+          </label>
+          <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3">
+            {students.length === 0 ? (
+              <p className="text-gray-500 text-sm">No students found. Please add students first.</p>
+            ) : (
+              students.map(student => (
+                <label key={student.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                  <input
+                    type="checkbox"
+                    checked={formData.studentIds.includes(student.id)}
+                    onChange={() => handleStudentToggle(student.id)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm">
+                    {student.initials} (Grade {student.grade_level})
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+          {formData.studentIds.length > 0 && (
+            <p className="text-sm text-gray-600 mt-2">
+              {formData.studentIds.length} student{formData.studentIds.length > 1 ? 's' : ''} selected
+            </p>
+          )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="grade" className="block text-sm font-medium text-gray-700 mb-1">
-              Grade Level
-            </label>
-            <select
-              id="grade"
-              value={formData.grade}
-              onChange={(e) => handleInputChange('grade', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={isGenerating}
-            >
-              <option value="">Select a grade</option>
-              {gradeOptions.map(grade => (
-                <option key={grade} value={grade}>{grade}</option>
-              ))}
-            </select>
-          </div>
+        {/* Subject Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Subject *
+          </label>
+          <select
+            value={formData.subject}
+            onChange={(e) => handleInputChange('subject', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select a subject</option>
+            {subjectOptions.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </div>
 
-          <div>
-            <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
-              Subject
-            </label>
-            <select
-              id="subject"
-              value={formData.subject}
-              onChange={(e) => handleInputChange('subject', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={isGenerating}
-            >
-              <option value="">Select a subject</option>
-              {subjectOptions.map(subject => (
-                <option key={subject} value={subject}>{subject}</option>
-              ))}
-            </select>
-          </div>
+        {/* Topic Input */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Topic *
+          </label>
+          <input
+            type="text"
+            value={formData.topic}
+            onChange={(e) => handleInputChange('topic', e.target.value)}
+            placeholder="e.g., Addition and subtraction, Photosynthesis, Civil War"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
 
-          <div>
-            <label htmlFor="topic" className="block text-sm font-medium text-gray-700 mb-1">
-              Topic
-            </label>
-            <input
-              type="text"
-              id="topic"
-              value={formData.topic}
-              onChange={(e) => handleInputChange('topic', e.target.value)}
-              placeholder="e.g., Addition with regrouping, Parts of speech, Water cycle"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={isGenerating}
-            />
-            <p className="mt-1 text-sm text-gray-500">Be specific about the concept or skill you want to teach</p>
-          </div>
+        {/* Time Duration */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Time Duration
+          </label>
+          <select
+            value={formData.timeDuration}
+            onChange={(e) => handleInputChange('timeDuration', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {timeDurationOptions.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </div>
 
-          <div>
-            <label htmlFor="timeDuration" className="block text-sm font-medium text-gray-700 mb-1">
-              Time Duration
-            </label>
-            <select
-              id="timeDuration"
-              value={formData.timeDuration}
-              onChange={(e) => handleInputChange('timeDuration', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              disabled={isGenerating}
-            >
-              <option value="">Select duration</option>
-              {timeDurationOptions.map(duration => (
-                <option key={duration} value={duration}>{duration}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-sm text-gray-500">How long should it take students to complete this worksheet?</p>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isGenerating}
-              className={`
-                px-6 py-3 rounded-md font-medium text-white transition-colors
-                ${isGenerating 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                }
-              `}
-            >
-              {isGenerating ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Generating Lesson...
-                </span>
-              ) : (
-                'Create Lesson'
-              )}
-            </button>
-          </div>
-        </form>
+        {/* Generate Button */}
+        <button
+          onClick={handleGenerate}
+          disabled={isGenerating || students.length === 0}
+          className={`w-full py-3 px-4 rounded-md font-medium transition-colors ${
+            isGenerating || students.length === 0
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          {isGenerating ? (
+            <span className="flex items-center justify-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Generating Lesson...
+            </span>
+          ) : (
+            'Generate Lesson'
+          )}
+        </button>
       </div>
 
-      {showModal && generatedLesson && (
+      {/* Preview Modal */}
+      {showPreview && generatedLesson && (
         <LessonPreviewModal
           lesson={generatedLesson}
           formData={formData}
-          onClose={handleModalClose}
+          onClose={() => setShowPreview(false)}
+          showToast={showToast}
         />
       )}
-    </>
+    </div>
   );
 }
