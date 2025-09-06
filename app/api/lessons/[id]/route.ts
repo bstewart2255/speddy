@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 
-// DELETE: Remove saved worksheet
+// DELETE: Remove saved lesson
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,46 +24,46 @@ export async function DELETE(
     userId = user.id;
     const { id: lessonId } = await params;
     
-    // First verify the saved worksheet belongs to the user
+    // First verify the lesson belongs to the user
     const { data: lesson, error: fetchError } = await supabase
-      .from('saved_worksheets')
-      .select('user_id')
+      .from('lessons')
+      .select('provider_id')
       .eq('id', lessonId)
       .single();
 
     if (fetchError || !lesson) {
       return NextResponse.json(
-        { error: 'Saved worksheet not found' },
+        { error: 'Lesson not found' },
         { status: 404 }
       );
     }
 
-    if (lesson.user_id !== userId) {
+    if (lesson.provider_id !== userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
       );
     }
 
-    // Delete the saved worksheet
+    // Delete the lesson
     const { error: deleteError } = await supabase
-      .from('saved_worksheets')
+      .from('lessons')
       .delete()
       .eq('id', lessonId);
 
     if (deleteError) {
-      log.error('Failed to delete saved worksheet', deleteError, { userId, lessonId });
+      log.error('Failed to delete lesson', deleteError, { userId, lessonId });
       return NextResponse.json(
-        { error: 'Failed to delete saved worksheet' },
+        { error: 'Failed to delete lesson' },
         { status: 500 }
       );
     }
 
-    log.info('Saved worksheet deleted successfully', { userId, lessonId });
+    log.info('Lesson deleted successfully', { userId, lessonId });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    log.error('Error in DELETE /api/saved_worksheets/[id]', error, { userId });
+    log.error('Error in DELETE /api/lessons/[id]', error, { userId });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
