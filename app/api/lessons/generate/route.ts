@@ -546,26 +546,34 @@ async function saveLessonToDatabase(
     console.log(`[DEBUG] Saving lesson to database:`, debugData);
   }
 
-  // Build the database record conditionally based on environment flags
+  // Build the database record for unified lessons table
   const dbRecord: any = {
     provider_id: userId,
     lesson_date: lessonDate,
     time_slot: timeSlot,
-    content: JSON.stringify(lesson),
-    prompt: request.topic || `${request.duration}-minute ${request.subject} lesson`,
-    session_data: request.students.map(s => ({ student_id: s.id })),
+    content: lesson, // Store as JSONB, not stringified
+    title: lesson?.lesson?.title || request.topic,
+    subject: request.subject,
+    topic: request.topic,
+    duration_minutes: request.duration,
+    student_ids: request.students.map(s => s.id),
+    student_details: request.students, // Store student info at time of generation
+    metadata: {
+      session_data: request.students.map(s => ({ student_id: s.id })),
+      teacherRole: request.teacherRole,
+      focusSkills: request.focusSkills,
+      generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
+      validationStatus: lesson?.metadata?.validationStatus || 'passed'
+    },
     school_id: profile?.school_id || null,
     district_id: profile?.district_id || null,
     state_id: profile?.state_id || null,
-    model_used: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
+    ai_model: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
     prompt_tokens: generationMetadata?.promptTokens || null,
     completion_tokens: generationMetadata?.completionTokens || null,
     generation_metadata: generationMetadata?.generationMetadata || {
-      teacherRole: request.teacherRole,
-      focusSkills: request.focusSkills,
       studentCount: request.students.length,
-      generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
-      validationStatus: lesson?.metadata?.validationStatus || 'passed'
+      generationTimeMs: generationMetadata?.generationTimeMs
     },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -574,9 +582,9 @@ async function saveLessonToDatabase(
   // Only include sensitive fields if explicitly enabled via environment flags
   // These use the same flags defined at the top of the file
   if (CAPTURE_FULL_PROMPTS && generationMetadata?.fullPromptSent) {
-    dbRecord.full_prompt_sent = generationMetadata.fullPromptSent;
+    dbRecord.ai_prompt = generationMetadata.fullPromptSent;
   } else {
-    dbRecord.full_prompt_sent = null;
+    dbRecord.ai_prompt = null;
   }
   
   if (CAPTURE_AI_RAW && generationMetadata?.aiRawResponse) {
