@@ -2,8 +2,13 @@
 
 import { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, DocumentArrowDownIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { createClient } from '@/lib/supabase/client';
+import { 
+  generateWorksheetId, 
+  generateAIWorksheetHtml,
+  printHtmlWorksheet 
+} from '@/lib/utils/worksheet-utils';
 
 interface LessonPreviewModalProps {
   lesson: {
@@ -29,6 +34,7 @@ export default function LessonPreviewModal({
   showToast 
 }: LessonPreviewModalProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'worksheets'>('overview');
   const supabase = createClient();
 
   // Function to render JSON content as readable HTML
@@ -112,12 +118,39 @@ export default function LessonPreviewModal({
           
           {content.studentMaterials && content.studentMaterials.length > 0 && (
             <div className="border-t pt-4">
-              <h4 className="font-semibold mb-4 text-lg">Student Worksheets</h4>
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-semibold text-lg">Student Worksheets</h4>
+                <button
+                  onClick={async () => {
+                    for (let idx = 0; idx < content.studentMaterials.length; idx++) {
+                      const material = content.studentMaterials[idx];
+                      await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
+                      // Small delay between prints to avoid overwhelming the browser
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                  }}
+                  className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
+                  title="Print all student worksheets"
+                >
+                  <PrinterIcon className="h-4 w-4 mr-1" />
+                  Print All Worksheets
+                </button>
+              </div>
               {content.studentMaterials.map((material: any, idx: number) => (
                 <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
-                  <h5 className="font-semibold mb-2">
-                    Student {idx + 1} (Grade {material.gradeGroup})
-                  </h5>
+                  <div className="flex justify-between items-start mb-2">
+                    <h5 className="font-semibold">
+                      Student {idx + 1} (Grade {material.gradeGroup})
+                    </h5>
+                    <button
+                      onClick={() => handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx)}
+                      className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                      title="Print this student's worksheet"
+                    >
+                      <PrinterIcon className="h-4 w-4 mr-1" />
+                      Print Worksheet
+                    </button>
+                  </div>
                   {renderWorksheet(material.worksheet)}
                 </div>
               ))}
@@ -268,6 +301,47 @@ export default function LessonPreviewModal({
       console.error('Error saving lesson:', error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePrintWorksheet = async (studentId: string, studentIdx: number) => {
+    try {
+      const content = lesson.content;
+      if (!content?.studentMaterials) {
+        showToast('No worksheet available for this student', 'error');
+        return;
+      }
+
+      const studentMaterial = content.studentMaterials.find((m: any) => 
+        m.studentId === studentId || content.studentMaterials[studentIdx] === m
+      );
+
+      if (!studentMaterial) {
+        showToast('No worksheet found for this student', 'error');
+        return;
+      }
+
+      // Generate unique worksheet ID
+      const worksheetId = generateWorksheetId(studentId, formData.subject);
+      
+      // Get student initials (for now using Student # as we don't have the actual initials in this context)
+      const studentInitials = `Student ${studentIdx + 1}`;
+      
+      // Generate HTML for the worksheet
+      const html = await generateAIWorksheetHtml(
+        studentMaterial,
+        studentInitials,
+        worksheetId
+      );
+
+      if (html) {
+        printHtmlWorksheet(html, `${studentInitials}_${formData.subject}_Worksheet`);
+      } else {
+        showToast('Failed to generate worksheet', 'error');
+      }
+    } catch (error) {
+      console.error('Error printing worksheet:', error);
+      showToast('Failed to print worksheet', 'error');
     }
   };
 
@@ -471,9 +545,10 @@ export default function LessonPreviewModal({
                     type="button"
                     onClick={handlePrint}
                     className="inline-flex w-full justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 sm:w-auto"
+                    title="Print the complete lesson plan for the teacher"
                   >
                     <DocumentArrowDownIcon className="h-5 w-5 mr-1" />
-                    Print
+                    Print Lesson Plan
                   </button>
                   <button
                     type="button"
