@@ -66,12 +66,78 @@ export default function LessonPreviewModal({
               </ul>
             </div>
           )}
-          
-          {content.studentMaterials?.[0]?.worksheet && (
+
+          {lessonData.materials && (
             <div>
-              <h4 className="font-semibold mb-2">Worksheet</h4>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                {renderWorksheet(content.studentMaterials[0].worksheet)}
+              <h4 className="font-semibold mb-2">Materials Needed</h4>
+              <p className="text-gray-700">{lessonData.materials}</p>
+            </div>
+          )}
+
+          {lessonData.introduction && (
+            <div>
+              <h4 className="font-semibold mb-2">Introduction ({lessonData.introduction.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.introduction.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.introduction.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {lessonData.mainActivity && (
+            <div>
+              <h4 className="font-semibold mb-2">Main Activity ({lessonData.mainActivity.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.mainActivity.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.mainActivity.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {lessonData.closure && (
+            <div>
+              <h4 className="font-semibold mb-2">Closure ({lessonData.closure.duration} min)</h4>
+              <p className="text-gray-700 mb-2">{lessonData.closure.description}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                {lessonData.closure.instructions?.map((inst: string, i: number) => (
+                  <li key={i} className="text-gray-700">{inst}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {content.studentMaterials && content.studentMaterials.length > 0 && (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-4 text-lg">Student Worksheets</h4>
+              {content.studentMaterials.map((material: any, idx: number) => (
+                <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
+                  <h5 className="font-semibold mb-2">
+                    Student {idx + 1} (Grade {material.gradeGroup})
+                  </h5>
+                  {renderWorksheet(material.worksheet)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {lessonData.answerKey && (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-2">Answer Key</h4>
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => (
+                  <div key={key}>
+                    <p className="font-medium">{key}:</p>
+                    <p className="text-gray-700">
+                      {Array.isArray(value.answers) 
+                        ? value.answers.join(', ')
+                        : JSON.stringify(value)}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -94,24 +160,87 @@ export default function LessonPreviewModal({
     
     return (
       <div className="space-y-4">
-        {worksheet.title && <h5 className="font-medium">{worksheet.title}</h5>}
-        {worksheet.instructions && <p className="text-gray-600">{worksheet.instructions}</p>}
+        {worksheet.title && <h5 className="font-medium text-lg">{worksheet.title}</h5>}
+        {worksheet.instructions && <p className="text-gray-600 italic mb-4">{worksheet.instructions}</p>}
         
-        {worksheet.sections?.map((section: any, i: number) => (
-          <div key={i} className="space-y-2">
-            {section.title && <h6 className="font-medium">{section.title}</h6>}
-            {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
-            {section.items && (
-              <ol className="list-decimal pl-5 space-y-1">
-                {section.items.map((item: any, j: number) => (
-                  <li key={j} className="text-gray-700">
-                    {typeof item === 'string' ? item : item.question || item.content}
-                  </li>
+        {worksheet.sections?.map((section: any, i: number) => {
+          // Handle nested structure with items array containing section objects
+          if (section.items && Array.isArray(section.items) && section.items[0]?.sectionType) {
+            return (
+              <div key={i} className="space-y-4">
+                <h6 className="font-semibold text-base">{section.title}</h6>
+                {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
+                
+                {section.items.map((subSection: any, j: number) => (
+                  <div key={j} className="ml-4 space-y-2">
+                    <p className="font-medium">{subSection.sectionTitle}</p>
+                    {subSection.instructions && (
+                      <p className="text-sm text-gray-600 italic">{subSection.instructions}</p>
+                    )}
+                    <div className="space-y-3">
+                      {subSection.items?.map((problem: any, k: number) => (
+                        <div key={k} className="ml-4">
+                          {problem.type === 'visual' ? (
+                            <div className="font-mono text-lg bg-white p-2 rounded border">
+                              {problem.content}
+                            </div>
+                          ) : (
+                            <p className="text-gray-700">
+                              {k + 1}. {problem.question || problem.content || problem}
+                            </p>
+                          )}
+                          {problem.blankLines && (
+                            <div className="ml-4 space-y-1">
+                              {[...Array(problem.blankLines)].map((_, idx) => (
+                                <div key={idx} className="border-b border-gray-300 h-6"></div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
-              </ol>
-            )}
+              </div>
+            );
+          }
+          
+          // Handle simpler structure
+          return (
+            <div key={i} className="space-y-2">
+              {section.title && <h6 className="font-medium">{section.title}</h6>}
+              {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
+              {section.items && (
+                <div className="space-y-2">
+                  {section.items.map((item: any, j: number) => (
+                    <div key={j} className="ml-4">
+                      {typeof item === 'string' ? (
+                        <p>{j + 1}. {item}</p>
+                      ) : item.type === 'visual' ? (
+                        <div className="font-mono text-lg bg-white p-2 rounded border">
+                          {item.content}
+                        </div>
+                      ) : (
+                        <p>{j + 1}. {item.question || item.content}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        
+        {worksheet.accommodations && worksheet.accommodations.length > 0 && (
+          <div className="mt-4 p-3 bg-blue-50 rounded">
+            <p className="text-sm font-medium">Accommodations:</p>
+            <ul className="text-sm text-gray-700">
+              {worksheet.accommodations.map((acc: string, i: number) => (
+                <li key={i}>• {acc}</li>
+              ))}
+            </ul>
           </div>
-        ))}
+        )}
       </div>
     );
   };
@@ -150,15 +279,96 @@ export default function LessonPreviewModal({
           <head>
             <title>${lesson.title}</title>
             <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h3 { color: #333; }
-              h4 { color: #555; margin-top: 20px; }
+              body { 
+                font-family: Arial, sans-serif; 
+                padding: 20px; 
+                line-height: 1.6;
+              }
+              h3 { 
+                color: #333; 
+                font-size: 24px;
+                margin-bottom: 10px;
+              }
+              h4 { 
+                color: #555; 
+                margin-top: 20px;
+                font-size: 18px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+              }
+              h5 {
+                font-size: 16px;
+                margin-top: 15px;
+                color: #444;
+              }
+              h6 {
+                font-size: 14px;
+                font-weight: bold;
+                margin-top: 10px;
+              }
               .text-gray-600 { color: #666; }
               .text-gray-700 { color: #777; }
-              ul { padding-left: 20px; }
-              .bg-gray-50 { background: #f9f9f9; padding: 10px; border-radius: 5px; }
+              .font-medium { font-weight: 500; }
+              .font-semibold { font-weight: 600; }
+              .italic { font-style: italic; }
+              ul, ol { padding-left: 20px; margin: 10px 0; }
+              li { margin: 5px 0; }
+              .bg-gray-50 { 
+                background: #f9f9f9; 
+                padding: 15px; 
+                border-radius: 5px;
+                margin: 15px 0;
+                page-break-inside: avoid;
+              }
+              .bg-yellow-50 {
+                background: #fef3c7;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 15px 0;
+              }
+              .bg-blue-50 {
+                background: #dbeafe;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 10px 0;
+              }
+              .border-t {
+                border-top: 2px solid #ddd;
+                padding-top: 20px;
+                margin-top: 20px;
+              }
+              .font-mono {
+                font-family: 'Courier New', monospace;
+                font-size: 16px;
+                background: white;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+                display: block;
+                margin: 10px 0;
+              }
+              .ml-4 { margin-left: 20px; }
+              .space-y-1 > * { margin-top: 5px; }
+              .space-y-2 > * { margin-top: 10px; }
+              .space-y-3 > * { margin-top: 15px; }
+              .space-y-4 > * { margin-top: 20px; }
+              .space-y-6 > * { margin-top: 30px; }
+              .mb-2 { margin-bottom: 10px; }
+              .mb-4 { margin-bottom: 20px; }
+              .border-b {
+                border-bottom: 1px solid #999;
+                height: 25px;
+                margin: 5px 0;
+              }
               @media print {
-                body { padding: 0; }
+                body { padding: 10px; }
+                .bg-gray-50, .bg-yellow-50, .bg-blue-50 {
+                  background: white;
+                  border: 1px solid #ddd;
+                }
+                h4 { page-break-after: avoid; }
+                h5 { page-break-after: avoid; }
+                .border-t { page-break-before: auto; }
               }
             </style>
           </head>
@@ -170,14 +380,18 @@ export default function LessonPreviewModal({
       
       const contentDiv = printWindow.document.getElementById('content');
       if (contentDiv) {
-        // Create a temporary div to render the content
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = document.getElementById('lesson-preview-content')?.innerHTML || '';
-        contentDiv.appendChild(tempDiv);
+        // Clone the lesson preview content
+        const lessonContent = document.getElementById('lesson-preview-content');
+        if (lessonContent) {
+          contentDiv.innerHTML = lessonContent.innerHTML;
+        }
       }
       
       printWindow.document.close();
-      printWindow.print();
+      // Small delay to ensure styles are applied
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
     }
   };
 
@@ -226,7 +440,7 @@ export default function LessonPreviewModal({
                     </Dialog.Title>
                     
                     {/* Lesson Content */}
-                    <div id="lesson-preview-content" className="mt-4 max-h-96 overflow-y-auto bg-gray-50 p-4 rounded-lg">
+                    <div id="lesson-preview-content" className="mt-4 max-h-[600px] overflow-y-auto bg-gray-50 p-4 rounded-lg">
                       {renderLessonContent()}
                     </div>
 
