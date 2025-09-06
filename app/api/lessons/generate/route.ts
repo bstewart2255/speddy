@@ -585,10 +585,13 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Save to ai_generated_lessons
+  // Save to unified lessons table
   const { data: lessonRecord, error } = await supabase
-    .from('ai_generated_lessons')
-    .insert(dbRecord)
+    .from('lessons')
+    .insert({
+      ...dbRecord,
+      lesson_source: 'ai_generated'
+    })
     .select('id')
     .single();
   
@@ -611,7 +614,7 @@ async function saveLessonToDatabase(
     }
     
     // Check if it's a duplicate key constraint violation
-    if (error.code === '23505' && error.constraint === 'ai_generated_lessons_unique_lesson') {
+    if (error.code === '23505' && error.constraint === 'lessons_unique_calendar') {
       throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
     }
     
