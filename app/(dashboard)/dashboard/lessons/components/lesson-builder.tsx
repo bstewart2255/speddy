@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import LessonPreviewModal from './lesson-preview-modal';
 import { createClient } from '@/lib/supabase/client';
+import { useSchool } from '@/app/components/providers/school-context';
+import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface FormData {
   studentIds: string[];
@@ -16,6 +18,7 @@ interface Student {
   id: string;
   initials: string;
   grade_level: number;
+  school_id?: string;
 }
 
 interface GeneratedLesson {
@@ -52,6 +55,7 @@ const timeDurationOptions = [
 
 export default function LessonBuilder() {
   const { showToast } = useToast();
+  const { currentSchool } = useSchool();
   const [formData, setFormData] = useState<FormData>({
     studentIds: [],
     subject: '',
@@ -62,21 +66,44 @@ export default function LessonBuilder() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLesson, setGeneratedLesson] = useState<GeneratedLesson | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadStudents();
+    if (currentSchool) {
+      loadStudents();
+    }
+  }, [currentSchool]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   async function loadStudents() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
-    if (user) {
-      const { data } = await supabase
+    if (user && currentSchool) {
+      // Build query to fetch students
+      let query = supabase
         .from('students')
-        .select('id, initials, grade_level')
+        .select('id, initials, grade_level, school_id')
         .eq('provider_id', user.id)
         .order('initials');
+      
+      // Filter by current school if available
+      if (currentSchool.school_id) {
+        query = query.eq('school_id', currentSchool.school_id);
+      }
+      
+      const { data } = await query;
       
       if (data) {
         setStudents(data);
@@ -95,6 +122,22 @@ export default function LessonBuilder() {
         ? prev.studentIds.filter(id => id !== studentId)
         : [...prev.studentIds, studentId]
     }));
+  };
+
+  const removeStudent = (studentId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      studentIds: prev.studentIds.filter(id => id !== studentId)
+    }));
+  };
+
+  const getSelectedStudentNames = () => {
+    return formData.studentIds
+      .map(id => {
+        const student = students.find(s => s.id === id);
+        return student ? `${student.initials} (Grade ${student.grade_level})` : '';
+      })
+      .filter(Boolean);
   };
 
   const handleGenerate = async () => {
@@ -163,34 +206,80 @@ export default function LessonBuilder() {
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-bold mb-6">AI Lesson Builder</h2>
         
-        {/* Student Selection */}
-        <div className="mb-6">
+        {/* Student Multi-Select Dropdown */}
+        <div className="mb-6" ref={dropdownRef}>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Students *
           </label>
-          <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3">
-            {students.length === 0 ? (
-              <p className="text-gray-500 text-sm">No students found. Please add students first.</p>
-            ) : (
-              students.map(student => (
-                <label key={student.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                  <input
-                    type="checkbox"
-                    checked={formData.studentIds.includes(student.id)}
-                    onChange={() => handleStudentToggle(student.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm">
-                    {student.initials} (Grade {student.grade_level})
-                  </span>
-                </label>
-              ))
-            )}
-          </div>
+          
+          {/* Selected Students Tags */}
           {formData.studentIds.length > 0 && (
-            <p className="text-sm text-gray-600 mt-2">
-              {formData.studentIds.length} student{formData.studentIds.length > 1 ? 's' : ''} selected
-            </p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {formData.studentIds.map(id => {
+                const student = students.find(s => s.id === id);
+                if (!student) return null;
+                return (
+                  <span 
+                    key={id}
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                  >
+                    {student.initials} (Grade {student.grade_level})
+                    <button
+                      type="button"
+                      onClick={() => removeStudent(id)}
+                      className="ml-1 text-blue-600 hover:text-blue-800"
+                    >
+                      <XMarkIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          
+          {/* Dropdown Button */}
+          <button
+            type="button"
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span className="text-gray-700">
+              {formData.studentIds.length === 0 
+                ? 'Select students...'
+                : `${formData.studentIds.length} student${formData.studentIds.length > 1 ? 's' : ''} selected`
+              }
+            </span>
+            <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {/* Dropdown Menu */}
+          {dropdownOpen && (
+            <div className="absolute z-10 mt-1 w-full max-w-lg bg-white shadow-lg rounded-md border border-gray-200">
+              <div className="max-h-60 overflow-auto py-1">
+                {students.length === 0 ? (
+                  <div className="px-3 py-2 text-gray-500 text-sm">
+                    No students found. Please add students first.
+                  </div>
+                ) : (
+                  students.map(student => (
+                    <label 
+                      key={student.id}
+                      className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.studentIds.includes(student.id)}
+                        onChange={() => handleStudentToggle(student.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-3 text-sm">
+                        {student.initials} (Grade {student.grade_level})
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
           )}
         </div>
 
