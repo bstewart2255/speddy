@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SIMPLIFIED UNIFIED LESSONS TABLE MIGRATION
--- Date: 2025-01-28
+-- Date: 2025-09-06
 -- Purpose: Replace 3 lesson tables with one unified table
 -- No production data = No complex safety nets needed
 -- ============================================================================
