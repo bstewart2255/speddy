@@ -39,7 +39,7 @@ export async function PUT(
     const verifyPerf = measurePerformanceWithAlerts('verify_lesson_ownership', 'database');
     const { data: existingLesson, error: fetchError } = await supabase
       .from('lessons')
-      .select('id, provider_id')
+      .select('id, provider_id, content')
       .eq('id', lessonId)
       .eq('lesson_source', 'manual')
       .single();
@@ -112,15 +112,16 @@ export async function PUT(
     
     // Restructure data for unified lessons table if needed
     const unifiedUpdateData = { ...fieldsToUpdate };
-    if (fieldsToUpdate.objectives || fieldsToUpdate.materials || fieldsToUpdate.activities || fieldsToUpdate.assessment) {
+    if ('objectives' in fieldsToUpdate || 'materials' in fieldsToUpdate || 
+        'activities' in fieldsToUpdate || 'assessment' in fieldsToUpdate) {
       // Merge with existing content to avoid overwriting fields not being updated
       const existingContent = existingLesson.content || {};
       unifiedUpdateData.content = {
         ...existingContent,
-        ...(fieldsToUpdate.objectives !== undefined && { objectives: fieldsToUpdate.objectives }),
-        ...(fieldsToUpdate.materials !== undefined && { materials: fieldsToUpdate.materials }),
-        ...(fieldsToUpdate.activities !== undefined && { activities: fieldsToUpdate.activities }),
-        ...(fieldsToUpdate.assessment !== undefined && { assessment: fieldsToUpdate.assessment })
+        ...('objectives' in fieldsToUpdate && { objectives: fieldsToUpdate.objectives }),
+        ...('materials' in fieldsToUpdate && { materials: fieldsToUpdate.materials }),
+        ...('activities' in fieldsToUpdate && { activities: fieldsToUpdate.activities }),
+        ...('assessment' in fieldsToUpdate && { assessment: fieldsToUpdate.assessment })
       };
       delete unifiedUpdateData.objectives;
       delete unifiedUpdateData.materials;
