@@ -36,15 +36,16 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 2. QUESTION TYPES - Use ONLY these standardized types:
    - "multiple-choice": Must have exactly 4 choices labeled A, B, C, D
-   - "fill-blank": Must have exactly 2 blankLines
-   - "short-answer": Must have exactly 3 blankLines
-   - "long-answer": Must have exactly 5 blankLines
+   - "fill-blank": Use grade-based blankLines (see rules below)
+   - "short-answer": Use grade-based blankLines (see rules below)
+   - "long-answer": Use grade-based blankLines (see rules below)
    - "visual-math": For math problems, no blankLines needed
+   - "example": For introduction section examples only
 
-3. BLANK LINE RULES:
+3. BLANK LINE RULES (grade-based):
    - Grade K-1: Use 4 blankLines for any written response
-   - Grade 2-3: Use 3 blankLines for short answers, 5 for paragraphs
-   - Grade 4-5: Use 2 blankLines for short answers, 4 for paragraphs
+   - Grade 2-3: Use 3 blankLines for short answers, 5 for long answers
+   - Grade 4-5: Use 2 blankLines for short answers, 4 for long answers
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options

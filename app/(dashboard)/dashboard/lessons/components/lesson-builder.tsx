@@ -10,7 +10,7 @@ import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 interface FormData {
   studentIds: string[];
   subject: string;
-  subjectType: 'ela' | 'math' | '';
+  subjectType: 'ela' | 'math';
   topic: string;
   timeDuration: string;
 }
@@ -60,7 +60,7 @@ export default function LessonBuilder() {
   const [formData, setFormData] = useState<FormData>({
     studentIds: [],
     subject: '',
-    subjectType: '',
+    subjectType: 'ela',
     topic: '',
     timeDuration: '15 minutes',
   });
@@ -154,10 +154,6 @@ export default function LessonBuilder() {
       return;
     }
 
-    if (!formData.subjectType) {
-      showToast('Please select a subject type (ELA or Math)', 'error');
-      return;
-    }
 
     if (!formData.topic.trim()) {
       showToast('Please enter a topic', 'error');
