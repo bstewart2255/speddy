@@ -13,6 +13,7 @@ export interface LessonRequest {
   students: StudentProfile[];
   teacherRole: 'resource' | 'ot' | 'speech' | 'counseling';
   subject: string;
+  subjectType: 'ela' | 'math'; // Required: explicit subject type for enhanced prompts
   topic?: string;
   duration: number; // in minutes
   focusSkills?: string[]; // Optional: specific skills to target
@@ -34,9 +35,8 @@ export interface LessonPlan {
   
   // Teacher guidance
   overview: string;
-  introduction: ActivitySection;
-  mainActivity: ActivitySection;
-  closure: ActivitySection;
+  introduction: ActivitySection; // Teacher guidance and examples
+  activity: ActivitySection; // Main student practice section
   
   // Optional answer key
   answerKey?: AnswerKey;
@@ -93,7 +93,7 @@ export interface StudentMaterial {
 }
 
 export interface WorksheetContent {
-  sectionType: 'warmup' | 'practice' | 'assessment' | 'enrichment';
+  sectionType: 'introduction' | 'practice' | 'assessment';
   sectionTitle: string;
   instructions: string;
   
@@ -102,14 +102,13 @@ export interface WorksheetContent {
 }
 
 export interface WorksheetItem {
-  type: 'question' | 'problem' | 'task' | 'prompt' | 'visual';
+  type: 'multiple-choice' | 'fill-blank' | 'short-answer' | 'long-answer' | 'visual-math' | 'example';
   content: string; // The actual question/problem/task
   
   // Optional fields for different item types
-  choices?: string[]; // For multiple choice
-  blankLines?: number; // For written responses
+  choices?: string[]; // For multiple choice (exactly 4 choices: A, B, C, D)
+  blankLines?: number; // For written responses (grade-based: K-1: 4, 2-3: 3, 4-5: 2)
   visualSupport?: string; // Description of visual aid
-  space?: 'small' | 'medium' | 'large'; // Answer space size
 }
 
 export interface AnswerKey {
@@ -244,7 +243,7 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
   
   // Check required lesson fields and their types
   const requiredLessonFields = ['title', 'duration', 'objectives', 'materials', 'overview', 
-                                 'introduction', 'mainActivity', 'closure'];
+                                 'introduction', 'activity'];
   for (const field of requiredLessonFields) {
     if (!(field in lesson)) {
       console.error(`Lesson validation failed: Missing lesson.${field}`);
@@ -286,8 +285,8 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     return false;
   }
   
-  // Validate activity sections with type checking
-  const activitySections = ['introduction', 'mainActivity', 'closure'];
+  // Validate activity sections with type checking  
+  const activitySections = ['introduction', 'activity'];
   for (const section of activitySections) {
     const activity = lesson[section];
     if (!activity || typeof activity !== 'object') {

@@ -93,8 +93,8 @@ export class LessonGenerator {
     }
     
     try {
-      // Build prompts based on role
-      const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole);
+      // Build prompts based on role and subject type
+      const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
       const userPrompt = promptBuilder.buildUserPrompt(request);
       
       // Add grade groups to request for provider
@@ -235,7 +235,7 @@ export class LessonGenerator {
         students: request.students.filter(s => representativeIds.includes(s.id))
       };
       
-      const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole);
+      const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
       const lessonPlanPrompt = `Create a lesson plan structure for a ${request.duration}-minute ${request.subject} lesson. 
 Focus on the teacher guidance and lesson structure. Generate placeholder student materials only.
 ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
