@@ -62,6 +62,13 @@ export function GroupSessionsWidget() {
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
   const [userProfile, setUserProfile] = React.useState<any>(null);
   
+  // Subject type selection popup state
+  const [subjectTypePopupOpen, setSubjectTypePopupOpen] = React.useState(false);
+  const [pendingGenerationData, setPendingGenerationData] = React.useState<{
+    students: any[];
+    timeSlot: string;
+  } | null>(null);
+  
   // Use school context to get the current school
   const { currentSchool } = useSchool();
 
@@ -268,7 +275,7 @@ export function GroupSessionsWidget() {
     }
   }, [currentTime, getSessionsForSlot]);
 
-  const generateAIContent = async (students: any[], timeSlot: string) => {
+  const generateAIContent = async (students: any[], timeSlot: string, subjectType: 'ela' | 'math') => {
     setGeneratingContent(true);
 
     try {
@@ -305,7 +312,8 @@ export function GroupSessionsWidget() {
         body: JSON.stringify({
           batch: [{
             students: formattedStudents,
-            subject: 'English Language Arts', // Default subject, could be made configurable
+            subject: subjectType === 'ela' ? 'English Language Arts' : 'Math',
+            subjectType: subjectType,
             duration: duration,
             topic: `Group session for ${formatTime(timeSlot)}`,
             teacherRole: userProfile?.role || 'resource',
@@ -369,8 +377,6 @@ export function GroupSessionsWidget() {
     timeSlot: string,
     slotSessions: any[],
   ) => {
-    setSelectedTimeSlot(formatTime(timeSlot));
-
     // Transform sessions to student objects for the modal
     const studentData = slotSessions.map(session => ({
       id: session.student_id,
@@ -379,12 +385,29 @@ export function GroupSessionsWidget() {
       teacher_name: session.students?.teacher_name || '',
     }));
 
-    setSelectedStudents(studentData);
+    // Store data for pending generation and show subject type popup
+    setPendingGenerationData({
+      students: studentData,
+      timeSlot: timeSlot
+    });
+    setSubjectTypePopupOpen(true);
+  };
+
+  // Handle subject type selection and proceed with generation
+  const handleSubjectTypeSelection = async (subjectType: 'ela' | 'math') => {
+    if (!pendingGenerationData) return;
+
+    setSubjectTypePopupOpen(false);
+    setSelectedTimeSlot(formatTime(pendingGenerationData.timeSlot));
+    setSelectedStudents(pendingGenerationData.students);
     setModalOpen(true);
     setAiContent(null);
 
-    // Generate content with the transformed student data
-    await generateAIContent(studentData, timeSlot);
+    // Generate content with the selected subject type
+    await generateAIContent(pendingGenerationData.students, pendingGenerationData.timeSlot, subjectType);
+    
+    // Clear pending data
+    setPendingGenerationData(null);
   };
 
   // Memoize visible slots to prevent unnecessary recalculations
@@ -540,6 +563,54 @@ export function GroupSessionsWidget() {
           )}
         </div>
       </div>
+
+      {/* Subject Type Selection Popup */}
+      {subjectTypePopupOpen && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3 text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Choose Subject Type
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Select the type of lesson you want to generate for {formatTime(pendingGenerationData?.timeSlot || "")}
+              </p>
+              
+              <div className="flex flex-col space-y-3">
+                <button
+                  onClick={() => handleSubjectTypeSelection('ela')}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                >
+                  📚 ELA (English Language Arts)
+                  <div className="text-xs mt-1 opacity-90">
+                    Reading, writing, grammar, vocabulary
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleSubjectTypeSelection('math')}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+                >
+                  🔢 Math
+                  <div className="text-xs mt-1 opacity-90">
+                    Computation, problem-solving, number sense
+                  </div>
+                </button>
+              </div>
+              
+              <button
+                onClick={() => {
+                  setSubjectTypePopupOpen(false);
+                  setPendingGenerationData(null);
+                }}
+                className="mt-4 px-4 py-2 text-sm text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AIContentModal
         isOpen={modalOpen}
