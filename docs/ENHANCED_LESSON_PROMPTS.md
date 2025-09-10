@@ -195,7 +195,7 @@ ERROR PREVENTION:
 - NEVER use "problem-1", "question-2", "[insert content]", "add content here" as content
 - NEVER use placeholder text - include complete, real questions and problems
 - NEVER vary from the 2-section structure (Introduction, Activity)
-- NEVER use question types other than the 5 listed above
+- NEVER use question types other than the 6 listed above
 - NEVER vary blankLines counts from the grade-based rules
 - NEVER use numbers (1,2,3,4) for multiple choice - always use A,B,C,D
 - NEVER create activity sections with fewer than 6 items or more than 12 items
