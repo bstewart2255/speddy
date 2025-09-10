@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
                 group
               };
             }
-            
+
             // Enrich student data from cached map
             const students = await enrichStudentDataFromMap(group.students, studentDataMap);
             
@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
               students,
               teacherRole: teacherRole as LessonRequest['teacherRole'],
               subject: group.subject,
+              subjectType: group.subjectType,
               topic: group.topic,
               duration: group.duration || 30,
               focusSkills: group.focusSkills,
@@ -279,6 +280,7 @@ export async function POST(request: NextRequest) {
         students,
         teacherRole: teacherRole as LessonRequest['teacherRole'],
         subject: body.subject,
+        subjectType: body.subjectType as 'ela' | 'math',
         topic: body.topic,
         duration: body.duration || 30,
         focusSkills: body.focusSkills
@@ -361,6 +363,10 @@ function validateRequest(body: any): { isValid: boolean; errors: string[] } {
   
   if (!body.subject || typeof body.subject !== 'string') {
     errors.push('Subject is required and must be a string');
+  }
+
+  if (!body.subjectType || !['ela', 'math'].includes(body.subjectType)) {
+    errors.push('Subject type is required and must be either "ela" or "math"');
   }
   
   // Optional fields validation

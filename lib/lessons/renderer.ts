@@ -110,25 +110,13 @@ export class WorksheetRenderer {
   </div>
 
   <div class="section">
-    <h2>Main Activity</h2>
-    <span class="time">${this.escapeHtml(String(plan.mainActivity.duration))} minutes</span>
+    <h2>Activity</h2>
+    <span class="time">${this.escapeHtml(String(plan.activity.duration))} minutes</span>
     <div class="activity">
-      <p>${this.escapeHtml(plan.mainActivity.description)}</p>
+      <p>${this.escapeHtml(plan.activity.description)}</p>
       <h4>Instructions:</h4>
       <ol>
-        ${plan.mainActivity.instructions.map(inst => `<li>${this.escapeHtml(inst)}</li>`).join('')}
-      </ol>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>Closure</h2>
-    <span class="time">${this.escapeHtml(String(plan.closure.duration))} minutes</span>
-    <div class="activity">
-      <p>${this.escapeHtml(plan.closure.description)}</p>
-      <h4>Instructions:</h4>
-      <ol>
-        ${plan.closure.instructions.map(inst => `<li>${this.escapeHtml(inst)}</li>`).join('')}
+        ${plan.activity.instructions.map(inst => `<li>${this.escapeHtml(inst)}</li>`).join('')}
       </ol>
     </div>
   </div>

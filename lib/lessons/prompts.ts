@@ -1,12 +1,12 @@
-// Role-based prompt templates for lesson generation
+// Enhanced prompt templates for lesson generation with subject-specific differentiation
 import { LessonRequest, determineGradeGroups } from './schema';
 
 export class PromptBuilder {
   /**
-   * Builds the system prompt based on teacher role
+   * Builds the system prompt based on teacher role and subject type
    */
-  buildSystemPrompt(role: LessonRequest['teacherRole']): string {
-    const basePrompt = `You are an expert ${this.getRoleTitle(role)} creating educational materials.
+  buildSystemPrompt(role: LessonRequest['teacherRole'], subjectType: 'ela' | 'math'): string {
+    const basePrompt = `You are an expert ${this.getRoleTitle(role)} creating ${subjectType.toUpperCase()} educational materials.
 
 CRITICAL REQUIREMENTS:
 1. Return ONLY a valid JSON object matching the LessonResponse schema
@@ -17,7 +17,80 @@ CRITICAL REQUIREMENTS:
 6. Group students within 1 grade level for the same activities
 7. Worksheets MUST contain complete, detailed content - not placeholders
 
-JSON STRUCTURE (no comments, no markdown, no trailing commas):
+WORKSHEET FORMATTING STANDARDS (MANDATORY):
+
+1. SECTION STRUCTURE - Every lesson must have exactly 2 sections:
+   - Section 1: "Introduction" (teacher guidance, examples, and brief instructions)
+   - Section 2: "Activity" (all student practice problems and questions)
+
+2. QUESTION TYPES - Use ONLY these standardized types:
+   - "multiple-choice": Must have exactly 4 choices labeled A, B, C, D
+   - "fill-blank": Use grade-based blankLines (see rules below)
+   - "short-answer": Use grade-based blankLines (see rules below)  
+   - "long-answer": Use grade-based blankLines (see rules below)
+   - "visual-math": For math problems, no blankLines needed
+   - "example": For introduction section examples only
+   
+3. BLANK LINE RULES (grade-based):
+   - Grade K-1: Use 4 blankLines for any written response
+   - Grade 2-3: Use 3 blankLines for short answers, 5 for long answers
+   - Grade 4-5: Use 2 blankLines for short answers, 4 for long answers
+
+4. MULTIPLE CHOICE FORMAT:
+   - Always exactly 4 options
+   - Label as A, B, C, D (never 1,2,3,4)
+   - One clearly correct answer
+   - Distractors should be plausible but wrong
+
+5. ACTIVITY ITEM COUNTS:
+   - Grades K-2: Exactly 6-8 practice problems in Activity section
+   - Grades 3-5: Exactly 8-12 practice problems in Activity section
+   - Include variety: mix of question types appropriate for the subject
+
+STUDENT DIFFERENTIATION REQUIREMENTS:
+
+1. READING LEVEL ADJUSTMENTS:
+   - If reading level below grade: Use simpler vocabulary, shorter sentences
+   - If reading level at grade: Use grade-appropriate text complexity  
+   - If reading level above grade: Can use slightly more complex language
+
+2. IEP GOAL INTEGRATION:
+   - Math IEP goals: Include problems that target specific math skills mentioned
+   - Reading IEP goals: Include vocabulary, fluency, or comprehension activities
+   - Writing IEP goals: Include writing prompts or sentence-building exercises
+
+3. GRADE GROUP DIFFERENTIATION:
+   - Students in same grade group get identical base activities
+   - Adjust difficulty within grade group based on individual reading levels
+   - Target IEP goals through question content, not structure changes
+
+CONTENT TARGETING WHEN NO IEP GOALS PROVIDED:
+- Resource: Focus on skills ONE GRADE LEVEL BELOW the student's current grade (e.g., Grade 3 student gets Grade 2 level content) as students in special education typically perform below grade level
+- OT: Target fundamental fine motor and visual-motor skills for grade level
+- Speech: Address basic articulation and language skills appropriate for grade
+- Counseling: Focus on age-appropriate social-emotional development
+
+If no IEP goals specified, include activities that address:
+- Resource: Foundational skills from the previous grade level in the specified subject
+- OT: Grade-appropriate motor skills that support classroom participation
+- Speech: Common speech/language needs for the student's age group
+- Counseling: Social-emotional skills typical for the student's developmental stage
+- Skills that support general classroom success and build confidence
+
+MIXED IEP GOAL HANDLING:
+- When students in same grade group have different IEP goals:
+  1. Create content targeting the MAJORITY of students' goals
+  2. Include 1-2 problems addressing minority goals when possible
+  3. Students without IEP goals receive grade-level foundational content
+  
+- For conflicting math IEP goals in same group:
+  1. Choose the most fundamental skill as primary focus
+  2. Include secondary skills as additional questions
+  3. Prioritize: computation > word problems > advanced concepts
+
+${this.getSubjectSpecificRequirements(subjectType)}
+
+JSON STRUCTURE (STRICT - no deviations):
 {
   "lesson": {
     "title": "string",
@@ -26,8 +99,7 @@ JSON STRUCTURE (no comments, no markdown, no trailing commas):
     "materials": "Worksheets, pencils, whiteboard and markers only",
     "overview": "string",
     "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
-    "mainActivity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
-    "closure": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "activity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
     "answerKey": {},
     "roleSpecificContent": {}
   },
@@ -35,23 +107,42 @@ JSON STRUCTURE (no comments, no markdown, no trailing commas):
     "studentId": "string",
     "gradeGroup": number,
     "worksheet": {
-      "title": "string",
-      "instructions": "string",
-      "sections": [{
-        "title": "string",
-        "instructions": "string",
-        "items": [{
-          "sectionType": "warmup",
-          "sectionTitle": "string",
-          "instructions": "string",
+      "title": "[Subject] Practice - Grade [X]",
+      "instructions": "Complete all problems. Show your work when needed.",
+      "sections": [
+        {
+          "title": "Introduction",
+          "instructions": "Read the instructions and examples below",
           "items": [{
-            "type": "visual",
-            "content": "actual content text here",
-            "choices": ["optional for multiple choice"],
-            "blankLines": 2
+            "sectionType": "introduction", 
+            "sectionTitle": "Getting Started",
+            "instructions": "Review these examples before starting the activity",
+            "items": [
+              {
+                "type": "example",
+                "content": "Example problem or instruction text here"
+              }
+            ]
           }]
-        }]
-      }],
+        },
+        {
+          "title": "Activity", 
+          "instructions": "Complete all problems below",
+          "items": [{
+            "sectionType": "practice",
+            "sectionTitle": "Practice Problems",
+            "instructions": "Work through each problem carefully",
+            "items": [
+              {
+                "type": "multiple-choice|fill-blank|short-answer|long-answer|visual-math",
+                "content": "Complete question text here",
+                "choices": ["A. option", "B. option", "C. option", "D. option"],
+                "blankLines": 3
+              }
+            ]
+          }]
+        }
+      ],
       "accommodations": ["string"]
     }
   }],
@@ -61,12 +152,23 @@ JSON STRUCTURE (no comments, no markdown, no trailing commas):
   }
 }
 
+ERROR PREVENTION:
+- NEVER use "problem-1", "question-2", "[insert content]", "add content here" as content
+- NEVER use placeholder text - include complete, real questions and problems
+- NEVER vary from the 2-section structure (Introduction, Activity)
+- NEVER use question types other than the 6 listed above
+- NEVER vary blankLines counts from the grade-based rules
+- NEVER use numbers (1,2,3,4) for multiple choice - always use A,B,C,D
+- NEVER create activity sections with fewer than 6 items or more than 12 items
+
 IMPORTANT: 
 - Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.
-- Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.`;
+- Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.
+- Each question must be grade-appropriate and align with the specified subject area.
+- For story-based lessons, include the complete story text within the worksheet content.`;
 
     // Add role-specific requirements
-    const rolePrompt = this.getRoleSpecificPrompt(role);
+    const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
     
     return basePrompt + '\n\n' + rolePrompt;
   }
@@ -77,7 +179,9 @@ IMPORTANT:
   buildUserPrompt(request: LessonRequest): string {
     const gradeGroups = determineGradeGroups(request.students);
     
-    let prompt = `Create a ${request.duration}-minute ${request.subject} lesson.\n`;
+    let prompt = `SUBJECT FOCUS: ${request.subjectType.toUpperCase()}\n`;
+    prompt += `Create a ${request.duration}-minute ${request.subjectType.toUpperCase()} lesson.\n`;
+    prompt += `Subject: ${request.subject}\n`;
     
     if (request.topic) {
       prompt += `Topic: ${request.topic}\n`;
@@ -112,21 +216,43 @@ IMPORTANT:
         if (student.iepGoals && student.iepGoals.length > 0) {
           prompt += `- IEP Goals: ${student.iepGoals.join('; ')}\n`;
         }
-        
-        if (student.accommodations && student.accommodations.length > 0) {
-          prompt += `- Accommodations Needed: ${student.accommodations.join('; ')}\n`;
-        }
       });
       
       prompt += '\n';
     });
     
-    prompt += `\nREMEMBER:
+    // Add subject-specific reminders
+    const subjectReminder = request.subjectType === 'ela'
+      ? `SUBJECT-SPECIFIC REMINDERS:
+- Include complete story text for reading activities
+- Focus on reading comprehension, vocabulary, writing, or grammar
+- Use grade-appropriate text complexity based on reading levels
+- Questions should target: main idea, details, character analysis, sequence, cause/effect`
+      : `SUBJECT-SPECIFIC REMINDERS:
+- Focus on mathematical concepts and problem-solving
+- Include computation practice and word problems  
+- Use "visual-math" question type for math computations
+- Use visual representations where helpful
+- Target math skills appropriate for student levels`;
+
+    prompt += `\nFORMATTING REMINDERS:
+- Use exactly 2 worksheet sections: Introduction, Activity
+- Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
+- Multiple choice questions must have exactly 4 choices (A, B, C, D)
+- Include ${this.getActivityItemCount(request.students)} practice items in Activity section
+- Introduction section should have 1-2 example/instruction items only
+- All content must be complete and ready-to-use, no placeholders
+- Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
+- Adjust language complexity based on individual reading levels
+- Incorporate IEP goals into question content where applicable
+
+${subjectReminder}
+
+REMEMBER:
 - Students in the same grade group should receive the same base activity
-- Apply individual accommodations as listed
-- All materials must be on the worksheet
+- Adjust content difficulty based on individual reading levels listed above
 - Use simple, clear instructions at appropriate reading levels
-- Include visual supports where helpful
+- Include visual supports where helpful for math problems
 - Ensure activities can be completed in ${request.duration} minutes
 - IMPORTANT: Each worksheet must contain actual content with real questions, problems, or tasks
 - For story-based activities, include the complete story text in the worksheet
@@ -150,7 +276,83 @@ IMPORTANT:
     }
   }
 
-  private getRoleSpecificPrompt(role: LessonRequest['teacherRole']): string {
+  private getSubjectSpecificRequirements(subjectType: 'ela' | 'math'): string {
+    if (subjectType === 'ela') {
+      return `
+ELA-SPECIFIC REQUIREMENTS:
+- Include complete story text for reading comprehension activities
+- Focus on vocabulary, reading fluency, writing, grammar, or phonics
+- Questions should target: main idea, details, character analysis, sequence, cause/effect
+- Writing prompts should be clear and grade-appropriate
+- Include context clues for vocabulary questions
+
+ELA WORKSHEET CONTENT FOCUS:
+- Reading passages with comprehension questions
+- Vocabulary exercises with sentence context
+- Writing activities (sentences, paragraphs, creative writing)
+- Grammar practice (parts of speech, sentence structure)
+- Phonics/spelling activities for younger grades`;
+    } else {
+      return `
+MATH-SPECIFIC REQUIREMENTS:
+- Use "visual-math" question type for computation problems
+- Include clear number problems, word problems, and visual representations
+- Focus on: computation, problem-solving, patterns, measurement, geometry, fractions
+- Word problems should have realistic contexts students can understand
+- Show mathematical thinking through step-by-step problem solving
+
+MATH WORKSHEET CONTENT FOCUS:
+- Computation practice appropriate for grade level
+- Word problems with clear, realistic scenarios
+- Visual math problems (shapes, patterns, graphs)
+- Mathematical reasoning questions
+- Grade-appropriate math concepts and operations`;
+    }
+  }
+
+  private getActivityItemCount(students: { grade: number }[]): string {
+    const maxGrade = Math.max(...students.map(s => s.grade));
+    if (maxGrade <= 2) {
+      return '6-8'; // Grades K-2: 6-8 items
+    } else {
+      return '8-12'; // Grades 3-5: 8-12 items
+    }
+  }
+
+  // Helper function to determine target grade level for content difficulty
+  private getTargetGradeLevel(student: any, role: string): number {
+    if (role === 'resource') {
+      return Math.max(0, student.grade - 1); // One grade below, minimum kindergarten
+    }
+    return student.grade; // Other roles use actual grade level
+  }
+
+  // Enhanced role-specific prompt with subject awareness
+  private getRoleSpecificPrompt(role: LessonRequest['teacherRole'], subjectType: 'ela' | 'math'): string {
+    const baseRoleContent = this.getBaseRoleContent(role);
+    
+    if (role === 'resource') {
+      const subjectSpecific = subjectType === 'ela' 
+        ? `For ELA worksheets specifically:
+- Include complete story text when teaching story elements
+- Reading comprehension questions based on provided text
+- Vocabulary exercises with context from the story
+- Writing prompts related to the story content
+- Target reading/writing skills one grade level below student's current grade`
+        : `For MATH worksheets specifically:
+- Focus on computation, word problems, and mathematical reasoning
+- Include step-by-step problem-solving activities
+- Use visual representations for mathematical concepts
+- Target specific math skills one grade level below student's current grade
+- Include realistic word problem contexts students can understand`;
+      
+      return baseRoleContent + '\n\n' + subjectSpecific;
+    }
+    
+    return baseRoleContent;
+  }
+
+  private getBaseRoleContent(role: LessonRequest['teacherRole']): string {
     switch (role) {
       case 'resource':
         return `RESOURCE SPECIALIST FOCUS:
@@ -160,12 +362,6 @@ IMPORTANT:
 - Include explicit instruction and guided practice
 - Provide scaffolding and differentiation strategies
 - Focus on IEP goal progress
-
-For ELA/Reading worksheets, include:
-- Complete story text when teaching story elements (characters, setting, problem, solution)
-- Reading comprehension questions based on the provided text
-- Vocabulary exercises with context from the story
-- Writing prompts related to the story
 
 In roleSpecificContent, include:
 - differentiationStrategies: Specific strategies for each grade group

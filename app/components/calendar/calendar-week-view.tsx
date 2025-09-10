@@ -92,6 +92,13 @@ export function CalendarWeekView({
   const loadingLessonsRef = React.useRef(false);
   const [viewingSavedLesson, setViewingSavedLesson] = useState(false);
   
+  // Subject type selection popup state
+  const [subjectTypePopupOpen, setSubjectTypePopupOpen] = useState(false);
+  const [pendingLessonData, setPendingLessonData] = useState<{
+    date: Date;
+    daySessions: ScheduleSession[];
+  } | null>(null);
+  
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
   const [notesValue, setNotesValue] = useState('');
@@ -1042,213 +1049,234 @@ export function CalendarWeekView({
         return;
       }
 
-      // Group sessions by time slot for AI generation
-      const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
-
-      // Generate AI lessons for each time slot using batch API
-      setGeneratingContent(true);
-      setModalOpen(true);
-      
-      // Show progress notification
-      showToast(`Generating ${timeSlotGroups.size} lesson${timeSlotGroups.size > 1 ? 's' : ''}...`, 'info');
-      
-      // Declare variables outside try block
-      let generatedLessons: any[] = [];
-      let batchResponseData: any = null;
-      
-      try {
-        // Prepare batch request
-        const batchRequests: any[] = [];
-        const timeSlotMapping = new Map<number, { timeSlot: string; slotSessions: ScheduleSession[] }>();
-        let index = 0;
-        
-        // Debug logging: List all time slots found
-        console.log(`[DEBUG Frontend] Found ${timeSlotGroups.size} time slot groups:`, 
-          Array.from(timeSlotGroups.keys())
-        );
-        
-        for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
-          console.log(`[DEBUG Frontend] Processing time slot: "${timeSlot}" with ${slotSessions.length} sessions`);
-          
-          // Extract unique students from the sessions
-          const sessionStudents = new Set<string>();
-          slotSessions.forEach(session => {
-            if (session.student_id) {
-              sessionStudents.add(session.student_id);
-            }
-          });
-          
-          // Get student details for the new API format
-          const studentList = Array.from(sessionStudents).map(studentId => {
-            const student = students.get(studentId);
-            return {
-              id: studentId,
-              grade: parseGradeLevel(student?.grade_level)
-            };
-          });
-          
-          if (studentList.length > 0) {
-            const subject = 'English Language Arts'; // Default subject, can be made configurable
-            const duration = calculateDurationFromTimeSlot(timeSlot);
-            const lessonDate = toLocalDateKey(selectedLessonDate);
-            
-            const batchRequest = {
-              students: studentList,
-              subject,
-              duration,
-              topic: `Session for ${formatTimeSlot(timeSlot)}`,
-              teacherRole: userProfile?.role || 'resource',
-              lessonDate: lessonDate,
-              timeSlot: timeSlot // Pass the actual time slot
-            };
-            
-            // Debug logging for each batch request
-            console.log(`[DEBUG Frontend] Adding batch request ${index}:`, {
-              timeSlot: timeSlot,
-              lessonDate: lessonDate,
-              studentCount: studentList.length,
-              duration: duration,
-              subject: subject
-            });
-            
-            batchRequests.push(batchRequest);
-            
-            // Store mapping for later use
-            timeSlotMapping.set(index, { timeSlot, slotSessions });
-            index++;
-          } else {
-            console.log(`[DEBUG Frontend] Skipping time slot "${timeSlot}" - no students found`);
-          }
-        }
-        
-        console.log(`[DEBUG Frontend] Final batch requests summary:`, {
-          totalRequests: batchRequests.length,
-          timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
-          lessonDate: toLocalDateKey(selectedLessonDate)
-        });
-        
-        if (batchRequests.length === 0) {
-          showToast('No valid time slots to generate lessons for', 'warning');
-          setGeneratingContent(false);
-          setModalOpen(false);
-          return;
-        }
-        
-        // Make batch API call with timeout
-        console.log(`Sending batch request for ${batchRequests.length} lesson groups`);
-        
-        // Create an AbortController for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
-        
-        try {
-          const response = await fetch('/api/lessons/generate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              batch: batchRequests
-            }),
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to generate lessons');
-          }
-          
-          const data = await response.json();
-          batchResponseData = data;
-          
-          // Process the results
-          generatedLessons = [];
-          
-          if (data.batch && data.lessons) {
-            data.lessons.forEach((result: any, idx: number) => {
-              if (result.success && result.lesson) {
-                const mapping = timeSlotMapping.get(idx);
-                if (mapping) {
-                  const lessonData = {
-                    timeSlot: mapping.timeSlot,
-                    content: JSON.stringify(result.lesson),
-                    prompt: result.group?.topic || '',
-                    lessonId: result.lessonId,
-                    students: mapping.slotSessions.map(session => ({
-                      id: session.student_id || '',
-                      initials: students.get(session.student_id || '')?.initials || '',
-                      grade_level: students.get(session.student_id || '')?.grade_level || '',
-                      teacher_name: ''
-                    }))
-                  };
-                  generatedLessons.push(lessonData);
-                }
-              }
-            });
-          }
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-          if (fetchError.name === 'AbortError') {
-            throw new Error('Request timeout: Lesson generation took too long. Please try with fewer students.');
-          }
-          throw fetchError;
-        }
-        
-        // Close the generating modal
-        setGeneratingContent(false);
-        setModalOpen(false);
-        
-        if (generatedLessons.length > 0) {
-          // Lessons are already saved to ai_generated_lessons by the API
-          const dateStr = toLocalDateKey(selectedLessonDate);
-          
-          // Force immediate state updates using flushSync
-          flushSync(() => {
-            // Update the savedLessons state with all generated lessons
-            setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
-            
-            // Set the lessons and date for the modal
-            setEnhancedModalLessons(generatedLessons);
-            setEnhancedModalDate(selectedLessonDate);
-          });
-          
-          // Log for debugging
-          console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
-          
-          // Trigger the modal to open via the useEffect after state is updated
-          setShouldShowModalAfterGeneration(true);
-          
-          const total = batchRequests.length;
-          const failed = total - generatedLessons.length;
-          
-          if (failed === 0) {
-            const timeMs = batchResponseData?.summary?.timeMs;
-            showToast(
-              `Successfully generated ${generatedLessons.length} AI lesson(s)` + 
-              (typeof timeMs === 'number' ? ` in ${timeMs}ms` : '') +
-              '. Click the purple "Saved AI Lesson" button to view.',
-              'success'
-            );
-          } else {
-            showToast(
-              `Generated ${generatedLessons.length} lesson(s), ${failed} failed. ` +
-              'Click the purple "Saved AI Lesson" button to view.',
-              'warning'
-            );
-          }
-        } else {
-          showToast('Failed to generate any lessons', 'error');
-        }
-      } catch (error) {
-        console.error('Error generating AI lessons:', error);
-        showToast(error instanceof Error ? error.message : 'An unexpected error occurred', 'error');
-        setGeneratingContent(false);
-        setModalOpen(false);
-      }
+      // Show subject type popup instead of generating immediately
+      setPendingLessonData({ date: selectedLessonDate, daySessions });
+      setSubjectTypePopupOpen(true);
+      return;
     } else if (type === 'manual') {
       setShowManualLessonForm(true);
+    }
+  };
+
+  // Function to handle AI lesson generation with subject type
+  const generateAILessons = async (date: Date, daySessions: ScheduleSession[], subjectType: 'ela' | 'math') => {
+    // Group sessions by time slot for AI generation
+    const timeSlotGroups = groupSessionsByTimeSlot(daySessions);
+
+    // Generate AI lessons for each time slot using batch API
+    setGeneratingContent(true);
+    setModalOpen(true);
+    
+    // Show progress notification
+    showToast(`Generating ${timeSlotGroups.size} lesson${timeSlotGroups.size > 1 ? 's' : ''}...`, 'info');
+    
+    // Declare variables outside try block
+    let generatedLessons: any[] = [];
+    let batchResponseData: any = null;
+    
+    try {
+      // Prepare batch request
+      const batchRequests: any[] = [];
+      const timeSlotMapping = new Map<number, { timeSlot: string; slotSessions: ScheduleSession[] }>();
+      let index = 0;
+      
+      // Debug logging: List all time slots found
+      console.log(`[DEBUG Frontend] Found ${timeSlotGroups.size} time slot groups:`, 
+        Array.from(timeSlotGroups.keys())
+      );
+      
+      for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
+        console.log(`[DEBUG Frontend] Processing time slot: "${timeSlot}" with ${slotSessions.length} sessions`);
+        
+        // Extract unique students from the sessions
+        const sessionStudents = new Set<string>();
+        slotSessions.forEach(session => {
+          if (session.student_id) {
+            sessionStudents.add(session.student_id);
+          }
+        });
+        
+        // Get student details for the new API format
+        const studentList = Array.from(sessionStudents).map(studentId => {
+          const student = students.get(studentId);
+          return {
+            id: studentId,
+            grade: parseGradeLevel(student?.grade_level)
+          };
+        });
+        
+        if (studentList.length > 0) {
+          const subject = subjectType === 'ela' ? 'English Language Arts' : 'Math';
+          const duration = calculateDurationFromTimeSlot(timeSlot);
+          const lessonDate = toLocalDateKey(date);
+          
+          const batchRequest = {
+            students: studentList,
+            subject,
+            subjectType,
+            duration,
+            topic: `Session for ${formatTimeSlot(timeSlot)}`,
+            teacherRole: userProfile?.role || 'resource',
+            lessonDate: lessonDate,
+            timeSlot: timeSlot // Pass the actual time slot
+          };
+          
+          // Debug logging for each batch request
+          console.log(`[DEBUG Frontend] Adding batch request ${index}:`, {
+            timeSlot: timeSlot,
+            lessonDate: lessonDate,
+            studentCount: studentList.length,
+            duration: duration,
+            subject: subject,
+            subjectType: subjectType
+          });
+          
+          batchRequests.push(batchRequest);
+          
+          // Store mapping for later use
+          timeSlotMapping.set(index, { timeSlot, slotSessions });
+          index++;
+        } else {
+          console.log(`[DEBUG Frontend] Skipping time slot "${timeSlot}" - no students found`);
+        }
+      }
+      
+      console.log(`[DEBUG Frontend] Final batch requests summary:`, {
+        totalRequests: batchRequests.length,
+        timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
+        lessonDate: toLocalDateKey(date),
+        subjectType
+      });
+      
+      if (batchRequests.length === 0) {
+        showToast('No valid time slots to generate lessons for', 'warning');
+        setGeneratingContent(false);
+        setModalOpen(false);
+        return;
+      }
+      
+      // Make batch API call with timeout
+      console.log(`Sending batch request for ${batchRequests.length} lesson groups`);
+      
+      // Create an AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+      
+      try {
+        const response = await fetch('/api/lessons/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            batch: batchRequests
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to generate lessons');
+        }
+        
+        const data = await response.json();
+        batchResponseData = data;
+        
+        // Process the results
+        generatedLessons = [];
+        
+        if (data.batch && data.lessons) {
+          data.lessons.forEach((result: any, idx: number) => {
+            if (result.success && result.lesson) {
+              const mapping = timeSlotMapping.get(idx);
+              if (mapping) {
+                const lessonData = {
+                  timeSlot: mapping.timeSlot,
+                  content: JSON.stringify(result.lesson),
+                  prompt: result.group?.topic || '',
+                  lessonId: result.lessonId,
+                  students: mapping.slotSessions.map(session => ({
+                    id: session.student_id || '',
+                    initials: students.get(session.student_id || '')?.initials || '',
+                    grade_level: students.get(session.student_id || '')?.grade_level || '',
+                    teacher_name: ''
+                  }))
+                };
+                generatedLessons.push(lessonData);
+              }
+            }
+          });
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout: Lesson generation took too long. Please try with fewer students.');
+        }
+        throw fetchError;
+      }
+      
+      // Close the generating modal
+      setGeneratingContent(false);
+      setModalOpen(false);
+      
+      if (generatedLessons.length > 0) {
+        // Lessons are already saved to ai_generated_lessons by the API
+        const dateStr = toLocalDateKey(date);
+        
+        // Force immediate state updates using flushSync
+        flushSync(() => {
+          // Update the savedLessons state with all generated lessons
+          setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
+          
+          // Set the lessons and date for the modal
+          setEnhancedModalLessons(generatedLessons);
+          setEnhancedModalDate(date);
+        });
+        
+        // Log for debugging
+        console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
+        
+        // Trigger the modal to open via the useEffect after state is updated
+        setShouldShowModalAfterGeneration(true);
+        
+        const total = batchRequests.length;
+        const failed = total - generatedLessons.length;
+        
+        if (failed === 0) {
+          const timeMs = batchResponseData?.summary?.timeMs;
+          showToast(
+            `Successfully generated ${generatedLessons.length} AI lesson(s)` + 
+            (typeof timeMs === 'number' ? ` in ${timeMs}ms` : '') +
+            '. Click the purple "Saved AI Lesson" button to view.',
+            'success'
+          );
+        } else {
+          showToast(
+            `Generated ${generatedLessons.length} lesson(s), ${failed} failed. ` +
+            'Click the purple "Saved AI Lesson" button to view.',
+            'warning'
+          );
+        }
+      } else {
+        showToast('Failed to generate any lessons', 'error');
+      }
+    } catch (error) {
+      console.error('Error generating AI lessons:', error);
+      showToast(error instanceof Error ? error.message : 'An unexpected error occurred', 'error');
+      setGeneratingContent(false);
+      setModalOpen(false);
+    }
+  };
+
+  // Handle subject type selection from popup
+  const handleSubjectTypeSelect = (subjectType: 'ela' | 'math') => {
+    setSubjectTypePopupOpen(false);
+    
+    if (pendingLessonData) {
+      generateAILessons(pendingLessonData.date, pendingLessonData.daySessions, subjectType);
+      setPendingLessonData(null);
     }
   };
 
@@ -1645,6 +1673,41 @@ export function CalendarWeekView({
         onSelectAI={() => handleLessonTypeSelect('ai')}
         onSelectManual={() => handleLessonTypeSelect('manual')}
       />
+
+      {/* Subject Type Selection Popup */}
+      {subjectTypePopupOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Choose Subject Type</h3>
+            <p className="text-gray-600 mb-6">What type of lesson would you like to generate?</p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => handleSubjectTypeSelect('ela')}
+                className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                📚 ELA
+                <div className="text-xs opacity-90 mt-1">Reading, Writing, Grammar</div>
+              </button>
+              <button
+                onClick={() => handleSubjectTypeSelect('math')}
+                className="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+              >
+                🔢 Math
+                <div className="text-xs opacity-90 mt-1">Numbers, Problem Solving</div>
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setSubjectTypePopupOpen(false);
+                setPendingLessonData(null);
+              }}
+              className="w-full mt-4 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Manual Lesson Form Modal */}
       <ManualLessonFormModal
