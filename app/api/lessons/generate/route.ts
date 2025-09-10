@@ -132,19 +132,6 @@ export async function POST(request: NextRequest) {
               };
             }
 
-            // Validate subjectType
-            if (group.subjectType && !(['ela', 'math'] as const).includes(group.subjectType)) {
-              if (DEBUG) {
-                console.error(`[DEBUG] Invalid subject type for group ${groupIndex}: ${group.subjectType}`);
-              }
-              return {
-                success: false,
-                error: 'Invalid subject type',
-                details: `Subject type "${group.subjectType}" must be either "ela" or "math"`,
-                group
-              };
-            }
-            
             // Enrich student data from cached map
             const students = await enrichStudentDataFromMap(group.students, studentDataMap);
             
@@ -153,7 +140,7 @@ export async function POST(request: NextRequest) {
               students,
               teacherRole: teacherRole as LessonRequest['teacherRole'],
               subject: group.subject,
-              subjectType: (['ela', 'math'] as const).includes(group.subjectType) ? group.subjectType : 'ela',
+              subjectType: group.subjectType,
               topic: group.topic,
               duration: group.duration || 30,
               focusSkills: group.focusSkills,
