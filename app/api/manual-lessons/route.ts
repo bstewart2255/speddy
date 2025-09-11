@@ -55,7 +55,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       materials: lessonData.materials || null,
       activities: lessonData.activities || null,
       assessment: lessonData.assessment || null,
-      notes: lessonData.notes || null
+      notes: lessonData.notes || null,
+      school_id: lessonData.school_id || null,
+      district_id: lessonData.district_id || null,
+      state_id: lessonData.state_id || null
     };
 
     // Save the manual lesson to unified lessons table

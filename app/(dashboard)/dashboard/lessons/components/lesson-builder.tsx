@@ -10,6 +10,7 @@ import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 interface FormData {
   studentIds: string[];
   subject: string;
+  subjectType: 'ela' | 'math';
   topic: string;
   timeDuration: string;
 }
@@ -59,6 +60,7 @@ export default function LessonBuilder() {
   const [formData, setFormData] = useState<FormData>({
     studentIds: [],
     subject: '',
+    subjectType: 'ela',
     topic: '',
     timeDuration: '15 minutes',
   });
@@ -73,6 +75,7 @@ export default function LessonBuilder() {
     if (currentSchool) {
       loadStudents();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);
 
   // Close dropdown when clicking outside
@@ -152,6 +155,7 @@ export default function LessonBuilder() {
       return;
     }
 
+
     if (!formData.topic.trim()) {
       showToast('Please enter a topic', 'error');
       return;
@@ -172,6 +176,7 @@ export default function LessonBuilder() {
             grade: s.grade_level
           })),
           subject: formData.subject,
+          subjectType: formData.subjectType,
           topic: formData.topic,
           duration: parseInt(formData.timeDuration) || 15,
           teacherRole: 'resource'
@@ -298,6 +303,26 @@ export default function LessonBuilder() {
               <option key={option} value={option}>{option}</option>
             ))}
           </select>
+        </div>
+
+        {/* Subject Type Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Subject Type * 
+            <span className="text-xs text-gray-500 ml-1">(Required for enhanced lesson generation)</span>
+          </label>
+          <select
+            value={formData.subjectType}
+            onChange={(e) => handleInputChange('subjectType', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select subject type</option>
+            <option value="ela">ELA (English Language Arts)</option>
+            <option value="math">Math</option>
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Choose ELA for reading, writing, grammar, vocabulary lessons. Choose Math for computation, problem-solving, number sense lessons.
+          </p>
         </div>
 
         {/* Topic Input */}

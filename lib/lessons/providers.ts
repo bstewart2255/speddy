@@ -241,7 +241,7 @@ export class OpenAIProvider implements AIProvider {
           error: error instanceof Error ? {
             message: error.message,
             stack: error.stack,
-            ...error
+            name: error.name
           } : error
         });
       }
