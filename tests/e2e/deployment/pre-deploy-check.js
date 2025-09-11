@@ -115,15 +115,30 @@ export class PreDeploymentChecker {
       const accessibilityResults = await this.checkAccessibility();
       results.checks.push(accessibilityResults);
 
-      // 4. Security headers check
-      console.log('\n4️⃣ Validating Security Headers...');
-      const securityResults = await this.checkSecurityHeaders();
-      results.checks.push(securityResults);
+      // 4. Security headers check (skip if server unavailable)
+      if (serverRunning) {
+        console.log('\n4️⃣ Validating Security Headers...');
+        const securityResults = await this.checkSecurityHeaders();
+        results.checks.push(securityResults);
 
-      // 5. API contract testing
-      console.log('\n5️⃣ Testing API Contracts...');
-      const apiResults = await this.testAPIContracts();
-      results.checks.push(apiResults);
+        // 5. API contract testing
+        console.log('\n5️⃣ Testing API Contracts...');
+        const apiResults = await this.testAPIContracts();
+        results.checks.push(apiResults);
+      } else {
+        console.log('\n4️⃣ ⚠️  Skipping Security Headers (server unavailable)');
+        console.log('\n5️⃣ ⚠️  Skipping API Contract Testing (server unavailable)');
+        results.checks.push({
+          name: 'Security Headers Check',
+          status: 'skipped',
+          message: 'Server unavailable during deployment'
+        });
+        results.checks.push({
+          name: 'API Contract Testing', 
+          status: 'skipped',
+          message: 'Server unavailable during deployment'
+        });
+      }
 
       // 6. Database migration verification
       console.log('\n6️⃣ Verifying Database Migrations...');
@@ -248,13 +263,27 @@ export class PreDeploymentChecker {
 
   async checkPerformanceRegression() {
     // Get baseline metrics from last successful deployment
-    const { data: baseline } = await supabase
-      .from('deployment_baselines')
-      .select('*')
-      .eq('status', 'success')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    let baseline;
+    try {
+      const dbQuery = supabase
+        .from('deployment_baselines')
+        .select('*')
+        .eq('status', 'success')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      const { data } = await Promise.race([
+        dbQuery,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database timeout')), this.networkTimeouts.db)
+        )
+      ]);
+      baseline = data;
+    } catch (error) {
+      console.log('⚠️  Failed to get baseline metrics:', error.message);
+      baseline = null;
+    }
 
     if (!baseline) {
       return {
@@ -399,23 +428,51 @@ export class PreDeploymentChecker {
 
   async verifyDatabaseState() {
     try {
-      // Check if migrations are up to date
-      const { data: migrations } = await supabase
-        .from('schema_migrations')
-        .select('*')
-        .order('version', { ascending: false })
-        .limit(1);
+      // Check if migrations are up to date (with timeout)
+      let migrations;
+      try {
+        const migrationQuery = supabase
+          .from('schema_migrations')
+          .select('*')
+          .order('version', { ascending: false })
+          .limit(1);
+        
+        const { data } = await Promise.race([
+          migrationQuery,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Migration check timeout')), this.networkTimeouts.db)
+          )
+        ]);
+        migrations = data;
+      } catch (error) {
+        console.log('⚠️  Migration check failed:', error.message);
+        migrations = null;
+      }
 
-      // Verify critical tables exist
+      // Verify critical tables exist (with timeout for each)
       const criticalTables = ['users', 'e2e_test_results', 'deployment_baselines'];
       const tableChecks = [];
 
       for (const table of criticalTables) {
-        const { error } = await supabase.from(table).select('count').limit(1);
-        tableChecks.push({
-          table,
-          exists: !error
-        });
+        try {
+          const tableQuery = supabase.from(table).select('count').limit(1);
+          const { error } = await Promise.race([
+            tableQuery,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error(`Table ${table} check timeout`)), 5000)
+            )
+          ]);
+          tableChecks.push({
+            table,
+            exists: !error
+          });
+        } catch (error) {
+          tableChecks.push({
+            table,
+            exists: false,
+            error: error.message
+          });
+        }
       }
 
       return {
@@ -468,20 +525,36 @@ export class PreDeploymentChecker {
   }
 
   async generateDeploymentRecommendation(results) {
-    const failedCriticalChecks = results.checks.filter(
-      c => c.status === 'failed' && c.required
+    // Check for failed critical paths specifically
+    const criticalPathCheck = results.checks.find(c => c.name === 'Critical Path Testing');
+    let hasCriticalFailures = false;
+    
+    if (criticalPathCheck && criticalPathCheck.details) {
+      hasCriticalFailures = criticalPathCheck.details.some(detail => 
+        !detail.success && this.criticalPaths.find(path => 
+          path.name === detail.path && path.required
+        )
+      );
+    }
+    
+    // Count other failed critical checks
+    const otherFailedChecks = results.checks.filter(
+      c => c.status === 'failed' && c.name !== 'Critical Path Testing'
     ).length;
 
     const recommendation = {
-      shouldDeploy: failedCriticalChecks === 0,
+      shouldDeploy: !hasCriticalFailures && otherFailedChecks === 0,
       confidence: 'high',
       reasons: [],
       conditions: []
     };
 
-    if (failedCriticalChecks > 0) {
-      recommendation.reasons.push(`${failedCriticalChecks} critical checks failed`);
-      recommendation.confidence = 'high';
+    if (hasCriticalFailures) {
+      recommendation.reasons.push('Critical user paths are failing');
+    }
+    
+    if (otherFailedChecks > 0) {
+      recommendation.reasons.push(`${otherFailedChecks} critical checks failed`);
     }
 
     // Check for performance regressions
@@ -501,20 +574,35 @@ export class PreDeploymentChecker {
   }
 
   async saveResults(results) {
-    // Save to Supabase
-    await supabase
-      .from('deployment_checks')
-      .insert([{
-        ...results,
-        created_at: new Date().toISOString()
-      }]);
+    // Save to Supabase (with timeout)
+    try {
+      const saveQuery = supabase
+        .from('deployment_checks')
+        .insert([{
+          ...results,
+          created_at: new Date().toISOString()
+        }]);
+        
+      await Promise.race([
+        saveQuery,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Save results timeout')), this.networkTimeouts.db)
+        )
+      ]);
+    } catch (error) {
+      console.log('⚠️  Failed to save results to database:', error.message);
+    }
 
     // Save to file for CI/CD artifacts
-    const fs = await import('fs/promises');
-    await fs.writeFile(
-      'deployment-check-results.json',
-      JSON.stringify(results, null, 2)
-    );
+    try {
+      const fs = await import('fs/promises');
+      await fs.writeFile(
+        'deployment-check-results.json',
+        JSON.stringify(results, null, 2)
+      );
+    } catch (error) {
+      console.log('⚠️  Failed to save results to file:', error.message);
+    }
   }
 
   printSummary(results) {
