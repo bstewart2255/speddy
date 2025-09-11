@@ -203,6 +203,7 @@ export function CalendarWeekView({
     };
 
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
 
   // Check for conflicts after sessions are loaded
@@ -283,6 +284,7 @@ export function CalendarWeekView({
     };
 
     loadManualLessons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
 
   // Clean up legacy lessons without time_slot on mount
@@ -318,6 +320,7 @@ export function CalendarWeekView({
     };
 
     cleanupLegacyLessons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run once on mount
 
   // Load saved AI lessons
@@ -411,6 +414,7 @@ export function CalendarWeekView({
       cancelled = true;
       clearTimeout(timeoutId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset, weekDates, currentSchool?.school_id]);
 
   // Handler for saving notes

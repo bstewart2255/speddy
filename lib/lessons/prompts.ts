@@ -38,7 +38,8 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - Label as A, B, C, D (never 1,2,3,4)
+   - Do NOT include letters in the choices array - just the text
+   - Example: ["Red", "Blue", "Green", "Yellow"] NOT ["A. Red", "B. Blue", ...]
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -111,19 +112,14 @@ JSON STRUCTURE (STRICT - no deviations):
       "instructions": "Complete all problems. Show your work when needed.",
       "sections": [
         {
-          "title": "Introduction",
-          "instructions": "Read the instructions and examples below",
-          "items": [{
-            "sectionType": "introduction", 
-            "sectionTitle": "Getting Started",
-            "instructions": "Review these examples before starting the activity",
-            "items": [
-              {
-                "type": "example",
-                "content": "Example problem or instruction text here"
-              }
-            ]
-          }]
+          "title": "Examples",
+          "instructions": "Review these examples before starting",
+          "items": [
+            {
+              "type": "example",
+              "content": "To find the main idea, look for what the whole story is about. Ask yourself: What is the most important thing the author wants me to know?"
+            }
+          ]
         },
         {
           "title": "Activity", 
@@ -136,7 +132,7 @@ JSON STRUCTURE (STRICT - no deviations):
               {
                 "type": "multiple-choice|fill-blank|short-answer|long-answer|visual-math",
                 "content": "Complete question text here",
-                "choices": ["A. option", "B. option", "C. option", "D. option"],
+                "choices": ["option text 1", "option text 2", "option text 3", "option text 4"],
                 "blankLines": 3
               }
             ]

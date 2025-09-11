@@ -599,22 +599,30 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Save to unified lessons table
-  const { data: lessonRecord, error } = await supabase
+  // Use atomic upsert to handle race conditions properly
+  // This will either insert a new lesson or update an existing one atomically
+  const { data: lessonRecord, error: upsertError } = await supabase
     .from('lessons')
-    .insert({
+    .upsert({
       ...dbRecord,
-      lesson_source: 'ai_generated'
+      lesson_source: 'ai_generated',
+      provider_id: userId,
+      lesson_date: lessonDate,
+      time_slot: timeSlot,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'provider_id,lesson_date,time_slot',
+      ignoreDuplicates: false
     })
     .select('id')
     .single();
-  
-  if (error) {
+
+  if (upsertError) {
     if (DEBUG_LOG) {
       console.error(`[DEBUG] Database error when saving lesson:`, {
-        errorCode: error.code,
-        errorMessage: error.message,
-        constraintName: error.constraint || 'unknown',
+        errorCode: upsertError.code,
+        errorMessage: upsertError.message,
+        constraintName: upsertError.constraint || 'unknown',
         attemptedData: {
           lesson_date: lessonDate,
           time_slot: timeSlot,
@@ -624,15 +632,13 @@ async function saveLessonToDatabase(
         }
       });
     } else {
-      console.error('Failed to save lesson to database:', error.code);
+      console.error('Failed to save lesson to database:', upsertError.code);
     }
-    
-    // Check if it's a duplicate key constraint violation
-    if (error.code === '23505' && (error.constraint === 'lessons_unique_calendar_timeslot' || error.constraint === 'lessons_unique_calendar')) {
-      throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
-    }
-    
-    throw new Error(`Failed to save lesson to database: ${error.message || 'Unknown error'}`);
+    throw new Error(`Failed to save lesson to database: ${upsertError.message || 'Unknown error'}`);
+  }
+
+  if (DEBUG_LOG) {
+    console.log(`[DEBUG] Successfully saved/updated lesson with ID: ${lessonRecord.id}`);
   }
   
   return lessonRecord;

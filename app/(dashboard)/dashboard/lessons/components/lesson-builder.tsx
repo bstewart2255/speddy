@@ -75,6 +75,7 @@ export default function LessonBuilder() {
     if (currentSchool) {
       loadStudents();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);
 
   // Close dropdown when clicking outside
