@@ -378,9 +378,11 @@ export function useSessionSync({
 
   // Clean up on unmount
   useEffect(() => {
+    // Copy ref value to a variable inside the effect
+    const optimisticUpdates = optimisticUpdatesRef.current;
+    
     return () => {
       // Clear all rollback timers
-      const optimisticUpdates = optimisticUpdatesRef.current;
       optimisticUpdates.forEach((update) => {
         if (update.rollbackTimer) {
           clearTimeout(update.rollbackTimer);

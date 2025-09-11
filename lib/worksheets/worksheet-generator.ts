@@ -118,47 +118,44 @@ export function extractWorksheetFromLesson(
           const items = section.items || [];
           
           for (const contentItem of items) {
-            // Handle both nested WorksheetContent and direct WorksheetItem
-            const itemsToProcess = contentItem.items || [contentItem];
+            // ContentItem is already a WorksheetItem, process it directly
+            const item = contentItem as WorksheetItem;
+            if (!item.content) continue;
             
-            for (const item of itemsToProcess as WorksheetItem[]) {
-              if (!item.content) continue;
-              
-              // Determine question type based on item properties
-              let questionType: WorksheetQuestion['type'] = 'short_answer';
-              
-              if (item.choices && item.choices.length > 0) {
-                questionType = 'multiple_choice';
-              } else if (item.content.includes('___') || /_{3,}/.test(item.content)) {
-                // Only match 3 or more consecutive underscores
-                questionType = 'fill_blank';
-              } else if (item.type === 'problem' || item.content.includes('=')) {
-                questionType = 'fill_blank';
-              }
-              
-              // Extract answer from answer key if available
-              let answer = 'varies';
-              if (studentMaterial.answerKey) {
-                if (studentMaterial.answerKey.items && studentMaterial.answerKey.items[questionId - 1]) {
-                  answer = studentMaterial.answerKey.items[questionId - 1].correctAnswer;
-                } else if (studentMaterial.answerKey.answers) {
-                  const answerValue = studentMaterial.answerKey.answers[`q${questionId}`] || 
-                                     studentMaterial.answerKey.answers[questionId.toString()];
-                  answer = Array.isArray(answerValue) ? answerValue[0] : (answerValue || 'varies');
-                }
-              }
-              
-              questions.push({
-                id: questionId.toString(),
-                type: questionType,
-                question: item.content,
-                options: item.choices,
-                answer: answer,
-                points: 1
-              });
-              
-              questionId++;
+            // Determine question type based on item properties
+            let questionType: WorksheetQuestion['type'] = 'short_answer';
+            
+            if (item.choices && item.choices.length > 0) {
+              questionType = 'multiple_choice';
+            } else if (item.content.includes('___') || /_{3,}/.test(item.content)) {
+              // Only match 3 or more consecutive underscores
+              questionType = 'fill_blank';
+            } else if (item.type === 'fill-in-blank' || item.type === 'fill-blank' || item.content.includes('=')) {
+              questionType = 'fill_blank';
             }
+            
+            // Extract answer from answer key if available
+            let answer = 'varies';
+            if (studentMaterial.answerKey) {
+              if (studentMaterial.answerKey.items && studentMaterial.answerKey.items[questionId - 1]) {
+                answer = studentMaterial.answerKey.items[questionId - 1].correctAnswer;
+              } else if (studentMaterial.answerKey.answers) {
+                const answerValue = studentMaterial.answerKey.answers[`q${questionId}`] || 
+                                   studentMaterial.answerKey.answers[questionId.toString()];
+                answer = Array.isArray(answerValue) ? answerValue[0] : (answerValue || 'varies');
+              }
+            }
+            
+            questions.push({
+              id: questionId.toString(),
+              type: questionType,
+              question: item.content,
+              options: item.choices,
+              answer: answer,
+              points: 1
+            });
+            
+            questionId++;
           }
         }
         
