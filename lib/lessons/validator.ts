@@ -226,27 +226,24 @@ export class MaterialsValidator {
     // Check materials list
     if (section.materials && Array.isArray(section.materials)) {
       section.materials.forEach((material: string) => {
-        const materialLower = material.toLowerCase();
+        // Parse the material string which might contain multiple materials (e.g., "Whiteboard, markers")
+        const parsedMaterials = this.parseMaterialsList(material.toLowerCase());
         
-        // Check against forbidden list
-        for (const forbidden of FORBIDDEN_MATERIALS) {
-          if (materialLower.includes(forbidden)) {
-            errors.push(`${sectionName}: Forbidden material "${forbidden}" found in "${material}"`);
+        parsedMaterials.forEach(parsedMaterial => {
+          const normalizedMaterial = this.normalizeMaterial(parsedMaterial);
+          
+          // Check against forbidden list
+          const forbiddenSet = new Set(FORBIDDEN_MATERIALS.map(m => this.normalizeMaterial(m)));
+          if (forbiddenSet.has(normalizedMaterial)) {
+            errors.push(`${sectionName}: Forbidden material "${parsedMaterial}" found in "${material}"`);
           }
-        }
-        
-        // Check if it's in allowed list (exact match, not substring)
-        const isAllowed = ALLOWED_MATERIALS.some(allowed => {
-          const allowedLower = allowed.toLowerCase();
-          // Exact match or plural form match
-          return materialLower === allowedLower || 
-                 materialLower === allowedLower + 's' ||
-                 (allowedLower.endsWith('s') && materialLower === allowedLower.slice(0, -1));
+          
+          // Check if it's in allowed list
+          const allowedSet = new Set(ALLOWED_MATERIALS.map(m => this.normalizeMaterial(m)));
+          if (!allowedSet.has(normalizedMaterial) && normalizedMaterial !== 'none') {
+            errors.push(`${sectionName}: Material "${parsedMaterial}" is not in the allowed list`);
+          }
         });
-        
-        if (!isAllowed && materialLower !== 'none') {
-          errors.push(`${sectionName}: Material "${material}" is not in the allowed list`);
-        }
       });
     }
 
