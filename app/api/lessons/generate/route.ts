@@ -599,40 +599,108 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Save to unified lessons table
-  const { data: lessonRecord, error } = await supabase
+  // First check if a lesson already exists for this date/timeslot
+  const { data: existingLesson } = await supabase
     .from('lessons')
-    .insert({
-      ...dbRecord,
-      lesson_source: 'ai_generated'
-    })
     .select('id')
+    .eq('provider_id', userId)
+    .eq('lesson_date', lessonDate)
+    .eq('time_slot', timeSlot)
     .single();
+
+  let lessonRecord;
   
-  if (error) {
+  if (existingLesson) {
+    // Update existing lesson
+    const { data: updatedLesson, error: updateError } = await supabase
+      .from('lessons')
+      .update({
+        ...dbRecord,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existingLesson.id)
+      .select('id')
+      .single();
+    
+    if (updateError) {
+      console.error('Failed to update existing lesson:', updateError);
+      throw new Error(`Failed to update existing lesson: ${updateError.message || 'Unknown error'}`);
+    }
+    
+    lessonRecord = updatedLesson;
+    
     if (DEBUG_LOG) {
-      console.error(`[DEBUG] Database error when saving lesson:`, {
-        errorCode: error.code,
-        errorMessage: error.message,
-        constraintName: error.constraint || 'unknown',
-        attemptedData: {
-          lesson_date: lessonDate,
-          time_slot: timeSlot,
-          subject: request.subject,
-          studentCount: request.students.length,
-          hasSchoolContext: !!profile?.school_id
+      console.log(`[DEBUG] Updated existing lesson with ID: ${existingLesson.id}`);
+    }
+  } else {
+    // Insert new lesson
+    const { data: newLesson, error: insertError } = await supabase
+      .from('lessons')
+      .insert({
+        ...dbRecord,
+        lesson_source: 'ai_generated'
+      })
+      .select('id')
+      .single();
+    
+    if (insertError) {
+      if (DEBUG_LOG) {
+        console.error(`[DEBUG] Database error when saving lesson:`, {
+          errorCode: insertError.code,
+          errorMessage: insertError.message,
+          constraintName: insertError.constraint || 'unknown',
+          attemptedData: {
+            lesson_date: lessonDate,
+            time_slot: timeSlot,
+            subject: request.subject,
+            studentCount: request.students.length,
+            hasSchoolContext: !!profile?.school_id
+          }
+        });
+      } else {
+        console.error('Failed to save lesson to database:', insertError.code);
+      }
+      
+      // Check if it's a duplicate key constraint violation (race condition)
+      if (insertError.code === '23505') {
+        // Try to fetch the existing lesson that was created in the race condition
+        const { data: raceLesson } = await supabase
+          .from('lessons')
+          .select('id')
+          .eq('provider_id', userId)
+          .eq('lesson_date', lessonDate)
+          .eq('time_slot', timeSlot)
+          .single();
+        
+        if (raceLesson) {
+          // Update the lesson that won the race
+          const { data: raceUpdate, error: raceUpdateError } = await supabase
+            .from('lessons')
+            .update({
+              ...dbRecord,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', raceLesson.id)
+            .select('id')
+            .single();
+          
+          if (raceUpdateError) {
+            throw new Error(`Failed to update lesson after race condition: ${raceUpdateError.message}`);
+          }
+          
+          lessonRecord = raceUpdate;
+          if (DEBUG_LOG) {
+            console.log(`[DEBUG] Handled race condition, updated lesson with ID: ${raceLesson.id}`);
+          }
+        } else {
+          throw new Error(`Duplicate lesson detected but could not recover: date ${lessonDate}, time slot '${timeSlot}'`);
         }
-      });
+      } else {
+        throw new Error(`Failed to save lesson to database: ${insertError.message || 'Unknown error'}`);
+      }
     } else {
-      console.error('Failed to save lesson to database:', error.code);
+      lessonRecord = newLesson;
     }
-    
-    // Check if it's a duplicate key constraint violation
-    if (error.code === '23505' && (error.constraint === 'lessons_unique_calendar_timeslot' || error.constraint === 'lessons_unique_calendar')) {
-      throw new Error(`Duplicate lesson detected: A lesson already exists for date ${lessonDate}, time slot '${timeSlot}'`);
-    }
-    
-    throw new Error(`Failed to save lesson to database: ${error.message || 'Unknown error'}`);
   }
   
   return lessonRecord;
