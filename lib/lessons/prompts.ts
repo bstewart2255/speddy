@@ -38,7 +38,8 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - Label as A, B, C, D (never 1,2,3,4)
+   - Do NOT include letters in the choices array - just the text
+   - Example: ["Red", "Blue", "Green", "Yellow"] NOT ["A. Red", "B. Blue", ...]
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -131,7 +132,7 @@ JSON STRUCTURE (STRICT - no deviations):
               {
                 "type": "multiple-choice|fill-blank|short-answer|long-answer|visual-math",
                 "content": "Complete question text here",
-                "choices": ["A. option", "B. option", "C. option", "D. option"],
+                "choices": ["option text 1", "option text 2", "option text 3", "option text 4"],
                 "blankLines": 3
               }
             ]

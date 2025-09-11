@@ -382,8 +382,11 @@ export class WorksheetRenderer {
             // Fix double letter issue - ensure choice starts with proper format
             const letter = String.fromCharCode(65 + idx); // A, B, C, D
             let cleanChoice = choice;
-            // Remove any existing letter prefix (like "A. " or "A. A. ")
-            cleanChoice = cleanChoice.replace(/^[A-D]\.\s*/i, '');
+            // Remove ALL letter prefixes (handles "A. ", "A. A. ", etc.)
+            // This regex will remove any sequence of letter-dot-space at the beginning
+            cleanChoice = cleanChoice.replace(/^([A-D]\.\s*)+/gi, '');
+            // Also handle cases where it might be just the letter without dot
+            cleanChoice = cleanChoice.replace(/^[A-D]\s+/i, '');
             return `<li>${letter}. ${this.escapeHtml(cleanChoice)}</li>`;
           }).join('')}
         </ul>
