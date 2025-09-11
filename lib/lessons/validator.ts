@@ -37,9 +37,20 @@ export class MaterialsValidator {
     // Check lesson plan materials
     this.validateMaterialsString(lesson.lesson.materials, 'Lesson materials', errors);
     
-    // Check each activity section
-    this.validateActivitySection(lesson.lesson.introduction, 'Introduction', errors);
-    this.validateActivitySection(lesson.lesson.activity, 'Activity', errors);
+    // Check each activity section - handle both new and legacy formats for backward compatibility
+    if (lesson.lesson.introduction) {
+      this.validateActivitySection(lesson.lesson.introduction, 'Introduction', errors);
+    }
+    if (lesson.lesson.activity) {
+      this.validateActivitySection(lesson.lesson.activity, 'Activity', errors);
+    }
+    // Legacy format support (if mainActivity or closure exist from old lessons)
+    if ((lesson.lesson as any).mainActivity) {
+      this.validateActivitySection((lesson.lesson as any).mainActivity, 'Main Activity', errors);
+    }
+    if ((lesson.lesson as any).closure) {
+      this.validateActivitySection((lesson.lesson as any).closure, 'Closure', errors);
+    }
 
     // Check student materials
     if (Array.isArray(lesson?.studentMaterials)) {

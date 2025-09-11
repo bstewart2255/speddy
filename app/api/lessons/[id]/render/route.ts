@@ -89,7 +89,14 @@ export async function GET(
         // Add grade level to the student material for proper display
         if (student?.grade_level && studentMaterial) {
           // Parse grade level (handle "K" for kindergarten as 0)
-          const gradeNum = student.grade_level === 'K' ? 0 : parseInt(student.grade_level);
+          let gradeNum = 0;
+          if (student.grade_level === 'K' || student.grade_level === 'k') {
+            gradeNum = 0;
+          } else {
+            const parsed = parseInt(student.grade_level);
+            // Validate the parsed number is within expected range (K-12)
+            gradeNum = isNaN(parsed) || parsed < 0 || parsed > 12 ? 0 : parsed;
+          }
           studentMaterial.gradeLevel = gradeNum;
           if (studentMaterial.worksheet) {
             studentMaterial.worksheet.grade = gradeNum;

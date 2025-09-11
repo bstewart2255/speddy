@@ -380,13 +380,14 @@ export class WorksheetRenderer {
         <ul class="choices">
           ${item.choices.map((choice: string, idx: number) => {
             // Fix double letter issue - ensure choice starts with proper format
-            const letter = String.fromCharCode(65 + idx); // A, B, C, D
+            const letter = String.fromCharCode(65 + idx); // A, B, C, D, E, etc.
             let cleanChoice = choice;
             // Remove ALL letter prefixes (handles "A. ", "A. A. ", etc.)
             // This regex will remove any sequence of letter-dot-space at the beginning
-            cleanChoice = cleanChoice.replace(/^([A-D]\.\s*)+/gi, '');
+            // Using [A-Z] to handle any number of choices, not just A-D
+            cleanChoice = cleanChoice.replace(/^([A-Z]\.\s*)+/gi, '');
             // Also handle cases where it might be just the letter without dot
-            cleanChoice = cleanChoice.replace(/^[A-D]\s+/i, '');
+            cleanChoice = cleanChoice.replace(/^[A-Z]\s+/i, '');
             return `<li>${letter}. ${this.escapeHtml(cleanChoice)}</li>`;
           }).join('')}
         </ul>
