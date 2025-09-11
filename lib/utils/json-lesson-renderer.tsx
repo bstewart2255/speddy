@@ -14,6 +14,12 @@ interface JsonLessonRendererProps {
   }>;
 }
 
+// Extended type to support legacy lesson format
+type LessonWithLegacy = LessonResponse['lesson'] & {
+  mainActivity?: LessonResponse['lesson']['activity'];
+  closure?: LessonResponse['lesson']['activity'];
+};
+
 export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRendererProps) {
   // Parse the lesson data if it's a string
   const response: LessonResponse = typeof lessonData === 'string' 
@@ -24,7 +30,8 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
     return <div className="text-gray-500">No lesson content available</div>;
   }
 
-  const { lesson, studentMaterials } = response;
+  const lesson = response.lesson as LessonWithLegacy;
+  const { studentMaterials } = response;
 
   const renderWorksheetContent = (content: WorksheetContent, index: number) => {
     return (
@@ -176,16 +183,19 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
           </div>
         )}
 
-        {/* Main Activity */}
-        {lesson.mainActivity && (
+        {/* Main Activity - Support both new format (activity) and legacy format (mainActivity) */}
+        {(lesson.activity || lesson.mainActivity) && (
           <div className="mb-4 p-3 bg-blue-50 rounded">
             <h4 className="font-medium text-blue-800 mb-1">
-              Main Activity ({lesson.mainActivity.duration} min)
+              Main Activity ({(lesson.activity || lesson.mainActivity).duration} min)
             </h4>
-            <p className="text-sm text-blue-700 mb-2">{lesson.mainActivity.description}</p>
-            {lesson.mainActivity.instructions && lesson.mainActivity.instructions.length > 0 && (
+            <p className="text-sm text-blue-700 mb-2">
+              {(lesson.activity || lesson.mainActivity).description}
+            </p>
+            {(lesson.activity || lesson.mainActivity).instructions && 
+             (lesson.activity || lesson.mainActivity).instructions.length > 0 && (
               <ul className="list-disc list-inside text-sm text-blue-600">
-                {lesson.mainActivity.instructions.map((inst, idx) => (
+                {(lesson.activity || lesson.mainActivity).instructions.map((inst: string, idx: number) => (
                   <li key={idx}>{inst}</li>
                 ))}
               </ul>
@@ -193,7 +203,7 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
           </div>
         )}
 
-        {/* Closure */}
+        {/* Closure - Legacy format only */}
         {lesson.closure && (
           <div className="mb-4 p-3 bg-green-50 rounded">
             <h4 className="font-medium text-green-800 mb-1">
@@ -202,7 +212,7 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
             <p className="text-sm text-green-700 mb-2">{lesson.closure.description}</p>
             {lesson.closure.instructions && lesson.closure.instructions.length > 0 && (
               <ul className="list-disc list-inside text-sm text-green-600">
-                {lesson.closure.instructions.map((inst, idx) => (
+                {lesson.closure.instructions.map((inst: string, idx: number) => (
                   <li key={idx}>{inst}</li>
                 ))}
               </ul>

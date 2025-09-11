@@ -47,7 +47,8 @@ export default function LessonPreviewModal({
 
     // If it's already structured lesson data
     if (content.lesson) {
-      const lessonData = content.lesson;
+      // Type the lesson data to support both new and legacy formats
+      const lessonData = content.lesson as any;
       return (
         <div className="space-y-6">
           <div>
@@ -92,18 +93,24 @@ export default function LessonPreviewModal({
             </div>
           )}
 
-          {lessonData.mainActivity && (
+          {/* Support both new format (activity) and legacy format (mainActivity) */}
+          {(lessonData.activity || lessonData.mainActivity) && (
             <div>
-              <h4 className="font-semibold mb-2">Main Activity ({lessonData.mainActivity.duration} min)</h4>
-              <p className="text-gray-700 mb-2">{lessonData.mainActivity.description}</p>
+              <h4 className="font-semibold mb-2">
+                Main Activity ({(lessonData.activity || lessonData.mainActivity).duration} min)
+              </h4>
+              <p className="text-gray-700 mb-2">
+                {(lessonData.activity || lessonData.mainActivity).description}
+              </p>
               <ul className="list-disc pl-5 space-y-1">
-                {lessonData.mainActivity.instructions?.map((inst: string, i: number) => (
+                {(lessonData.activity || lessonData.mainActivity).instructions?.map((inst: string, i: number) => (
                   <li key={i} className="text-gray-700">{inst}</li>
                 ))}
               </ul>
             </div>
           )}
 
+          {/* Legacy format only - closure section */}
           {lessonData.closure && (
             <div>
               <h4 className="font-semibold mb-2">Closure ({lessonData.closure.duration} min)</h4>
