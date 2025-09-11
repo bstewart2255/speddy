@@ -177,15 +177,15 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
         )}
 
         {/* Main Activity */}
-        {lesson.mainActivity && (
+        {lesson.activity && (
           <div className="mb-4 p-3 bg-blue-50 rounded">
             <h4 className="font-medium text-blue-800 mb-1">
-              Main Activity ({lesson.mainActivity.duration} min)
+              Main Activity ({lesson.activity.duration} min)
             </h4>
-            <p className="text-sm text-blue-700 mb-2">{lesson.mainActivity.description}</p>
-            {lesson.mainActivity.instructions && lesson.mainActivity.instructions.length > 0 && (
+            <p className="text-sm text-blue-700 mb-2">{lesson.activity.description}</p>
+            {lesson.activity.instructions && lesson.activity.instructions.length > 0 && (
               <ul className="list-disc list-inside text-sm text-blue-600">
-                {lesson.mainActivity.instructions.map((inst, idx) => (
+                {lesson.activity.instructions.map((inst, idx) => (
                   <li key={idx}>{inst}</li>
                 ))}
               </ul>

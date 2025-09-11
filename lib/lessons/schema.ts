@@ -37,6 +37,7 @@ export interface LessonPlan {
   overview: string;
   introduction: ActivitySection; // Teacher guidance and examples
   activity: ActivitySection; // Main student practice section
+  closure?: ActivitySection; // Optional lesson closure/wrap-up section
   
   // Optional answer key
   answerKey?: AnswerKey;
