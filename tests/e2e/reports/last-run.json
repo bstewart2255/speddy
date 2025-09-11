@@ -1,6 +1,6 @@
 {
   "success": false,
-  "output": "\n> my-app@0.1.0 test:e2e\n> jest --config=jest.e2e.config.js\n\nNo tests found, exiting with code 1\nRun with `--passWithNoTests` to exit with code 0\nIn /home/runner/workspace\n  295 files checked.\n  testMatch: **/tests/e2e/**/*.test.js - 0 matches\n  testPathIgnorePatterns: /node_modules/, /.next/, /home/runner/workspace/node_modules/, /home/runner/workspace/.next/ - 210 matches\n  testRegex:  - 0 matches\nPattern:  - 0 matches\n",
-  "errorOutput": "",
-  "duration": 1443
+  "output": "\n> my-app@0.1.0 test:e2e\n> playwright test\n\n",
+  "errorOutput": "error: unknown command 'test'\n",
+  "duration": 11538
 }

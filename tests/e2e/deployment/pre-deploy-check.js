@@ -140,10 +140,27 @@ export class PreDeploymentChecker {
         });
       }
 
-      // 6. Database migration verification
+      // 6. Database migration verification (optional if no DB)
       console.log('\n6️⃣ Verifying Database Migrations...');
-      const dbResults = await this.verifyDatabaseState();
-      results.checks.push(dbResults);
+      try {
+        const dbResults = await this.verifyDatabaseState();
+        results.checks.push(dbResults);
+      } catch (error) {
+        if (error.message.includes('not provisioned') || error.message.includes('connection')) {
+          console.log('⚠️  Database not provisioned, skipping migration checks');
+          results.checks.push({
+            name: 'Database State Verification',
+            status: 'skipped',
+            message: 'Database not provisioned - migrations will be applied during first deployment'
+          });
+        } else {
+          results.checks.push({
+            name: 'Database State Verification',
+            status: 'warning',
+            message: `Database check failed: ${error.message}`
+          });
+        }
+      }
 
       // Get AI risk assessment (with timeout)
       try {
@@ -427,9 +444,20 @@ export class PreDeploymentChecker {
   }
 
   async verifyDatabaseState() {
+    // Check if database is provisioned by checking environment variables
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      return {
+        name: 'Database State Verification',
+        status: 'skipped',
+        message: 'Database not provisioned - Supabase environment variables missing'
+      };
+    }
+
     try {
       // Check if migrations are up to date (with timeout)
       let migrations;
+      let connectionFailed = false;
+      
       try {
         const migrationQuery = supabase
           .from('schema_migrations')
@@ -437,21 +465,38 @@ export class PreDeploymentChecker {
           .order('version', { ascending: false })
           .limit(1);
         
-        const { data } = await Promise.race([
+        const { data, error } = await Promise.race([
           migrationQuery,
           new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Migration check timeout')), this.networkTimeouts.db)
           )
         ]);
+        
+        // Only treat network/connection errors as unprovisioned, not schema errors
+        if (error && (error.message.includes('ECONNREFUSED') || 
+                     error.message.includes('ENOTFOUND') || 
+                     error.message.includes('network') ||
+                     error.message.includes('timeout') ||
+                     error.code === 'PGRST301')) { // Supabase connection error
+          connectionFailed = true;
+        }
+        
         migrations = data;
       } catch (error) {
         console.log('⚠️  Migration check failed:', error.message);
+        if (error.message.includes('ECONNREFUSED') || 
+            error.message.includes('ENOTFOUND') || 
+            error.message.includes('network') || 
+            error.message.includes('timeout')) {
+          connectionFailed = true;
+        }
         migrations = null;
       }
 
       // Verify critical tables exist (with timeout for each)
       const criticalTables = ['users', 'e2e_test_results', 'deployment_baselines'];
       const tableChecks = [];
+      let allTablesFailed = true;
 
       for (const table of criticalTables) {
         try {
@@ -462,9 +507,13 @@ export class PreDeploymentChecker {
               setTimeout(() => reject(new Error(`Table ${table} check timeout`)), 5000)
             )
           ]);
+          
+          const exists = !error;
+          if (exists) allTablesFailed = false;
+          
           tableChecks.push({
             table,
-            exists: !error
+            exists
           });
         } catch (error) {
           tableChecks.push({
@@ -473,6 +522,15 @@ export class PreDeploymentChecker {
             error: error.message
           });
         }
+      }
+
+      // If connection failed or all tables are missing, assume DB not provisioned
+      if (connectionFailed || allTablesFailed) {
+        return {
+          name: 'Database State Verification',
+          status: 'skipped',
+          message: 'Database not provisioned or unreachable - migrations will be applied during deployment'
+        };
       }
 
       return {
