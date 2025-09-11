@@ -35,6 +35,7 @@ async function testLessonGeneration() {
     ],
     teacherRole: 'resource',
     subject: 'Math',
+    subjectType: 'math', // Required field for enhanced lesson generation
     topic: 'Addition and Subtraction',
     duration: 30,
     focusSkills: ['Number sense', 'Problem solving']
