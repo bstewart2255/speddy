@@ -111,19 +111,14 @@ JSON STRUCTURE (STRICT - no deviations):
       "instructions": "Complete all problems. Show your work when needed.",
       "sections": [
         {
-          "title": "Introduction",
-          "instructions": "Read the instructions and examples below",
-          "items": [{
-            "sectionType": "introduction", 
-            "sectionTitle": "Getting Started",
-            "instructions": "Review these examples before starting the activity",
-            "items": [
-              {
-                "type": "example",
-                "content": "Example problem or instruction text here"
-              }
-            ]
-          }]
+          "title": "Examples",
+          "instructions": "Review these examples before starting",
+          "items": [
+            {
+              "type": "example",
+              "content": "To find the main idea, look for what the whole story is about. Ask yourself: What is the most important thing the author wants me to know?"
+            }
+          ]
         },
         {
           "title": "Activity", 

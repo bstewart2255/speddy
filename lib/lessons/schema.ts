@@ -75,14 +75,16 @@ export interface StudentMaterial {
   studentId: string;
   studentName?: string; // For display purposes
   gradeGroup: number; // Which grade cluster this student belongs to
+  gradeLevel?: number; // Student's actual grade level
   
   worksheet: {
     title: string;
+    grade?: number; // The actual grade level for this worksheet
     instructions: string; // At student's reading level
     sections?: Array<{
       title: string;
       instructions?: string;
-      items: WorksheetContent[];
+      items: WorksheetContent[] | WorksheetItem[]; // Support both nested and flat
     }>;
     content?: WorksheetContent[]; // Legacy support
     accommodations: string[]; // Applied accommodations
@@ -102,11 +104,11 @@ export interface WorksheetContent {
 }
 
 export interface WorksheetItem {
-  type: 'multiple-choice' | 'fill-blank' | 'short-answer' | 'long-answer' | 'visual-math' | 'example';
+  type: 'multiple-choice' | 'fill-blank' | 'short-answer' | 'long-answer' | 'visual-math' | 'example' | 'passage' | 'text' | 'fill-in-blank';
   content: string; // The actual question/problem/task
   
   // Optional fields for different item types
-  choices?: string[]; // For multiple choice (exactly 4 choices: A, B, C, D)
+  choices?: string[]; // For multiple choice (exactly 4 choices WITHOUT letter prefixes)
   blankLines?: number; // For written responses (grade-based: K-1: 4, 2-3: 3, 4-5: 2)
   visualSupport?: string; // Description of visual aid
 }

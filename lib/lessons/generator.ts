@@ -300,8 +300,11 @@ Return ONLY the worksheet content in this structure:
             studentMaterials.push({
               studentId: student.id,
               gradeGroup: groupIndex,
+              gradeLevel: student.grade, // Add student's actual grade
               worksheet: {
                 ...worksheet,
+                title: `${request.subject} Practice - Grade ${student.grade}`, // Ensure title matches student grade
+                grade: student.grade, // Add grade to worksheet
                 accommodations: student.accommodations || []
               }
             });
@@ -313,7 +316,11 @@ Return ONLY the worksheet content in this structure:
             studentMaterials.push({
               studentId: student.id,
               gradeGroup: groupIndex,
-              worksheet: this.createMockWorksheet(student.grade, request.subject)
+              gradeLevel: student.grade, // Add student's actual grade
+              worksheet: {
+                ...this.createMockWorksheet(student.grade, request.subject),
+                grade: student.grade // Ensure grade is set
+              }
             });
           }
         }
@@ -439,23 +446,13 @@ Return ONLY the worksheet content in this structure:
           ],
           materials: ['whiteboard', 'markers', 'worksheets']
         },
-        mainActivity: {
+        activity: {
           description: 'Students complete differentiated worksheet activities',
           duration: Math.floor(request.duration * 0.6),
           instructions: [
             'Students work on their worksheets',
             'Teacher circulates to provide support',
             'Check in with priority students'
-          ],
-          materials: ['worksheets', 'pencils']
-        },
-        closure: {
-          description: 'Review learning and assess understanding',
-          duration: Math.floor(request.duration * 0.2),
-          instructions: [
-            'Review answers as a group',
-            'Students complete exit ticket on worksheet',
-            'Collect worksheets'
           ],
           materials: ['worksheets', 'pencils']
         },
@@ -467,61 +464,40 @@ Return ONLY the worksheet content in this structure:
         return {
           studentId: student.id,
           gradeGroup,
+          gradeLevel: student.grade, // Add student's actual grade
           worksheet: {
             title: `${request.subject} Practice - Grade ${student.grade}`,
+            grade: student.grade, // Add grade to worksheet
             instructions: 'Complete all sections. Show your work.',
             sections: [
               {
-                title: 'Part 1: Warm-Up',
-                instructions: 'Complete these problems to get started',
+                title: 'Examples',
+                instructions: 'Review these examples',
                 items: [
                   {
-                    sectionType: 'warmup',
-                    sectionTitle: 'Warm Up',
-                    instructions: 'Complete these problems to get started',
-                    items: [
-                      {
-                        type: 'problem',
-                        content: `Sample problem for grade ${student.grade}`,
-                        space: 'medium'
-                      }
-                    ]
+                    type: 'example',
+                    content: `Here's how to solve ${request.subject} problems for grade ${student.grade}`
                   }
                 ]
               },
               {
-                title: 'Part 2: Practice',
-                instructions: 'Work through these problems',
+                title: 'Practice',
+                instructions: 'Complete these problems',
                 items: [
                   {
-                    sectionType: 'practice',
-                    sectionTitle: 'Practice',
-                    instructions: 'Work through these problems',
-                    items: [
-                      {
-                        type: 'problem',
-                        content: `Main activity for grade ${student.grade}`,
-                        space: 'large'
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                title: 'Part 3: Exit Ticket',
-                instructions: 'Show what you learned',
-                items: [
+                    type: 'short-answer',
+                    content: `Sample ${request.subject} question for grade ${student.grade}`,
+                    blankLines: student.grade <= 1 ? 4 : student.grade <= 3 ? 3 : 2
+                  },
                   {
-                    sectionType: 'assessment',
-                    sectionTitle: 'Exit Ticket',
-                    instructions: 'Show what you learned',
-                    items: [
-                      {
-                        type: 'question',
-                        content: 'What did you learn today?',
-                        blankLines: 3
-                      }
-                    ]
+                    type: 'multiple-choice',
+                    content: `Choose the correct answer for this grade ${student.grade} problem`,
+                    choices: ['Option A', 'Option B', 'Option C', 'Option D']
+                  },
+                  {
+                    type: 'long-answer',
+                    content: 'What did you learn today?',
+                    blankLines: student.grade <= 3 ? 5 : 4
                   }
                 ]
               }

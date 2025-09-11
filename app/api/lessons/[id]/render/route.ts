@@ -74,10 +74,10 @@ export async function GET(
           );
         }
         
-        // Get student name from database
+        // Get student name and grade from database
         const { data: student } = await supabase
           .from('students')
-          .select('first_name, last_name, initials')
+          .select('first_name, last_name, initials, grade_level')
           .eq('id', studentId)
           .single();
         
@@ -85,6 +85,16 @@ export async function GET(
           student?.first_name || student?.last_name
             ? `${student.first_name ?? ''} ${student.last_name ?? ''}`.trim()
             : (student?.initials ?? 'Student');
+        
+        // Add grade level to the student material for proper display
+        if (student?.grade_level && studentMaterial) {
+          // Parse grade level (handle "K" for kindergarten as 0)
+          const gradeNum = student.grade_level === 'K' ? 0 : parseInt(student.grade_level);
+          studentMaterial.gradeLevel = gradeNum;
+          if (studentMaterial.worksheet) {
+            studentMaterial.worksheet.grade = gradeNum;
+          }
+        }
         
         // Generate QR code for worksheet (using existing system)
         let qrCodeUrl: string | undefined;

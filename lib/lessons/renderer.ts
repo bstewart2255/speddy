@@ -216,8 +216,24 @@ export class WorksheetRenderer {
     }
     .answer-lines {
       border-bottom: 1px solid #999;
-      min-height: 25px;
-      margin: 8px 0;
+      min-height: 28px;
+      margin: 6px 0;
+      width: 100%;
+    }
+    .passage {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-left: 4px solid #007bff;
+      font-size: 1em;
+      line-height: 1.8;
+    }
+    .example {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #fff9e6;
+      border-left: 4px solid #ffc107;
+      font-style: italic;
     }
     .accommodations {
       background: #ffffcc;
@@ -238,7 +254,7 @@ export class WorksheetRenderer {
     <div class="student-info">
       <strong>Name:</strong> ${this.escapeHtml(studentName) || '____________________'}<br>
       <strong>Date:</strong> ____________________<br>
-      <strong>Grade:</strong> ${this.escapeHtml(String(material.gradeGroup))}
+      <strong>Grade:</strong> ${this.escapeHtml(String(material.worksheet?.grade || material.gradeLevel || ''))}
     </div>
     ${qrCodeUrl ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code" class="qr-code">` : ''}
   </div>
@@ -258,26 +274,52 @@ export class WorksheetRenderer {
     </div>
   ` : ''}
 
-  ${(worksheet.sections || []).map((section, sectionIndex) => `
+  ${(worksheet.sections || []).map((section, sectionIndex) => {
+    // Check if this is a reading passage section
+    const isReadingSection = section.title?.toLowerCase().includes('reading') || 
+                            section.title?.toLowerCase().includes('passage') ||
+                            section.title?.toLowerCase().includes('story');
+    
+    return `
     <div class="section">
-      <h2>Part ${sectionIndex + 1}: ${this.escapeHtml(section.title)}</h2>
-      ${section.instructions ? `<p><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
+      <h2>${this.escapeHtml(section.title)}</h2>
+      ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
       
-      ${(section.items ?? []).map((worksheetContent, contentIndex) => 
-        this.renderWorksheetContentSection(worksheetContent, sectionIndex, contentIndex)
-      ).join('')}
+      ${(section.items ?? []).map((worksheetContent, contentIndex) => {
+        // If items is an array of WorksheetContent objects with nested items
+        if (worksheetContent.items && Array.isArray(worksheetContent.items)) {
+          // Flatten the structure - render the nested items directly
+          return this.renderWorksheetContentSection(worksheetContent, sectionIndex + 1, contentIndex);
+        }
+        // Otherwise it's a direct item
+        return this.renderWorksheetItem(worksheetContent, sectionIndex + 1, contentIndex + 1, !isReadingSection);
+      }).join('')}
     </div>
-  `).join('')}
+  `;
+  }).join('')}
 
 </body>
 </html>`;
   }
 
   private renderWorksheetContentSection(worksheetContent: any, sectionIndex: number, contentIndex: number): string {
-    // Handle the nested structure where each section item is a WorksheetContent with its own items
+    // Handle both nested and flat structures
+    // If it's a nested structure (sections > items > items), flatten it
+    if (worksheetContent.sectionType && worksheetContent.items) {
+      // This is already a content section with items, render them directly
+      let itemNumber = 1;
+      return worksheetContent.items.map((item: any) => {
+        // For story/passage items, don't number them
+        if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
+          return this.renderWorksheetItem(item, 0, 0, false);
+        }
+        return this.renderWorksheetItem(item, sectionIndex, itemNumber++, true);
+      }).join('');
+    }
+    
+    // Legacy nested structure support
     if (!worksheetContent.items || !Array.isArray(worksheetContent.items)) {
-      // Fallback for flat structure (backward compatibility)
-      return this.renderWorksheetItem(worksheetContent, sectionIndex, contentIndex);
+      return this.renderWorksheetItem(worksheetContent, sectionIndex, contentIndex, true);
     }
     
     // Check if the content has actual questions/items
@@ -288,44 +330,74 @@ export class WorksheetRenderer {
       console.warn('Section has no content items:', worksheetContent.sectionTitle || 'unnamed');
     }
     
-    return `
-      <div class="worksheet-content-section" style="margin-bottom: 20px;">
-        <h3 style="color: #333; margin-bottom: 10px;">${this.escapeHtml(worksheetContent.sectionTitle ?? `Activity ${contentIndex + 1}`)}</h3>
-        ${worksheetContent.instructions ? `<p class="instructions" style="font-style: italic; margin-bottom: 15px;">${this.escapeHtml(worksheetContent.instructions)}</p>` : ''}
-        ${worksheetContent.items.map((item: any, itemIndex: number) => 
-          this.renderWorksheetItem(item, sectionIndex, itemIndex)
-        ).join('')}
-      </div>
-    `;
+    let itemNumber = 1;
+    return worksheetContent.items.map((item: any) => {
+      // For story/passage items, don't number them
+      if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
+        return this.renderWorksheetItem(item, 0, 0, false);
+      }
+      return this.renderWorksheetItem(item, sectionIndex, itemNumber++, true);
+    }).join('');
   }
   
-  private renderWorksheetItem(item: any, sectionIndex: number, itemIndex: number): string {
+  private renderWorksheetItem(item: any, sectionIndex: number, itemIndex: number, showNumber: boolean = true): string {
     // Render passages or text-only content without answer lines
     if (item.type === 'passage' || item.type === 'text' || item.type === 'visual') {
       return `
       <div class="item">
-        <div class="passage" style="margin-bottom: 15px;">${this.escapeHtml(item.content)}</div>
+        <div class="passage" style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-left: 3px solid #4a90e2;">
+          ${this.escapeHtml(item.content)}
+        </div>
       </div>`;
     }
     
+    // Render examples without numbering
+    if (item.type === 'example') {
+      return `
+      <div class="item">
+        <div class="example" style="margin-bottom: 10px; padding: 8px; background: #fffacd; border-left: 3px solid #ffd700;">
+          <strong>Example:</strong> ${this.escapeHtml(item.content)}
+        </div>
+      </div>`;
+    }
+    
+    // Generate appropriate number of answer lines based on blankLines property
+    const generateAnswerLines = (lines: number = 1) => {
+      let html = '';
+      for (let i = 0; i < lines; i++) {
+        html += '<div class="answer-lines"></div>\n';
+      }
+      return html;
+    };
+    
+    // Simple sequential numbering
+    const questionNumber = showNumber ? `${itemIndex}. ` : '';
+    
     return `
     <div class="item">
-      <div class="question">${sectionIndex + 1}.${itemIndex + 1}. ${this.escapeHtml(item.content)}</div>
+      <div class="question">${questionNumber}${this.escapeHtml(item.content)}</div>
       ${item.type === 'multiple-choice' && item.choices ? `
         <ul class="choices">
-          ${item.choices.map((choice: string) => `<li>${this.escapeHtml(choice)}</li>`).join('')}
+          ${item.choices.map((choice: string, idx: number) => {
+            // Fix double letter issue - ensure choice starts with proper format
+            const letter = String.fromCharCode(65 + idx); // A, B, C, D
+            let cleanChoice = choice;
+            // Remove any existing letter prefix (like "A. " or "A. A. ")
+            cleanChoice = cleanChoice.replace(/^[A-D]\.\s*/i, '');
+            return `<li>${letter}. ${this.escapeHtml(cleanChoice)}</li>`;
+          }).join('')}
         </ul>
-      ` : item.type === 'short-answer' ? `
-        <div class="answer-space"></div>
-      ` : item.type === 'fill-in-blank' ? `
-        <div class="answer-space"></div>
-      ` : item.type === 'question' ? `
-        <div class="answer-lines"></div>
-        <div class="answer-lines"></div>
-        <div class="answer-lines"></div>
-      ` : `
-        <div class="answer-lines"></div>
-      `}
+      ` : item.type === 'fill-blank' || item.type === 'fill-in-blank' ? 
+        generateAnswerLines(item.blankLines || 1) 
+      : item.type === 'short-answer' ? 
+        generateAnswerLines(item.blankLines || 2)
+      : item.type === 'long-answer' ? 
+        generateAnswerLines(item.blankLines || 4)
+      : item.type === 'visual-math' ? 
+        generateAnswerLines(item.blankLines || 3)
+      : 
+        generateAnswerLines(item.blankLines || 2)
+      }
     </div>`;
   }
 

@@ -39,8 +39,7 @@ export class MaterialsValidator {
     
     // Check each activity section
     this.validateActivitySection(lesson.lesson.introduction, 'Introduction', errors);
-    this.validateActivitySection(lesson.lesson.mainActivity, 'Main Activity', errors);
-    this.validateActivitySection(lesson.lesson.closure, 'Closure', errors);
+    this.validateActivitySection(lesson.lesson.activity, 'Activity', errors);
 
     // Check student materials
     if (Array.isArray(lesson?.studentMaterials)) {
@@ -434,8 +433,7 @@ export class MaterialsValidator {
     // Extract from activities
     const activities = lesson?.lesson ? [
       lesson.lesson.introduction,
-      lesson.lesson.mainActivity,
-      lesson.lesson.closure
+      lesson.lesson.activity
     ] : [];
     
     activities.forEach(activity => {
