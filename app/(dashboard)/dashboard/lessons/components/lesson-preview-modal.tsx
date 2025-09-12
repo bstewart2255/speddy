@@ -356,7 +356,7 @@ export default function LessonPreviewModal({
       printWindow.document.write(`
         <html>
           <head>
-            <title>${lesson.title}</title>
+            <title>Lesson Plan</title>
             <style>
               body { 
                 font-family: Arial, sans-serif; 
@@ -459,12 +459,17 @@ export default function LessonPreviewModal({
       
       const contentDiv = printWindow.document.getElementById('content');
       if (contentDiv) {
-        // Clone the lesson preview content
+        // Safely clone the lesson preview content using DOM methods
         const lessonContent = document.getElementById('lesson-preview-content');
         if (lessonContent) {
-          contentDiv.innerHTML = lessonContent.innerHTML;
+          // Use importNode to safely copy the DOM structure between different documents
+          const clonedContent = printWindow.document.importNode(lessonContent, true);
+          contentDiv.appendChild(clonedContent);
         }
       }
+      
+      // Safely set the document title after DOM is created
+      printWindow.document.title = lesson.title || 'Lesson Plan';
       
       printWindow.document.close();
       // Small delay to ensure styles are applied

@@ -72,6 +72,59 @@ export class WorksheetRenderer {
       border-left: 4px solid #007bff;
       margin: 10px 0;
     }
+    .teacher-plan {
+      background: #e7f3ff;
+      padding: 15px;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .student-initials {
+      display: inline-block;
+      background: #fff;
+      padding: 5px 10px;
+      border: 1px solid #007bff;
+      border-radius: 4px;
+      margin: 2px;
+    }
+    .teacher-script {
+      background: #fffacd;
+      padding: 12px;
+      border-left: 4px solid #ffc107;
+      font-style: italic;
+      margin: 15px 0;
+    }
+    .whiteboard-example {
+      background: white;
+      border: 2px solid #28a745;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 5px;
+    }
+    .example-steps {
+      margin-left: 20px;
+      padding-left: 10px;
+      border-left: 3px solid #28a745;
+    }
+    .teaching-point {
+      background: #d4edda;
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .student-problems {
+      background: #f8f9fa;
+      padding: 10px;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .problem-answer {
+      color: #28a745;
+      font-weight: bold;
+      margin-left: 10px;
+    }
     @media print {
       body { max-width: 100%; }
       .section { break-inside: avoid; }
@@ -80,6 +133,8 @@ export class WorksheetRenderer {
 </head>
 <body>
   <h1>${this.escapeHtml(plan.title)}</h1>
+  
+  ${this.renderTeacherLessonPlan(plan)}
   
   <div class="section">
     <h2>Lesson Overview</h2>
@@ -545,6 +600,107 @@ export class WorksheetRenderer {
 
 </body>
 </html>`;
+  }
+
+  private renderTeacherLessonPlan(plan: any): string {
+    if (!plan.teacherLessonPlan) return '';
+    
+    const tlp = plan.teacherLessonPlan;
+    
+    return `
+    <div class="teacher-plan">
+      <h2>📋 Teacher Lesson Plan</h2>
+      
+      <div style="margin: 10px 0;">
+        <strong>Students:</strong>
+        ${tlp.studentInitials?.map((initial: string) => 
+          `<span class="student-initials">${this.escapeHtml(initial)}</span>`
+        ).join('') || ''}
+      </div>
+      
+      <div style="margin: 10px 0;">
+        <h3>📚 Lesson Topic: ${this.escapeHtml(tlp.topic || '')}</h3>
+      </div>
+      
+      <div class="teacher-script">
+        <h3>🎯 Teacher Introduction</h3>
+        <p>${this.escapeHtml(tlp.teacherIntroduction?.script || '')}</p>
+      </div>
+      
+      <div style="margin: 20px 0;">
+        <h3>✏️ Whiteboard Examples</h3>
+        ${tlp.whiteboardExamples?.map((example: any, index: number) => `
+          <div class="whiteboard-example">
+            <h4>Example ${example.number || index + 1}: ${this.escapeHtml(example.title || '')}</h4>
+            <p><strong>Problem:</strong> ${this.escapeHtml(example.problem || '')}</p>
+            <div class="example-steps">
+              <strong>Solution Steps:</strong>
+              <ol>
+                ${example.steps?.map((step: string) => 
+                  `<li>${this.escapeHtml(step)}</li>`
+                ).join('') || ''}
+              </ol>
+            </div>
+            <div class="teaching-point">
+              💡 <strong>Teaching Point:</strong> ${this.escapeHtml(example.teachingPoint || '')}
+            </div>
+          </div>
+        `).join('') || ''}
+      </div>
+      
+      <div style="margin: 20px 0;">
+        <h3>📝 Student Worksheet Problems</h3>
+        ${tlp.studentProblems?.map((studentSet: any) => `
+          <div class="student-problems">
+            <h4>Student: ${this.escapeHtml(studentSet.studentInitials || '')}</h4>
+            <ol>
+              ${studentSet.problems?.map((problem: any) => `
+                <li>
+                  <strong>Problem ${this.escapeHtml(problem.number || '')}:</strong> 
+                  ${this.escapeHtml(problem.question || '')}
+                  ${problem.choices ? `
+                    <ul style="list-style-type: upper-alpha;">
+                      ${problem.choices.map((choice: string) => 
+                        `<li>${this.escapeHtml(choice)}</li>`
+                      ).join('')}
+                    </ul>
+                  ` : ''}
+                  <span class="problem-answer">Answer: ${this.escapeHtml(problem.answer || '')}</span>
+                  ${problem.commonErrors?.length ? `
+                    <div style="margin-top: 5px; color: #dc3545;">
+                      ⚠️ Common errors: ${problem.commonErrors.map((err: string) => 
+                        this.escapeHtml(err)
+                      ).join(', ')}
+                    </div>
+                  ` : ''}
+                </li>
+              `).join('') || ''}
+            </ol>
+          </div>
+        `).join('') || ''}
+      </div>
+      
+      ${tlp.teachingNotes ? `
+        <div style="margin: 20px 0; padding: 10px; background: #f0f0f0; border-radius: 4px;">
+          <h3>📌 Teaching Notes</h3>
+          ${tlp.teachingNotes.pacing?.length ? `
+            <p><strong>Pacing:</strong> ${tlp.teachingNotes.pacing.map((note: string) => 
+              this.escapeHtml(note)
+            ).join('; ')}</p>
+          ` : ''}
+          ${tlp.teachingNotes.differentiation?.length ? `
+            <p><strong>Differentiation:</strong> ${tlp.teachingNotes.differentiation.map((note: string) => 
+              this.escapeHtml(note)
+            ).join('; ')}</p>
+          ` : ''}
+          ${tlp.teachingNotes.checkpoints?.length ? `
+            <p><strong>Checkpoints:</strong> ${tlp.teachingNotes.checkpoints.map((note: string) => 
+              this.escapeHtml(note)
+            ).join('; ')}</p>
+          ` : ''}
+        </div>
+      ` : ''}
+    </div>`;
   }
 
   private renderGradeGroups(lesson: LessonResponse): string {
