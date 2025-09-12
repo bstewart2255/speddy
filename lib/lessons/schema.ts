@@ -39,6 +39,9 @@ export interface LessonPlan {
   activity: ActivitySection; // Main student practice section
   closure?: ActivitySection; // Optional lesson closure/wrap-up section
   
+  // NEW: Structured teacher lesson plan
+  teacherLessonPlan?: TeacherLessonPlan;
+  
   // Optional answer key
   answerKey?: AnswerKey;
   
@@ -63,6 +66,56 @@ export interface LessonPlan {
     differentiationStrategies?: string[];
     scaffoldingSteps?: string[];
   };
+}
+
+// NEW: Teacher-focused lesson plan structure
+export interface TeacherLessonPlan {
+  // Student information for quick reference
+  studentInitials: string[];
+  
+  // Clear lesson topic
+  topic: string;
+  
+  // Teacher introduction script
+  teacherIntroduction: {
+    script: string; // Conversational text to read aloud
+    materials: string[]; // What teacher needs ready
+    visualAids?: string[]; // Optional supporting materials
+  };
+  
+  // Whiteboard examples (2-3 required)
+  whiteboardExamples: WhiteboardExample[];
+  
+  // All student worksheet problems for teacher reference
+  studentProblems: StudentProblemSet[];
+  
+  // Optional teaching notes
+  teachingNotes?: {
+    pacing?: string[]; // Time management tips
+    differentiation?: string[]; // How to adapt for different learners
+    checkpoints?: string[]; // When/how to assess understanding
+  };
+}
+
+export interface WhiteboardExample {
+  number: number;
+  title: string; // e.g., "Adding Pizza Slices"
+  problem: string; // The problem statement
+  steps: string[]; // Step-by-step solution
+  teachingPoint: string; // Key concept to emphasize
+}
+
+export interface StudentProblemSet {
+  studentInitials: string;
+  problems: {
+    number: string; // "1", "1a", "2", etc.
+    question: string;
+    questionType?: 'multiple-choice' | 'fill-blank' | 'short-answer' | 'visual' | 'long-answer';
+    choices?: string[]; // For multiple choice
+    answer: string;
+    solution?: string[]; // For complex problems
+    commonErrors?: string[]; // What to watch for
+  }[];
 }
 
 export interface ActivitySection {
@@ -314,6 +367,36 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     
     if (!('materials' in activity) || !Array.isArray(activity.materials)) {
       console.error(`Lesson validation failed: ${section}.materials must be an array, got: ${typeof activity.materials}`);
+      return false;
+    }
+  }
+  
+  // Validate optional teacherLessonPlan if present
+  if ('teacherLessonPlan' in lesson && lesson.teacherLessonPlan) {
+    const tlp = lesson.teacherLessonPlan;
+    
+    if (!Array.isArray(tlp.studentInitials) || tlp.studentInitials.length === 0) {
+      console.error('Lesson validation failed: teacherLessonPlan.studentInitials must be a non-empty array');
+      return false;
+    }
+    
+    if (typeof tlp.topic !== 'string' || tlp.topic.trim() === '') {
+      console.error('Lesson validation failed: teacherLessonPlan.topic must be a non-empty string');
+      return false;
+    }
+    
+    if (!tlp.teacherIntroduction || typeof tlp.teacherIntroduction.script !== 'string') {
+      console.error('Lesson validation failed: teacherLessonPlan.teacherIntroduction.script must be a string');
+      return false;
+    }
+    
+    if (!Array.isArray(tlp.whiteboardExamples) || tlp.whiteboardExamples.length < 2) {
+      console.error('Lesson validation failed: teacherLessonPlan.whiteboardExamples must have at least 2 examples');
+      return false;
+    }
+    
+    if (!Array.isArray(tlp.studentProblems) || tlp.studentProblems.length === 0) {
+      console.error('Lesson validation failed: teacherLessonPlan.studentProblems must be a non-empty array');
       return false;
     }
   }

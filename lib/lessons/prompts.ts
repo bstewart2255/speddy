@@ -91,6 +91,37 @@ MIXED IEP GOAL HANDLING:
 
 ${this.getSubjectSpecificRequirements(subjectType)}
 
+TEACHER LESSON PLAN REQUIREMENTS (NEW - MANDATORY):
+The lesson MUST include a structured teacher lesson plan with these exact components:
+
+1. STUDENT INITIALS:
+   - Extract initials from student IDs (e.g., "student-1" becomes "S1")
+   - Format: ["J.D.", "M.S.", "A.P."] for quick reference
+
+2. LESSON TOPIC:
+   - Clear, specific statement matching worksheet content
+   - Example: "Adding Fractions with Like Denominators"
+
+3. TEACHER INTRODUCTION SCRIPT:
+   - Conversational text the teacher reads aloud (2-3 sentences)
+   - Connect to real-world examples students understand
+   - Engaging and age-appropriate
+   - Example: "Today we're learning about adding fractions with the same bottom number. Think of it like adding slices of the same pizza!"
+
+4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
+   - Each example must include:
+     * Problem statement
+     * Step-by-step solution (numbered steps)
+     * Teaching point to emphasize
+   - Examples MUST correspond to worksheet problem types
+   - Include visual representations where helpful
+
+5. STUDENT PROBLEMS DISPLAY:
+   - Show ALL problems from ALL student worksheets
+   - Include the correct answer for each problem
+   - If students have different worksheets, show ALL variations
+   - Group by student initials if differentiated
+
 JSON STRUCTURE (STRICT - no deviations):
 {
   "lesson": {
@@ -101,6 +132,45 @@ JSON STRUCTURE (STRICT - no deviations):
     "overview": "string",
     "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
     "activity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "teacherLessonPlan": {
+      "studentInitials": ["string"],
+      "topic": "string",
+      "teacherIntroduction": {
+        "script": "string",
+        "materials": ["whiteboard", "markers"],
+        "visualAids": ["string"]
+      },
+      "whiteboardExamples": [
+        {
+          "number": 1,
+          "title": "string",
+          "problem": "string",
+          "steps": ["string"],
+          "teachingPoint": "string"
+        }
+      ],
+      "studentProblems": [
+        {
+          "studentInitials": "string",
+          "problems": [
+            {
+              "number": "string",
+              "question": "string",
+              "questionType": "multiple-choice|fill-blank|short-answer|visual|long-answer",
+              "choices": ["string"],
+              "answer": "string",
+              "solution": ["string"],
+              "commonErrors": ["string"]
+            }
+          ]
+        }
+      ],
+      "teachingNotes": {
+        "pacing": ["string"],
+        "differentiation": ["string"],
+        "checkpoints": ["string"]
+      }
+    },
     "answerKey": {},
     "roleSpecificContent": {}
   },
@@ -156,6 +226,9 @@ ERROR PREVENTION:
 - NEVER vary blankLines counts from the grade-based rules
 - NEVER use numbers (1,2,3,4) for multiple choice - always use A,B,C,D
 - NEVER create activity sections with fewer than 6 items or more than 12 items
+- ALWAYS include teacherLessonPlan with all required fields
+- ALWAYS include exactly 2-3 whiteboard examples
+- ALWAYS show ALL student problems with answers in teacherLessonPlan
 
 IMPORTANT: 
 - Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.
@@ -244,6 +317,16 @@ IMPORTANT:
 
 ${subjectReminder}
 
+TEACHER LESSON PLAN SPECIFIC REQUIREMENTS:
+- Generate student initials from student IDs (e.g., "student-1" → "S1", "student-2" → "S2")
+- The lesson topic must match the worksheet content exactly
+- Teacher introduction script should be 2-3 sentences, conversational and engaging
+- Include EXACTLY 2-3 whiteboard examples that correspond to worksheet problems
+- Each whiteboard example needs numbered steps and a teaching point
+- In studentProblems, show ALL problems from ALL worksheets with correct answers
+- If students have different worksheets, show all variations grouped by student
+- Include common errors and solutions where helpful for complex problems
+
 REMEMBER:
 - Students in the same grade group should receive the same base activity
 - Adjust content difficulty based on individual reading levels listed above
@@ -252,7 +335,8 @@ REMEMBER:
 - Ensure activities can be completed in ${request.duration} minutes
 - IMPORTANT: Each worksheet must contain actual content with real questions, problems, or tasks
 - For story-based activities, include the complete story text in the worksheet
-- Worksheets must have substantial content - not just placeholder text`;
+- Worksheets must have substantial content - not just placeholder text
+- The teacherLessonPlan is FOR THE TEACHER - make it practical and immediately usable`;
     
     return prompt;
   }

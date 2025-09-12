@@ -59,6 +59,11 @@ export class MaterialsValidator {
       });
     }
 
+    // Validate teacher lesson plan if present
+    if (lesson.lesson.teacherLessonPlan) {
+      this.validateTeacherLessonPlan(lesson.lesson.teacherLessonPlan, errors, warnings);
+    }
+
     // Check for forbidden materials in all text content
     const allText = this.extractAllText(lesson);
     this.checkForbiddenMaterials(allText, errors);
@@ -225,6 +230,69 @@ export class MaterialsValidator {
       .replace(/\bdry-erase markers?\b/g, 'dry erase marker');
     
     return r;
+  }
+
+  private validateTeacherLessonPlan(
+    lessonPlan: any,
+    errors: string[],
+    warnings: string[]
+  ): void {
+    // Check required fields
+    if (!lessonPlan.studentInitials || !Array.isArray(lessonPlan.studentInitials) || lessonPlan.studentInitials.length === 0) {
+      errors.push('Teacher lesson plan: Missing or empty student initials');
+    }
+
+    if (!lessonPlan.topic || typeof lessonPlan.topic !== 'string' || lessonPlan.topic.trim() === '') {
+      errors.push('Teacher lesson plan: Missing or empty topic');
+    }
+
+    // Validate teacher introduction
+    if (!lessonPlan.teacherIntroduction) {
+      errors.push('Teacher lesson plan: Missing teacher introduction');
+    } else {
+      if (!lessonPlan.teacherIntroduction.script || lessonPlan.teacherIntroduction.script.trim() === '') {
+        errors.push('Teacher lesson plan: Missing or empty introduction script');
+      }
+      if (!Array.isArray(lessonPlan.teacherIntroduction.materials)) {
+        errors.push('Teacher lesson plan: Introduction materials must be an array');
+      }
+    }
+
+    // Validate whiteboard examples (must have 2-3)
+    if (!Array.isArray(lessonPlan.whiteboardExamples)) {
+      errors.push('Teacher lesson plan: Whiteboard examples must be an array');
+    } else if (lessonPlan.whiteboardExamples.length < 2 || lessonPlan.whiteboardExamples.length > 3) {
+      errors.push('Teacher lesson plan: Must have exactly 2-3 whiteboard examples');
+    } else {
+      lessonPlan.whiteboardExamples.forEach((example: any, index: number) => {
+        if (!example.title || !example.problem || !Array.isArray(example.steps) || !example.teachingPoint) {
+          errors.push(`Teacher lesson plan: Whiteboard example ${index + 1} missing required fields`);
+        }
+        if (example.steps && example.steps.length === 0) {
+          errors.push(`Teacher lesson plan: Whiteboard example ${index + 1} must have at least one step`);
+        }
+      });
+    }
+
+    // Validate student problems
+    if (!Array.isArray(lessonPlan.studentProblems) || lessonPlan.studentProblems.length === 0) {
+      errors.push('Teacher lesson plan: Missing or empty student problems');
+    } else {
+      lessonPlan.studentProblems.forEach((studentSet: any, index: number) => {
+        if (!studentSet.studentInitials) {
+          errors.push(`Teacher lesson plan: Student problem set ${index + 1} missing student initials`);
+        }
+        if (!Array.isArray(studentSet.problems) || studentSet.problems.length === 0) {
+          errors.push(`Teacher lesson plan: Student ${studentSet.studentInitials || index + 1} has no problems`);
+        } else {
+          studentSet.problems.forEach((problem: any, pIndex: number) => {
+            if (!problem.number || !problem.question || !problem.answer) {
+              errors.push(`Teacher lesson plan: Problem ${pIndex + 1} for student ${studentSet.studentInitials} missing required fields`);
+            }
+          });
+        }
+      });
+    }
   }
 
   private validateActivitySection(
@@ -455,6 +523,33 @@ export class MaterialsValidator {
         }
       }
     });
+
+    // Extract from teacher lesson plan
+    if (lesson?.lesson?.teacherLessonPlan) {
+      const tlp = lesson.lesson.teacherLessonPlan;
+      if (tlp.topic) texts.push(tlp.topic);
+      if (tlp.teacherIntroduction?.script) texts.push(tlp.teacherIntroduction.script);
+      if (Array.isArray(tlp.whiteboardExamples)) {
+        tlp.whiteboardExamples.forEach((ex: any) => {
+          if (ex.title) texts.push(ex.title);
+          if (ex.problem) texts.push(ex.problem);
+          if (ex.teachingPoint) texts.push(ex.teachingPoint);
+          if (Array.isArray(ex.steps)) {
+            ex.steps.forEach((step: string) => texts.push(step));
+          }
+        });
+      }
+      if (Array.isArray(tlp.studentProblems)) {
+        tlp.studentProblems.forEach((sp: any) => {
+          if (Array.isArray(sp.problems)) {
+            sp.problems.forEach((p: any) => {
+              if (p.question) texts.push(p.question);
+              if (p.answer) texts.push(p.answer);
+            });
+          }
+        });
+      }
+    }
     
     // Extract from student materials
     if (Array.isArray(lesson?.studentMaterials)) {
