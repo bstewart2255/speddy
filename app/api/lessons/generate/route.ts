@@ -609,9 +609,10 @@ async function saveLessonToDatabase(
       provider_id: userId,
       lesson_date: lessonDate,
       time_slot: timeSlot,
+      school_id: profile?.school_id || null,
       updated_at: new Date().toISOString()
     }, {
-      onConflict: 'provider_id,lesson_date,time_slot',
+      onConflict: 'provider_id,school_id,lesson_date,time_slot',
       ignoreDuplicates: false
     })
     .select('id')
