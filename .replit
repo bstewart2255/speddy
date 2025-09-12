@@ -33,11 +33,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 14298
-externalPort = 4200
-exposeLocalhost = true
-
-[[ports]]
 localPort = 16272
 externalPort = 3000
 exposeLocalhost = true
@@ -45,10 +40,6 @@ exposeLocalhost = true
 [[ports]]
 localPort = 24282
 externalPort = 5000
-
-[[ports]]
-localPort = 41481
-externalPort = 6000
 
 [agent]
 expertMode = true
