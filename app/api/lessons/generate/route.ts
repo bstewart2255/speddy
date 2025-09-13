@@ -528,7 +528,10 @@ async function saveLessonToDatabase(
 
   // Prepare the lesson data for insertion
   const lessonDate = request.lessonDate || new Date().toISOString().split('T')[0];
-  const timeSlot = request.timeSlot || 'structured';
+  // For on-demand lessons (no timeSlot), create a unique identifier
+  // For scheduled lessons, use the actual timeSlot
+  const isScheduledLesson = !!request.timeSlot;
+  const timeSlot = request.timeSlot || `on-demand-${Date.now()}`;
   
   // Debug logging before database insertion (no PII)
   const DEBUG_LOG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
@@ -599,22 +602,23 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Use atomic upsert to handle race conditions properly
-  // This will either insert a new lesson or update an existing one atomically
+  // Prepare the lesson record for database insertion
+  const lessonRecordData = {
+    ...dbRecord,
+    lesson_source: 'ai_generated',
+    provider_id: userId,
+    lesson_date: lessonDate,
+    time_slot: timeSlot,
+    school_id: profile?.school_id || null,
+    updated_at: new Date().toISOString()
+  };
+
+  // Insert the lesson (no longer using upsert to avoid constraint issues)
+  // For scheduled lessons, future migration will add unique constraint
+  // For on-demand lessons, timestamp ensures uniqueness
   const { data: lessonRecord, error: upsertError } = await supabase
     .from('lessons')
-    .upsert({
-      ...dbRecord,
-      lesson_source: 'ai_generated',
-      provider_id: userId,
-      lesson_date: lessonDate,
-      time_slot: timeSlot,
-      school_id: profile?.school_id || null,
-      updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'provider_id,school_id,lesson_date,time_slot',
-      ignoreDuplicates: false
-    })
+    .insert(lessonRecordData)
     .select('id')
     .single();
 
