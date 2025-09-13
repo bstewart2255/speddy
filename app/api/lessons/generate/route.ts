@@ -602,52 +602,27 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Handle database insertion based on lesson type
-  let lessonRecord;
-  let dbError;
-  
-  if (isScheduledLesson) {
-    // For scheduled lessons, use upsert (once we have the constraint)
-    // For now, just use insert since the constraint doesn't exist yet
-    const { data, error } = await supabase
-      .from('lessons')
-      .insert({
-        ...dbRecord,
-        lesson_source: 'ai_generated',
-        provider_id: userId,
-        lesson_date: lessonDate,
-        time_slot: timeSlot,
-        school_id: profile?.school_id || null,
-        updated_at: new Date().toISOString()
-      })
-      .select('id')
-      .single();
-    
-    lessonRecord = data;
-    dbError = error;
-  } else {
-    // For on-demand lessons, always insert (no conflict checking needed)
-    const { data, error } = await supabase
-      .from('lessons')
-      .insert({
-        ...dbRecord,
-        lesson_source: 'ai_generated',
-        provider_id: userId,
-        lesson_date: lessonDate,
-        time_slot: timeSlot, // This will be unique due to timestamp
-        school_id: profile?.school_id || null,
-        updated_at: new Date().toISOString()
-      })
-      .select('id')
-      .single();
-    
-    lessonRecord = data;
-    dbError = error;
-  }
+  // Prepare the lesson record for database insertion
+  const lessonRecordData = {
+    ...dbRecord,
+    lesson_source: 'ai_generated',
+    provider_id: userId,
+    lesson_date: lessonDate,
+    time_slot: timeSlot,
+    school_id: profile?.school_id || null,
+    updated_at: new Date().toISOString()
+  };
 
-  if (dbError) {
-    // Rename to use consistent error variable name
-    const upsertError = dbError;
+  // Insert the lesson (no longer using upsert to avoid constraint issues)
+  // For scheduled lessons, future migration will add unique constraint
+  // For on-demand lessons, timestamp ensures uniqueness
+  const { data: lessonRecord, error: upsertError } = await supabase
+    .from('lessons')
+    .insert(lessonRecordData)
+    .select('id')
+    .single();
+
+  if (upsertError) {
     if (DEBUG_LOG) {
       console.error(`[DEBUG] Database error when saving lesson:`, {
         errorCode: upsertError.code,
