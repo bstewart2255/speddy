@@ -528,7 +528,10 @@ async function saveLessonToDatabase(
 
   // Prepare the lesson data for insertion
   const lessonDate = request.lessonDate || new Date().toISOString().split('T')[0];
-  const timeSlot = request.timeSlot || 'structured';
+  // For on-demand lessons (no timeSlot), create a unique identifier
+  // For scheduled lessons, use the actual timeSlot
+  const isScheduledLesson = !!request.timeSlot;
+  const timeSlot = request.timeSlot || `on-demand-${Date.now()}`;
   
   // Debug logging before database insertion (no PII)
   const DEBUG_LOG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
@@ -599,26 +602,52 @@ async function saveLessonToDatabase(
     dbRecord.ai_raw_response = null;
   }
   
-  // Use atomic upsert to handle race conditions properly
-  // This will either insert a new lesson or update an existing one atomically
-  const { data: lessonRecord, error: upsertError } = await supabase
-    .from('lessons')
-    .upsert({
-      ...dbRecord,
-      lesson_source: 'ai_generated',
-      provider_id: userId,
-      lesson_date: lessonDate,
-      time_slot: timeSlot,
-      school_id: profile?.school_id || null,
-      updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'provider_id,school_id,lesson_date,time_slot',
-      ignoreDuplicates: false
-    })
-    .select('id')
-    .single();
+  // Handle database insertion based on lesson type
+  let lessonRecord;
+  let dbError;
+  
+  if (isScheduledLesson) {
+    // For scheduled lessons, use upsert (once we have the constraint)
+    // For now, just use insert since the constraint doesn't exist yet
+    const { data, error } = await supabase
+      .from('lessons')
+      .insert({
+        ...dbRecord,
+        lesson_source: 'ai_generated',
+        provider_id: userId,
+        lesson_date: lessonDate,
+        time_slot: timeSlot,
+        school_id: profile?.school_id || null,
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+    
+    lessonRecord = data;
+    dbError = error;
+  } else {
+    // For on-demand lessons, always insert (no conflict checking needed)
+    const { data, error } = await supabase
+      .from('lessons')
+      .insert({
+        ...dbRecord,
+        lesson_source: 'ai_generated',
+        provider_id: userId,
+        lesson_date: lessonDate,
+        time_slot: timeSlot, // This will be unique due to timestamp
+        school_id: profile?.school_id || null,
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+    
+    lessonRecord = data;
+    dbError = error;
+  }
 
-  if (upsertError) {
+  if (dbError) {
+    // Rename to use consistent error variable name
+    const upsertError = dbError;
     if (DEBUG_LOG) {
       console.error(`[DEBUG] Database error when saving lesson:`, {
         errorCode: upsertError.code,
