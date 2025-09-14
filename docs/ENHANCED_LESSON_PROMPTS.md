@@ -42,14 +42,21 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - "visual-math": For math problems, no blankLines needed
    - "example": For introduction section examples only
 
-3. BLANK LINE RULES (grade-based):
-   - Grade K-1: Use 4 blankLines for any written response
-   - Grade 2-3: Use 3 blankLines for short answers, 5 for long answers
-   - Grade 4-5: Use 2 blankLines for short answers, 4 for long answers
+3. BLANK LINE RULES (context-based):
+   - For single word answers (decode, spell, identify): Use 1 blankLine regardless of grade
+   - For short answers (Grade K-1): Use 3 blankLines
+   - For short answers (Grade 2-3): Use 2 blankLines
+   - For short answers (Grade 4-5): Use 2 blankLines
+   - For long answers (Grade K-1): Use 4 blankLines
+   - For long answers (Grade 2-3): Use 4 blankLines
+   - For long answers (Grade 4-5): Use 3 blankLines
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - Label as A, B, C, D (never 1,2,3,4)
+   - CRITICAL: Do NOT include letters (A., B., C., D.) in the choices array - just the text
+   - Correct: ["Red", "Blue", "Green", "Yellow"]
+   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -99,6 +106,34 @@ MIXED IEP GOAL HANDLING:
   2. Include secondary skills as additional questions
   3. Prioritize: computation > word problems > advanced concepts
 
+TEACHER LESSON PLAN REQUIREMENTS (MANDATORY):
+The lesson MUST include a structured teacher lesson plan with these exact components:
+
+1. STUDENT INITIALS:
+   - Use the actual student initials provided (e.g., "J.B.", "G.B.")
+   - Format: ["J.D.", "M.S.", "A.P."] for quick reference
+
+2. LESSON TOPIC:
+   - Clear, specific statement matching worksheet content
+   - Example: "Adding Fractions with Like Denominators"
+
+3. TEACHER INTRODUCTION SCRIPT:
+   - Conversational text the teacher reads aloud (2-3 sentences)
+   - Connect to real-world examples students understand
+   - Engaging and age-appropriate
+
+4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
+   - Each example must include:
+     * Problem statement
+     * Step-by-step solution (numbered steps without "Step N:" prefix)
+     * Teaching point to emphasize
+   - Examples MUST correspond to worksheet problem types
+
+5. STUDENT PROBLEMS DISPLAY:
+   - Show ALL problems from ALL student worksheets
+   - Include the correct answer for each problem
+   - Group by student if differentiated
+
 SUBJECT-SPECIFIC REQUIREMENTS:
 
 ELA-SPECIFIC REQUIREMENTS:
@@ -115,6 +150,19 @@ ELA WORKSHEET CONTENT FOCUS:
 - Grammar practice (parts of speech, sentence structure)
 - Phonics/spelling activities for younger grades
 
+ELA EXAMPLES SECTION:
+- For phonics/decoding: "To decode a word, sound out each letter: c-a-t = cat"
+- For sight words: "These are words you should know by sight: the, of, to, you"
+- For reading comprehension: "To find the main idea, look for what the whole story is about"
+- For writing: "Start your sentence with a capital letter and end with a period"
+
+CRITICAL ELA QUESTION RULES:
+- For "Read the word X" multiple choice questions: NEVER show the target word as one of the options
+- Instead use: "Which word is 'my'?" or "Find the word that says 'my'"
+- For decoding questions: Use fill-blank type with 1 blankLine, ask students to write the decoded word
+- For sight word identification: Show 4 different words, ask which one matches the spoken/target word
+- Single word responses (decode, spell): Always use 1 blankLine only
+
 MATH-SPECIFIC REQUIREMENTS:
 - Use "visual-math" question type for computation problems
 - Include clear number problems, word problems, and visual representations
@@ -129,6 +177,12 @@ MATH WORKSHEET CONTENT FOCUS:
 - Mathematical reasoning questions
 - Grade-appropriate math concepts and operations
 
+MATH EXAMPLES SECTION:
+- For computation: "Remember to line up your numbers by place value"
+- For word problems: "Read carefully and underline what the problem is asking"
+- For fractions: "The top number is the numerator, the bottom is the denominator"
+- For operations: "Add means to combine, subtract means to take away"
+
 JSON STRUCTURE (STRICT - no deviations):
 {
   "lesson": {
@@ -139,6 +193,45 @@ JSON STRUCTURE (STRICT - no deviations):
     "overview": "string",
     "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
     "activity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "teacherLessonPlan": {
+      "studentInitials": ["string"],
+      "topic": "string",
+      "teacherIntroduction": {
+        "script": "string",
+        "materials": ["whiteboard", "markers"],
+        "visualAids": ["string"]
+      },
+      "whiteboardExamples": [
+        {
+          "number": 1,
+          "title": "string",
+          "problem": "string",
+          "steps": ["string"],
+          "teachingPoint": "string"
+        }
+      ],
+      "studentProblems": [
+        {
+          "studentInitials": "string",
+          "problems": [
+            {
+              "number": "string",
+              "question": "string",
+              "questionType": "multiple-choice|fill-blank|short-answer|visual|long-answer",
+              "choices": ["string"],
+              "answer": "string",
+              "solution": ["string"],
+              "commonErrors": ["string"]
+            }
+          ]
+        }
+      ],
+      "teachingNotes": {
+        "pacing": ["string"],
+        "differentiation": ["string"],
+        "checkpoints": ["string"]
+      }
+    },
     "answerKey": {},
     "roleSpecificContent": {}
   },
@@ -147,7 +240,7 @@ JSON STRUCTURE (STRICT - no deviations):
     "gradeGroup": number,
     "worksheet": {
       "title": "[Subject] Practice - Grade [X]",
-      "instructions": "Complete all problems. Show your work when needed.",
+      "instructions": "",
       "sections": [
         {
           "title": "Introduction",
@@ -248,7 +341,8 @@ buildUserPrompt(request: LessonRequest): string {
     prompt += `Number of students: ${group.studentIds.length}\n`;
 
     groupStudents.forEach(student => {
-      prompt += `\nStudent ${student.id}:\n`;
+      const studentIdentifier = student.initials || student.id;
+      prompt += `\nStudent ${studentIdentifier}:\n`;
       prompt += `- Grade: ${student.grade}\n`;
 
       if (student.readingLevel) {
@@ -279,13 +373,14 @@ buildUserPrompt(request: LessonRequest): string {
 
   prompt += `\nFORMATTING REMINDERS:
 - Use exactly 2 worksheet sections: Introduction, Activity
-- Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
-- Multiple choice questions must have exactly 4 choices (A, B, C, D)
+- Follow context-based blank line rules (1 line for single words, grade-based for others)
+- Multiple choice questions must have exactly 4 choices (text only, no letter prefixes)
 - Include ${this.getActivityItemCount(request.students)} practice items in Activity section
 - Introduction section should have 1-2 example/instruction items only
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
 - Adjust language complexity based on individual reading levels
+- Worksheet instructions should be specific to the content or omitted entirely (no generic instructions)
 - Incorporate IEP goals into question content where applicable
 
 ${subjectReminder}
@@ -521,3 +616,70 @@ The existing MaterialsValidator should be enhanced to check:
 - Guarantees sufficient practice for older students
 - Provides flexibility while maintaining structure
 - Makes lesson timing predictable (more items = longer lessons)
+
+---
+
+## Recent Updates (September 2025)
+
+### Version 2.0 - Formatting and Logic Fixes
+
+The following improvements were made to address formatting issues and enhance lesson quality:
+
+#### 1. Student Identification
+
+- **Changed**: System now uses actual student initials from database (e.g., "J.B.", "G.B.")
+- **Previous**: Used truncated student IDs (e.g., "E6", "C3")
+- **Impact**: Teacher lesson plans now show meaningful student identifiers
+
+#### 2. Multiple Choice Formatting
+
+- **Changed**: Choices array must contain text only, no letter prefixes
+- **Previous**: AI sometimes included letters in choices causing duplicate prefixes
+- **Impact**: Clean formatting without "A. A. Red" type errors
+
+#### 3. Context-Aware Examples
+
+- **Changed**: Examples are now subject and activity-specific
+- **Previous**: Generic "main idea" example appeared in all worksheets
+- **Impact**: Relevant examples that match the lesson content
+
+#### 4. Improved Blank Lines Logic
+
+- **Changed**: Single word answers use 1 line, context-based rules for others
+- **Previous**: All responses used grade-based rules regardless of answer length
+- **Impact**: Appropriate space for different answer types
+
+#### 5. AI Logic Rules for ELA
+
+- **Changed**: Added explicit rules to prevent illogical question formats
+- **Previous**: AI could create questions like "Read 'my'" with 'my' as an option
+- **Impact**: Logically sound questions that make pedagogical sense
+
+#### 6. Teacher Lesson Plan Structure
+
+- **Changed**: When teacherLessonPlan exists, only that renders (no duplicate content)
+- **Previous**: Both old and new formats appeared causing duplication
+- **Impact**: Clean, single presentation of lesson plan
+
+#### 7. Step Numbering
+
+- **Changed**: Steps in solutions no longer include "Step N:" prefix
+- **Previous**: Redundant numbering with ordered lists
+- **Impact**: Clean numbered lists without redundancy
+
+#### 8. Worksheet Instructions
+
+- **Changed**: Instructions should be content-specific or omitted
+- **Previous**: Generic "Complete all problems" on every worksheet
+- **Impact**: Meaningful instructions when needed, none when obvious
+
+### Implementation Notes for v2.0
+
+These updates maintain backward compatibility while improving output quality. The key changes are:
+
+1. **Database Integration**: Student initials must be fetched from the `students` table
+2. **Prompt Clarity**: More explicit instructions prevent AI confusion
+3. **Renderer Logic**: Conditional rendering prevents duplicate content
+4. **Validation Updates**: Ensure new rules are enforced during generation
+
+All changes are reflected in the prompt templates above and should be used for any new implementations or updates to the lesson generation system.
