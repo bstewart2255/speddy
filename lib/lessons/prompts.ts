@@ -31,15 +31,21 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - "visual-math": For math problems, no blankLines needed
    - "example": For introduction section examples only
    
-3. BLANK LINE RULES (grade-based):
-   - Grade K-1: Use 4 blankLines for any written response
-   - Grade 2-3: Use 3 blankLines for short answers, 5 for long answers
-   - Grade 4-5: Use 2 blankLines for short answers, 4 for long answers
+3. BLANK LINE RULES (context-based):
+   - For single word answers (decode, spell, identify): Use 1 blankLine regardless of grade
+   - For short answers (Grade K-1): Use 3 blankLines
+   - For short answers (Grade 2-3): Use 2 blankLines
+   - For short answers (Grade 4-5): Use 2 blankLines
+   - For long answers (Grade K-1): Use 4 blankLines
+   - For long answers (Grade 2-3): Use 4 blankLines
+   - For long answers (Grade 4-5): Use 3 blankLines
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - Do NOT include letters in the choices array - just the text
-   - Example: ["Red", "Blue", "Green", "Yellow"] NOT ["A. Red", "B. Blue", ...]
+   - CRITICAL: Do NOT include letters (A., B., C., D.) in the choices array - just the text
+   - Correct: ["Red", "Blue", "Green", "Yellow"]
+   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -95,7 +101,7 @@ TEACHER LESSON PLAN REQUIREMENTS (NEW - MANDATORY):
 The lesson MUST include a structured teacher lesson plan with these exact components:
 
 1. STUDENT INITIALS:
-   - Extract initials from student IDs (e.g., "student-1" becomes "S1")
+   - Use the actual student initials provided (e.g., "J.B.", "G.B.")
    - Format: ["J.D.", "M.S.", "A.P."] for quick reference
 
 2. LESSON TOPIC:
@@ -179,7 +185,7 @@ JSON STRUCTURE (STRICT - no deviations):
     "gradeGroup": number,
     "worksheet": {
       "title": "[Subject] Practice - Grade [X]",
-      "instructions": "Complete all problems. Show your work when needed.",
+      "instructions": "",
       "sections": [
         {
           "title": "Examples",
@@ -187,7 +193,7 @@ JSON STRUCTURE (STRICT - no deviations):
           "items": [
             {
               "type": "example",
-              "content": "To find the main idea, look for what the whole story is about. Ask yourself: What is the most important thing the author wants me to know?"
+              "content": "Context-appropriate example based on the lesson type and subject"
             }
           ]
         },
@@ -275,7 +281,8 @@ IMPORTANT:
       prompt += `Number of students: ${group.studentIds.length}\n`;
       
       groupStudents.forEach(student => {
-        prompt += `\nStudent ${student.id}:\n`;
+        const studentIdentifier = student.initials || student.id;
+        prompt += `\nStudent ${studentIdentifier}:\n`;
         prompt += `- Grade: ${student.grade}\n`;
         
         if (student.readingLevel) {
@@ -313,12 +320,13 @@ IMPORTANT:
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
 - Adjust language complexity based on individual reading levels
+- Worksheet instructions should be specific to the content or omitted entirely (no generic instructions)
 - Incorporate IEP goals into question content where applicable
 
 ${subjectReminder}
 
 TEACHER LESSON PLAN SPECIFIC REQUIREMENTS:
-- Generate student initials from student IDs (e.g., "student-1" → "S1", "student-2" → "S2")
+- Use the actual student initials provided in the student information
 - The lesson topic must match the worksheet content exactly
 - Teacher introduction script should be 2-3 sentences, conversational and engaging
 - Include EXACTLY 2-3 whiteboard examples that correspond to worksheet problems
@@ -371,7 +379,20 @@ ELA WORKSHEET CONTENT FOCUS:
 - Vocabulary exercises with sentence context
 - Writing activities (sentences, paragraphs, creative writing)
 - Grammar practice (parts of speech, sentence structure)
-- Phonics/spelling activities for younger grades`;
+- Phonics/spelling activities for younger grades
+
+ELA EXAMPLES SECTION:
+- For phonics/decoding: "To decode a word, sound out each letter: c-a-t = cat"
+- For sight words: "These are words you should know by sight: the, of, to, you"
+- For reading comprehension: "To find the main idea, look for what the whole story is about"
+- For writing: "Start your sentence with a capital letter and end with a period"
+
+CRITICAL ELA QUESTION RULES:
+- For "Read the word X" multiple choice questions: NEVER show the target word as one of the options
+- Instead use: "Which word is 'my'?" or "Find the word that says 'my'"
+- For decoding questions: Use fill-blank type with 1 blankLine, ask students to write the decoded word
+- For sight word identification: Show 4 different words, ask which one matches the spoken/target word
+- Single word responses (decode, spell): Always use 1 blankLine only`;
     } else {
       return `
 MATH-SPECIFIC REQUIREMENTS:
@@ -386,7 +407,13 @@ MATH WORKSHEET CONTENT FOCUS:
 - Word problems with clear, realistic scenarios
 - Visual math problems (shapes, patterns, graphs)
 - Mathematical reasoning questions
-- Grade-appropriate math concepts and operations`;
+- Grade-appropriate math concepts and operations
+
+MATH EXAMPLES SECTION:
+- For computation: "Remember to line up your numbers by place value"
+- For word problems: "Read carefully and underline what the problem is asking"
+- For fractions: "The top number is the numerator, the bottom is the denominator"
+- For operations: "Add means to combine, subtract means to take away"`;
     }
   }
 

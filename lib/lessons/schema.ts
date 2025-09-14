@@ -3,6 +3,7 @@
 
 export interface StudentProfile {
   id: string;
+  initials?: string; // Student initials (e.g., "J.B.")
   grade: number; // Numeric for easier grouping (e.g., 2 for 2nd grade)
   readingLevel?: number; // Optional: grade equivalent
   iepGoals?: string[]; // Optional: relevant IEP goals
