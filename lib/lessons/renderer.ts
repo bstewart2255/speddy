@@ -136,6 +136,7 @@ export class WorksheetRenderer {
   
   ${this.renderTeacherLessonPlan(plan)}
   
+  ${!plan.teacherLessonPlan ? `
   <div class="section">
     <h2>Lesson Overview</h2>
     <p><strong>Duration:</strong> ${this.escapeHtml(String(plan.duration))} minutes</p>
@@ -175,6 +176,7 @@ export class WorksheetRenderer {
       </ol>
     </div>
   </div>
+  ` : ''}
 
   ${this.renderGradeGroups(lesson)}
   ${this.renderDifferentiationStrategies(lesson)}
@@ -636,9 +638,11 @@ export class WorksheetRenderer {
             <div class="example-steps">
               <strong>Solution Steps:</strong>
               <ol>
-                ${example.steps?.map((step: string) => 
-                  `<li>${this.escapeHtml(step)}</li>`
-                ).join('') || ''}
+                ${example.steps?.map((step: string) => {
+                  // Remove "Step N:" prefix if present to avoid redundancy with <ol>
+                  const cleanStep = step.replace(/^Step\s+\d+:\s*/i, '');
+                  return `<li>${this.escapeHtml(cleanStep)}</li>`;
+                }).join('') || ''}
               </ol>
             </div>
             <div class="teaching-point">

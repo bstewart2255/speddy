@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         if (allStudentIds.size > 0) {
           const { data: studentsData } = await supabase
             .from('students')
-            .select('id, grade_level, student_details(iep_goals)')
+            .select('id, initials, grade_level, student_details(iep_goals)')
             .in('id', Array.from(allStudentIds));
           
           if (studentsData) {
@@ -466,8 +466,12 @@ async function enrichStudentDataFromMap(
     // Parse accommodations (currently not stored in database, only from request)
     const accommodations: string[] = student.accommodations || [];
     
+    // Get initials from database or request
+    const initials = student.initials || studentData?.initials || undefined;
+    
     return {
       id: studentId,
+      initials,
       grade: grade ?? 3, // Default to grade 3 if not specified
       readingLevel,
       iepGoals,
@@ -491,7 +495,7 @@ async function enrichStudentData(
   // Batch fetch all student data in one query
   const { data: studentsData } = await supabase
     .from('students')
-    .select('id, grade_level, student_details(iep_goals)')
+    .select('id, initials, grade_level, student_details(iep_goals)')
     .in('id', studentIds);
   
   // Create a map for quick lookup
