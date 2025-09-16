@@ -315,21 +315,36 @@ export function CalendarWeekView({
         const startDate = toLocalDateKey(weekStart);
         const endDate = toLocalDateKey(weekEnd);
 
+        // Debug logging for school context
+        console.log('[DEBUG] Loading AI lessons with school context:', {
+          currentSchool,
+          school_id: currentSchool?.school_id,
+          startDate,
+          endDate,
+          user_id: user.id
+        });
+
         // Filter by both provider and school
         let query = supabase
           .from('lessons')
-          .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
+          .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details, school_id')
           .eq('provider_id', user.id)
           .eq('lesson_source', 'ai_generated')
           .gte('lesson_date', startDate)
           .lte('lesson_date', endDate);
-        
-        // Add school filter if available; otherwise safely filter to avoid cross-school leakage
+
+        // Add school filter if available
+        // For Mt Diablo Elementary, the school_id should be '062271002458'
         if (currentSchool?.school_id) {
+          console.log('[DEBUG] Filtering by school_id:', currentSchool.school_id);
           query = query.eq('school_id', currentSchool.school_id);
+        } else if (currentSchool?.school_site === 'Mt Diablo Elementary') {
+          // Fallback for Mt Diablo Elementary if school_id is not set yet
+          console.log('[DEBUG] Using fallback for Mt Diablo Elementary');
+          query = query.eq('school_id', '062271002458');
         } else {
           // No school_id available - filter to NULL to avoid cross-school data leakage
-          console.warn('No school_id available; filtering to NULL school_id to avoid cross-school leakage');
+          console.warn('[DEBUG] No school_id available; filtering to NULL school_id to avoid cross-school leakage');
           query = query.is('school_id', null);
         }
         
@@ -344,6 +359,16 @@ export function CalendarWeekView({
             console.error('Failed to load saved lessons:', error);
           }
         } else {
+          console.log('[DEBUG] Loaded lessons from database:', {
+            count: data?.length || 0,
+            lessons: data?.map(l => ({
+              date: l.lesson_date,
+              time: l.time_slot,
+              school_id: l.school_id,
+              id: l.id
+            }))
+          });
+
           const lessonsMap = new Map<string, any>();
           data?.forEach(lesson => {
             const dateKey = lesson.lesson_date;
@@ -362,6 +387,12 @@ export function CalendarWeekView({
               students: lesson.student_details || []
             };
           });
+
+          console.log('[DEBUG] Processed lessons into state map:', {
+            dates: Array.from(lessonsMap.keys()),
+            totalDays: lessonsMap.size
+          });
+
           setSavedLessons(lessonsMap);
         }
       } catch (error) {
@@ -1257,6 +1288,9 @@ export function CalendarWeekView({
 
           if (currentSchool?.school_id) {
             query = query.eq('school_id', currentSchool.school_id);
+          } else if (currentSchool?.school_site === 'Mt Diablo Elementary') {
+            // Fallback for Mt Diablo Elementary if school_id is not set yet
+            query = query.eq('school_id', '062271002458');
           } else {
             query = query.is('school_id', null);
           }
@@ -1488,6 +1522,17 @@ export function CalendarWeekView({
           const hasAIContent = Object.keys(dayAILessons).length > 0;
           const dayManualLessons = manualLessons.get(dateStr) || [];
           const isPast = isDateInPast(date);
+
+          // Debug logging for purple button condition
+          if (dateStr === '2025-09-16') {
+            console.log('[DEBUG] Purple button condition for 2025-09-16:', {
+              isHolidayDay,
+              timeSlotGroupsSize: timeSlotGroups.size,
+              hasAIContent,
+              dayAILessons,
+              showButton: !isHolidayDay && timeSlotGroups.size > 0 && hasAIContent
+            });
+          }
           
           // Sort sessions by start time for chronological order
           const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
