@@ -1,6 +1,5 @@
 // Unified API endpoint for JSON-first lesson generation
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { lessonGenerator } from '@/lib/lessons/generator';
 import { 
   LessonRequest, 
@@ -23,8 +22,8 @@ const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
-      const supabase = await createClient();
-      
+      // Note: supabase client is created in withAuth, no need to create it again
+
       // Log metadata capture status on startup (only in debug mode)
       if (DEBUG && SHOULD_CAPTURE_METADATA) {
         console.log('[DEBUG] Full metadata capture is ENABLED:', {
