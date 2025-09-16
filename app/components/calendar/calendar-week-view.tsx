@@ -356,7 +356,13 @@ export function CalendarWeekView({
             // Don't log this repeatedly
             setSavedLessons(new Map());
           } else {
-            console.error('Failed to load saved lessons:', error);
+            console.error('Failed to load saved lessons:', {
+              error,
+              message: error?.message,
+              code: error?.code,
+              details: error?.details,
+              hint: error?.hint
+            });
           }
         } else {
           console.log('[DEBUG] Loaded lessons from database:', {
@@ -395,8 +401,13 @@ export function CalendarWeekView({
 
           setSavedLessons(lessonsMap);
         }
-      } catch (error) {
-        console.error('Failed to load saved lessons:', error);
+      } catch (error: any) {
+        console.error('[DEBUG] Exception in loadSavedLessons:', {
+          error,
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name
+        });
       } finally {
         setLoadingSavedLessons(false);
         loadingLessonsRef.current = false;
