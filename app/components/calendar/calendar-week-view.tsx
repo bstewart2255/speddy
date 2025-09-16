@@ -287,41 +287,7 @@ export function CalendarWeekView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
 
-  // Clean up legacy lessons without time_slot on mount
-  React.useEffect(() => {
-    const cleanupLegacyLessons = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      try {
-        // Delete lessons without time_slot as they are no longer needed
-        let deleteQuery = supabase
-          .from('ai_generated_lessons')
-          .delete()
-          .eq('provider_id', user.id)
-          .is('time_slot', null);
-        
-        // Add school filter to prevent cross-school deletions
-        if (currentSchool?.school_id) {
-          deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
-        } else {
-          // No school_id - only delete records with NULL school_id
-          deleteQuery = deleteQuery.is('school_id', null);
-        }
-        
-        const { error } = await deleteQuery;
-
-        if (error && error.code !== '42P01') {
-          console.error('Failed to cleanup legacy lessons:', error);
-        }
-      } catch (error) {
-        console.error('Error during legacy cleanup:', error);
-      }
-    };
-
-    cleanupLegacyLessons();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  // Legacy cleanup removed - now using lessons table
 
   // Load saved AI lessons
   React.useEffect(() => {
