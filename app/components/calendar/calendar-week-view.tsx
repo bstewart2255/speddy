@@ -741,13 +741,30 @@ export function CalendarWeekView({
       setAiContent(htmlContent);
 
       // Lesson is already saved by the API
-      // Update local saved lessons state
+      // Update local saved lessons state with proper time slot structure
+      const syntheticTimeSlot = `on-demand-${Date.now()}`;
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        newMap.set(toLocalDateKey(selectedDate), {
+        const dateKey = toLocalDateKey(selectedDate);
+        const dayLessons = newMap.get(dateKey) || {};
+
+        // Add the lesson under the synthetic time slot
+        dayLessons[syntheticTimeSlot] = {
           content: htmlContent,
-          prompt: prompt
-        });
+          prompt: prompt,
+          lessonId: data.lessonId || null,
+          students: selectedDaySessions
+            .map(session => session.student_id)
+            .filter((id): id is string => id !== null)
+            .map(id => ({
+              id,
+              initials: students.get(id)?.initials || '',
+              grade_level: students.get(id)?.grade_level || '',
+              teacher_name: ''
+            }))
+        };
+
+        newMap.set(dateKey, dayLessons);
         return newMap;
       });
 
