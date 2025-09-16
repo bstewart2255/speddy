@@ -53,9 +53,9 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - CRITICAL: Do NOT include letters (A., B., C., D.) in the choices array - just the text
-   - Correct: ["Red", "Blue", "Green", "Yellow"]
-   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - CRITICAL: ALWAYS include letter prefixes (A., B., C., D.) in the choices array
+   - Correct: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - WRONG: ["Red", "Blue", "Green", "Yellow"]
    - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
    - One clearly correct answer
    - Distractors should be plausible but wrong
@@ -620,6 +620,13 @@ The existing MaterialsValidator should be enhanced to check:
 ---
 
 ## Recent Updates (September 2025)
+
+### Formatting Fixes (Issue #268)
+
+- **Multiple Choice**: Changed to expect letter prefixes from AI (works WITH model tendencies)
+- **Step Numbering**: Cleaned up duplicate numbering in lesson plans
+- **Examples**: Clarified that examples must be worked solutions, not tips
+- **Data Structure**: Simplified nested rendering for cleaner output
 
 ### Version 2.0 - Formatting and Logic Fixes
 
