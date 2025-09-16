@@ -125,14 +125,23 @@ export default function CalendarPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setUserRole(profile.role);
+
+        // If user works at multiple schools, wait for school context to be selected
+        if (profile.works_at_multiple_schools && !currentSchool) {
+          console.log('[DEBUG] User works at multiple schools, waiting for school selection');
+          // Still set the provider ID so other things can work
+          setProviderId(user.id);
+          setLoading(false);
+          return;
+        }
       }
-      
+
       setProviderId(user.id);
 
       // Fetch sessions filtered by current school
@@ -187,19 +196,41 @@ export default function CalendarPage() {
         const schoolId = currentSchool.school_id ?? null;
         const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
         const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
-        
+
+        console.log('[DEBUG] Filtering students with school context:', {
+          currentSchool,
+          schoolId,
+          schoolSite,
+          schoolDistrict
+        });
+
         if (schoolId) {
+          console.log('[DEBUG] Filtering students by school_id:', schoolId);
           studentQuery = studentQuery.eq('school_id', schoolId);
         } else if (schoolSite && schoolDistrict) {
+          console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
           studentQuery = studentQuery
             .eq('school_site', schoolSite)
             .eq('school_district', schoolDistrict);
+        } else {
+          console.warn('[DEBUG] No valid school filter criteria, students may include all schools');
         }
+      } else {
+        console.warn('[DEBUG] No currentSchool context, loading all students for provider');
       }
 
       const { data: studentData, error: studentError } = await studentQuery;
 
       if (studentError) throw studentError;
+
+      console.log('[DEBUG] Students loaded:', {
+        count: studentData?.length || 0,
+        students: studentData?.map(s => ({
+          id: s.id,
+          initials: s.initials,
+          grade_level: s.grade_level
+        }))
+      });
 
       const studentMap = new Map<string, Student>();
       studentData?.forEach(student => {
