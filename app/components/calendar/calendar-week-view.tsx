@@ -382,15 +382,18 @@ export function CalendarWeekView({
           data?.forEach(lesson => {
             const dateKey = lesson.lesson_date;
             const timeSlot = lesson.time_slot || '08:00'; // Default for legacy data
-            
+
             if (!lessonsMap.has(dateKey)) {
               lessonsMap.set(dateKey, {});
             }
-            
+
             const dayLessons = lessonsMap.get(dateKey);
+            // The content field is now JSONB, handle both old and new structures
             dayLessons[timeSlot] = {
-              content: lesson.content,
-              prompt: lesson.prompt
+              content: lesson.content ? JSON.stringify(lesson.content) : '',
+              prompt: lesson.ai_prompt || lesson.prompt || '',
+              lessonId: lesson.id,
+              students: lesson.student_details || []
             };
           });
           setSavedLessons(lessonsMap);
@@ -1224,23 +1227,72 @@ export function CalendarWeekView({
       // Close the generating modal
       setGeneratingContent(false);
       setModalOpen(false);
-      
+
       if (generatedLessons.length > 0) {
-        // Lessons are already saved to ai_generated_lessons by the API
+        // Lessons are already saved to lessons table by the API
         const dateStr = toLocalDateKey(date);
-        
+
         // Force immediate state updates using flushSync
         flushSync(() => {
           // Update the savedLessons state with all generated lessons
           setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
-          
+
           // Set the lessons and date for the modal
           setEnhancedModalLessons(generatedLessons);
           setEnhancedModalDate(date);
         });
-        
+
         // Log for debugging
         console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
+
+        // Force refresh from database to ensure consistency
+        setTimeout(async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          const weekStart = weekDates[0];
+          const weekEnd = weekDates[weekDates.length - 1];
+          const startDate = toLocalDateKey(weekStart);
+          const endDate = toLocalDateKey(weekEnd);
+
+          let query = supabase
+            .from('lessons')
+            .select('*')
+            .eq('provider_id', user.id)
+            .eq('lesson_source', 'ai_generated')
+            .gte('lesson_date', startDate)
+            .lte('lesson_date', endDate);
+
+          if (currentSchool?.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          } else {
+            query = query.is('school_id', null);
+          }
+
+          const { data, error } = await query;
+
+          if (!error && data) {
+            const lessonsMap = new Map<string, any>();
+            data.forEach(lesson => {
+              const dateKey = lesson.lesson_date;
+              const timeSlot = lesson.time_slot || '08:00';
+
+              if (!lessonsMap.has(dateKey)) {
+                lessonsMap.set(dateKey, {});
+              }
+
+              const dayLessons = lessonsMap.get(dateKey);
+              // The content field is now JSONB, handle both old and new structures
+              dayLessons[timeSlot] = {
+                content: lesson.content ? JSON.stringify(lesson.content) : '',
+                prompt: lesson.ai_prompt || lesson.prompt || '',
+                lessonId: lesson.id,
+                students: lesson.student_details || []
+              };
+            });
+            setSavedLessons(lessonsMap);
+          }
+        }, 500);
         
         // Trigger the modal to open via the useEffect after state is updated
         setShouldShowModalAfterGeneration(true);
