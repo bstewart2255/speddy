@@ -181,7 +181,8 @@ export async function POST(request: NextRequest) {
               lessonRequest,
               userId,
               supabase,
-              fullMetadata
+              fullMetadata,
+              group.schoolId || null
             );
             
             return {
@@ -307,7 +308,8 @@ export async function POST(request: NextRequest) {
         lessonRequest,
         userId,
         supabase,
-        fullMetadataForLogging  // May be null if capture is disabled
+        fullMetadataForLogging,  // May be null if capture is disabled
+        body.schoolId || null
       );
       
       // Return response with only safe metadata
@@ -517,7 +519,8 @@ async function saveLessonToDatabase(
   request: LessonRequest,
   userId: string,
   supabase: any,
-  generationMetadata?: any
+  generationMetadata?: any,
+  schoolId?: string | null
 ): Promise<{ id: string }> {
   // Re-read environment flags for metadata capture within function scope
   const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
@@ -578,7 +581,7 @@ async function saveLessonToDatabase(
       generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
       validationStatus: lesson?.metadata?.validationStatus || 'passed'
     },
-    school_id: profile?.school_id || null,
+    school_id: schoolId || profile?.school_id || null,
     district_id: profile?.district_id || null,
     state_id: profile?.state_id || null,
     ai_model: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
@@ -613,7 +616,7 @@ async function saveLessonToDatabase(
     provider_id: userId,
     lesson_date: lessonDate,
     time_slot: timeSlot,
-    school_id: profile?.school_id || null,
+    school_id: schoolId || profile?.school_id || null,
     updated_at: new Date().toISOString()
   };
 
@@ -622,7 +625,7 @@ async function saveLessonToDatabase(
     .from('lessons')
     .select('id')
     .eq('provider_id', userId)
-    .eq('school_id', profile?.school_id || null)
+    .eq('school_id', schoolId || profile?.school_id || null)
     .eq('lesson_date', lessonDate)
     .eq('time_slot', timeSlot)
     .single();
@@ -681,7 +684,7 @@ async function saveLessonToDatabase(
           .from('lessons')
           .select('id')
           .eq('provider_id', userId)
-          .eq('school_id', profile?.school_id || null)
+          .eq('school_id', schoolId || profile?.school_id || null)
           .eq('lesson_date', lessonDate)
           .eq('time_slot', timeSlot)
           .single();

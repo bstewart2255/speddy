@@ -634,7 +634,10 @@ export function CalendarWeekView({
           subject,
           duration,
           topic: `Session for ${formatTimeSlot(timeSlot)}`,
-          teacherRole: userProfile?.role || 'resource'
+          teacherRole: userProfile?.role || 'resource',
+          schoolId: currentSchool?.school_id || null,
+          lessonDate: toLocalDateKey(date),
+          timeSlot: timeSlot
         }),
       });
 
@@ -1125,7 +1128,8 @@ export function CalendarWeekView({
             topic: `Session for ${formatTimeSlot(timeSlot)}`,
             teacherRole: userProfile?.role || 'resource',
             lessonDate: lessonDate,
-            timeSlot: timeSlot // Pass the actual time slot
+            timeSlot: timeSlot, // Pass the actual time slot
+            schoolId: currentSchool?.school_id || null
           };
           
           // Debug logging for each batch request
