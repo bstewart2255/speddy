@@ -223,14 +223,10 @@ export default function CalendarPage() {
 
       if (studentError) throw studentError;
 
-      console.log('[DEBUG] Students loaded:', {
-        count: studentData?.length || 0,
-        students: studentData?.map(s => ({
-          id: s.id,
-          initials: s.initials,
-          grade_level: s.grade_level
-        }))
-      });
+      // Only log aggregate counts in debug mode, never expose PII
+      if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+        console.log('[DEBUG] Students loaded - Count:', studentData?.length || 0);
+      }
 
       const studentMap = new Map<string, Student>();
       studentData?.forEach(student => {
