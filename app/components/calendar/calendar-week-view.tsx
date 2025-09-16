@@ -1523,7 +1523,13 @@ export function CalendarWeekView({
           const dayManualLessons = manualLessons.get(dateStr) || [];
           const isPast = isDateInPast(date);
 
-          // Debug logging for purple button condition
+          // Sort sessions by start time for chronological order
+          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+          // Group sessions by time slot for display
+          const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
+
+          // Debug logging for purple button condition (moved after timeSlotGroups is defined)
           if (dateStr === '2025-09-16') {
             console.log('[DEBUG] Purple button condition for 2025-09-16:', {
               isHolidayDay,
@@ -1533,12 +1539,6 @@ export function CalendarWeekView({
               showButton: !isHolidayDay && timeSlotGroups.size > 0 && hasAIContent
             });
           }
-          
-          // Sort sessions by start time for chronological order
-          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
-          
-          // Group sessions by time slot for display
-          const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
 
           return (
             <div
