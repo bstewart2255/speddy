@@ -318,7 +318,7 @@ export function CalendarWeekView({
         // Filter by both provider and school
         let query = supabase
           .from('lessons')
-          .select('*')
+          .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
           .eq('provider_id', user.id)
           .eq('lesson_source', 'ai_generated')
           .gte('lesson_date', startDate)
@@ -598,6 +598,7 @@ export function CalendarWeekView({
         body: JSON.stringify({
           students: studentList,
           subject,
+          subjectType: subject.toLowerCase().includes('math') ? 'math' : 'ela',
           duration,
           topic: `Session for ${formatTimeSlot(timeSlot)}`,
           teacherRole: userProfile?.role || 'resource',
@@ -722,9 +723,13 @@ export function CalendarWeekView({
         body: JSON.stringify({
           students: studentList,
           subject: 'Custom',
+          subjectType: 'ela',
           topic: prompt,
           duration: 30,
-          teacherRole: userProfile?.role || 'resource'
+          teacherRole: userProfile?.role || 'resource',
+          schoolId: currentSchool?.school_id || null,
+          lessonDate: toLocalDateKey(selectedDate),
+          timeSlot: `on-demand-${Date.now()}`
         }),
       });
 
@@ -1227,7 +1232,7 @@ export function CalendarWeekView({
 
           let query = supabase
             .from('lessons')
-            .select('*')
+            .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
             .eq('provider_id', user.id)
             .eq('lesson_source', 'ai_generated')
             .gte('lesson_date', startDate)
