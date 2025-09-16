@@ -287,41 +287,7 @@ export function CalendarWeekView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
 
-  // Clean up legacy lessons without time_slot on mount
-  React.useEffect(() => {
-    const cleanupLegacyLessons = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      try {
-        // Delete lessons without time_slot as they are no longer needed
-        let deleteQuery = supabase
-          .from('ai_generated_lessons')
-          .delete()
-          .eq('provider_id', user.id)
-          .is('time_slot', null);
-        
-        // Add school filter to prevent cross-school deletions
-        if (currentSchool?.school_id) {
-          deleteQuery = deleteQuery.eq('school_id', currentSchool.school_id);
-        } else {
-          // No school_id - only delete records with NULL school_id
-          deleteQuery = deleteQuery.is('school_id', null);
-        }
-        
-        const { error } = await deleteQuery;
-
-        if (error && error.code !== '42P01') {
-          console.error('Failed to cleanup legacy lessons:', error);
-        }
-      } catch (error) {
-        console.error('Error during legacy cleanup:', error);
-      }
-    };
-
-    cleanupLegacyLessons();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  // Legacy cleanup removed - now using lessons table
 
   // Load saved AI lessons
   React.useEffect(() => {
@@ -352,7 +318,7 @@ export function CalendarWeekView({
         // Filter by both provider and school
         let query = supabase
           .from('lessons')
-          .select('*')
+          .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
           .eq('provider_id', user.id)
           .eq('lesson_source', 'ai_generated')
           .gte('lesson_date', startDate)
@@ -382,15 +348,18 @@ export function CalendarWeekView({
           data?.forEach(lesson => {
             const dateKey = lesson.lesson_date;
             const timeSlot = lesson.time_slot || '08:00'; // Default for legacy data
-            
+
             if (!lessonsMap.has(dateKey)) {
               lessonsMap.set(dateKey, {});
             }
-            
+
             const dayLessons = lessonsMap.get(dateKey);
+            // The content field is now JSONB, handle both old and new structures
             dayLessons[timeSlot] = {
-              content: lesson.content,
-              prompt: lesson.prompt
+              content: lesson.content ? JSON.stringify(lesson.content) : '',
+              prompt: lesson.ai_prompt || lesson.prompt || '',
+              lessonId: lesson.id,
+              students: lesson.student_details || []
             };
           });
           setSavedLessons(lessonsMap);
@@ -629,9 +598,13 @@ export function CalendarWeekView({
         body: JSON.stringify({
           students: studentList,
           subject,
+          subjectType: subject.toLowerCase().includes('math') ? 'math' : 'ela',
           duration,
           topic: `Session for ${formatTimeSlot(timeSlot)}`,
-          teacherRole: userProfile?.role || 'resource'
+          teacherRole: userProfile?.role || 'resource',
+          schoolId: currentSchool?.school_id || null,
+          lessonDate: toLocalDateKey(date),
+          timeSlot: timeSlot
         }),
       });
 
@@ -750,9 +723,13 @@ export function CalendarWeekView({
         body: JSON.stringify({
           students: studentList,
           subject: 'Custom',
+          subjectType: 'ela',
           topic: prompt,
           duration: 30,
-          teacherRole: userProfile?.role || 'resource'
+          teacherRole: userProfile?.role || 'resource',
+          schoolId: currentSchool?.school_id || null,
+          lessonDate: toLocalDateKey(selectedDate),
+          timeSlot: `on-demand-${Date.now()}`
         }),
       });
 
@@ -764,13 +741,30 @@ export function CalendarWeekView({
       setAiContent(htmlContent);
 
       // Lesson is already saved by the API
-      // Update local saved lessons state
+      // Update local saved lessons state with proper time slot structure
+      const syntheticTimeSlot = `on-demand-${Date.now()}`;
       setSavedLessons(prev => {
         const newMap = new Map(prev);
-        newMap.set(toLocalDateKey(selectedDate), {
+        const dateKey = toLocalDateKey(selectedDate);
+        const dayLessons = newMap.get(dateKey) || {};
+
+        // Add the lesson under the synthetic time slot
+        dayLessons[syntheticTimeSlot] = {
           content: htmlContent,
-          prompt: prompt
-        });
+          prompt: prompt,
+          lessonId: data.lessonId || null,
+          students: selectedDaySessions
+            .map(session => session.student_id)
+            .filter((id): id is string => id !== null)
+            .map(id => ({
+              id,
+              initials: students.get(id)?.initials || '',
+              grade_level: students.get(id)?.grade_level || '',
+              teacher_name: ''
+            }))
+        };
+
+        newMap.set(dateKey, dayLessons);
         return newMap;
       });
 
@@ -1122,7 +1116,8 @@ export function CalendarWeekView({
             topic: `Session for ${formatTimeSlot(timeSlot)}`,
             teacherRole: userProfile?.role || 'resource',
             lessonDate: lessonDate,
-            timeSlot: timeSlot // Pass the actual time slot
+            timeSlot: timeSlot, // Pass the actual time slot
+            schoolId: currentSchool?.school_id || null
           };
           
           // Debug logging for each batch request
@@ -1224,23 +1219,72 @@ export function CalendarWeekView({
       // Close the generating modal
       setGeneratingContent(false);
       setModalOpen(false);
-      
+
       if (generatedLessons.length > 0) {
-        // Lessons are already saved to ai_generated_lessons by the API
+        // Lessons are already saved to lessons table by the API
         const dateStr = toLocalDateKey(date);
-        
+
         // Force immediate state updates using flushSync
         flushSync(() => {
           // Update the savedLessons state with all generated lessons
           setSavedLessons(prev => applyGeneratedLessonsToState(prev, dateStr, generatedLessons));
-          
+
           // Set the lessons and date for the modal
           setEnhancedModalLessons(generatedLessons);
           setEnhancedModalDate(date);
         });
-        
+
         // Log for debugging
         console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
+
+        // Force refresh from database to ensure consistency
+        setTimeout(async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          const weekStart = weekDates[0];
+          const weekEnd = weekDates[weekDates.length - 1];
+          const startDate = toLocalDateKey(weekStart);
+          const endDate = toLocalDateKey(weekEnd);
+
+          let query = supabase
+            .from('lessons')
+            .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
+            .eq('provider_id', user.id)
+            .eq('lesson_source', 'ai_generated')
+            .gte('lesson_date', startDate)
+            .lte('lesson_date', endDate);
+
+          if (currentSchool?.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          } else {
+            query = query.is('school_id', null);
+          }
+
+          const { data, error } = await query;
+
+          if (!error && data) {
+            const lessonsMap = new Map<string, any>();
+            data.forEach(lesson => {
+              const dateKey = lesson.lesson_date;
+              const timeSlot = lesson.time_slot || '08:00';
+
+              if (!lessonsMap.has(dateKey)) {
+                lessonsMap.set(dateKey, {});
+              }
+
+              const dayLessons = lessonsMap.get(dateKey);
+              // The content field is now JSONB, handle both old and new structures
+              dayLessons[timeSlot] = {
+                content: lesson.content ? JSON.stringify(lesson.content) : '',
+                prompt: lesson.ai_prompt || lesson.prompt || '',
+                lessonId: lesson.id,
+                students: lesson.student_details || []
+              };
+            });
+            setSavedLessons(lessonsMap);
+          }
+        }, 500);
         
         // Trigger the modal to open via the useEffect after state is updated
         setShouldShowModalAfterGeneration(true);

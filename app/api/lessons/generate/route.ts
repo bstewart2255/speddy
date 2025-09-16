@@ -181,7 +181,8 @@ export async function POST(request: NextRequest) {
               lessonRequest,
               userId,
               supabase,
-              fullMetadata
+              fullMetadata,
+              group.schoolId || null
             );
             
             return {
@@ -307,7 +308,8 @@ export async function POST(request: NextRequest) {
         lessonRequest,
         userId,
         supabase,
-        fullMetadataForLogging  // May be null if capture is disabled
+        fullMetadataForLogging,  // May be null if capture is disabled
+        body.schoolId || null
       );
       
       // Return response with only safe metadata
@@ -517,7 +519,8 @@ async function saveLessonToDatabase(
   request: LessonRequest,
   userId: string,
   supabase: any,
-  generationMetadata?: any
+  generationMetadata?: any,
+  schoolId?: string | null
 ): Promise<{ id: string }> {
   // Re-read environment flags for metadata capture within function scope
   const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
@@ -578,7 +581,7 @@ async function saveLessonToDatabase(
       generatedAt: lesson?.metadata?.generatedAt || new Date().toISOString(),
       validationStatus: lesson?.metadata?.validationStatus || 'passed'
     },
-    school_id: profile?.school_id || null,
+    school_id: schoolId || profile?.school_id || null,
     district_id: profile?.district_id || null,
     state_id: profile?.state_id || null,
     ai_model: generationMetadata?.modelUsed || lesson?.metadata?.modelUsed || null,
@@ -613,37 +616,121 @@ async function saveLessonToDatabase(
     provider_id: userId,
     lesson_date: lessonDate,
     time_slot: timeSlot,
-    school_id: profile?.school_id || null,
+    school_id: schoolId || profile?.school_id || null,
     updated_at: new Date().toISOString()
   };
 
-  // Insert the lesson (no longer using upsert to avoid constraint issues)
-  // For scheduled lessons, future migration will add unique constraint
-  // For on-demand lessons, timestamp ensures uniqueness
-  const { data: lessonRecord, error: upsertError } = await supabase
+  // First check if a lesson already exists for this time slot
+  const { data: existingLesson, error: checkError } = await supabase
     .from('lessons')
-    .insert(lessonRecordData)
     .select('id')
+    .eq('provider_id', userId)
+    .eq('school_id', schoolId || profile?.school_id || null)
+    .eq('lesson_date', lessonDate)
+    .eq('time_slot', timeSlot)
     .single();
 
-  if (upsertError) {
+  if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+    console.error('Error checking for existing lesson:', checkError);
+  }
+
+  let lessonRecord;
+  
+  if (existingLesson) {
+    // Update existing lesson using upsert
     if (DEBUG_LOG) {
-      console.error(`[DEBUG] Database error when saving lesson:`, {
-        errorCode: upsertError.code,
-        errorMessage: upsertError.message,
-        constraintName: upsertError.constraint || 'unknown',
-        attemptedData: {
-          lesson_date: lessonDate,
-          time_slot: timeSlot,
-          subject: request.subject,
-          studentCount: request.students.length,
-          hasSchoolContext: !!profile?.school_id
-        }
-      });
-    } else {
-      console.error('Failed to save lesson to database:', upsertError.code);
+      console.log(`[DEBUG] Updating existing lesson with ID: ${existingLesson.id}`);
     }
-    throw new Error(`Failed to save lesson to database: ${upsertError.message || 'Unknown error'}`);
+    
+    const { data: updatedLesson, error: updateError } = await supabase
+      .from('lessons')
+      .update({
+        ...lessonRecordData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existingLesson.id)
+      .select('id')
+      .single();
+    
+    if (updateError) {
+      if (DEBUG_LOG) {
+        console.error(`[DEBUG] Database error when updating lesson:`, {
+          errorCode: updateError.code,
+          errorMessage: updateError.message,
+          lessonId: existingLesson.id
+        });
+      }
+      throw new Error(`Failed to update lesson in database: ${updateError.message || 'Unknown error'}`);
+    }
+    
+    lessonRecord = updatedLesson;
+  } else {
+    // Insert new lesson
+    const { data: newLesson, error: insertError } = await supabase
+      .from('lessons')
+      .insert(lessonRecordData)
+      .select('id')
+      .single();
+
+    if (insertError) {
+      // Check if it's a duplicate key error - might have been created between our check and insert
+      if (insertError.code === '23505') {
+        if (DEBUG_LOG) {
+          console.log(`[DEBUG] Duplicate key error - lesson was created concurrently, attempting to fetch existing`);
+        }
+        
+        // Try to fetch the existing lesson
+        const { data: concurrentLesson, error: fetchError } = await supabase
+          .from('lessons')
+          .select('id')
+          .eq('provider_id', userId)
+          .eq('school_id', schoolId || profile?.school_id || null)
+          .eq('lesson_date', lessonDate)
+          .eq('time_slot', timeSlot)
+          .single();
+        
+        if (fetchError || !concurrentLesson) {
+          throw new Error(`Failed to save lesson to database: ${insertError.message || 'Unknown error'}`);
+        }
+        
+        // Update the concurrently created lesson
+        const { data: updatedConcurrent, error: updateConcurrentError } = await supabase
+          .from('lessons')
+          .update({
+            ...lessonRecordData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', concurrentLesson.id)
+          .select('id')
+          .single();
+        
+        if (updateConcurrentError) {
+          throw new Error(`Failed to update lesson in database: ${updateConcurrentError.message || 'Unknown error'}`);
+        }
+        
+        lessonRecord = updatedConcurrent;
+      } else {
+        if (DEBUG_LOG) {
+          console.error(`[DEBUG] Database error when saving lesson:`, {
+            errorCode: insertError.code,
+            errorMessage: insertError.message,
+            constraintName: insertError.constraint || 'unknown',
+            attemptedData: {
+              lesson_date: lessonDate,
+              time_slot: timeSlot,
+              subject: request.subject,
+              studentCount: request.students.length,
+              hasSchoolContext: !!profile?.school_id
+            }
+          });
+        } else {
+          console.error('Failed to save lesson to database:', insertError.code);
+        }
+        throw new Error(`Failed to save lesson to database: ${insertError.message || 'Unknown error'}`);
+      }
+    } else {
+      lessonRecord = newLesson;
+    }
   }
 
   if (DEBUG_LOG) {
