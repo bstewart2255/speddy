@@ -261,15 +261,24 @@ export function AIContentModalEnhanced({
   };
 
   const generateWorksheetsForLesson = async (lesson: LessonContent) => {
+    console.log('[DEBUG] Starting worksheet generation for lesson:', {
+      timeSlot: lesson.timeSlot,
+      studentCount: lesson.students.length,
+      contentLength: lesson.content?.length
+    });
+
     // Generate worksheets for each student in the time slot
     for (const student of lesson.students) {
+      console.log('[DEBUG] Processing student:', student.initials, student.id);
+
       try {
         // Check for AI-generated content using shared utility
         const { studentMaterial, isValid, error } = findStudentWorksheetContent(lesson.content, student.id);
-        
+        console.log('[DEBUG] Worksheet search result:', { isValid, error, hasStudentMaterial: !!studentMaterial });
+
         let aiMathWorksheetHtml: string | null = null;
         let aiElaWorksheetHtml: string | null = null;
-        
+
         if (isValid && studentMaterial) {
           console.log('Found AI-generated worksheet for student:', student.initials);
           console.log('StudentMaterial structure:', {
@@ -287,10 +296,17 @@ export function AIContentModalEnhanced({
             generateAIWorksheetHtml(studentMaterial, student.initials, mathWorksheetCode, 'math'),
             generateAIWorksheetHtml(studentMaterial, student.initials, elaWorksheetCode, 'ela')
           ]);
-          
+
           aiMathWorksheetHtml = mathHtml;
           aiElaWorksheetHtml = elaHtml;
-          
+
+          console.log('[DEBUG] Worksheet HTML generation results:', {
+            mathHtmlLength: aiMathWorksheetHtml?.length || 0,
+            elaHtmlLength: aiElaWorksheetHtml?.length || 0,
+            hasMathHtml: !!aiMathWorksheetHtml,
+            hasElaHtml: !!aiElaWorksheetHtml
+          });
+
           if (!aiMathWorksheetHtml && !aiElaWorksheetHtml) {
             console.error('Failed to generate both worksheets despite valid data:', {
               studentId: student.id,
@@ -308,6 +324,7 @@ export function AIContentModalEnhanced({
           
           // Print or fallback for math worksheet
           if (aiMathWorksheetHtml) {
+            console.log('[DEBUG] Printing Math worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
             await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
           } else {
@@ -326,6 +343,7 @@ export function AIContentModalEnhanced({
           
           // Print or fallback for ELA worksheet
           if (aiElaWorksheetHtml) {
+            console.log('[DEBUG] Printing ELA worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
           } else {
             console.warn(`Failed to generate ELA AI worksheet for ${student.initials}, using fallback PDF`);

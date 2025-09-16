@@ -42,9 +42,9 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - CRITICAL: Do NOT include letters (A., B., C., D.) in the choices array - just the text
-   - Correct: ["Red", "Blue", "Green", "Yellow"]
-   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - CRITICAL: ALWAYS include letter prefixes (A., B., C., D.) in the choices array
+   - Correct: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - WRONG: ["Red", "Blue", "Green", "Yellow"]
    - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
    - One clearly correct answer
    - Distractors should be plausible but wrong
@@ -117,10 +117,12 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
 4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
    - Each example must include:
      * Problem statement
-     * Step-by-step solution (numbered steps)
+     * Step-by-step solution (as array of strings, NO numbering - just the step text)
      * Teaching point to emphasize
    - Examples MUST correspond to worksheet problem types
    - Include visual representations where helpful
+   - Steps format: ["First, identify the...", "Next, calculate...", "Finally, check..."]
+   - DO NOT include: ["1. First...", "Step 1: First...", "(1) First..."]
 
 5. STUDENT PROBLEMS DISPLAY:
    - Show ALL problems from ALL student worksheets
@@ -193,7 +195,7 @@ JSON STRUCTURE (STRICT - no deviations):
           "items": [
             {
               "type": "example",
-              "content": "Context-appropriate example based on the lesson type and subject"
+              "content": "MUST be a complete worked example showing HOW to solve a problem, not a suggestion. For math: '3 + 2 = 5 (count 3 fingers, add 2 more)'. For reading: 'The word CAT has 3 sounds: /k/ /a/ /t/'. NOT suggestions like 'Look for key words' or 'Remember to check your work'."
             }
           ]
         },
@@ -235,6 +237,11 @@ ERROR PREVENTION:
 - ALWAYS include teacherLessonPlan with all required fields
 - ALWAYS include exactly 2-3 whiteboard examples
 - ALWAYS show ALL student problems with answers in teacherLessonPlan
+- EXAMPLES must be WORKED examples with solutions, NOT tips or suggestions
+- For math examples: Show the problem AND the complete solution process
+- For reading examples: Show actual words/sentences being decoded or analyzed
+- WRONG example: "Remember to look for context clues"
+- RIGHT example: "The word 'happy' means feeling good. In 'The happy dog wagged its tail', we know the dog feels good."
 
 IMPORTANT: 
 - Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.

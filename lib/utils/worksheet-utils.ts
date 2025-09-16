@@ -181,6 +181,13 @@ export async function generateAIWorksheetHtml(
   worksheetCode: string,
   subject?: 'math' | 'ela'
 ): Promise<string | null> {
+  console.log('[DEBUG] generateAIWorksheetHtml called with:', {
+    studentInitials,
+    subject,
+    worksheetCode,
+    hasStudentMaterial: !!studentMaterial
+  });
+
   try {
     // Generate QR code with error handling
     const qrCodeDataUrl = await generateWorksheetQRCode(worksheetCode);
@@ -243,12 +250,16 @@ export async function generateAIWorksheetHtml(
     
     // Use WorksheetRenderer to generate HTML
     const renderer = new WorksheetRenderer();
+    console.log('[DEBUG] Calling WorksheetRenderer.renderStudentWorksheet');
+
     const html = renderer.renderStudentWorksheet(
       worksheetContent,
       studentInitials,
       qrCodeDataUrl || undefined // Convert null to undefined for TypeScript
     );
-    
+
+    console.log('[DEBUG] WorksheetRenderer returned HTML with length:', html?.length || 0);
+
     return html;
   } catch (error) {
     console.error('Failed to generate AI worksheet HTML:', error);
@@ -260,6 +271,8 @@ export async function generateAIWorksheetHtml(
  * Opens and prints HTML worksheet using iframe (avoids pop-up blockers)
  */
 export function printHtmlWorksheet(html: string | null, title: string): void {
+  console.log('[DEBUG] printHtmlWorksheet called with:', { title, htmlLength: html?.length || 0 });
+
   // Validate HTML content before attempting to print
   if (!html || html.trim().length === 0) {
     console.error(`Cannot print empty worksheet for: ${title}`);
@@ -269,7 +282,9 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     alert(errorMessage);
     return;
   }
-  
+
+  console.log('[DEBUG] Creating iframe for worksheet print:', title);
+
   // Create a hidden iframe for printing
   const iframe = document.createElement('iframe');
   iframe.style.position = 'absolute';

@@ -333,23 +333,32 @@ export class WorksheetRenderer {
 
   ${(worksheet.sections || []).map((section, sectionIndex) => {
     // Check if this is a reading passage section
-    const isReadingSection = section.title?.toLowerCase().includes('reading') || 
+    const isReadingSection = section.title?.toLowerCase().includes('reading') ||
                             section.title?.toLowerCase().includes('passage') ||
                             section.title?.toLowerCase().includes('story');
-    
+
+    // Track overall question number across all sections for simpler numbering
+    let questionNumber = 1;
+
     return `
     <div class="section">
       <h2>${this.escapeHtml(section.title)}</h2>
       ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
-      
+
       ${(section.items ?? []).map((worksheetContent, contentIndex) => {
         // If items is an array of WorksheetContent objects with nested items
         if (worksheetContent.items && Array.isArray(worksheetContent.items)) {
-          // Flatten the structure - render the nested items directly
-          return this.renderWorksheetContentSection(worksheetContent, sectionIndex + 1, contentIndex);
+          // Flatten the structure - render the nested items directly with simple numbering
+          return this.renderWorksheetContentSection(worksheetContent, 0, questionNumber);
         }
         // Otherwise it's a direct item
-        return this.renderWorksheetItem(worksheetContent, sectionIndex + 1, contentIndex + 1, !isReadingSection);
+        const shouldNumber = !isReadingSection &&
+                           worksheetContent.type !== 'passage' &&
+                           worksheetContent.type !== 'text' &&
+                           worksheetContent.type !== 'example';
+        const result = this.renderWorksheetItem(worksheetContent, 0, questionNumber, shouldNumber);
+        if (shouldNumber) questionNumber++;
+        return result;
       }).join('')}
     </div>
   `;
@@ -360,40 +369,42 @@ export class WorksheetRenderer {
   }
 
   private renderWorksheetContentSection(worksheetContent: any, sectionIndex: number, contentIndex: number): string {
-    // Handle both nested and flat structures
-    // If it's a nested structure (sections > items > items), flatten it
+    // Simplify the nested structure handling
+    // If it's a nested structure (sections > items > items), flatten it completely
     if (worksheetContent.sectionType && worksheetContent.items) {
-      // This is already a content section with items, render them directly
+      // This is already a content section with items, render them directly with simple sequential numbering
       let itemNumber = 1;
       return worksheetContent.items.map((item: any) => {
-        // For story/passage items, don't number them
+        // For story/passage/example items, don't number them
         if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
           return this.renderWorksheetItem(item, 0, 0, false);
         }
-        return this.renderWorksheetItem(item, sectionIndex, itemNumber++, true);
+        // Use simple sequential numbering for all practice questions
+        return this.renderWorksheetItem(item, 0, itemNumber++, true);
       }).join('');
     }
-    
-    // Legacy nested structure support
+
+    // Direct item (not nested)
     if (!worksheetContent.items || !Array.isArray(worksheetContent.items)) {
-      return this.renderWorksheetItem(worksheetContent, sectionIndex, contentIndex, true);
+      return this.renderWorksheetItem(worksheetContent, 0, contentIndex, true);
     }
-    
+
     // Check if the content has actual questions/items
-    const hasContent = worksheetContent.items.length > 0 && 
+    const hasContent = worksheetContent.items.length > 0 &&
                       worksheetContent.items.some((item: any) => item.content && item.content.trim() !== '');
-    
+
     if (!hasContent) {
       console.warn('Section has no content items:', worksheetContent.sectionTitle || 'unnamed');
     }
-    
+
+    // Simple sequential numbering for all items
     let itemNumber = 1;
     return worksheetContent.items.map((item: any) => {
-      // For story/passage items, don't number them
+      // For story/passage/example items, don't number them
       if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
         return this.renderWorksheetItem(item, 0, 0, false);
       }
-      return this.renderWorksheetItem(item, sectionIndex, itemNumber++, true);
+      return this.renderWorksheetItem(item, 0, itemNumber++, true);
     }).join('');
   }
   
@@ -436,16 +447,9 @@ export class WorksheetRenderer {
       ${item.type === 'multiple-choice' && item.choices ? `
         <ul class="choices">
           ${item.choices.map((choice: string, idx: number) => {
-            // Fix double letter issue - ensure choice starts with proper format
-            const letter = String.fromCharCode(65 + idx); // A, B, C, D, E, etc.
-            let cleanChoice = choice;
-            // Remove ALL letter prefixes (handles "A. ", "A. A. ", etc.)
-            // This regex will remove any sequence of letter-dot-space at the beginning
-            // Using [A-Z] to handle any number of choices, not just A-D
-            cleanChoice = cleanChoice.replace(/^([A-Z]\.\s*)+/gi, '');
-            // Also handle cases where it might be just the letter without dot
-            cleanChoice = cleanChoice.replace(/^[A-Z]\s+/i, '');
-            return `<li>${letter}. ${this.escapeHtml(cleanChoice)}</li>`;
+            // Simply display the choice as provided by the AI
+            // The AI should now include letter prefixes, so we just escape and display
+            return `<li>${this.escapeHtml(choice)}</li>`;
           }).join('')}
         </ul>
       ` : item.type === 'fill-blank' || item.type === 'fill-in-blank' ? 
@@ -639,8 +643,14 @@ export class WorksheetRenderer {
               <strong>Solution Steps:</strong>
               <ol>
                 ${example.steps?.map((step: string) => {
-                  // Remove "Step N:" prefix if present to avoid redundancy with <ol>
-                  const cleanStep = step.replace(/^Step\s+\d+:\s*/i, '');
+                  // Remove various numbering prefixes to avoid redundancy with <ol>
+                  // Handles: "Step N:", "N.", "N)", "(N)", just "N" at the start
+                  const cleanStep = step
+                    .replace(/^Step\s+\d+:\s*/i, '')
+                    .replace(/^\d+\.\s*/, '')
+                    .replace(/^\d+\)\s*/, '')
+                    .replace(/^\(\d+\)\s*/, '')
+                    .replace(/^\d+\s+/, '');
                   return `<li>${this.escapeHtml(cleanStep)}</li>`;
                 }).join('') || ''}
               </ol>

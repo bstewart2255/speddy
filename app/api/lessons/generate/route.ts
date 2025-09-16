@@ -1,14 +1,14 @@
 // Unified API endpoint for JSON-first lesson generation
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { lessonGenerator } from '@/lib/lessons/generator';
-import { 
-  LessonRequest, 
-  StudentProfile, 
-  isValidTeacherRole 
+import {
+  LessonRequest,
+  StudentProfile,
+  isValidTeacherRole
 } from '@/lib/lessons/schema';
 import { withAuth } from '@/lib/api/with-auth';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { createClient } from '@/lib/supabase/server';
 
 export const maxDuration = 120; // 2 minutes timeout for Vercel
 
@@ -23,8 +23,9 @@ const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
+      // Create supabase client for database operations
       const supabase = await createClient();
-      
+
       // Log metadata capture status on startup (only in debug mode)
       if (DEBUG && SHOULD_CAPTURE_METADATA) {
         console.log('[DEBUG] Full metadata capture is ENABLED:', {
