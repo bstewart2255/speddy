@@ -9,6 +9,8 @@ const nextConfig = {
     // Skip type checking during build if already checked
     ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
   },
+  // Configure dev origins for Replit preview
+  allowedDevOrigins: ['*'],
   // Ensure CSS is processed correctly
   webpack: config => {
     // Ensure CSS modules work properly
