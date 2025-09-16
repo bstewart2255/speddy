@@ -327,7 +327,7 @@ export function CalendarWeekView({
         // Filter by both provider and school
         let query = supabase
           .from('lessons')
-          .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details, school_id')
+          .select('id, lesson_date, time_slot, content, ai_prompt, student_details, school_id')
           .eq('provider_id', user.id)
           .eq('lesson_source', 'ai_generated')
           .gte('lesson_date', startDate)
@@ -388,7 +388,7 @@ export function CalendarWeekView({
             // The content field is now JSONB, handle both old and new structures
             dayLessons[timeSlot] = {
               content: lesson.content ? JSON.stringify(lesson.content) : '',
-              prompt: lesson.ai_prompt || lesson.prompt || '',
+              prompt: lesson.ai_prompt || '',
               lessonId: lesson.id,
               students: lesson.student_details || []
             };
@@ -1291,7 +1291,7 @@ export function CalendarWeekView({
 
           let query = supabase
             .from('lessons')
-            .select('id, lesson_date, time_slot, content, ai_prompt, prompt, student_details')
+            .select('id, lesson_date, time_slot, content, ai_prompt, student_details')
             .eq('provider_id', user.id)
             .eq('lesson_source', 'ai_generated')
             .gte('lesson_date', startDate)
@@ -1322,7 +1322,7 @@ export function CalendarWeekView({
               // The content field is now JSONB, handle both old and new structures
               dayLessons[timeSlot] = {
                 content: lesson.content ? JSON.stringify(lesson.content) : '',
-                prompt: lesson.ai_prompt || lesson.prompt || '',
+                prompt: lesson.ai_prompt || '',
                 lessonId: lesson.id,
                 students: lesson.student_details || []
               };
