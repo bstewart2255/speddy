@@ -1,6 +1,10 @@
 /**
+ * @deprecated This functionality has been merged into ai-lesson-formatter.ts to avoid duplicate processing (Issue #268)
+ *
  * Standardizes AI-generated lesson content to ensure consistent structure
  * This post-processes the AI output to enforce a uniform format
+ *
+ * DO NOT USE: This file is kept for reference only. Use processAILessonContent() from ai-lesson-formatter.ts instead.
  */
 
 interface ParsedSection {

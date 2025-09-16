@@ -2,16 +2,17 @@
 
 import * as React from "react";
 import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Target, BookOpen, Activity } from "lucide-react";
-import { WorksheetGenerator } from '../../lib/worksheet-generator';
+// DEPRECATED: WorksheetGenerator fallback removed to simplify pipeline (Issue #268)
+// import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { formatTimeSlot } from '../../lib/utils/date-time';
 import { LessonContentHandler, getPrintableContent, isJsonLesson } from '../../lib/utils/lesson-content-handler';
-import { 
-  generateWorksheetId, 
-  findStudentWorksheetContent, 
+import {
+  generateWorksheetId,
+  findStudentWorksheetContent,
   generateAIWorksheetHtml,
-  generateWorksheetQRCode,
-  printHtmlWorksheet,
-  printPdfWorksheet
+  // generateWorksheetQRCode removed - QR codes disabled (Issue #268)
+  printHtmlWorksheet
+  // printPdfWorksheet removed - no longer using PDF fallback (Issue #268)
 } from '../../lib/utils/worksheet-utils';
 import '../../app/styles/lesson-content.css';
 
@@ -318,74 +319,39 @@ export function AIContentModalEnhanced({
           console.log(`No AI worksheet for ${student.initials}: ${error || 'Unknown error'}`);
         }
         
-        // Check each worksheet separately and print or fallback
+        // Print AI-generated worksheets if available, otherwise show explicit error
         if (aiMathWorksheetHtml || aiElaWorksheetHtml) {
-          const generator = new WorksheetGenerator();
-          
-          // Print or fallback for math worksheet
+          // Print math worksheet if available
           if (aiMathWorksheetHtml) {
-            console.log('[DEBUG] Printing Math worksheet HTML for:', student.initials);
+            console.log('[WORKSHEET] Printing Math worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
             await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
           } else {
-            console.warn(`Failed to generate Math AI worksheet for ${student.initials}, using fallback PDF`);
-            // Generate math worksheet using fallback
-            const mathPdf = await generator.generateWorksheet({
-              studentName: student.initials,
-              gradeLevel: student.grade_level as any,
-              subject: 'math',
-              sessionTime: formatTimeSlot(lesson.timeSlot),
-              sessionDate: lessonDate
-            });
-            printPdfWorksheet(mathPdf, `Math Worksheet - ${student.initials}`);
-            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
+            // EXPLICIT ERROR - No silent fallback
+            console.error(`[WORKSHEET ERROR] Failed to generate Math worksheet for ${student.initials}`);
+            alert(`Failed to generate Math worksheet for ${student.initials}. The worksheet content may be missing or incorrectly formatted.`);
           }
-          
-          // Print or fallback for ELA worksheet
+
+          // Print ELA worksheet if available
           if (aiElaWorksheetHtml) {
-            console.log('[DEBUG] Printing ELA worksheet HTML for:', student.initials);
+            console.log('[WORKSHEET] Printing ELA worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
           } else {
-            console.warn(`Failed to generate ELA AI worksheet for ${student.initials}, using fallback PDF`);
-            // Generate ELA worksheet using fallback
-            const elaPdf = await generator.generateWorksheet({
-              studentName: student.initials,
-              gradeLevel: student.grade_level as any,
-              subject: 'ela',
-              sessionTime: formatTimeSlot(lesson.timeSlot),
-              sessionDate: lessonDate
-            });
-            printPdfWorksheet(elaPdf, `ELA Worksheet - ${student.initials}`);
+            // EXPLICIT ERROR - No silent fallback
+            console.error(`[WORKSHEET ERROR] Failed to generate ELA worksheet for ${student.initials}`);
+            alert(`Failed to generate ELA worksheet for ${student.initials}. The worksheet content may be missing or incorrectly formatted.`);
           }
         } else {
-          // Fallback to the original WorksheetGenerator for non-JSON content
-          console.log('Using fallback WorksheetGenerator for both subjects for student:', student.initials);
-          const generator = new WorksheetGenerator();
-          
-          // Generate math worksheet
-          const mathPdf = await generator.generateWorksheet({
-            studentName: student.initials,
-            gradeLevel: student.grade_level as any, // Grade level from DB
-            subject: 'math',
-            sessionTime: formatTimeSlot(lesson.timeSlot),
-            sessionDate: lessonDate
-          });
-          
-          // Print math worksheet with auto-trigger
-          printPdfWorksheet(mathPdf, `Math Worksheet - ${student.initials}`);
-          
-          // Generate ELA worksheet
-          const elaGenerator = new WorksheetGenerator();
-          const elaPdf = await elaGenerator.generateWorksheet({
-            studentName: student.initials,
-            gradeLevel: student.grade_level as any, // Grade level from DB
-            subject: 'ela',
-            sessionTime: formatTimeSlot(lesson.timeSlot),
-            sessionDate: lessonDate
-          });
-          
-          // Print ELA worksheet with auto-trigger
-          printPdfWorksheet(elaPdf, `ELA Worksheet - ${student.initials}`);
+          // EXPLICIT ERROR - No fallback to generic worksheets
+          const errorMsg = `No AI-generated worksheet content found for ${student.initials}.\n\nThe lesson content may not be in the correct JSON format or is missing student materials.\n\nPlease regenerate the lesson with proper worksheet content.`;
+          console.error('[WORKSHEET ERROR]', errorMsg);
+          alert(errorMsg);
+
+          /* FALLBACK TO WORKSHEETGENERATOR REMOVED - Issue #268
+             The deprecated WorksheetGenerator was creating generic templates that didn't match
+             the AI-generated differentiated content. Removing this fallback ensures users
+             see actual errors when worksheet generation fails.
+          */
         }
         
       } catch (error) {

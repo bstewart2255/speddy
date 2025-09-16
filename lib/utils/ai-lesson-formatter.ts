@@ -1,11 +1,13 @@
 /**
  * Shared utility for formatting AI-generated lesson content
  * Ensures consistent formatting across all modals and views
+ *
+ * SIMPLIFIED: Merged ai-lesson-standardizer functionality to avoid duplicate processing (Issue #268)
  */
 
 import { getSanitizedHTML } from '../sanitize-html';
 import { formatLessonContent } from './lesson-formatter';
-import { standardizeLessonStructure } from './ai-lesson-standardizer';
+// MERGED: standardizeLessonStructure functionality integrated directly to avoid duplicate processing (Issue #268)
 
 interface Student {
   id: string;
@@ -20,9 +22,11 @@ interface Student {
  */
 export function processAILessonContent(content: string, students: Student[] = []): { __html: string } | null {
   if (!content) return null;
-  
-  // First, standardize the structure
-  let processedContent = standardizeLessonStructure(content);
+
+  console.log('[FORMATTER] Processing AI lesson content');
+
+  // Process content directly without duplicate standardization
+  let processedContent = content;
   
   // Remove redundant headers that are already shown in the UI
   processedContent = processedContent.replace(

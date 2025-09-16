@@ -17,7 +17,8 @@
  */
 
 import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
+// QR CODE DISABLED: Commenting out QR code functionality to simplify pipeline (Issue #268)
+// import QRCode from 'qrcode';
 
 export type Subject = 'math' | 'ela';
 export type GradeLevel = 'K' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
@@ -44,9 +45,13 @@ export class WorksheetGenerator {
   async generateWorksheet(config: WorksheetConfig): Promise<string> {
     this.doc = new jsPDF(); // Reset for new worksheet
 
+    // QR CODE DISABLED: Commenting out QR code functionality to simplify pipeline (Issue #268)
+    console.log('[QR DISABLED] Skipping QR code generation in WorksheetGenerator');
+
+    /* ORIGINAL QR CODE - PRESERVED FOR FUTURE REFERENCE
     // Generate unique worksheet code
     const worksheetCode = `WS-${Date.now()}`;
-    
+
     // Generate QR code with URL format
     const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
 
@@ -77,6 +82,7 @@ export class WorksheetGenerator {
       console.error('Error generating QR code:', error);
       // Continue without QR code if there's an error
     }
+    */
 
     if (config.subject === 'math') {
       return await this.generateMathWorksheet(config);

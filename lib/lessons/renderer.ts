@@ -313,7 +313,8 @@ export class WorksheetRenderer {
       <strong>Date:</strong> ____________________<br>
       <strong>Grade:</strong> ${this.escapeHtml(String(material.worksheet?.grade || material.gradeLevel || ''))}
     </div>
-    ${qrCodeUrl ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code" class="qr-code">` : ''}
+    ${/* QR CODE DISABLED: QR codes temporarily disabled to simplify pipeline (Issue #268)
+    qrCodeUrl ? `<img src="${this.escapeHtml(qrCodeUrl)}" alt="QR Code" class="qr-code">` : '' */ ''}
   </div>
 
   <h1>${this.escapeHtml(worksheet.title)}</h1>

@@ -1,5 +1,6 @@
 import { WorksheetRenderer } from '../lessons/renderer';
-import QRCode from 'qrcode';
+// QR CODE DISABLED: Commenting out QR code functionality to simplify pipeline (Issue #268)
+// import QRCode from 'qrcode';
 
 /**
  * Generates a unique worksheet ID using crypto.randomUUID or fallback
@@ -20,8 +21,14 @@ export function generateWorksheetId(studentId: string, subject?: string): string
 
 /**
  * Generates a QR code for worksheet submission with error handling
+ * QR CODE DISABLED: Commenting out QR code functionality to simplify pipeline (Issue #268)
  */
 export async function generateWorksheetQRCode(worksheetCode: string): Promise<string | null> {
+  // QR CODE DISABLED: Returning null immediately to skip QR generation
+  console.log('[QR DISABLED] Skipping QR code generation for worksheet:', worksheetCode);
+  return null;
+
+  /* ORIGINAL CODE - PRESERVED FOR FUTURE REFERENCE
   try {
     const qrUrl = `https://app.speddy.com/ws/${worksheetCode}`;
     const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, {
@@ -39,6 +46,7 @@ export async function generateWorksheetQRCode(worksheetCode: string): Promise<st
     // Return null to allow graceful degradation
     return null;
   }
+  */
 }
 
 /**
@@ -47,68 +55,79 @@ export async function generateWorksheetQRCode(worksheetCode: string): Promise<st
  */
 export function validateStudentMaterial(material: any): boolean {
   if (!material || typeof material !== 'object') {
-    console.log('Validation failed: material is not an object');
+    console.error('[VALIDATION ERROR] Material is not an object:', material);
     return false;
   }
-  
+
   // Find the worksheet to validate
   let worksheet: any = null;
-  
+
   // Prefer material.worksheet if present
   if (material.worksheet && typeof material.worksheet === 'object') {
     worksheet = material.worksheet;
-  } 
+    console.log('[VALIDATION] Found worksheet at material.worksheet');
+  }
   // Otherwise check for material.worksheets with math, ela, or all keys
   else if (material.worksheets && typeof material.worksheets === 'object') {
     // Check for any valid worksheet in worksheets object
     if (material.worksheets.math && typeof material.worksheets.math === 'object') {
       worksheet = material.worksheets.math;
+      console.log('[VALIDATION] Found worksheet at material.worksheets.math');
     } else if (material.worksheets.ela && typeof material.worksheets.ela === 'object') {
       worksheet = material.worksheets.ela;
+      console.log('[VALIDATION] Found worksheet at material.worksheets.ela');
     } else if (material.worksheets.all && typeof material.worksheets.all === 'object') {
       worksheet = material.worksheets.all;
+      console.log('[VALIDATION] Found worksheet at material.worksheets.all');
     }
   }
-  
+
   // If no worksheet found in either location, return false
   if (!worksheet) {
-    console.log('Validation failed: no worksheet found in material');
-    return false;
-  }
-  
-  // Validate the worksheet structure
-  if (!worksheet.title || !worksheet.instructions) {
-    console.log('Validation failed: missing title or instructions', {
-      hasTitle: !!worksheet.title,
-      hasInstructions: !!worksheet.instructions
+    console.error('[VALIDATION ERROR] No worksheet found in material structure:', {
+      hasWorksheet: !!material.worksheet,
+      hasWorksheets: !!material.worksheets,
+      worksheetKeys: material.worksheets ? Object.keys(material.worksheets) : []
     });
     return false;
   }
-  
-  // Check for sections or content
-  if (!worksheet.sections && !worksheet.content) {
-    console.log('Validation failed: no sections or content found');
+
+  // Validate the worksheet structure
+  if (!worksheet.title || !worksheet.instructions) {
+    console.error('[VALIDATION ERROR] Missing required fields:', {
+      hasTitle: !!worksheet.title,
+      hasInstructions: !!worksheet.instructions,
+      title: worksheet.title,
+      instructions: worksheet.instructions
+    });
     return false;
   }
-  
+
+  // Check for sections or content
+  if (!worksheet.sections && !worksheet.content) {
+    console.error('[VALIDATION ERROR] No sections or content found in worksheet');
+    return false;
+  }
+
   // Validate that content actually exists in sections or content
   if (worksheet.sections) {
-    const hasValidContent = worksheet.sections.some((section: any) => 
+    const hasValidContent = worksheet.sections.some((section: any) =>
       section.items && section.items.length > 0
     );
     if (!hasValidContent) {
-      console.warn('Validation warning: sections exist but have no items');
+      console.warn('[VALIDATION WARNING] Sections exist but have no items');
     }
   }
-  
+
   if (worksheet.content) {
-    const hasValidContent = worksheet.content.length > 0 && 
+    const hasValidContent = worksheet.content.length > 0 &&
       worksheet.content.some((c: any) => c.items && c.items.length > 0);
     if (!hasValidContent) {
-      console.warn('Validation warning: content exists but has no items');
+      console.warn('[VALIDATION WARNING] Content exists but has no items');
     }
   }
-  
+
+  console.log('[VALIDATION] Worksheet validation passed');
   return true;
 }
 
@@ -189,9 +208,10 @@ export async function generateAIWorksheetHtml(
   });
 
   try {
-    // Generate QR code with error handling
-    const qrCodeDataUrl = await generateWorksheetQRCode(worksheetCode);
-    
+    // QR CODE DISABLED: Skipping QR code generation to simplify pipeline (Issue #268)
+    // const qrCodeDataUrl = await generateWorksheetQRCode(worksheetCode);
+    const qrCodeDataUrl = null; // QR codes temporarily disabled
+
     // Prepare worksheet content with proper structure
     let worksheetContent = studentMaterial;
     
