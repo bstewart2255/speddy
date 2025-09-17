@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TrashIcon, PrinterIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
 import { createClient } from '@/lib/supabase/client';
+import DOMPurify from 'dompurify';
 
 interface Lesson {
   id: string;
@@ -85,8 +86,19 @@ async function generateSingleLessonPrintTemplate(lesson: Lesson): Promise<string
   // Extract just the body content from the rendered HTML
   const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
-  // Sanitize by removing script tags for security
-  bodyContent = bodyContent.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Sanitize HTML content for security using DOMPurify
+  bodyContent = DOMPurify.sanitize(bodyContent, {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'ul', 'ol', 'li',
+                   'table', 'thead', 'tbody', 'tr', 'td', 'th', 'strong', 'b', 'em', 'i',
+                   'br', 'hr', 'a', 'img', 'section', 'article', 'header', 'footer', 'nav',
+                   'blockquote', 'pre', 'code', 'dl', 'dt', 'dd', 'figure', 'figcaption',
+                   'label', 'input', 'button', 'form', 'fieldset', 'legend'],
+    ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title', 'type', 'name',
+                    'value', 'colspan', 'rowspan', 'target', 'rel', 'width', 'height',
+                    'data-*', 'aria-*', 'role'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'style'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+  });
 
   return `
     <!DOCTYPE html>
@@ -167,8 +179,19 @@ async function generateMultipleLessonsPrintTemplate(
       const renderedContent = await fetchRenderedLesson(lesson.id);
       const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
       let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
-      // Sanitize by removing script tags for security
-      bodyContent = bodyContent.replace(/<script[\s\S]*?<\/script>/gi, '');
+      // Sanitize HTML content for security using DOMPurify
+      bodyContent = DOMPurify.sanitize(bodyContent, {
+        ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'ul', 'ol', 'li',
+                       'table', 'thead', 'tbody', 'tr', 'td', 'th', 'strong', 'b', 'em', 'i',
+                       'br', 'hr', 'a', 'img', 'section', 'article', 'header', 'footer', 'nav',
+                       'blockquote', 'pre', 'code', 'dl', 'dt', 'dd', 'figure', 'figcaption',
+                       'label', 'input', 'button', 'form', 'fieldset', 'legend'],
+        ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title', 'type', 'name',
+                        'value', 'colspan', 'rowspan', 'target', 'rel', 'width', 'height',
+                        'data-*', 'aria-*', 'role'],
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'style'],
+        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+      });
       return bodyContent;
     })
   );
