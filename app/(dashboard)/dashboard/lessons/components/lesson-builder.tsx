@@ -9,8 +9,7 @@ import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface FormData {
   studentIds: string[];
-  subject: string;
-  subjectType: 'ela' | 'math';
+  subjectType: 'ela' | 'math' | '';
   topic: string;
   timeDuration: string;
 }
@@ -29,21 +28,6 @@ interface GeneratedLesson {
   lessonId?: string;
 }
 
-const subjectOptions = [
-  'Math',
-  'English Language Arts',
-  'Science',
-  'Social Studies',
-  'Reading',
-  'Writing',
-  'History',
-  'Geography',
-  'Life Skills',
-  'Art',
-  'Music',
-  'Physical Education',
-];
-
 const timeDurationOptions = [
   '5 minutes',
   '10 minutes',
@@ -59,8 +43,7 @@ export default function LessonBuilder() {
   const { currentSchool } = useSchool();
   const [formData, setFormData] = useState<FormData>({
     studentIds: [],
-    subject: '',
-    subjectType: 'ela',
+    subjectType: '',
     topic: '',
     timeDuration: '15 minutes',
   });
@@ -150,11 +133,10 @@ export default function LessonBuilder() {
       return;
     }
 
-    if (!formData.subject) {
-      showToast('Please select a subject', 'error');
+    if (!formData.subjectType) {
+      showToast('Please select a subject type', 'error');
       return;
     }
-
 
     if (!formData.topic.trim()) {
       showToast('Please enter a topic', 'error');
@@ -165,7 +147,10 @@ export default function LessonBuilder() {
     try {
       // Get selected student details
       const selectedStudents = students.filter(s => formData.studentIds.includes(s.id));
-      
+
+      // Derive subject from subjectType
+      const subject = formData.subjectType === 'ela' ? 'English Language Arts' : 'Math';
+
       // Use the unified lessons API with actual student data
       const response = await fetch('/api/lessons/generate', {
         method: 'POST',
@@ -175,7 +160,7 @@ export default function LessonBuilder() {
             id: s.id,
             grade: s.grade_level
           })),
-          subject: formData.subject,
+          subject: subject,
           subjectType: formData.subjectType,
           topic: formData.topic,
           duration: parseInt(formData.timeDuration) || 15,
@@ -294,29 +279,11 @@ export default function LessonBuilder() {
             Subject *
           </label>
           <select
-            value={formData.subject}
-            onChange={(e) => handleInputChange('subject', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select a subject</option>
-            {subjectOptions.map(option => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Subject Type Selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Subject Type * 
-            <span className="text-xs text-gray-500 ml-1">(Required for enhanced lesson generation)</span>
-          </label>
-          <select
             value={formData.subjectType}
             onChange={(e) => handleInputChange('subjectType', e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">Select subject type</option>
+            <option value="">Select a subject</option>
             <option value="ela">ELA (English Language Arts)</option>
             <option value="math">Math</option>
           </select>
