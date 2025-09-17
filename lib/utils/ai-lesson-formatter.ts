@@ -61,8 +61,9 @@ export function processAILessonContent(content: string, students: Student[] = []
       ];
       const colorClass = colors[index % colors.length];
       
-      // Replace student references with styled badges
-      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
+      // Replace student references with styled badges - escape special RegExp characters
+      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(
         studentRegex,
         `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${colorClass} text-white">${student.initials}</span>`
@@ -124,8 +125,9 @@ export function processAILessonContentForPrint(content: string, students: Studen
   
   // For print, use simpler student name formatting
   if (students && students.length > 0) {
+    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     students.forEach((student, index) => {
-      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
+      const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(
         studentRegex,
         `<strong style="text-decoration: underline;">${student.initials}</strong>`

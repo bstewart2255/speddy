@@ -239,7 +239,8 @@ export function AIContentModal({
       */
     } catch (error) {
       console.error('[WORKSHEET ERROR] Unexpected error:', error);
-      alert(`Failed to generate worksheet: ${error.message}\n\nPlease check the console for more details.`);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Failed to generate worksheet: ${message}\n\nPlease check the console for more details.`);
     }
   };
 
@@ -264,21 +265,39 @@ export function AIContentModal({
       console.log(`Generating ${worksheetPromises.length} worksheets for ${students.length} students...`);
       const worksheetDataArray = await Promise.all(worksheetPromises);
       
-      // Filter out any failed generations
-      const validWorksheets = worksheetDataArray.filter(data => data !== null);
-      
+      // Track failed generations
+      const failedStudents: string[] = [];
+      const validWorksheets: string[] = [];
+
+      worksheetDataArray.forEach((data, index) => {
+        if (data === null) {
+          const studentIndex = Math.floor(index / 2);
+          const subject = index % 2 === 0 ? 'math' : 'ela';
+          const student = students[studentIndex];
+          failedStudents.push(`${student.initials} (${subject})`);
+        } else {
+          validWorksheets.push(data);
+        }
+      });
+
       if (validWorksheets.length === 0) {
-        throw new Error('Failed to generate any worksheets');
+        throw new Error('Failed to generate any worksheets. Please check the lesson content and try again.');
       }
-      
+
+      // Alert user about any failures
+      if (failedStudents.length > 0) {
+        alert(`Warning: Failed to generate worksheets for:\n${failedStudents.join(', ')}\n\nPrinting ${validWorksheets.length} successful worksheets.`);
+      }
+
       // Create combined PDF or print each one
       await printMultipleWorksheets(validWorksheets);
-      
-      console.log(`Successfully generated and printed ${validWorksheets.length} worksheets`);
+
+      console.log(`Successfully generated and printed ${validWorksheets.length} worksheets (${failedStudents.length} failed)`);
       
     } catch (error) {
       console.error('Error generating all worksheets:', error);
-      alert('Failed to generate some worksheets: ' + error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      alert('Failed to generate some worksheets: ' + message);
     } finally {
       clearTimeout(timeoutId);
       cleanupFn();
@@ -324,7 +343,8 @@ export function AIContentModal({
          errors are properly propagated and handled explicitly.
       */
     } catch (error) {
-      console.error(`[WORKSHEET DATA ERROR] Failed to generate ${subject} worksheet for ${studentInitials}:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[WORKSHEET DATA ERROR] Failed to generate ${subject} worksheet for ${studentInitials}:`, message);
       return null;
     }
   };

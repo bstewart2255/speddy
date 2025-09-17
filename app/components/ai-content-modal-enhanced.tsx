@@ -62,12 +62,6 @@ export function AIContentModalEnhanced({
   const [showWorksheetPrompt, setShowWorksheetPrompt] = React.useState(false);
 
   const currentLesson = lessons[currentLessonIndex];
-  
-  // Check if the content is JSON using centralized function
-  const isJsonContent = React.useMemo(() => 
-    isJsonLesson(currentLesson?.content ?? null), 
-    [currentLesson]
-  );
 
   // Escape HTML special characters
   function escapeHTML(str: string): string {
@@ -92,8 +86,7 @@ export function AIContentModalEnhanced({
   };
 
   const printSingleLesson = async (includeWorksheets: boolean) => {
-    const printContent = printRef.current;
-    if (!printContent || !currentLesson) return;
+    if (!currentLesson) return;
 
     // Get printable content using the centralized utility
     const printHtml = await getPrintableContent(currentLesson.content, currentLesson.students);
@@ -355,7 +348,8 @@ export function AIContentModalEnhanced({
         }
         
       } catch (error) {
-        console.error(`Failed to generate worksheets for ${student.initials}:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to generate worksheets for ${student.initials}:`, message);
       }
     }
   };

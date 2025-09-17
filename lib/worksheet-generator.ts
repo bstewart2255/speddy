@@ -28,8 +28,8 @@ export interface WorksheetConfig {
   subject: Subject;
   gradeLevel: GradeLevel;
   sessionDate?: Date;
-  sessionTime?: string; // Add this line
-  lessonId?: string; // Add this line
+  sessionTime?: string;
+  lessonId?: string;
 }
 
 /**

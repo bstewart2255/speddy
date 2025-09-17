@@ -332,38 +332,47 @@ export class WorksheetRenderer {
     </div>
   ` : ''}
 
-  ${(worksheet.sections || []).map((section, sectionIndex) => {
-    // Check if this is a reading passage section
-    const isReadingSection = section.title?.toLowerCase().includes('reading') ||
-                            section.title?.toLowerCase().includes('passage') ||
-                            section.title?.toLowerCase().includes('story');
-
-    // Track overall question number across all sections for simpler numbering
+  ${(() => {
+    // Track overall question number across ALL sections for consistent numbering
     let questionNumber = 1;
 
-    return `
-    <div class="section">
-      <h2>${this.escapeHtml(section.title)}</h2>
-      ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
+    return (worksheet.sections || []).map((section, sectionIndex) => {
+      // Check if this is a reading passage section
+      const isReadingSection = section.title?.toLowerCase().includes('reading') ||
+                              section.title?.toLowerCase().includes('passage') ||
+                              section.title?.toLowerCase().includes('story');
 
-      ${(section.items ?? []).map((worksheetContent, contentIndex) => {
-        // If items is an array of WorksheetContent objects with nested items
-        if (worksheetContent.items && Array.isArray(worksheetContent.items)) {
-          // Flatten the structure - render the nested items directly with simple numbering
-          return this.renderWorksheetContentSection(worksheetContent, 0, questionNumber);
-        }
-        // Otherwise it's a direct item
-        const shouldNumber = !isReadingSection &&
-                           worksheetContent.type !== 'passage' &&
-                           worksheetContent.type !== 'text' &&
-                           worksheetContent.type !== 'example';
-        const result = this.renderWorksheetItem(worksheetContent, 0, questionNumber, shouldNumber);
-        if (shouldNumber) questionNumber++;
-        return result;
-      }).join('')}
-    </div>
-  `;
-  }).join('')}
+      return `
+      <div class="section">
+        <h2>${this.escapeHtml(section.title)}</h2>
+        ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
+
+        ${(section.items ?? []).map((worksheetContent, contentIndex) => {
+          // If items is an array of WorksheetContent objects with nested items
+          if (worksheetContent.items && Array.isArray(worksheetContent.items)) {
+            // Flatten the structure - render the nested items directly with simple numbering
+            const result = this.renderWorksheetContentSection(worksheetContent, 0, questionNumber);
+            // Update questionNumber based on how many questions were in the section
+            // Note: renderWorksheetContentSection doesn't update questionNumber, so we need to count manually
+            const itemCount = worksheetContent.items.filter(item =>
+              item.type !== 'passage' && item.type !== 'text' && item.type !== 'example'
+            ).length;
+            questionNumber += itemCount;
+            return result;
+          }
+          // Otherwise it's a direct item
+          const shouldNumber = !isReadingSection &&
+                             worksheetContent.type !== 'passage' &&
+                             worksheetContent.type !== 'text' &&
+                             worksheetContent.type !== 'example';
+          const result = this.renderWorksheetItem(worksheetContent, 0, questionNumber, shouldNumber);
+          if (shouldNumber) questionNumber++;
+          return result;
+        }).join('')}
+      </div>
+    `;
+    }).join('');
+  })()}
 
 </body>
 </html>`;
@@ -448,9 +457,9 @@ export class WorksheetRenderer {
       ${item.type === 'multiple-choice' && item.choices ? `
         <ul class="choices">
           ${item.choices.map((choice: string, idx: number) => {
-            // Simply display the choice as provided by the AI
-            // The AI should now include letter prefixes, so we just escape and display
-            return `<li>${this.escapeHtml(choice)}</li>`;
+            // Strip any letter prefixes (e.g., "A.", "A)", "A:") to avoid duplication with CSS upper-alpha styling
+            const cleanChoice = String(choice).replace(/^\\s*[A-H]\\s*[\\.\\)\\:]\\s*/i, '');
+            return `<li>${this.escapeHtml(cleanChoice)}</li>`;
           }).join('')}
         </ul>
       ` : item.type === 'fill-blank' || item.type === 'fill-in-blank' ? 

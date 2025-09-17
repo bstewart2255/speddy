@@ -14,10 +14,12 @@ interface ParsedSection {
 }
 
 /**
+ * @deprecated Merged into processAILessonContent() (ai-lesson-formatter.ts)
  * Standardize the structure of AI-generated lesson content
  * Ensures all lessons follow the same format regardless of how the AI generated them
  */
 export function standardizeLessonStructure(content: string): string {
+  console.warn('[DEPRECATED] standardizeLessonStructure has been merged into processAILessonContent() in ai-lesson-formatter.ts to avoid duplicate processing (Issue #268)');
   if (!content) return content;
   
   // Remove any existing titles that might be inconsistent
@@ -147,6 +149,7 @@ function standardizeStudentSections(content: string): string {
 }
 
 /**
+ * @deprecated Merged into processAILessonContent() (ai-lesson-formatter.ts)
  * Extract and structure lesson metadata for consistent display
  */
 export function extractLessonMetadata(content: string): {
@@ -154,6 +157,7 @@ export function extractLessonMetadata(content: string): {
   duration?: string;
   studentCount?: number;
 } {
+  console.warn('[DEPRECATED] extractLessonMetadata has been merged into processAILessonContent() in ai-lesson-formatter.ts to avoid duplicate processing (Issue #268)');
   const metadata: any = {};
   
   // Extract grade level
