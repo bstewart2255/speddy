@@ -57,6 +57,9 @@ export class MaterialsValidator {
       lesson.studentMaterials.forEach((material, index) => {
         this.validateStudentMaterial(material, `Student ${index + 1}`, errors);
       });
+
+      // Validate story content for ELA reading comprehension lessons
+      this.validateStoryContent(lesson, errors, warnings);
     }
 
     // Validate teacher lesson plan if present
@@ -600,6 +603,88 @@ export class MaterialsValidator {
     }
     
     return texts.join(' ');
+  }
+
+  /**
+   * Validates that ELA reading comprehension lessons include story/passage content
+   */
+  private validateStoryContent(lesson: LessonResponse, errors: string[], warnings: string[]): void {
+    // Check if this is an ELA reading comprehension lesson
+    const isReadingLesson =
+      lesson.lesson.title?.toLowerCase().includes('reading') ||
+      lesson.lesson.title?.toLowerCase().includes('comprehension') ||
+      lesson.lesson.overview?.toLowerCase().includes('reading') ||
+      lesson.lesson.overview?.toLowerCase().includes('story') ||
+      lesson.lesson.overview?.toLowerCase().includes('passage');
+
+    if (!isReadingLesson) {
+      return; // Not a reading comprehension lesson, no validation needed
+    }
+
+    // Check if any worksheet has comprehension questions
+    let hasComprehensionQuestions = false;
+    let hasStoryPassage = false;
+
+    lesson.studentMaterials?.forEach((material) => {
+      if (!material.worksheet?.sections) return;
+
+      material.worksheet.sections.forEach((section: any) => {
+        if (!section.items) return;
+
+        // Handle nested structure
+        const items = Array.isArray(section.items) ? section.items : [];
+        items.forEach((item: any) => {
+          // Check for nested items structure
+          const nestedItems = item.items && Array.isArray(item.items) ? item.items : [item];
+
+          nestedItems.forEach((subItem: any) => {
+            // Check for passage/story content
+            if (subItem.type === 'passage' || subItem.type === 'text') {
+              hasStoryPassage = true;
+            }
+
+            // Check for comprehension questions about stories/passages
+            const content = subItem.content?.toLowerCase() || '';
+            if (
+              content.includes('main idea') ||
+              content.includes('main character') ||
+              content.includes('what happened') ||
+              content.includes('in the story') ||
+              content.includes('in the passage') ||
+              content.includes('tom') || // Common character name from current lessons
+              content.includes('the story')
+            ) {
+              hasComprehensionQuestions = true;
+            }
+
+            // Also check if story is embedded in the question itself (like the Fox example)
+            if (
+              content.includes('once upon a time') ||
+              content.includes('there was') ||
+              content.includes('read the story:') ||
+              content.includes('read the following')
+            ) {
+              hasStoryPassage = true;
+            }
+          });
+        });
+      });
+    });
+
+    // Validate: if there are comprehension questions, there must be a story
+    if (hasComprehensionQuestions && !hasStoryPassage) {
+      errors.push(
+        'Reading comprehension lesson has questions about a story/passage but no actual story text is included. ' +
+        'Stories must be included as type:"passage" items or within question content.'
+      );
+    }
+
+    // Add warning if it seems like a reading lesson but has neither stories nor questions
+    if (isReadingLesson && !hasComprehensionQuestions && !hasStoryPassage) {
+      warnings.push(
+        'This appears to be a reading lesson but contains no reading passage or comprehension questions.'
+      );
+    }
   }
 }
 
