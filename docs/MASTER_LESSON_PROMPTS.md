@@ -660,7 +660,7 @@ The existing MaterialsValidator should be enhanced to check:
 
 ### Formatting Fixes (Issue #268)
 
-- **Multiple Choice**: Changed to expect letter prefixes from AI (works WITH model tendencies)
+- **Multiple Choice**: Choices must be text-only; the renderer adds A-D labels automatically
 - **Step Numbering**: Cleaned up duplicate numbering in lesson plans
 - **Examples**: Clarified that examples must be worked solutions, not tips
 - **Data Structure**: Simplified nested rendering for cleaner output

@@ -639,8 +639,23 @@ export class MaterialsValidator {
 
           nestedItems.forEach((subItem: any) => {
             // Check for passage/story content
-            if (subItem.type === 'passage' || subItem.type === 'text') {
+            // Only accept type: 'passage' as a story - 'text' items are often just instructions
+            if (subItem.type === 'passage') {
               hasStoryPassage = true;
+            }
+
+            // Check if the text content looks like it contains a story (minimum length for story)
+            if (subItem.type === 'text' && subItem.content && subItem.content.length > 200) {
+              // Check if this text item actually contains story-like content
+              const textContent = subItem.content.toLowerCase();
+              if (
+                textContent.includes('once upon a time') ||
+                textContent.includes('there was a') ||
+                textContent.includes('there lived') ||
+                (textContent.includes('.') && textContent.includes('"') && textContent.length > 300) // Likely a narrative with dialogue
+              ) {
+                hasStoryPassage = true;
+              }
             }
 
             // Check for comprehension questions about stories/passages
@@ -651,8 +666,10 @@ export class MaterialsValidator {
               content.includes('what happened') ||
               content.includes('in the story') ||
               content.includes('in the passage') ||
-              content.includes('tom') || // Common character name from current lessons
-              content.includes('the story')
+              content.includes('the story') ||
+              content.includes('who was') ||
+              content.includes('why did') ||
+              content.includes('what did')
             ) {
               hasComprehensionQuestions = true;
             }
@@ -667,6 +684,50 @@ export class MaterialsValidator {
               hasStoryPassage = true;
             }
           });
+        });
+      });
+    });
+
+    // Also check legacy format: worksheet.content
+    lesson.studentMaterials?.forEach((material) => {
+      const content = material.worksheet?.content;
+      if (!Array.isArray(content)) return;
+
+      content.forEach((section: any) => {
+        const items = section.items || [];
+        items.forEach((item: any) => {
+          const itemType = (item.type || '').toLowerCase();
+          const itemContent = (item.content || '').toLowerCase();
+
+          // Check for passage in legacy format
+          if (itemType === 'passage') {
+            hasStoryPassage = true;
+          }
+
+          // Check if text looks like a story in legacy format
+          if (itemType === 'text' && item.content && item.content.length > 200) {
+            if (
+              itemContent.includes('once upon a time') ||
+              itemContent.includes('there was a') ||
+              itemContent.includes('there lived') ||
+              (itemContent.includes('.') && itemContent.includes('"') && item.content.length > 300)
+            ) {
+              hasStoryPassage = true;
+            }
+          }
+
+          // Check for comprehension questions in legacy format
+          if (
+            /\bmain idea|main character|what happened|in the (story|passage)\b/.test(itemContent) ||
+            /\bthe story|who was|why did|what did\b/.test(itemContent)
+          ) {
+            hasComprehensionQuestions = true;
+          }
+
+          // Check for embedded stories in legacy format
+          if (/\bonce upon a time\b|\bread the (story|following)\b/.test(itemContent)) {
+            hasStoryPassage = true;
+          }
         });
       });
     });

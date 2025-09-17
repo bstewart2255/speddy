@@ -83,8 +83,10 @@ async function generateSingleLessonPrintTemplate(lesson: Lesson): Promise<string
   const renderedContent = await fetchRenderedLesson(lesson.id);
 
   // Extract just the body content from the rendered HTML
-  const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/);
-  const bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+  const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+  // Sanitize by removing script tags for security
+  bodyContent = bodyContent.replace(/<script[\s\S]*?<\/script>/gi, '');
 
   return `
     <!DOCTYPE html>
@@ -163,8 +165,10 @@ async function generateMultipleLessonsPrintTemplate(
   const renderedLessons = await Promise.all(
     lessons.map(async (lesson) => {
       const renderedContent = await fetchRenderedLesson(lesson.id);
-      const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/);
-      const bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+      const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+      // Sanitize by removing script tags for security
+      bodyContent = bodyContent.replace(/<script[\s\S]*?<\/script>/gi, '');
       return bodyContent;
     })
   );
@@ -336,7 +340,18 @@ export default function LessonBank() {
     }
 
     // Show loading message while fetching rendered content
-    printWindow.document.write('<html><body><h2>Loading lesson content...</h2></body></html>');
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Loading Lesson...</title>
+  </head>
+  <body>
+    <h2>Loading lesson content...</h2>
+  </body>
+</html>`);
+    printWindow.document.close();
 
     const printContent = await generateSingleLessonPrintTemplate(lesson);
 
@@ -361,7 +376,18 @@ export default function LessonBank() {
     }
 
     // Show loading message while fetching rendered content
-    printWindow.document.write('<html><body><h2>Loading lessons...</h2></body></html>');
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Loading Lessons...</title>
+  </head>
+  <body>
+    <h2>Loading lessons...</h2>
+  </body>
+</html>`);
+    printWindow.document.close();
 
     const printContent = await generateMultipleLessonsPrintTemplate(
       filteredLessons,
