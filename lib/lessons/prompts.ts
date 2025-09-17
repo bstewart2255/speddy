@@ -243,11 +243,45 @@ ERROR PREVENTION:
 - WRONG example: "Remember to look for context clues"
 - RIGHT example: "The word 'happy' means feeling good. In 'The happy dog wagged its tail', we know the dog feels good."
 
-IMPORTANT: 
+IMPORTANT:
 - Generate COMPLETE content, not placeholders. Include full story text, all questions, complete instructions.
 - Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.
 - Each question must be grade-appropriate and align with the specified subject area.
-- For story-based lessons, include the complete story text within the worksheet content.`;
+
+CRITICAL FOR ELA READING COMPREHENSION LESSONS:
+When creating reading comprehension activities, the worksheet MUST include:
+1. FIRST: A complete story/passage as a separate item with type: "passage"
+2. THEN: Comprehension questions about that passage
+
+REQUIRED STRUCTURE FOR READING PASSAGES:
+The Activity section must start with the passage, like this:
+{
+  "title": "Activity",
+  "items": [{
+    "items": [
+      {
+        "type": "passage",
+        "content": "The Brave Little Fox\\n\\nOnce upon a time, there was a little fox who lived in the forest. [CONTINUE WITH COMPLETE 100-200 WORD STORY appropriate for grade level]"
+      },
+      {
+        "type": "short-answer",
+        "content": "What is the main idea of the story?",
+        "blankLines": 2
+      },
+      {
+        "type": "multiple-choice",
+        "content": "Who is the main character?",
+        "choices": ["The fox", "The rabbit", "The bear", "The owl"],
+        "blankLines": 0
+      }
+      // ... more comprehension questions
+    ],
+    "sectionType": "practice",
+    "sectionTitle": "Reading Comprehension"
+  }]
+}
+
+NEVER generate comprehension questions without including the actual story text first!`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
@@ -375,14 +409,24 @@ REMEMBER:
     if (subjectType === 'ela') {
       return `
 ELA-SPECIFIC REQUIREMENTS:
-- Include complete story text for reading comprehension activities
+- ALWAYS include complete story text as a type:"passage" item BEFORE comprehension questions
+- Story/passage should be 100-200 words, grade-appropriate
 - Focus on vocabulary, reading fluency, writing, grammar, or phonics
 - Questions should target: main idea, details, character analysis, sequence, cause/effect
 - Writing prompts should be clear and grade-appropriate
 - Include context clues for vocabulary questions
 
+ELA WORKSHEET CONTENT STRUCTURE:
+For reading comprehension lessons, Activity section MUST follow this pattern:
+1. FIRST ITEM: type: "passage" with the complete story text
+2. FOLLOWING ITEMS: comprehension questions about that specific passage
+
+Example: Instead of "What lesson does Tom learn?" without context,
+Generate: type:"passage" with "Tom was a young boy who... [full story]"
+Then: "What lesson does Tom learn in the story above?"
+
 ELA WORKSHEET CONTENT FOCUS:
-- Reading passages with comprehension questions
+- Reading passages with comprehension questions (passage MUST be included)
 - Vocabulary exercises with sentence context
 - Writing activities (sentences, paragraphs, creative writing)
 - Grammar practice (parts of speech, sentence structure)

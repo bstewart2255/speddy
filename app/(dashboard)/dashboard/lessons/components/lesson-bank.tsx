@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TrashIcon, PrinterIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
 import { createClient } from '@/lib/supabase/client';
+import DOMPurify from 'dompurify';
 
 interface Lesson {
   id: string;
@@ -63,8 +64,42 @@ function escapeHtml(str: string): string {
   });
 }
 
+// Function to fetch rendered lesson HTML
+async function fetchRenderedLesson(lessonId: string): Promise<string> {
+  try {
+    const response = await fetch(`/api/lessons/${lessonId}/render?type=plan`);
+    if (!response.ok) {
+      throw new Error('Failed to render lesson');
+    }
+    return await response.text();
+  } catch (error) {
+    console.error('Error fetching rendered lesson:', error);
+    return '<p>Error loading lesson content</p>';
+  }
+}
+
 // Print template generator functions
-function generateSingleLessonPrintTemplate(lesson: Lesson): string {
+async function generateSingleLessonPrintTemplate(lesson: Lesson): Promise<string> {
+  // Fetch the properly rendered HTML content
+  const renderedContent = await fetchRenderedLesson(lesson.id);
+
+  // Extract just the body content from the rendered HTML
+  const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+  // Sanitize HTML content for security using DOMPurify
+  bodyContent = DOMPurify.sanitize(bodyContent, {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'ul', 'ol', 'li',
+                   'table', 'thead', 'tbody', 'tr', 'td', 'th', 'strong', 'b', 'em', 'i',
+                   'br', 'hr', 'a', 'img', 'section', 'article', 'header', 'footer', 'nav',
+                   'blockquote', 'pre', 'code', 'dl', 'dt', 'dd', 'figure', 'figcaption',
+                   'label', 'input', 'button', 'form', 'fieldset', 'legend'],
+    ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title', 'type', 'name',
+                    'value', 'colspan', 'rowspan', 'target', 'rel', 'width', 'height',
+                    'data-*', 'aria-*', 'role'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'style'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+  });
+
   return `
     <!DOCTYPE html>
     <html>
@@ -82,15 +117,32 @@ function generateSingleLessonPrintTemplate(lesson: Lesson): string {
           h1, h2, h3 {
             color: #2c3e50;
           }
-          .header {
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
+          .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
           }
-          .meta-info {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 20px;
+          .materials {
+            background: #fff3cd;
+            padding: 10px;
+            border-left: 4px solid #ffc107;
+            margin: 10px 0;
+          }
+          .objectives li { margin: 5px 0; }
+          .activity {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: white;
+          }
+          .time {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.9em;
           }
           @media print {
             body {
@@ -101,27 +153,17 @@ function generateSingleLessonPrintTemplate(lesson: Lesson): string {
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${escapeHtml(lesson.title)}</h1>
-          <div class="meta-info">
-            <strong>Grade:</strong> ${escapeHtml(lesson.grade)} | 
-            <strong>Subject:</strong> ${escapeHtml(lesson.subject)} | 
-            <strong>Duration:</strong> ${escapeHtml(lesson.time_duration)}
-          </div>
-        </div>
-        <div class="content">
-          ${lesson.content}
-        </div>
+        ${bodyContent}
       </body>
     </html>
   `;
 }
 
-function generateMultipleLessonsPrintTemplate(
-  lessons: Lesson[], 
-  filterSubject: string, 
+async function generateMultipleLessonsPrintTemplate(
+  lessons: Lesson[],
+  filterSubject: string,
   filterGrade: string
-): string {
+): Promise<string> {
   const headerSection = `
     <div class="overall-header">
       <h1>Complete Lesson Collection</h1>
@@ -131,20 +173,43 @@ function generateMultipleLessonsPrintTemplate(
     </div>
   `;
 
+  // Fetch all rendered lessons in parallel
+  const renderedLessons = await Promise.all(
+    lessons.map(async (lesson) => {
+      const renderedContent = await fetchRenderedLesson(lesson.id);
+      const bodyMatch = renderedContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      let bodyContent = bodyMatch ? bodyMatch[1] : renderedContent;
+      // Sanitize HTML content for security using DOMPurify
+      bodyContent = DOMPurify.sanitize(bodyContent, {
+        ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'ul', 'ol', 'li',
+                       'table', 'thead', 'tbody', 'tr', 'td', 'th', 'strong', 'b', 'em', 'i',
+                       'br', 'hr', 'a', 'img', 'section', 'article', 'header', 'footer', 'nav',
+                       'blockquote', 'pre', 'code', 'dl', 'dt', 'dd', 'figure', 'figcaption',
+                       'label', 'input', 'button', 'form', 'fieldset', 'legend'],
+        ALLOWED_ATTR: ['class', 'id', 'style', 'href', 'src', 'alt', 'title', 'type', 'name',
+                        'value', 'colspan', 'rowspan', 'target', 'rel', 'width', 'height',
+                        'data-*', 'aria-*', 'role'],
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'style'],
+        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+      });
+      return bodyContent;
+    })
+  );
+
   const lessonsContent = lessons.map((lesson, index) => `
     <div class="lesson">
       <div class="header">
         <h2>${escapeHtml(lesson.title)}</h2>
         <div class="meta-info">
-          <strong>Lesson ${index + 1} of ${lessons.length}</strong> | 
-          <strong>Grade:</strong> ${escapeHtml(lesson.grade)} | 
-          <strong>Subject:</strong> ${escapeHtml(lesson.subject)} | 
+          <strong>Lesson ${index + 1} of ${lessons.length}</strong> |
+          <strong>Grade:</strong> ${escapeHtml(lesson.grade)} |
+          <strong>Subject:</strong> ${escapeHtml(lesson.subject)} |
           <strong>Duration:</strong> ${escapeHtml(lesson.time_duration)} |
           <strong>Created:</strong> ${new Date(lesson.created_at).toLocaleDateString()}
         </div>
       </div>
       <div class="content">
-        ${lesson.content}
+        ${renderedLessons[index]}
       </div>
     </div>
   `).join('');
@@ -290,15 +355,30 @@ export default function LessonBank() {
     }
   };
 
-  const handlePrint = (lesson: Lesson) => {
+  const handlePrint = async (lesson: Lesson) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       showToast('Please allow popups to print the lesson', 'error');
       return;
     }
 
-    const printContent = generateSingleLessonPrintTemplate(lesson);
+    // Show loading message while fetching rendered content
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Loading Lesson...</title>
+  </head>
+  <body>
+    <h2>Loading lesson content...</h2>
+  </body>
+</html>`);
+    printWindow.document.close();
 
+    const printContent = await generateSingleLessonPrintTemplate(lesson);
+
+    printWindow.document.open();
     printWindow.document.write(printContent);
     printWindow.document.close();
     printWindow.onload = () => {
@@ -306,7 +386,7 @@ export default function LessonBank() {
     };
   };
 
-  const handlePrintAll = () => {
+  const handlePrintAll = async () => {
     if (filteredLessons.length === 0) {
       showToast('No lessons to print', 'error');
       return;
@@ -318,12 +398,27 @@ export default function LessonBank() {
       return;
     }
 
-    const printContent = generateMultipleLessonsPrintTemplate(
+    // Show loading message while fetching rendered content
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Loading Lessons...</title>
+  </head>
+  <body>
+    <h2>Loading lessons...</h2>
+  </body>
+</html>`);
+    printWindow.document.close();
+
+    const printContent = await generateMultipleLessonsPrintTemplate(
       filteredLessons,
       filterSubject,
       filterGrade
     );
 
+    printWindow.document.open();
     printWindow.document.write(printContent);
     printWindow.document.close();
     printWindow.onload = () => {
