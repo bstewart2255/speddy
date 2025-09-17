@@ -16,7 +16,7 @@ interface LessonPreviewModalProps {
     title: string;
     formData: {
       studentIds: string[];
-      subject: string;
+      subjectType?: 'ela' | 'math' | '';
       topic: string;
       timeDuration: string;
     };
@@ -321,26 +321,27 @@ export default function LessonPreviewModal({
         return;
       }
 
+      // Derive subject from subjectType
+      const subject = formData.subjectType === 'ela' ? 'ELA' : formData.subjectType === 'math' ? 'Math' : 'Lesson';
+
       // Generate unique worksheet ID
-      const worksheetId = generateWorksheetId(studentId, formData.subject);
-      
+      const worksheetId = generateWorksheetId(studentId, subject);
+
       // Get student initials (for now using Student # as we don't have the actual initials in this context)
       const studentInitials = `Student ${studentIdx + 1}`;
-      
+
       // Generate HTML for the worksheet with subject handling
-      const subjectType = formData.subject?.toLowerCase().includes('math') ? 'math' : 
-                         formData.subject?.toLowerCase().includes('english') || 
-                         formData.subject?.toLowerCase().includes('ela') ? 'ela' : undefined;
-      
+      const subjectType = formData.subjectType as 'math' | 'ela' | undefined;
+
       const html = await generateAIWorksheetHtml(
         studentMaterial,
         studentInitials,
         worksheetId,
-        subjectType as 'math' | 'ela' | undefined
+        subjectType
       );
 
       if (html) {
-        printHtmlWorksheet(html, `${studentInitials}_${formData.subject}_Worksheet`);
+        printHtmlWorksheet(html, `${studentInitials}_${subject}_Worksheet`);
       } else {
         showToast('Failed to generate worksheet', 'error');
       }
@@ -531,8 +532,8 @@ export default function LessonPreviewModal({
                     {/* Lesson Details */}
                     <div className="mt-4 bg-blue-50 p-3 rounded-lg">
                       <p className="text-sm text-gray-700">
-                        <strong>Subject:</strong> {formData.subject} | 
-                        <strong> Topic:</strong> {formData.topic} | 
+                        <strong>Subject:</strong> {formData.subjectType === 'ela' ? 'ELA' : formData.subjectType === 'math' ? 'Math' : 'N/A'} |
+                        <strong> Topic:</strong> {formData.topic} |
                         <strong> Duration:</strong> {formData.timeDuration}
                       </p>
                       <p className="text-sm text-gray-700 mt-1">
