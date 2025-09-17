@@ -24,7 +24,7 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Section 2: "Activity" (all student practice problems and questions)
 
 2. QUESTION TYPES - Use ONLY these standardized types:
-   - "multiple-choice": Must have exactly 4 choices labeled A, B, C, D
+   - "multiple-choice": Must have exactly 4 choices (renderer will label them A, B, C, D)
    - "fill-blank": Use grade-based blankLines (see rules below)
    - "short-answer": Use grade-based blankLines (see rules below)  
    - "long-answer": Use grade-based blankLines (see rules below)
@@ -42,10 +42,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - CRITICAL: ALWAYS include letter prefixes (A., B., C., D.) in the choices array
-   - Correct: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
-   - WRONG: ["Red", "Blue", "Green", "Yellow"]
-   - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
+   - CRITICAL: Do NOT include letter prefixes in the choices array
+   - Correct: ["Red", "Blue", "Green", "Yellow"]
+   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - The rendering system will add letters automatically
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -232,7 +232,7 @@ ERROR PREVENTION:
 - NEVER vary from the 2-section structure (Introduction, Activity)
 - NEVER use question types other than the 6 listed above
 - NEVER vary blankLines counts from the grade-based rules
-- NEVER use numbers (1,2,3,4) for multiple choice - always use A,B,C,D
+- NEVER use numbers (1,2,3,4) for multiple choice - renderer will label choices A,B,C,D; provide text-only choices
 - NEVER create activity sections with fewer than 6 items or more than 12 items
 - ALWAYS include teacherLessonPlan with all required fields
 - ALWAYS include exactly 2-3 whiteboard examples

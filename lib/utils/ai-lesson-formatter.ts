@@ -1,11 +1,13 @@
 /**
  * Shared utility for formatting AI-generated lesson content
  * Ensures consistent formatting across all modals and views
+ *
+ * SIMPLIFIED: Merged ai-lesson-standardizer functionality to avoid duplicate processing (Issue #268)
  */
 
 import { getSanitizedHTML } from '../sanitize-html';
 import { formatLessonContent } from './lesson-formatter';
-import { standardizeLessonStructure } from './ai-lesson-standardizer';
+// MERGED: standardizeLessonStructure functionality integrated directly to avoid duplicate processing (Issue #268)
 
 interface Student {
   id: string;
@@ -20,9 +22,11 @@ interface Student {
  */
 export function processAILessonContent(content: string, students: Student[] = []): { __html: string } | null {
   if (!content) return null;
-  
-  // First, standardize the structure
-  let processedContent = standardizeLessonStructure(content);
+
+  console.log('[FORMATTER] Processing AI lesson content');
+
+  // Process content directly without duplicate standardization
+  let processedContent = content;
   
   // Remove redundant headers that are already shown in the UI
   processedContent = processedContent.replace(
@@ -57,8 +61,9 @@ export function processAILessonContent(content: string, students: Student[] = []
       ];
       const colorClass = colors[index % colors.length];
       
-      // Replace student references with styled badges
-      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
+      // Replace student references with styled badges - escape special RegExp characters
+      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(
         studentRegex,
         `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r ${colorClass} text-white">${student.initials}</span>`
@@ -120,8 +125,9 @@ export function processAILessonContentForPrint(content: string, students: Studen
   
   // For print, use simpler student name formatting
   if (students && students.length > 0) {
+    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     students.forEach((student, index) => {
-      const studentRegex = new RegExp(`\\b(${student.initials}|Student ${index + 1})\\b`, 'g');
+      const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(
         studentRegex,
         `<strong style="text-decoration: underline;">${student.initials}</strong>`
