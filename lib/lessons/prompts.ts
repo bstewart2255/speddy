@@ -42,10 +42,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - CRITICAL: ALWAYS include letter prefixes (A., B., C., D.) in the choices array
-   - Correct: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
-   - WRONG: ["Red", "Blue", "Green", "Yellow"]
-   - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
+   - CRITICAL: Do NOT include letter prefixes in the choices array
+   - Correct: ["Red", "Blue", "Green", "Yellow"]
+   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - The rendering system will add letters automatically
    - One clearly correct answer
    - Distractors should be plausible but wrong
 

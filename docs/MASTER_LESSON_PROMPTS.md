@@ -53,10 +53,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 4. MULTIPLE CHOICE FORMAT:
    - Always exactly 4 options
-   - CRITICAL: ALWAYS include letter prefixes (A., B., C., D.) in the choices array
-   - Correct: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
-   - WRONG: ["Red", "Blue", "Green", "Yellow"]
-   - WRONG: ["A. A. Red", "B. B. Blue", "C. C. Green", "D. D. Yellow"]
+   - CRITICAL: Do NOT include letter prefixes in the choices array
+   - Correct: ["Red", "Blue", "Green", "Yellow"]
+   - WRONG: ["A. Red", "B. Blue", "C. Green", "D. Yellow"]
+   - The rendering system will add letters automatically
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
@@ -268,7 +268,7 @@ JSON STRUCTURE (STRICT - no deviations):
               {
                 "type": "multiple-choice|fill-blank|short-answer|long-answer|visual-math",
                 "content": "Complete question text here",
-                "choices": ["A. option", "B. option", "C. option", "D. option"],
+                "choices": ["option 1", "option 2", "option 3", "option 4"],
                 "blankLines": 3
               }
             ]
@@ -517,7 +517,7 @@ private getRoleSpecificPrompt(role: LessonRequest['teacherRole'], subjectType: '
               {
                 "type": "multiple-choice",
                 "content": "What is 7 + 2?",
-                "choices": ["A. 8", "B. 9", "C. 10", "D. 11"]
+                "choices": ["8", "9", "10", "11"]
               }
             ]
           }
