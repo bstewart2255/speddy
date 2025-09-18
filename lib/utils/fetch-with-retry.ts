@@ -144,6 +144,56 @@ export function generateLessonIdempotencyKey(body: any): string {
 }
 
 /**
+ * Normalizes headers from various formats to a plain object
+ * Handles Headers API instances, plain objects, and undefined
+ */
+function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
+  const normalized: Record<string, string> = {};
+
+  if (!headers) {
+    return normalized;
+  }
+
+  // Handle Headers instance
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      normalized[key] = value;
+    });
+    return normalized;
+  }
+
+  // Handle arrays of [key, value] pairs
+  if (Array.isArray(headers)) {
+    headers.forEach(([key, value]) => {
+      if (key && value) {
+        normalized[key] = value;
+      }
+    });
+    return normalized;
+  }
+
+  // Handle plain objects (including objects with get/forEach methods)
+  if (typeof headers === 'object') {
+    // Check if it has Headers-like methods
+    if ('forEach' in headers && typeof headers.forEach === 'function') {
+      (headers as any).forEach((value: string, key: string) => {
+        normalized[key] = value;
+      });
+      return normalized;
+    }
+
+    // Plain object - copy properties
+    for (const [key, value] of Object.entries(headers)) {
+      if (value !== undefined && value !== null) {
+        normalized[key] = String(value);
+      }
+    }
+  }
+
+  return normalized;
+}
+
+/**
  * Specific helper for AI lesson generation requests
  * Includes appropriate timeouts, error handling for OpenAI API calls,
  * and automatic idempotency key generation
@@ -152,19 +202,24 @@ export async function fetchLessonGeneration(
   body: any,
   options: Omit<FetchWithRetryOptions, 'method' | 'body'> = {}
 ): Promise<Response> {
-  // Generate idempotency key if not provided in headers
-  const headers: any = options.headers || {};
-  if (!headers['Idempotency-Key']) {
-    headers['Idempotency-Key'] = generateLessonIdempotencyKey(body);
+  // Normalize headers to plain object for safe manipulation
+  const normalizedHeaders = normalizeHeaders(options.headers);
+
+  // Add idempotency key if not already present
+  if (!normalizedHeaders['Idempotency-Key'] && !normalizedHeaders['idempotency-key']) {
+    normalizedHeaders['Idempotency-Key'] = generateLessonIdempotencyKey(body);
   }
+
+  // Merge headers with defaults, preserving any custom headers
+  const finalHeaders = {
+    'Content-Type': 'application/json',
+    ...normalizedHeaders
+  };
 
   return fetchWithRetry('/api/lessons/generate', {
     ...options,
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers
-    },
+    headers: finalHeaders,
     body: JSON.stringify(body),
     timeout: options.timeout || 115000, // 115 seconds for lesson generation
     retries: options.retries ?? 2,
