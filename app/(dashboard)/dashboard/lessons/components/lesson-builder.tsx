@@ -6,6 +6,7 @@ import LessonPreviewModal from './lesson-preview-modal';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { fetchLessonGeneration } from '@/lib/utils/fetch-with-retry';
 
 interface FormData {
   studentIds: string[];
@@ -151,30 +152,36 @@ export default function LessonBuilder() {
       // Derive subject from subjectType
       const subject = formData.subjectType === 'ela' ? 'English Language Arts' : 'Math';
 
-      // Use the unified lessons API with actual student data
-      const response = await fetch('/api/lessons/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          students: selectedStudents.map(s => ({
-            id: s.id,
-            grade: s.grade_level
-          })),
-          subject: subject,
-          subjectType: formData.subjectType,
-          topic: formData.topic,
-          duration: parseInt(formData.timeDuration) || 15,
-          teacherRole: 'resource'
-        }),
+      // Use the unified lessons API with retry logic
+      const response = await fetchLessonGeneration({
+        students: selectedStudents.map(s => ({
+          id: s.id,
+          grade: s.grade_level
+        })),
+        subject: subject,
+        subjectType: formData.subjectType,
+        topic: formData.topic,
+        duration: parseInt(formData.timeDuration) || 15,
+        teacherRole: 'resource'
+      }, {
+        onRetry: (attempt, maxRetries) => {
+          showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+        }
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate lesson');
+        let errorMessage = 'Failed to generate lesson';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.details || errorMessage;
+        } catch (e) {
+          // If we can't parse error response, use default message
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      
+
       setGeneratedLesson({
         content: data.lesson || data,
         title: data.lesson?.lesson?.title || formData.topic,
@@ -183,9 +190,10 @@ export default function LessonBuilder() {
       });
       setShowPreview(true);
       showToast('Lesson generated successfully!', 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating lesson:', error);
-      showToast('Failed to generate lesson. Please try again.', 'error');
+      const errorMessage = error.message || 'Failed to generate lesson. Please try again.';
+      showToast(errorMessage, 'error');
     } finally {
       setIsGenerating(false);
     }
