@@ -118,24 +118,7 @@ export default function LessonPreviewModal({
           
           {content.studentMaterials && content.studentMaterials.length > 0 && (
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-semibold text-lg">Student Worksheets</h4>
-                <button
-                  onClick={async () => {
-                    for (let idx = 0; idx < content.studentMaterials.length; idx++) {
-                      const material = content.studentMaterials[idx];
-                      await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
-                      // Small delay between prints to avoid overwhelming the browser
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                  }}
-                  className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
-                  title="Print all student worksheets"
-                >
-                  <PrinterIcon className="h-4 w-4 mr-1" />
-                  Print All Worksheets
-                </button>
-              </div>
+              <h4 className="font-semibold text-lg mb-4">Student Worksheets</h4>
               {content.studentMaterials.map((material: any, idx: number) => (
                 <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
                   <div className="flex justify-between items-start mb-2">
@@ -381,6 +364,27 @@ export default function LessonPreviewModal({
     }
   };
 
+  const handlePrintAllWorksheets = async () => {
+    const content = lesson.content;
+    if (!content?.studentMaterials || content.studentMaterials.length === 0) {
+      showToast('No worksheets available to print', 'error');
+      return;
+    }
+
+    try {
+      for (let idx = 0; idx < content.studentMaterials.length; idx++) {
+        const material = content.studentMaterials[idx];
+        await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
+        // Small delay between prints to avoid overwhelming the browser
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      showToast(`Printing ${content.studentMaterials.length} worksheets...`, 'success');
+    } catch (error) {
+      console.error('Error printing worksheets:', error);
+      showToast('Failed to print worksheets', 'error');
+    }
+  };
+
   const handlePrint = async () => {
     // Check if lesson has been saved (has an ID)
     if (!lesson.lessonId) {
@@ -519,6 +523,17 @@ export default function LessonPreviewModal({
                     <DocumentArrowDownIcon className="h-5 w-5 mr-1" />
                     Print Lesson Plan
                   </button>
+                  {lesson.content?.studentMaterials && lesson.content.studentMaterials.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePrintAllWorksheets}
+                      className="inline-flex w-full justify-center rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 sm:w-auto"
+                      title="Print all student worksheets"
+                    >
+                      <PrinterIcon className="h-5 w-5 mr-1" />
+                      Print All Worksheets
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={onClose}

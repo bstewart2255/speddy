@@ -3,3 +3,4 @@
 - Use the Context7 MCP server whenever there is a question of code best practices, or before implementing any large feature set.
 - Use the Github CLI tool to manage actions in the repo.
 - When encountering a complex issue, or a bug that is proving difficult to resolve, use Web Search to investigate the problem and receive support in finding a solution.
+- Don't over-engineer anything. It's better to add more later, than to have to go back and fix what's been done. At any juncture point, ask yourself, "Is this over-engineering?"
