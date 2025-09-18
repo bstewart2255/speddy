@@ -111,8 +111,9 @@ export async function fetchWithRetry(
 }
 
 /**
- * Generates a stable idempotency key for lesson generation requests
+ * Generates a stable, deterministic idempotency key for lesson generation requests
  * This prevents duplicate lessons when retries occur after server processing
+ * Keys are based only on stable identifiers: lessonDate, timeSlot, and sorted student IDs
  */
 export function generateLessonIdempotencyKey(body: any): string {
   // For batch requests
@@ -123,9 +124,10 @@ export function generateLessonIdempotencyKey(body: any): string {
         .filter(Boolean)
         .sort()
         .join('-');
-      return `${item.lessonDate || 'nd'}-${item.timeSlot || 'nd'}-${studentIds}`;
+      // Use stable placeholders: 'nd' for no date, 'ot' for no time slot
+      return `${item.lessonDate || 'nd'}-${item.timeSlot || 'ot'}-${studentIds}`;
     }).join('_');
-    return `batch:${batchIds}:${Date.now()}`;
+    return `batch:${batchIds}`;
   }
 
   // For single requests
@@ -134,8 +136,9 @@ export function generateLessonIdempotencyKey(body: any): string {
     .filter(Boolean)
     .sort()
     .join('-');
-  const lessonDate = body.lessonDate || 'on-demand';
-  const timeSlot = body.timeSlot || `od-${Date.now()}`;
+  // Use stable placeholders: 'nd' for no date, 'od' for on-demand (no time slot)
+  const lessonDate = body.lessonDate || 'nd';
+  const timeSlot = body.timeSlot || 'od';
 
   return `single:${lessonDate}:${timeSlot}:${studentIds}`;
 }

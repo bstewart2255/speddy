@@ -764,13 +764,14 @@ export function CalendarWeekView({
           grade: parseGradeLevel(students.get(id)?.grade_level)
         }));
       
-      // Generate unique request ID for on-demand lessons
-      const requestId = `on-demand-${Date.now()}`;
+      // Generate deterministic idempotency key for on-demand lessons
+      // Use prompt and student IDs to make the key stable for identical requests
+      const idempotencyKey = `od:${toLocalDateKey(selectedDate)}:${prompt}:${studentList.map(s => s.id).sort().join('-')}`;
       const response = await fetchWithRetry('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': requestId
+          'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
           students: studentList,
@@ -781,7 +782,7 @@ export function CalendarWeekView({
           teacherRole: userProfile?.role || 'resource',
           schoolId: currentSchool?.school_id || null,
           lessonDate: toLocalDateKey(selectedDate),
-          timeSlot: requestId
+          timeSlot: 'on-demand'
         }),
         onRetry: (attempt, maxRetries) => {
           showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
@@ -797,7 +798,8 @@ export function CalendarWeekView({
 
       // Lesson is already saved by the API
       // Update local saved lessons state with proper time slot structure
-      const syntheticTimeSlot = `on-demand-${Date.now()}`;
+      // Use a stable identifier for on-demand lessons
+      const syntheticTimeSlot = 'on-demand';
       setSavedLessons(prev => {
         const newMap = new Map(prev);
         const dateKey = toLocalDateKey(selectedDate);
