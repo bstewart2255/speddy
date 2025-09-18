@@ -60,10 +60,27 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
-5. ACTIVITY ITEM COUNTS:
-   - Grades K-2: Exactly 6-8 practice problems in Activity section
-   - Grades 3-5: Exactly 8-12 practice problems in Activity section
+5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
+   These are REQUIRED minimums. Use ranges as targets; fewer than the minimum fails validation.
+
+   For 5-15 minute lessons:
+   - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
+   - Grades 3-5: Target 8-12 practice problems (minimum 8) in Activity section
+
+   For 20-30 minute lessons:
+   - Grades K-2: Target 9-12 practice problems (minimum 9) in Activity section
+   - Grades 3-5: Target 12-18 practice problems (minimum 12) in Activity section
+
+   For 45 minute lessons:
+   - Grades K-2: Target 12-16 practice problems (minimum 12) in Activity section
+   - Grades 3-5: Target 16-24 practice problems (minimum 16) in Activity section
+
+   For 60+ minute lessons:
+   - Grades K-2: Target 15-20 practice problems (minimum 15) in Activity section
+   - Grades 3-5: Target 20-30 practice problems (minimum 20) in Activity section
+
    - Include variety: mix of question types appropriate for the subject
+   - CRITICAL: These are MINIMUM requirements - generating fewer than the minimum will cause validation failure
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -122,7 +139,13 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
    - Connect to real-world examples students understand
    - Engaging and age-appropriate
 
-4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
+4. WHITEBOARD EXAMPLES (DURATION-BASED REQUIREMENTS):
+   Number of examples required based on lesson duration:
+   - 5-15 minutes: Exactly 2 examples
+   - 20-30 minutes: Exactly 2-3 examples
+   - 45 minutes: Exactly 3-4 examples
+   - 60 minutes: Exactly 4-5 examples
+
    - Each example must include:
      * Problem statement
      * Step-by-step solution (numbered steps without "Step N:" prefix)

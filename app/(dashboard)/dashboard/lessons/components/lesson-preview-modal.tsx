@@ -118,24 +118,7 @@ export default function LessonPreviewModal({
           
           {content.studentMaterials && content.studentMaterials.length > 0 && (
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-semibold text-lg">Student Worksheets</h4>
-                <button
-                  onClick={async () => {
-                    for (let idx = 0; idx < content.studentMaterials.length; idx++) {
-                      const material = content.studentMaterials[idx];
-                      await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
-                      // Small delay between prints to avoid overwhelming the browser
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                  }}
-                  className="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors"
-                  title="Print all student worksheets"
-                >
-                  <PrinterIcon className="h-4 w-4 mr-1" />
-                  Print All Worksheets
-                </button>
-              </div>
+              <h4 className="font-semibold text-lg mb-4">Student Worksheets</h4>
               {content.studentMaterials.map((material: any, idx: number) => (
                 <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
                   <div className="flex justify-between items-start mb-2">
@@ -157,20 +140,37 @@ export default function LessonPreviewModal({
             </div>
           )}
 
-          {lessonData.answerKey && (
+          {lessonData.answerKey && Object.keys(lessonData.answerKey).length > 0 && (
             <div className="border-t pt-4">
               <h4 className="font-semibold mb-2">Answer Key</h4>
               <div className="bg-yellow-50 p-4 rounded-lg">
-                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => (
-                  <div key={key}>
-                    <p className="font-medium">{key}:</p>
-                    <p className="text-gray-700">
-                      {Array.isArray(value.answers) 
-                        ? value.answers.join(', ')
-                        : JSON.stringify(value)}
-                    </p>
-                  </div>
-                ))}
+                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => {
+                  // Skip empty or null values
+                  if (!value) return null;
+
+                  let displayValue = '';
+                  if (typeof value === 'string') {
+                    displayValue = value;
+                  } else if (Array.isArray(value)) {
+                    displayValue = value.filter(v => v != null).join(', ');
+                  } else if (value.answers && Array.isArray(value.answers)) {
+                    displayValue = value.answers.filter(v => v != null).join(', ');
+                  } else if (typeof value === 'object') {
+                    displayValue = JSON.stringify(value, null, 2);
+                  } else {
+                    displayValue = String(value);
+                  }
+
+                  // Only render if there's actual content to display
+                  if (!displayValue || displayValue === '[]' || displayValue === '{}') return null;
+
+                  return (
+                    <div key={key} className="mb-2">
+                      <p className="font-medium">{key}:</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{displayValue}</p>
+                    </div>
+                  );
+                }).filter(Boolean)}
               </div>
             </div>
           )}
@@ -199,11 +199,12 @@ export default function LessonPreviewModal({
         {worksheet.sections?.map((section: any, i: number) => {
           // Handle nested structure with items array containing section objects
           if (section.items && Array.isArray(section.items) && section.items[0]?.sectionType) {
+            let problemCounter = 0; // Track problem numbering across all subsections
             return (
               <div key={i} className="space-y-4">
                 <h6 className="font-semibold text-base">{section.title}</h6>
                 {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
-                
+
                 {section.items.map((subSection: any, j: number) => (
                   <div key={j} className="ml-4 space-y-2">
                     <p className="font-medium">{subSection.sectionTitle}</p>
@@ -211,26 +212,38 @@ export default function LessonPreviewModal({
                       <p className="text-sm text-gray-600 italic">{subSection.instructions}</p>
                     )}
                     <div className="space-y-3">
-                      {subSection.items?.map((problem: any, k: number) => (
-                        <div key={k} className="ml-4">
-                          {problem.type === 'visual' ? (
-                            <div className="font-mono text-lg bg-white p-2 rounded border">
-                              {problem.content}
-                            </div>
-                          ) : (
-                            <p className="text-gray-700">
-                              {k + 1}. {problem.question || problem.content || problem}
-                            </p>
-                          )}
-                          {problem.blankLines && (
-                            <div className="ml-4 space-y-1">
-                              {[...Array(problem.blankLines)].map((_, idx) => (
-                                <div key={idx} className="border-b border-gray-300 h-6"></div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                      {subSection.items?.map((problem: any, k: number) => {
+                        // Skip examples and passages for numbering
+                        const shouldNumber = problem.type !== 'example' && problem.type !== 'passage';
+                        if (shouldNumber) {
+                          problemCounter++;
+                        }
+
+                        return (
+                          <div key={k} className="ml-4">
+                            {problem.type === 'visual' ? (
+                              <div className="font-mono text-lg bg-white p-2 rounded border">
+                                {problem.content}
+                              </div>
+                            ) : problem.type === 'example' || problem.type === 'passage' ? (
+                              <div className="text-gray-700">
+                                {problem.content}
+                              </div>
+                            ) : (
+                              <p className="text-gray-700">
+                                {problemCounter}. {problem.question || problem.content || problem}
+                              </p>
+                            )}
+                            {problem.blankLines && (
+                              <div className="ml-4 space-y-1">
+                                {[...Array(problem.blankLines)].map((_, idx) => (
+                                  <div key={idx} className="border-b border-gray-300 h-6"></div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -348,6 +361,27 @@ export default function LessonPreviewModal({
     } catch (error) {
       console.error('Error printing worksheet:', error);
       showToast('Failed to print worksheet', 'error');
+    }
+  };
+
+  const handlePrintAllWorksheets = async () => {
+    const content = lesson.content;
+    if (!content?.studentMaterials || content.studentMaterials.length === 0) {
+      showToast('No worksheets available to print', 'error');
+      return;
+    }
+
+    try {
+      for (let idx = 0; idx < content.studentMaterials.length; idx++) {
+        const material = content.studentMaterials[idx];
+        await handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx);
+        // Small delay between prints to avoid overwhelming the browser
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      showToast(`Printing ${content.studentMaterials.length} worksheets...`, 'success');
+    } catch (error) {
+      console.error('Error printing worksheets:', error);
+      showToast('Failed to print worksheets', 'error');
     }
   };
 
@@ -489,6 +523,17 @@ export default function LessonPreviewModal({
                     <DocumentArrowDownIcon className="h-5 w-5 mr-1" />
                     Print Lesson Plan
                   </button>
+                  {lesson.content?.studentMaterials && lesson.content.studentMaterials.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePrintAllWorksheets}
+                      className="inline-flex w-full justify-center rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 sm:w-auto"
+                      title="Print all student worksheets"
+                    >
+                      <PrinterIcon className="h-5 w-5 mr-1" />
+                      Print All Worksheets
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={onClose}

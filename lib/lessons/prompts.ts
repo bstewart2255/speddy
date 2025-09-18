@@ -1,5 +1,11 @@
 // Enhanced prompt templates for lesson generation with subject-specific differentiation
 import { LessonRequest, determineGradeGroups } from './schema';
+import {
+  getDurationMultiplier,
+  getWhiteboardExampleRange,
+  getBaseMinimum,
+  getBaseMaximum
+} from './duration-constants';
 
 export class PromptBuilder {
   /**
@@ -49,10 +55,27 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
-5. ACTIVITY ITEM COUNTS:
-   - Grades K-2: Exactly 6-8 practice problems in Activity section
-   - Grades 3-5: Exactly 8-12 practice problems in Activity section
+5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
+   These are REQUIRED minimums. Use ranges as targets; fewer than the minimum fails validation.
+
+   For 5-15 minute lessons:
+   - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
+   - Grades 3-5: Target 8-12 practice problems (minimum 8) in Activity section
+
+   For 20-30 minute lessons:
+   - Grades K-2: Target 9-12 practice problems (minimum 9) in Activity section
+   - Grades 3-5: Target 12-18 practice problems (minimum 12) in Activity section
+
+   For 45 minute lessons:
+   - Grades K-2: Target 12-16 practice problems (minimum 12) in Activity section
+   - Grades 3-5: Target 16-24 practice problems (minimum 16) in Activity section
+
+   For 60+ minute lessons:
+   - Grades K-2: Target 15-20 practice problems (minimum 15) in Activity section
+   - Grades 3-5: Target 20-30 practice problems (minimum 20) in Activity section
+
    - Include variety: mix of question types appropriate for the subject
+   - CRITICAL: These are MINIMUM requirements - generating fewer than the minimum will cause validation failure
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -114,7 +137,13 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
    - Engaging and age-appropriate
    - Example: "Today we're learning about adding fractions with the same bottom number. Think of it like adding slices of the same pizza!"
 
-4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
+4. WHITEBOARD EXAMPLES (DURATION-BASED REQUIREMENTS):
+   Number of examples required based on lesson duration:
+   - 5-15 minutes: Exactly 2 examples
+   - 20-30 minutes: Exactly 2-3 examples
+   - 45 minutes: Exactly 3-4 examples
+   - 60 minutes: Exactly 4-5 examples
+
    - Each example must include:
      * Problem statement
      * Step-by-step solution (as array of strings, NO numbering - just the step text)
@@ -233,9 +262,9 @@ ERROR PREVENTION:
 - NEVER use question types other than the 6 listed above
 - NEVER vary blankLines counts from the grade-based rules
 - NEVER use numbers (1,2,3,4) for multiple choice - renderer will label choices A,B,C,D; provide text-only choices
-- NEVER create activity sections with fewer than 6 items or more than 12 items
+- NEVER create activity sections with fewer than the duration-based minimum (see requirements above)
 - ALWAYS include teacherLessonPlan with all required fields
-- ALWAYS include exactly 2-3 whiteboard examples
+- ALWAYS include the required number of whiteboard examples based on lesson duration (see duration-based requirements above)
 - ALWAYS show ALL student problems with answers in teacherLessonPlan
 - EXAMPLES must be WORKED examples with solutions, NOT tips or suggestions
 - For math examples: Show the problem AND the complete solution process
@@ -356,7 +385,7 @@ NEVER generate comprehension questions without including the actual story text f
 - Use exactly 2 worksheet sections: Introduction, Activity
 - Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
 - Multiple choice questions must have exactly 4 choices (A, B, C, D)
-- Include ${this.getActivityItemCount(request.students)} practice items in Activity section
+- Include ${this.getActivityItemCount(request.students, request.duration)} practice items in Activity section
 - Introduction section should have 1-2 example/instruction items only
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
@@ -370,7 +399,7 @@ TEACHER LESSON PLAN SPECIFIC REQUIREMENTS:
 - Use the actual student initials provided in the student information
 - The lesson topic must match the worksheet content exactly
 - Teacher introduction script should be 2-3 sentences, conversational and engaging
-- Include EXACTLY 2-3 whiteboard examples that correspond to worksheet problems
+- Include ${this.getExampleCount(request.duration)} whiteboard examples that correspond to worksheet problems
 - Each whiteboard example needs numbered steps and a teaching point
 - In studentProblems, show ALL problems from ALL worksheets with correct answers
 - If students have different worksheets, show all variations grouped by student
@@ -468,13 +497,30 @@ MATH EXAMPLES SECTION:
     }
   }
 
-  private getActivityItemCount(students: { grade: number }[]): string {
+  private getActivityItemCount(students: { grade: number }[], duration?: number): string {
     const maxGrade = Math.max(...students.map(s => s.grade));
-    if (maxGrade <= 2) {
-      return '6-8'; // Grades K-2: 6-8 items
-    } else {
-      return '8-12'; // Grades 3-5: 8-12 items
+    const effectiveDuration = duration || 30; // Default to 30 minutes if not specified
+
+    // Get base counts and multiplier from shared constants
+    const baseMin = getBaseMinimum(maxGrade);
+    const baseMax = getBaseMaximum(maxGrade);
+    const multiplier = getDurationMultiplier(effectiveDuration);
+
+    // Calculate scaled counts
+    const min = Math.ceil(baseMin * multiplier);
+    const max = Math.ceil(baseMax * multiplier);
+
+    return `${min}-${max}`;
+  }
+
+  private getExampleCount(duration?: number): string {
+    const effectiveDuration = duration || 30;
+    const range = getWhiteboardExampleRange(effectiveDuration);
+
+    if (range.min === range.max) {
+      return `${range.min}`;
     }
+    return `${range.min}-${range.max}`;
   }
 
   // Helper function to determine target grade level for content difficulty

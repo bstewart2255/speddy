@@ -1,9 +1,14 @@
 // Materials validator for zero-prep compliance
-import { 
-  LessonResponse, 
-  ALLOWED_MATERIALS, 
-  FORBIDDEN_MATERIALS 
+import {
+  LessonResponse,
+  ALLOWED_MATERIALS,
+  FORBIDDEN_MATERIALS
 } from './schema';
+import {
+  getDurationMultiplier,
+  getWhiteboardExampleRange,
+  getBaseMinimum
+} from './duration-constants';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -60,6 +65,9 @@ export class MaterialsValidator {
 
       // Validate story content for ELA reading comprehension lessons
       this.validateStoryContent(lesson, errors, warnings);
+
+      // Validate content count based on duration and grade
+      this.validateContentCount(lesson, errors);
     }
 
     // Validate teacher lesson plan if present
@@ -235,6 +243,64 @@ export class MaterialsValidator {
     return r;
   }
 
+  private validateContentCount(lesson: LessonResponse, errors: string[]): void {
+    const duration = lesson.lesson.duration || 30;
+
+    // Count total practice problems across all students
+    lesson.studentMaterials?.forEach((material, studentIndex) => {
+      if (!material.worksheet?.sections) return;
+
+      const gradeGroup = material.gradeGroup || 3; // Default to grade 3 if not specified
+      let activityItemCount = 0;
+
+      // Count items in Activity section
+      material.worksheet.sections.forEach((section: any) => {
+        if (section.title === 'Activity' && section.items) {
+          // Handle nested structure
+          section.items.forEach((item: any) => {
+            if (item.items && Array.isArray(item.items)) {
+              // Count actual practice problems (exclude examples and passages)
+              activityItemCount += item.items.filter((subItem: any) =>
+                subItem.type !== 'example' &&
+                subItem.type !== 'passage'
+              ).length;
+            }
+          });
+        }
+      });
+
+      // Calculate expected minimum based on grade and duration
+      const baseMin = getBaseMinimum(gradeGroup);
+      const multiplier = getDurationMultiplier(duration);
+      const expectedMin = Math.ceil(baseMin * multiplier);
+
+      if (activityItemCount < expectedMin) {
+        errors.push(
+          `Student ${studentIndex + 1} (Grade ${gradeGroup}): Insufficient practice problems. ` +
+          `Found ${activityItemCount}, minimum ${expectedMin} required for ${duration}-minute lesson`
+        );
+      }
+    });
+
+    // Validate whiteboard examples count based on duration
+    if (lesson.lesson.teacherLessonPlan?.whiteboardExamples) {
+      const examples = lesson.lesson.teacherLessonPlan.whiteboardExamples;
+      const expectedExamples = getWhiteboardExampleRange(duration);
+
+      if (examples.length < expectedExamples.min) {
+        errors.push(
+          `Teacher lesson plan: Insufficient whiteboard examples. ` +
+          `Found ${examples.length}, minimum ${expectedExamples.min} required for ${duration}-minute lesson`
+        );
+      } else if (examples.length > expectedExamples.max) {
+        errors.push(
+          `Teacher lesson plan: Too many whiteboard examples. ` +
+          `Found ${examples.length}, maximum ${expectedExamples.max} allowed for ${duration}-minute lesson`
+        );
+      }
+    }
+  }
+
   private validateTeacherLessonPlan(
     lessonPlan: any,
     errors: string[],
@@ -261,11 +327,9 @@ export class MaterialsValidator {
       }
     }
 
-    // Validate whiteboard examples (must have 2-3)
+    // Validate whiteboard examples structure (count is validated in validateContentCount)
     if (!Array.isArray(lessonPlan.whiteboardExamples)) {
       errors.push('Teacher lesson plan: Whiteboard examples must be an array');
-    } else if (lessonPlan.whiteboardExamples.length < 2 || lessonPlan.whiteboardExamples.length > 3) {
-      errors.push('Teacher lesson plan: Must have exactly 2-3 whiteboard examples');
     } else {
       lessonPlan.whiteboardExamples.forEach((example: any, index: number) => {
         if (!example.title || !example.problem || !Array.isArray(example.steps) || !example.teachingPoint) {
