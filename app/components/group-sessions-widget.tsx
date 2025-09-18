@@ -305,10 +305,13 @@ export function GroupSessionsWidget() {
       const lessonDate = `${displayDate.getFullYear()}-${String(displayDate.getMonth() + 1).padStart(2, '0')}-${String(displayDate.getDate()).padStart(2, '0')}`;
 
       // Use the batch API with retry logic for production reliability
+      // Generate idempotency key to prevent duplicate lessons on retry
+      const idempotencyKey = `gsw:${lessonDate}:${timeSlot}:${formattedStudents.map(s => s.id).sort().join('-')}`;
       const response = await fetchWithRetry("/api/lessons/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey
         },
         body: JSON.stringify({
           batch: [{

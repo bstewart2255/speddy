@@ -3,6 +3,17 @@
  * Designed to handle network issues and timeouts in production environments
  */
 
+/**
+ * Custom error class for timeout errors to help distinguish them from other failures
+ */
+export class TimeoutError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'TimeoutError';
+    if (options?.cause) (this as any).cause = options.cause;
+  }
+}
+
 export interface FetchWithRetryOptions extends RequestInit {
   retries?: number;
   timeout?: number;
@@ -51,8 +62,9 @@ export async function fetchWithRetry(
         console.warn(`Server error (${response.status}), retrying... (attempt ${attempt + 1}/${retries})`);
         onRetry?.(attempt + 1, retries, error);
 
-        // Exponential backoff: 2s, 4s, 8s...
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000));
+        // Exponential backoff with jitter to avoid thundering herd
+        const backoffMs = Math.pow(2, attempt + 1) * 1000 + Math.floor(Math.random() * 250);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }
 
@@ -66,15 +78,18 @@ export async function fetchWithRetry(
           console.warn(`Request timeout, retrying... (attempt ${attempt + 1}/${retries})`);
           onRetry?.(attempt + 1, retries, error);
 
-          // Wait before retry with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000));
+          // Wait before retry with exponential backoff and jitter
+          const backoffMs = Math.pow(2, attempt + 1) * 1000 + Math.floor(Math.random() * 250);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
-        throw new Error('Request timed out. The server is taking longer than expected to respond. Please try again with a smaller request or check your connection.');
+        throw new TimeoutError('Request timed out. The server is taking longer than expected to respond. Please try again with a smaller request or check your connection.', { cause: error });
       }
 
       // For network errors, retry if attempts remain
+      // TypeError is thrown by browsers on network failures
       if (attempt < retries && (
+        error.name === 'TypeError' ||
         error.message?.includes('Failed to fetch') ||
         error.message?.includes('NetworkError') ||
         error.message?.includes('Load failed')
@@ -82,7 +97,9 @@ export async function fetchWithRetry(
         console.warn(`Network error, retrying... (attempt ${attempt + 1}/${retries})`);
         onRetry?.(attempt + 1, retries, error);
 
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000));
+        // Exponential backoff with jitter
+        const backoffMs = Math.pow(2, attempt + 1) * 1000 + Math.floor(Math.random() * 250);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
       }
 
@@ -94,19 +111,59 @@ export async function fetchWithRetry(
 }
 
 /**
+ * Generates a stable idempotency key for lesson generation requests
+ * This prevents duplicate lessons when retries occur after server processing
+ */
+export function generateLessonIdempotencyKey(body: any): string {
+  // For batch requests
+  if (body.batch && Array.isArray(body.batch)) {
+    const batchIds = body.batch.map((item: any) => {
+      const studentIds = (item.students || [])
+        .map((s: any) => s.id || s.studentId)
+        .filter(Boolean)
+        .sort()
+        .join('-');
+      return `${item.lessonDate || 'nd'}-${item.timeSlot || 'nd'}-${studentIds}`;
+    }).join('_');
+    return `batch:${batchIds}:${Date.now()}`;
+  }
+
+  // For single requests
+  const studentIds = (body.students || [])
+    .map((s: any) => s.id || s.studentId)
+    .filter(Boolean)
+    .sort()
+    .join('-');
+  const lessonDate = body.lessonDate || 'on-demand';
+  const timeSlot = body.timeSlot || `od-${Date.now()}`;
+
+  return `single:${lessonDate}:${timeSlot}:${studentIds}`;
+}
+
+/**
  * Specific helper for AI lesson generation requests
- * Includes appropriate timeouts and error handling for OpenAI API calls
+ * Includes appropriate timeouts, error handling for OpenAI API calls,
+ * and automatic idempotency key generation
  */
 export async function fetchLessonGeneration(
   body: any,
-  options: Omit<FetchWithRetryOptions, 'method' | 'headers' | 'body'> = {}
+  options: Omit<FetchWithRetryOptions, 'method' | 'body'> = {}
 ): Promise<Response> {
+  // Generate idempotency key if not provided in headers
+  const headers: any = options.headers || {};
+  if (!headers['Idempotency-Key']) {
+    headers['Idempotency-Key'] = generateLessonIdempotencyKey(body);
+  }
+
   return fetchWithRetry('/api/lessons/generate', {
+    ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    },
     body: JSON.stringify(body),
-    timeout: 115000, // 115 seconds for lesson generation
-    retries: 2,
-    ...options
+    timeout: options.timeout || 115000, // 115 seconds for lesson generation
+    retries: options.retries ?? 2,
   });
 }

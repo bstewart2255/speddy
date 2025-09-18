@@ -633,10 +633,13 @@ export function CalendarWeekView({
       const duration = calculateDurationFromTimeSlot(timeSlot);
       
       // Use the new JSON lesson API with retry logic
+      // Generate idempotency key to prevent duplicate lessons on retry
+      const idempotencyKey = `cw:slot:${toLocalDateKey(date)}:${timeSlot}:${studentList.map(s => s.id).sort().join('-')}`;
       const response = await fetchWithRetry('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
           students: studentList,
@@ -649,6 +652,9 @@ export function CalendarWeekView({
           lessonDate: toLocalDateKey(date),
           timeSlot: timeSlot
         }),
+        onRetry: (attempt, maxRetries) => {
+          showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+        }
       });
 
       if (!response.ok) {
@@ -758,10 +764,13 @@ export function CalendarWeekView({
           grade: parseGradeLevel(students.get(id)?.grade_level)
         }));
       
+      // Generate unique request ID for on-demand lessons
+      const requestId = `on-demand-${Date.now()}`;
       const response = await fetchWithRetry('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': requestId
         },
         body: JSON.stringify({
           students: studentList,
@@ -772,8 +781,11 @@ export function CalendarWeekView({
           teacherRole: userProfile?.role || 'resource',
           schoolId: currentSchool?.school_id || null,
           lessonDate: toLocalDateKey(selectedDate),
-          timeSlot: `on-demand-${Date.now()}`
+          timeSlot: requestId
         }),
+        onRetry: (attempt, maxRetries) => {
+          showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+        }
       });
 
       if (!response.ok) throw new Error('Failed to generate content');
@@ -1205,10 +1217,13 @@ export function CalendarWeekView({
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
       
       try {
+        // Generate idempotency key for batch request
+        const batchIdKey = `cw:batch:${toLocalDateKey(date)}:${batchRequests.length}:${batchRequests.map(b => b.timeSlot).join(',')}`;
         const response = await fetchWithRetry('/api/lessons/generate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Idempotency-Key': batchIdKey
           },
           body: JSON.stringify({
             batch: batchRequests
