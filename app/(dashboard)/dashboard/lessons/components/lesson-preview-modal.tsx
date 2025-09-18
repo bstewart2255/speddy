@@ -351,132 +351,53 @@ export default function LessonPreviewModal({
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Lesson Plan</title>
-            <style>
-              body { 
-                font-family: Arial, sans-serif; 
-                padding: 20px; 
-                line-height: 1.6;
-              }
-              h3 { 
-                color: #333; 
-                font-size: 24px;
-                margin-bottom: 10px;
-              }
-              h4 { 
-                color: #555; 
-                margin-top: 20px;
-                font-size: 18px;
-                border-bottom: 1px solid #ddd;
-                padding-bottom: 5px;
-              }
-              h5 {
-                font-size: 16px;
-                margin-top: 15px;
-                color: #444;
-              }
-              h6 {
-                font-size: 14px;
-                font-weight: bold;
-                margin-top: 10px;
-              }
-              .text-gray-600 { color: #666; }
-              .text-gray-700 { color: #777; }
-              .font-medium { font-weight: 500; }
-              .font-semibold { font-weight: 600; }
-              .italic { font-style: italic; }
-              ul, ol { padding-left: 20px; margin: 10px 0; }
-              li { margin: 5px 0; }
-              .bg-gray-50 { 
-                background: #f9f9f9; 
-                padding: 15px; 
-                border-radius: 5px;
-                margin: 15px 0;
-                page-break-inside: avoid;
-              }
-              .bg-yellow-50 {
-                background: #fef3c7;
-                padding: 15px;
-                border-radius: 5px;
-                margin: 15px 0;
-              }
-              .bg-blue-50 {
-                background: #dbeafe;
-                padding: 10px;
-                border-radius: 5px;
-                margin: 10px 0;
-              }
-              .border-t {
-                border-top: 2px solid #ddd;
-                padding-top: 20px;
-                margin-top: 20px;
-              }
-              .font-mono {
-                font-family: 'Courier New', monospace;
-                font-size: 16px;
-                background: white;
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 3px;
-                display: block;
-                margin: 10px 0;
-              }
-              .ml-4 { margin-left: 20px; }
-              .space-y-1 > * { margin-top: 5px; }
-              .space-y-2 > * { margin-top: 10px; }
-              .space-y-3 > * { margin-top: 15px; }
-              .space-y-4 > * { margin-top: 20px; }
-              .space-y-6 > * { margin-top: 30px; }
-              .mb-2 { margin-bottom: 10px; }
-              .mb-4 { margin-bottom: 20px; }
-              .border-b {
-                border-bottom: 1px solid #999;
-                height: 25px;
-                margin: 5px 0;
-              }
-              @media print {
-                body { padding: 10px; }
-                .bg-gray-50, .bg-yellow-50, .bg-blue-50 {
-                  background: white;
-                  border: 1px solid #ddd;
-                }
-                h4 { page-break-after: avoid; }
-                h5 { page-break-after: avoid; }
-                .border-t { page-break-before: auto; }
-              }
-            </style>
-          </head>
-          <body>
-            <div id="content"></div>
-          </body>
-        </html>
-      `);
-      
-      const contentDiv = printWindow.document.getElementById('content');
-      if (contentDiv) {
-        // Safely clone the lesson preview content using DOM methods
-        const lessonContent = document.getElementById('lesson-preview-content');
-        if (lessonContent) {
-          // Use importNode to safely copy the DOM structure between different documents
-          const clonedContent = printWindow.document.importNode(lessonContent, true);
-          contentDiv.appendChild(clonedContent);
-        }
+    if (!printWindow) {
+      showToast('Please allow popups to print the lesson', 'error');
+      return;
+    }
+
+    // Show loading message while fetching rendered content
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Loading Lesson...</title>
+        </head>
+        <body>
+          <p>Loading lesson plan...</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    try {
+      // Fetch the server-rendered HTML
+      const response = await fetch(`/api/lessons/${lesson.id}/render?type=lesson`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch lesson for printing');
       }
-      
-      // Safely set the document title after DOM is created
-      printWindow.document.title = lesson.title || 'Lesson Plan';
-      
+
+      const html = await response.text();
+
+      // Replace the loading message with the rendered HTML
+      printWindow.document.open();
+      printWindow.document.write(html);
       printWindow.document.close();
-      // Small delay to ensure styles are applied
-      setTimeout(() => {
+
+      // Set the title and trigger print
+      printWindow.document.title = lesson.title || 'Lesson Plan';
+
+      // Wait for content to render before printing
+      printWindow.onload = () => {
         printWindow.print();
-      }, 250);
+      };
+    } catch (error) {
+      console.error('Error printing lesson:', error);
+      showToast('Failed to print lesson plan', 'error');
+      printWindow.close();
     }
   };
 

@@ -126,8 +126,45 @@ export class WorksheetRenderer {
       margin-left: 10px;
     }
     @media print {
-      body { max-width: 100%; }
-      .section { break-inside: avoid; }
+      body {
+        max-width: 100%;
+        margin: 0;
+        padding: 15px;
+      }
+      h1, h2, h3, h4, h5 {
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+      .section {
+        page-break-inside: avoid;
+        margin: 15px 0;
+      }
+      .teacher-plan {
+        page-break-inside: avoid;
+      }
+      .whiteboard-example {
+        page-break-inside: avoid;
+      }
+      .student-problems {
+        page-break-inside: avoid;
+      }
+      .activity {
+        page-break-inside: avoid;
+      }
+      .materials {
+        page-break-inside: avoid;
+      }
+      /* Keep teaching sections together */
+      .teacher-script {
+        page-break-inside: avoid;
+      }
+      .teaching-point {
+        page-break-inside: avoid;
+      }
+      /* Reduce excessive margins that cause blank pages */
+      h2 { margin-top: 20px; }
+      .section { padding: 10px; }
+      /* Hide UI elements */
       .no-print { display: none !important; }
       button { display: none !important; }
       .print-icon { display: none !important; }
@@ -305,9 +342,40 @@ export class WorksheetRenderer {
       font-size: 0.9em;
     }
     @media print {
-      body { max-width: 100%; }
-      .header { page-break-inside: avoid; }
-      .section { page-break-inside: avoid; }
+      body {
+        max-width: 100%;
+        margin: 0;
+        padding: 15px;
+      }
+      .header {
+        page-break-inside: avoid;
+        page-break-after: avoid;
+      }
+      h1, h2, h3 {
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+      .section {
+        page-break-inside: avoid;
+        margin: 15px 0;
+      }
+      .item {
+        page-break-inside: avoid;
+      }
+      .instructions {
+        page-break-after: avoid;
+      }
+      .accommodations {
+        page-break-inside: avoid;
+      }
+      /* Keep questions with their answer spaces */
+      .question {
+        page-break-after: avoid;
+      }
+      .answer-lines {
+        page-break-inside: avoid;
+      }
+      /* Hide UI elements */
       .no-print { display: none !important; }
       button { display: none !important; }
       .print-icon { display: none !important; }
