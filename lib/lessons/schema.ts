@@ -42,7 +42,10 @@ export interface LessonPlan {
   
   // NEW: Structured teacher lesson plan
   teacherLessonPlan?: TeacherLessonPlan;
-
+  
+  // Optional answer key
+  answerKey?: AnswerKey;
+  
   // Differentiation strategies
   differentiation?: {
     below?: string;
@@ -143,6 +146,7 @@ export interface StudentMaterial {
   };
   
   accommodations?: string[];
+  answerKey?: AnswerKey; // Optional: for activities with specific answers
 }
 
 export interface WorksheetContent {
@@ -157,12 +161,22 @@ export interface WorksheetContent {
 export interface WorksheetItem {
   type: 'multiple-choice' | 'fill-blank' | 'short-answer' | 'long-answer' | 'visual-math' | 'example' | 'passage' | 'text' | 'fill-in-blank';
   content: string; // The actual question/problem/task
-  title?: string; // Optional title for passages/stories
-
+  
   // Optional fields for different item types
   choices?: string[]; // For multiple choice (exactly 4 choices WITHOUT letter prefixes)
   blankLines?: number; // For written responses (grade-based: K-1: 4, 2-3: 3, 4-5: 2)
   visualSupport?: string; // Description of visual aid
+}
+
+export interface AnswerKey {
+  answers?: Record<string, string | string[]>; // Legacy format
+  items?: {
+    itemNumber: number;
+    correctAnswer: string;
+    acceptableVariations?: string[];
+  }[];
+  rubric?: string;
+  notes?: string;
 }
 
 export interface LessonMetadata {

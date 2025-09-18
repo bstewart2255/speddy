@@ -74,7 +74,7 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
     return (
       <div key={index} className="mb-8 border-l-4 border-blue-500 pl-4">
         <h3 className="text-xl font-bold mb-4 text-blue-700">
-          {student?.initials || material.studentName || <span className="text-red-500">Missing Student Initials</span>}
+          {student?.initials || material.studentName || `Student ${index + 1}`}
           {material.gradeGroup !== undefined && (
             <span className="ml-2 text-sm font-normal">
               (Grade Group {material.gradeGroup})

@@ -126,6 +126,7 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
 
 5. STUDENT PROBLEMS DISPLAY:
    - Show ALL problems from ALL student worksheets
+   - Include the correct answer for each problem
    - If students have different worksheets, show ALL variations
    - Group by student initials if differentiated
 
@@ -165,6 +166,7 @@ JSON STRUCTURE (STRICT - no deviations):
               "question": "string",
               "questionType": "multiple-choice|fill-blank|short-answer|visual|long-answer",
               "choices": ["string"],
+              "answer": "string",
               "solution": ["string"],
               "commonErrors": ["string"]
             }
@@ -177,6 +179,7 @@ JSON STRUCTURE (STRICT - no deviations):
         "checkpoints": ["string"]
       }
     },
+    "answerKey": {},
     "roleSpecificContent": {}
   },
   "studentMaterials": [{
@@ -233,7 +236,7 @@ ERROR PREVENTION:
 - NEVER create activity sections with fewer than 6 items or more than 12 items
 - ALWAYS include teacherLessonPlan with all required fields
 - ALWAYS include exactly 2-3 whiteboard examples
-- ALWAYS show ALL student problems in teacherLessonPlan
+- ALWAYS show ALL student problems with answers in teacherLessonPlan
 - EXAMPLES must be WORKED examples with solutions, NOT tips or suggestions
 - For math examples: Show the problem AND the complete solution process
 - For reading examples: Show actual words/sentences being decoded or analyzed
@@ -248,8 +251,6 @@ IMPORTANT:
 CRITICAL FOR ELA READING COMPREHENSION LESSONS:
 When creating reading comprehension activities, the worksheet MUST include:
 1. FIRST: A complete story/passage as a separate item with type: "passage"
-   - Include a "title" field with the story title (e.g., "The Brave Little Fox")
-   - Include "content" field with the full story text (without the title repeated)
 2. THEN: Comprehension questions about that passage
 
 REQUIRED STRUCTURE FOR READING PASSAGES:
@@ -260,8 +261,7 @@ The Activity section must start with the passage, like this:
     "items": [
       {
         "type": "passage",
-        "title": "The Brave Little Fox",
-        "content": "Once upon a time, there was a little fox who lived in the forest. [CONTINUE WITH COMPLETE 100-200 WORD STORY appropriate for grade level]"
+        "content": "The Brave Little Fox\\n\\nOnce upon a time, there was a little fox who lived in the forest. [CONTINUE WITH COMPLETE 100-200 WORD STORY appropriate for grade level]"
       },
       {
         "type": "short-answer",
@@ -372,7 +372,7 @@ TEACHER LESSON PLAN SPECIFIC REQUIREMENTS:
 - Teacher introduction script should be 2-3 sentences, conversational and engaging
 - Include EXACTLY 2-3 whiteboard examples that correspond to worksheet problems
 - Each whiteboard example needs numbered steps and a teaching point
-- In studentProblems, show ALL problems from ALL worksheets
+- In studentProblems, show ALL problems from ALL worksheets with correct answers
 - If students have different worksheets, show all variations grouped by student
 - Include common errors and solutions where helpful for complex problems
 

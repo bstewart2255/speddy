@@ -128,11 +128,6 @@ export class WorksheetRenderer {
     @media print {
       body { max-width: 100%; }
       .section { break-inside: avoid; }
-      .no-print { display: none !important; }
-      button { display: none !important; }
-      .print-icon { display: none !important; }
-      nav { display: none !important; }
-      .toolbar { display: none !important; }
     }
   </style>
 </head>
@@ -308,11 +303,6 @@ export class WorksheetRenderer {
       body { max-width: 100%; }
       .header { page-break-inside: avoid; }
       .section { page-break-inside: avoid; }
-      .no-print { display: none !important; }
-      button { display: none !important; }
-      .print-icon { display: none !important; }
-      nav { display: none !important; }
-      .toolbar { display: none !important; }
     }
   </style>
 </head>
@@ -434,7 +424,6 @@ export class WorksheetRenderer {
       return `
       <div class="item">
         <div class="passage" style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-left: 3px solid #4a90e2;">
-          ${item.title ? `<h3 style="margin-top: 0; margin-bottom: 10px; font-size: 1.2em; text-decoration: underline;">${this.escapeHtml(item.title)}</h3>` : ''}
           ${this.escapeHtml(item.content)}
         </div>
       </div>`;
@@ -452,10 +441,8 @@ export class WorksheetRenderer {
     
     // Generate appropriate number of answer lines based on blankLines property
     const generateAnswerLines = (lines: number = 1) => {
-      // Ensure at least 1 line is generated, even if lines is 0
-      const lineCount = Math.max(1, lines);
       let html = '';
-      for (let i = 0; i < lineCount; i++) {
+      for (let i = 0; i < lines; i++) {
         html += '<div class="answer-lines"></div>\n';
       }
       return html;
@@ -475,17 +462,15 @@ export class WorksheetRenderer {
             return `<li>${this.escapeHtml(cleanChoice)}</li>`;
           }).join('')}
         </ul>
-      ` : item.type === 'fill-blank' || item.type === 'fill-in-blank' ?
-        generateAnswerLines(item.blankLines || 1)
-      : item.type === 'short-answer' ?
+      ` : item.type === 'fill-blank' || item.type === 'fill-in-blank' ? 
+        generateAnswerLines(item.blankLines || 1) 
+      : item.type === 'short-answer' ? 
         generateAnswerLines(item.blankLines || 2)
-      : item.type === 'long-answer' ?
+      : item.type === 'long-answer' ? 
         generateAnswerLines(item.blankLines || 4)
-      : item.type === 'visual-math' ?
+      : item.type === 'visual-math' ? 
         generateAnswerLines(item.blankLines || 3)
-      : item.type === 'visual' ?
-        '' // Visual items don't need answer lines
-      :
+      : 
         generateAnswerLines(item.blankLines || 2)
       }
     </div>`;
@@ -601,11 +586,6 @@ export class WorksheetRenderer {
     }
     @media print {
       body { max-width: 100%; }
-      .no-print { display: none !important; }
-      button { display: none !important; }
-      .print-icon { display: none !important; }
-      nav { display: none !important; }
-      .toolbar { display: none !important; }
     }
   </style>
 </head>
@@ -694,50 +674,34 @@ export class WorksheetRenderer {
       
       <div style="margin: 20px 0;">
         <h3>📝 Student Worksheet Problems</h3>
-        ${(() => {
-          // Group students by identical worksheet content
-          const worksheetGroups: Map<string, { students: string[], problems: any[] }> = new Map();
-
-          tlp.studentProblems?.forEach((studentSet: any) => {
-            const worksheetKey = JSON.stringify(studentSet.problems || []);
-            if (!worksheetGroups.has(worksheetKey)) {
-              worksheetGroups.set(worksheetKey, {
-                students: [],
-                problems: studentSet.problems || []
-              });
-            }
-            worksheetGroups.get(worksheetKey)!.students.push(studentSet.studentInitials || '');
-          });
-
-          // Render each unique worksheet once with all students who have it
-          return Array.from(worksheetGroups.values()).map(group => `
-            <div class="student-problems">
-              <h4>Students: ${group.students.map(s => this.escapeHtml(s)).join(', ')}</h4>
-              <ol>
-                ${group.problems.map((problem: any) => `
-                  <li>
-                    <strong>Problem ${this.escapeHtml(problem.number || '')}:</strong>
-                    ${this.escapeHtml(problem.question || '')}
-                    ${problem.choices ? `
-                      <ul style="list-style-type: upper-alpha;">
-                        ${problem.choices.map((choice: string) =>
-                          `<li>${this.escapeHtml(choice)}</li>`
-                        ).join('')}
-                      </ul>
-                    ` : ''}
-                    ${problem.commonErrors?.length ? `
-                      <div style="margin-top: 5px; color: #dc3545;">
-                        ⚠️ Common errors: ${problem.commonErrors.map((err: string) =>
-                          this.escapeHtml(err)
-                        ).join(', ')}
-                      </div>
-                    ` : ''}
-                  </li>
-                `).join('')}
-              </ol>
-            </div>
-          `).join('');
-        })()}
+        ${tlp.studentProblems?.map((studentSet: any) => `
+          <div class="student-problems">
+            <h4>Student: ${this.escapeHtml(studentSet.studentInitials || '')}</h4>
+            <ol>
+              ${studentSet.problems?.map((problem: any) => `
+                <li>
+                  <strong>Problem ${this.escapeHtml(problem.number || '')}:</strong> 
+                  ${this.escapeHtml(problem.question || '')}
+                  ${problem.choices ? `
+                    <ul style="list-style-type: upper-alpha;">
+                      ${problem.choices.map((choice: string) => 
+                        `<li>${this.escapeHtml(choice)}</li>`
+                      ).join('')}
+                    </ul>
+                  ` : ''}
+                  <span class="problem-answer">Answer: ${this.escapeHtml(problem.answer || '')}</span>
+                  ${problem.commonErrors?.length ? `
+                    <div style="margin-top: 5px; color: #dc3545;">
+                      ⚠️ Common errors: ${problem.commonErrors.map((err: string) => 
+                        this.escapeHtml(err)
+                      ).join(', ')}
+                    </div>
+                  ` : ''}
+                </li>
+              `).join('') || ''}
+            </ol>
+          </div>
+        `).join('') || ''}
       </div>
       
       ${tlp.teachingNotes ? `
