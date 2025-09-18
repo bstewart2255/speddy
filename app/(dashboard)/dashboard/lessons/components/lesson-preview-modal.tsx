@@ -353,9 +353,7 @@ export default function LessonPreviewModal({
 
   const handlePrint = async () => {
     // Check if lesson has been saved (has an ID)
-    const lessonId = lesson.id || lesson.lessonId;
-
-    if (!lessonId) {
+    if (!lesson.lessonId) {
       // Lesson hasn't been saved yet - save it first
       showToast('Please save the lesson before printing', 'info');
       return;
@@ -384,7 +382,7 @@ export default function LessonPreviewModal({
 
     try {
       // Fetch the server-rendered HTML
-      const response = await fetch(`/api/lessons/${lessonId}/render?type=lesson`);
+      const response = await fetch(`/api/lessons/${lesson.lessonId}/render?type=lesson`);
       if (!response.ok) {
         throw new Error('Failed to fetch lesson for printing');
       }
