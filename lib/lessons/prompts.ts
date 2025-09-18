@@ -49,10 +49,27 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - One clearly correct answer
    - Distractors should be plausible but wrong
 
-5. ACTIVITY ITEM COUNTS:
+5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
+   These are REQUIRED minimums that MUST be met - lessons with fewer items will be rejected:
+
+   For 5-15 minute lessons:
    - Grades K-2: Exactly 6-8 practice problems in Activity section
    - Grades 3-5: Exactly 8-12 practice problems in Activity section
+
+   For 20-30 minute lessons:
+   - Grades K-2: Exactly 9-12 practice problems in Activity section
+   - Grades 3-5: Exactly 12-18 practice problems in Activity section
+
+   For 45 minute lessons:
+   - Grades K-2: Exactly 12-16 practice problems in Activity section
+   - Grades 3-5: Exactly 16-24 practice problems in Activity section
+
+   For 60 minute lessons:
+   - Grades K-2: Exactly 15-20 practice problems in Activity section
+   - Grades 3-5: Exactly 20-30 practice problems in Activity section
+
    - Include variety: mix of question types appropriate for the subject
+   - CRITICAL: These are MINIMUM requirements - generating fewer will cause validation failure
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -114,7 +131,13 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
    - Engaging and age-appropriate
    - Example: "Today we're learning about adding fractions with the same bottom number. Think of it like adding slices of the same pizza!"
 
-4. WHITEBOARD EXAMPLES (EXACTLY 2-3 REQUIRED):
+4. WHITEBOARD EXAMPLES (DURATION-BASED REQUIREMENTS):
+   Number of examples required based on lesson duration:
+   - 5-15 minutes: Exactly 2 examples
+   - 20-30 minutes: Exactly 2-3 examples
+   - 45 minutes: Exactly 3-4 examples
+   - 60 minutes: Exactly 4-5 examples
+
    - Each example must include:
      * Problem statement
      * Step-by-step solution (as array of strings, NO numbering - just the step text)
@@ -235,7 +258,7 @@ ERROR PREVENTION:
 - NEVER use numbers (1,2,3,4) for multiple choice - renderer will label choices A,B,C,D; provide text-only choices
 - NEVER create activity sections with fewer than 6 items or more than 12 items
 - ALWAYS include teacherLessonPlan with all required fields
-- ALWAYS include exactly 2-3 whiteboard examples
+- ALWAYS include the required number of whiteboard examples based on lesson duration (see duration-based requirements above)
 - ALWAYS show ALL student problems with answers in teacherLessonPlan
 - EXAMPLES must be WORKED examples with solutions, NOT tips or suggestions
 - For math examples: Show the problem AND the complete solution process
@@ -356,7 +379,7 @@ NEVER generate comprehension questions without including the actual story text f
 - Use exactly 2 worksheet sections: Introduction, Activity
 - Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
 - Multiple choice questions must have exactly 4 choices (A, B, C, D)
-- Include ${this.getActivityItemCount(request.students)} practice items in Activity section
+- Include ${this.getActivityItemCount(request.students, request.duration)} practice items in Activity section
 - Introduction section should have 1-2 example/instruction items only
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
@@ -468,12 +491,44 @@ MATH EXAMPLES SECTION:
     }
   }
 
-  private getActivityItemCount(students: { grade: number }[]): string {
+  private getActivityItemCount(students: { grade: number }[], duration?: number): string {
     const maxGrade = Math.max(...students.map(s => s.grade));
-    if (maxGrade <= 2) {
-      return '6-8'; // Grades K-2: 6-8 items
+    const effectiveDuration = duration || 30; // Default to 30 minutes if not specified
+
+    // Base counts for different grade levels
+    const baseMin = maxGrade <= 2 ? 6 : 8;
+    const baseMax = maxGrade <= 2 ? 8 : 12;
+
+    // Calculate multiplier based on duration
+    let multiplier = 1;
+    if (effectiveDuration <= 15) {
+      multiplier = 1;
+    } else if (effectiveDuration <= 30) {
+      multiplier = 1.5;
+    } else if (effectiveDuration <= 45) {
+      multiplier = 2;
     } else {
-      return '8-12'; // Grades 3-5: 8-12 items
+      multiplier = 2.5; // 60+ minutes
+    }
+
+    // Calculate scaled counts
+    const min = Math.ceil(baseMin * multiplier);
+    const max = Math.ceil(baseMax * multiplier);
+
+    return `${min}-${max}`;
+  }
+
+  private getExampleCount(duration?: number): string {
+    const effectiveDuration = duration || 30;
+
+    if (effectiveDuration <= 15) {
+      return '2';
+    } else if (effectiveDuration <= 30) {
+      return '2-3';
+    } else if (effectiveDuration <= 45) {
+      return '3-4';
+    } else {
+      return '4-5'; // 60+ minutes
     }
   }
 

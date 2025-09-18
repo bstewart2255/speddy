@@ -157,20 +157,37 @@ export default function LessonPreviewModal({
             </div>
           )}
 
-          {lessonData.answerKey && (
+          {lessonData.answerKey && Object.keys(lessonData.answerKey).length > 0 && (
             <div className="border-t pt-4">
               <h4 className="font-semibold mb-2">Answer Key</h4>
               <div className="bg-yellow-50 p-4 rounded-lg">
-                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => (
-                  <div key={key}>
-                    <p className="font-medium">{key}:</p>
-                    <p className="text-gray-700">
-                      {Array.isArray(value.answers) 
-                        ? value.answers.join(', ')
-                        : JSON.stringify(value)}
-                    </p>
-                  </div>
-                ))}
+                {Object.entries(lessonData.answerKey).map(([key, value]: [string, any]) => {
+                  // Skip empty or null values
+                  if (!value) return null;
+
+                  let displayValue = '';
+                  if (typeof value === 'string') {
+                    displayValue = value;
+                  } else if (Array.isArray(value)) {
+                    displayValue = value.filter(v => v != null).join(', ');
+                  } else if (value.answers && Array.isArray(value.answers)) {
+                    displayValue = value.answers.filter(v => v != null).join(', ');
+                  } else if (typeof value === 'object') {
+                    displayValue = JSON.stringify(value, null, 2);
+                  } else {
+                    displayValue = String(value);
+                  }
+
+                  // Only render if there's actual content to display
+                  if (!displayValue || displayValue === '[]' || displayValue === '{}') return null;
+
+                  return (
+                    <div key={key} className="mb-2">
+                      <p className="font-medium">{key}:</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{displayValue}</p>
+                    </div>
+                  );
+                }).filter(Boolean)}
               </div>
             </div>
           )}
@@ -199,11 +216,12 @@ export default function LessonPreviewModal({
         {worksheet.sections?.map((section: any, i: number) => {
           // Handle nested structure with items array containing section objects
           if (section.items && Array.isArray(section.items) && section.items[0]?.sectionType) {
+            let problemCounter = 0; // Track problem numbering across all subsections
             return (
               <div key={i} className="space-y-4">
                 <h6 className="font-semibold text-base">{section.title}</h6>
                 {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
-                
+
                 {section.items.map((subSection: any, j: number) => (
                   <div key={j} className="ml-4 space-y-2">
                     <p className="font-medium">{subSection.sectionTitle}</p>
@@ -211,26 +229,38 @@ export default function LessonPreviewModal({
                       <p className="text-sm text-gray-600 italic">{subSection.instructions}</p>
                     )}
                     <div className="space-y-3">
-                      {subSection.items?.map((problem: any, k: number) => (
-                        <div key={k} className="ml-4">
-                          {problem.type === 'visual' ? (
-                            <div className="font-mono text-lg bg-white p-2 rounded border">
-                              {problem.content}
-                            </div>
-                          ) : (
-                            <p className="text-gray-700">
-                              {k + 1}. {problem.question || problem.content || problem}
-                            </p>
-                          )}
-                          {problem.blankLines && (
-                            <div className="ml-4 space-y-1">
-                              {[...Array(problem.blankLines)].map((_, idx) => (
-                                <div key={idx} className="border-b border-gray-300 h-6"></div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                      {subSection.items?.map((problem: any, k: number) => {
+                        // Skip examples and passages for numbering
+                        const shouldNumber = problem.type !== 'example' && problem.type !== 'passage';
+                        if (shouldNumber) {
+                          problemCounter++;
+                        }
+
+                        return (
+                          <div key={k} className="ml-4">
+                            {problem.type === 'visual' ? (
+                              <div className="font-mono text-lg bg-white p-2 rounded border">
+                                {problem.content}
+                              </div>
+                            ) : problem.type === 'example' || problem.type === 'passage' ? (
+                              <div className="text-gray-700">
+                                {problem.content}
+                              </div>
+                            ) : (
+                              <p className="text-gray-700">
+                                {problemCounter}. {problem.question || problem.content || problem}
+                              </p>
+                            )}
+                            {problem.blankLines && (
+                              <div className="ml-4 space-y-1">
+                                {[...Array(problem.blankLines)].map((_, idx) => (
+                                  <div key={idx} className="border-b border-gray-300 h-6"></div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
