@@ -1,5 +1,11 @@
 // Enhanced prompt templates for lesson generation with subject-specific differentiation
 import { LessonRequest, determineGradeGroups } from './schema';
+import {
+  getDurationMultiplier,
+  getWhiteboardExampleRange,
+  getBaseMinimum,
+  getBaseMaximum
+} from './duration-constants';
 
 export class PromptBuilder {
   /**
@@ -50,26 +56,26 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Distractors should be plausible but wrong
 
 5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
-   These are REQUIRED minimums that MUST be met - lessons with fewer items will be rejected:
+   These are REQUIRED minimums. Use ranges as targets; fewer than the minimum fails validation.
 
    For 5-15 minute lessons:
-   - Grades K-2: Exactly 6-8 practice problems in Activity section
-   - Grades 3-5: Exactly 8-12 practice problems in Activity section
+   - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
+   - Grades 3-5: Target 8-12 practice problems (minimum 8) in Activity section
 
    For 20-30 minute lessons:
-   - Grades K-2: Exactly 9-12 practice problems in Activity section
-   - Grades 3-5: Exactly 12-18 practice problems in Activity section
+   - Grades K-2: Target 9-12 practice problems (minimum 9) in Activity section
+   - Grades 3-5: Target 12-18 practice problems (minimum 12) in Activity section
 
    For 45 minute lessons:
-   - Grades K-2: Exactly 12-16 practice problems in Activity section
-   - Grades 3-5: Exactly 16-24 practice problems in Activity section
+   - Grades K-2: Target 12-16 practice problems (minimum 12) in Activity section
+   - Grades 3-5: Target 16-24 practice problems (minimum 16) in Activity section
 
-   For 60 minute lessons:
-   - Grades K-2: Exactly 15-20 practice problems in Activity section
-   - Grades 3-5: Exactly 20-30 practice problems in Activity section
+   For 60+ minute lessons:
+   - Grades K-2: Target 15-20 practice problems (minimum 15) in Activity section
+   - Grades 3-5: Target 20-30 practice problems (minimum 20) in Activity section
 
    - Include variety: mix of question types appropriate for the subject
-   - CRITICAL: These are MINIMUM requirements - generating fewer will cause validation failure
+   - CRITICAL: These are MINIMUM requirements - generating fewer than the minimum will cause validation failure
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -256,7 +262,7 @@ ERROR PREVENTION:
 - NEVER use question types other than the 6 listed above
 - NEVER vary blankLines counts from the grade-based rules
 - NEVER use numbers (1,2,3,4) for multiple choice - renderer will label choices A,B,C,D; provide text-only choices
-- NEVER create activity sections with fewer than 6 items or more than 12 items
+- NEVER create activity sections with fewer than the duration-based minimum (see requirements above)
 - ALWAYS include teacherLessonPlan with all required fields
 - ALWAYS include the required number of whiteboard examples based on lesson duration (see duration-based requirements above)
 - ALWAYS show ALL student problems with answers in teacherLessonPlan
@@ -393,7 +399,7 @@ TEACHER LESSON PLAN SPECIFIC REQUIREMENTS:
 - Use the actual student initials provided in the student information
 - The lesson topic must match the worksheet content exactly
 - Teacher introduction script should be 2-3 sentences, conversational and engaging
-- Include EXACTLY 2-3 whiteboard examples that correspond to worksheet problems
+- Include ${this.getExampleCount(request.duration)} whiteboard examples that correspond to worksheet problems
 - Each whiteboard example needs numbered steps and a teaching point
 - In studentProblems, show ALL problems from ALL worksheets with correct answers
 - If students have different worksheets, show all variations grouped by student
@@ -495,21 +501,10 @@ MATH EXAMPLES SECTION:
     const maxGrade = Math.max(...students.map(s => s.grade));
     const effectiveDuration = duration || 30; // Default to 30 minutes if not specified
 
-    // Base counts for different grade levels
-    const baseMin = maxGrade <= 2 ? 6 : 8;
-    const baseMax = maxGrade <= 2 ? 8 : 12;
-
-    // Calculate multiplier based on duration
-    let multiplier = 1;
-    if (effectiveDuration <= 15) {
-      multiplier = 1;
-    } else if (effectiveDuration <= 30) {
-      multiplier = 1.5;
-    } else if (effectiveDuration <= 45) {
-      multiplier = 2;
-    } else {
-      multiplier = 2.5; // 60+ minutes
-    }
+    // Get base counts and multiplier from shared constants
+    const baseMin = getBaseMinimum(maxGrade);
+    const baseMax = getBaseMaximum(maxGrade);
+    const multiplier = getDurationMultiplier(effectiveDuration);
 
     // Calculate scaled counts
     const min = Math.ceil(baseMin * multiplier);
@@ -520,16 +515,12 @@ MATH EXAMPLES SECTION:
 
   private getExampleCount(duration?: number): string {
     const effectiveDuration = duration || 30;
+    const range = getWhiteboardExampleRange(effectiveDuration);
 
-    if (effectiveDuration <= 15) {
-      return '2';
-    } else if (effectiveDuration <= 30) {
-      return '2-3';
-    } else if (effectiveDuration <= 45) {
-      return '3-4';
-    } else {
-      return '4-5'; // 60+ minutes
+    if (range.min === range.max) {
+      return `${range.min}`;
     }
+    return `${range.min}-${range.max}`;
   }
 
   // Helper function to determine target grade level for content difficulty

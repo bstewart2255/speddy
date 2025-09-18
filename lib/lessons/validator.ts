@@ -1,9 +1,14 @@
 // Materials validator for zero-prep compliance
-import { 
-  LessonResponse, 
-  ALLOWED_MATERIALS, 
-  FORBIDDEN_MATERIALS 
+import {
+  LessonResponse,
+  ALLOWED_MATERIALS,
+  FORBIDDEN_MATERIALS
 } from './schema';
+import {
+  getDurationMultiplier,
+  getWhiteboardExampleRange,
+  getBaseMinimum
+} from './duration-constants';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -265,18 +270,8 @@ export class MaterialsValidator {
       });
 
       // Calculate expected minimum based on grade and duration
-      const baseMin = gradeGroup <= 2 ? 6 : 8;
-      let multiplier = 1;
-      if (duration <= 15) {
-        multiplier = 1;
-      } else if (duration <= 30) {
-        multiplier = 1.5;
-      } else if (duration <= 45) {
-        multiplier = 2;
-      } else {
-        multiplier = 2.5; // 60+ minutes
-      }
-
+      const baseMin = getBaseMinimum(gradeGroup);
+      const multiplier = getDurationMultiplier(duration);
       const expectedMin = Math.ceil(baseMin * multiplier);
 
       if (activityItemCount < expectedMin) {
@@ -290,27 +285,17 @@ export class MaterialsValidator {
     // Validate whiteboard examples count based on duration
     if (lesson.lesson.teacherLessonPlan?.whiteboardExamples) {
       const examples = lesson.lesson.teacherLessonPlan.whiteboardExamples;
-      let expectedExamples = [2, 2]; // min, max
+      const expectedExamples = getWhiteboardExampleRange(duration);
 
-      if (duration <= 15) {
-        expectedExamples = [2, 2];
-      } else if (duration <= 30) {
-        expectedExamples = [2, 3];
-      } else if (duration <= 45) {
-        expectedExamples = [3, 4];
-      } else {
-        expectedExamples = [4, 5];
-      }
-
-      if (examples.length < expectedExamples[0]) {
+      if (examples.length < expectedExamples.min) {
         errors.push(
           `Teacher lesson plan: Insufficient whiteboard examples. ` +
-          `Found ${examples.length}, minimum ${expectedExamples[0]} required for ${duration}-minute lesson`
+          `Found ${examples.length}, minimum ${expectedExamples.min} required for ${duration}-minute lesson`
         );
-      } else if (examples.length > expectedExamples[1]) {
+      } else if (examples.length > expectedExamples.max) {
         errors.push(
           `Teacher lesson plan: Too many whiteboard examples. ` +
-          `Found ${examples.length}, maximum ${expectedExamples[1]} allowed for ${duration}-minute lesson`
+          `Found ${examples.length}, maximum ${expectedExamples.max} allowed for ${duration}-minute lesson`
         );
       }
     }
