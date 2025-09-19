@@ -34,7 +34,8 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const {
     retries = 2,
-    timeout = 115000, // 115 seconds (slightly less than typical server timeout)
+    timeout = 180000, // 180 seconds (3 minutes) to handle complex AI generation
+    // Note: Browser/proxy timeouts may be lower (typically 60-120s)
     onRetry,
     ...fetchOptions
   } = options;
@@ -221,7 +222,7 @@ export async function fetchLessonGeneration(
     method: 'POST',
     headers: finalHeaders,
     body: JSON.stringify(body),
-    timeout: options.timeout || 115000, // 115 seconds for lesson generation
+    timeout: options.timeout || 180000, // 180 seconds for complex lesson generation
     retries: options.retries ?? 2,
   });
 }

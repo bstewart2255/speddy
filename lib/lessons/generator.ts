@@ -147,9 +147,28 @@ export class LessonGenerator {
               console.log('Retrying with additional constraints...');
               
               // Persist additional constraints into the next attempt prompt
+              // Parse error messages to extract specific requirements
+              let specificRequirements = '';
+              validation.errors.forEach(error => {
+                if (error.includes('Insufficient practice problems')) {
+                  const match = error.match(/minimum (\d+) required/);
+                  if (match) {
+                    specificRequirements += `\n- MUST include AT LEAST ${match[1]} practice problems in the Activity section for each student`;
+                  }
+                }
+                if (error.includes('Insufficient whiteboard examples')) {
+                  const match = error.match(/minimum (\d+) required/);
+                  if (match) {
+                    specificRequirements += `\n- MUST include AT LEAST ${match[1]} whiteboard examples in the teacher lesson plan`;
+                  }
+                }
+              });
+
               const errorFeedback =
                 `\n\nPREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\n` +
-                `Please fix these issues and ensure strict compliance with material constraints.`;
+                `CRITICAL REQUIREMENTS TO FIX:${specificRequirements}\n\n` +
+                `You MUST generate the exact number of items required. This is not optional. ` +
+                `Count carefully and ensure each student worksheet has the minimum required practice problems.`;
               dynamicSystemPrompt += errorFeedback;
               continue;
             }

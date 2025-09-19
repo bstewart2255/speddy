@@ -10,7 +10,10 @@ import { withAuth } from '@/lib/api/with-auth';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { createClient } from '@/lib/supabase/server';
 
-export const maxDuration = 120; // 2 minutes timeout for Vercel
+// Extended timeout for complex AI generation
+// Note: Requires platform support - works on Vercel Pro (300s), AWS Lambda Extended (900s),
+// self-hosted (unlimited). Falls back to platform limits on free/hobby tiers (e.g., 10s on Vercel Hobby)
+export const maxDuration = 300; // 5 minutes
 
 // Debug logging only in development
 const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';

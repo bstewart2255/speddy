@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchLessonGeneration } from '@/lib/utils/fetch-with-retry';
+import { parseGradeLevel } from '@/lib/utils/grade-parser';
 
 interface FormData {
   studentIds: string[];
@@ -156,7 +157,7 @@ export default function LessonBuilder() {
       const response = await fetchLessonGeneration({
         students: selectedStudents.map(s => ({
           id: s.id,
-          grade: s.grade_level
+          grade: parseGradeLevel(s.grade_level)
         })),
         subject: subject,
         subjectType: formData.subjectType,
