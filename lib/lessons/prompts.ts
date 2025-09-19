@@ -56,7 +56,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Distractors should be plausible but wrong
 
 5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
-   These are REQUIRED minimums. Use ranges as targets; fewer than the minimum fails validation.
+   ⚠️ CRITICAL VALIDATION REQUIREMENT ⚠️
+   You MUST generate AT LEAST the minimum number of problems specified below.
+   Generating fewer problems will cause IMMEDIATE VALIDATION FAILURE.
+   Count carefully - each problem in the Activity section counts toward this total.
 
    For 5-15 minute lessons:
    - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
@@ -75,7 +78,9 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Grades 3-5: Target 20-30 practice problems (minimum 20) in Activity section
 
    - Include variety: mix of question types appropriate for the subject
-   - CRITICAL: These are MINIMUM requirements - generating fewer than the minimum will cause validation failure
+   - ⚠️ VALIDATION WILL FAIL if you generate fewer than the minimum problems
+   - ⚠️ COUNT CAREFULLY: Only problems in the "Activity" section count (not examples)
+   - ⚠️ Each student must have the minimum number of practice problems
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -385,7 +390,7 @@ NEVER generate comprehension questions without including the actual story text f
 - Use exactly 2 worksheet sections: Introduction, Activity
 - Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
 - Multiple choice questions must have exactly 4 choices (A, B, C, D)
-- Include ${this.getActivityItemCount(request.students, request.duration)} practice items in Activity section
+- ⚠️ MANDATORY: Include EXACTLY ${this.getActivityItemCount(request.students, request.duration)} practice problems in the Activity section (minimum ${this.getMinimumActivityCount(request.students, request.duration)})
 - Introduction section should have 1-2 example/instruction items only
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate
@@ -511,6 +516,14 @@ MATH EXAMPLES SECTION:
     const max = Math.ceil(baseMax * multiplier);
 
     return `${min}-${max}`;
+  }
+
+  private getMinimumActivityCount(students: { grade: number }[], duration?: number): number {
+    const maxGrade = Math.max(...students.map(s => s.grade));
+    const effectiveDuration = duration || 30;
+    const baseMin = getBaseMinimum(maxGrade);
+    const multiplier = getDurationMultiplier(effectiveDuration);
+    return Math.ceil(baseMin * multiplier);
   }
 
   private getExampleCount(duration?: number): string {

@@ -10,7 +10,7 @@ import { withAuth } from '@/lib/api/with-auth';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { createClient } from '@/lib/supabase/server';
 
-export const maxDuration = 120; // 2 minutes timeout for Vercel
+export const maxDuration = 300; // 5 minutes timeout for platforms that support it (Vercel Pro, etc.)
 
 // Debug logging only in development
 const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';

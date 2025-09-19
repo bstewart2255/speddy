@@ -61,7 +61,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Distractors should be plausible but wrong
 
 5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
-   These are REQUIRED minimums. Use ranges as targets; fewer than the minimum fails validation.
+   ⚠️ CRITICAL VALIDATION REQUIREMENT ⚠️
+   You MUST generate AT LEAST the minimum number of problems specified below.
+   Generating fewer problems will cause IMMEDIATE VALIDATION FAILURE.
+   Count carefully - each problem in the Activity section counts toward this total.
 
    For 5-15 minute lessons:
    - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
@@ -80,7 +83,9 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Grades 3-5: Target 20-30 practice problems (minimum 20) in Activity section
 
    - Include variety: mix of question types appropriate for the subject
-   - CRITICAL: These are MINIMUM requirements - generating fewer than the minimum will cause validation failure
+   - ⚠️ VALIDATION WILL FAIL if you generate fewer than the minimum problems
+   - ⚠️ COUNT CAREFULLY: Only problems in the "Activity" section count (not examples)
+   - ⚠️ Each student must have the minimum number of practice problems
 
 STUDENT DIFFERENTIATION REQUIREMENTS:
 
@@ -750,3 +755,66 @@ These updates maintain backward compatibility while improving output quality. Th
 4. **Validation Updates**: Ensure new rules are enforced during generation
 
 All changes are reflected in the prompt templates above and should be used for any new implementations or updates to the lesson generation system.
+
+---
+
+## Recent Updates (v2.1) - Timeout and Problem Count Fixes
+
+### What Was Fixed
+
+#### 1. Timeout Issues
+
+**Problem**: AI lesson generation was timing out after ~161 seconds, exceeding the 115-second timeout limit.
+
+**Solution**:
+
+- Increased client-side timeout from 115s to 180s (3 minutes) in `fetch-with-retry.ts`
+- Updated server-side `maxDuration` from 120s to 300s (5 minutes) for platforms that support it
+- This provides sufficient time for complex lessons with multiple students
+
+#### 2. Insufficient Practice Problems
+
+**Problem**: AI was generating only 5 problems when 16+ were required for 45-minute lessons.
+
+**Solution**:
+
+- Added warning symbols (⚠️) to make requirements more visually prominent
+- Enhanced retry mechanism to parse validation errors and provide specific requirements
+- On validation failure, the system now explicitly tells the AI the exact number needed
+- Added `getMinimumActivityCount` helper to calculate and display exact minimums
+
+#### 3. Enhanced Error Feedback
+
+**New retry logic**:
+
+- Parses validation errors to extract specific problem counts
+- Provides explicit instructions like "MUST include AT LEAST 16 practice problems"
+- Emphasizes that requirements are not optional
+- Tells AI to count carefully and verify each student has the minimum
+
+### Implementation Details
+
+```typescript
+// Enhanced retry feedback in generator.ts
+let specificRequirements = '';
+validation.errors.forEach(error => {
+  if (error.includes('Insufficient practice problems')) {
+    const match = error.match(/minimum (\d+) required/);
+    if (match) {
+      specificRequirements += `\n- MUST include AT LEAST ${match[1]} practice problems in the Activity section for each student`;
+    }
+  }
+});
+
+const errorFeedback =
+  `PREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\n` +
+  `CRITICAL REQUIREMENTS TO FIX:${specificRequirements}\n\n` +
+  `You MUST generate the exact number of items required. This is not optional.`;
+```
+
+### Key Takeaways
+
+1. **Timeouts**: Always ensure timeout settings accommodate the slowest expected API response
+2. **AI Instructions**: More explicit and visually prominent instructions improve compliance
+3. **Retry Logic**: Specific, targeted feedback on retry attempts is more effective than generic messages
+4. **Validation**: Clear validation rules with exact numbers help both AI and developers understand requirements
