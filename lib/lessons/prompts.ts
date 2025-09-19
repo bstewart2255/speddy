@@ -503,7 +503,9 @@ MATH EXAMPLES SECTION:
   }
 
   private getActivityItemCount(students: { grade: number }[], duration?: number): string {
-    const maxGrade = Math.max(...students.map(s => s.grade));
+    // Filter out invalid grades and default to grade 3 if all invalid
+    const validGrades = students.map(s => s.grade).filter(g => !isNaN(g) && g >= 0 && g <= 12);
+    const maxGrade = validGrades.length > 0 ? Math.max(...validGrades) : 3;
     const effectiveDuration = duration || 30; // Default to 30 minutes if not specified
 
     // Get base counts and multiplier from shared constants
@@ -519,7 +521,9 @@ MATH EXAMPLES SECTION:
   }
 
   private getMinimumActivityCount(students: { grade: number }[], duration?: number): number {
-    const maxGrade = Math.max(...students.map(s => s.grade));
+    // Filter out invalid grades and default to grade 3 if all invalid
+    const validGrades = students.map(s => s.grade).filter(g => !isNaN(g) && g >= 0 && g <= 12);
+    const maxGrade = validGrades.length > 0 ? Math.max(...validGrades) : 3;
     const effectiveDuration = duration || 30;
     const baseMin = getBaseMinimum(maxGrade);
     const multiplier = getDurationMultiplier(effectiveDuration);
