@@ -35,6 +35,7 @@ export async function fetchWithRetry(
   const {
     retries = 2,
     timeout = 180000, // 180 seconds (3 minutes) to handle complex AI generation
+    // Note: Browser/proxy timeouts may be lower (typically 60-120s)
     onRetry,
     ...fetchOptions
   } = options;
