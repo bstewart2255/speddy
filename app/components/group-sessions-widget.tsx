@@ -8,6 +8,7 @@ import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { cn } from '@/src/utils/cn';
 import { getMinutesUntilFirstSession } from '../utils/date-helpers';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { useSchool } from './providers/school-context';
 import type { Database } from '../../src/types/database';
 
@@ -303,11 +304,14 @@ export function GroupSessionsWidget() {
       // Format the display date for lesson date
       const lessonDate = `${displayDate.getFullYear()}-${String(displayDate.getMonth() + 1).padStart(2, '0')}-${String(displayDate.getDate()).padStart(2, '0')}`;
 
-      // Use the batch API for consistency with weekly calendar
-      const response = await fetch("/api/lessons/generate", {
+      // Use the batch API with retry logic for production reliability
+      // Generate idempotency key to prevent duplicate lessons on retry
+      const idempotencyKey = `gsw:${lessonDate}:${timeSlot}:${formattedStudents.map(s => s.id).sort().join('-')}`;
+      const response = await fetchWithRetry("/api/lessons/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey
         },
         body: JSON.stringify({
           batch: [{
@@ -321,6 +325,9 @@ export function GroupSessionsWidget() {
             timeSlot: timeSlot
           }]
         }),
+        onRetry: (attempt, maxRetries) => {
+          console.log(`Retrying lesson generation (${attempt}/${maxRetries})...`);
+        }
       });
 
       if (!response.ok) {

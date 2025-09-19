@@ -16,6 +16,7 @@ import { cn } from '@/src/utils/cn';
 import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
+import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -631,11 +632,14 @@ export function CalendarWeekView({
       const subject = 'English Language Arts'; // Default subject, can be made configurable
       const duration = calculateDurationFromTimeSlot(timeSlot);
       
-      // Use the new JSON lesson API
-      const response = await fetch('/api/lessons/generate', {
+      // Use the new JSON lesson API with retry logic
+      // Generate idempotency key to prevent duplicate lessons on retry
+      const idempotencyKey = `cw:slot:${toLocalDateKey(date)}:${timeSlot}:${studentList.map(s => s.id).sort().join('-')}`;
+      const response = await fetchWithRetry('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
           students: studentList,
@@ -648,6 +652,9 @@ export function CalendarWeekView({
           lessonDate: toLocalDateKey(date),
           timeSlot: timeSlot
         }),
+        onRetry: (attempt, maxRetries) => {
+          showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+        }
       });
 
       if (!response.ok) {
@@ -757,10 +764,14 @@ export function CalendarWeekView({
           grade: parseGradeLevel(students.get(id)?.grade_level)
         }));
       
-      const response = await fetch('/api/lessons/generate', {
+      // Generate deterministic idempotency key for on-demand lessons
+      // Use prompt and student IDs to make the key stable for identical requests
+      const idempotencyKey = `od:${toLocalDateKey(selectedDate)}:${prompt}:${studentList.map(s => s.id).sort().join('-')}`;
+      const response = await fetchWithRetry('/api/lessons/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
           students: studentList,
@@ -771,8 +782,11 @@ export function CalendarWeekView({
           teacherRole: userProfile?.role || 'resource',
           schoolId: currentSchool?.school_id || null,
           lessonDate: toLocalDateKey(selectedDate),
-          timeSlot: `on-demand-${Date.now()}`
+          timeSlot: 'on-demand'
         }),
+        onRetry: (attempt, maxRetries) => {
+          showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+        }
       });
 
       if (!response.ok) throw new Error('Failed to generate content');
@@ -784,7 +798,8 @@ export function CalendarWeekView({
 
       // Lesson is already saved by the API
       // Update local saved lessons state with proper time slot structure
-      const syntheticTimeSlot = `on-demand-${Date.now()}`;
+      // Use a stable identifier for on-demand lessons
+      const syntheticTimeSlot = 'on-demand';
       setSavedLessons(prev => {
         const newMap = new Map(prev);
         const dateKey = toLocalDateKey(selectedDate);
@@ -1204,15 +1219,21 @@ export function CalendarWeekView({
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
       
       try {
-        const response = await fetch('/api/lessons/generate', {
+        // Generate idempotency key for batch request
+        const batchIdKey = `cw:batch:${toLocalDateKey(date)}:${batchRequests.length}:${batchRequests.map(b => b.timeSlot).join(',')}`;
+        const response = await fetchWithRetry('/api/lessons/generate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Idempotency-Key': batchIdKey
           },
           body: JSON.stringify({
             batch: batchRequests
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          onRetry: (attempt, maxRetries) => {
+            showToast(`Connection issues. Retrying (${attempt}/${maxRetries})...`, 'info');
+          }
         });
         
         clearTimeout(timeoutId);
