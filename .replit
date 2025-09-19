@@ -30,9 +30,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 14217
-
-[[ports]]
 localPort = 14298
 
 [[ports]]
@@ -43,6 +40,10 @@ localPort = 24282
 
 [[ports]]
 localPort = 33865
+
+[[ports]]
+localPort = 44227
+externalPort = 3000
 
 [agent]
 expertMode = true
@@ -63,10 +64,10 @@ args = "Next.js Dev Server"
 name = "Next.js Dev Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "next dev -p 5000"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "next dev -p 5000 2>&1 | grep -v \"HEAD /api\""
+waitForPort = 5000
