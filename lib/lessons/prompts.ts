@@ -61,6 +61,12 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    Generating fewer problems will cause IMMEDIATE VALIDATION FAILURE.
    Count carefully - each problem in the Activity section counts toward this total.
 
+   COUNTING EXAMPLE: "12 problems" means 12 separate items like:
+   - Problem 1: Multiple choice question
+   - Problem 2: Fill in the blank
+   - Problem 3: Short answer
+   ... continuing until you have all 12 individual problems
+
    For 5-15 minute lessons:
    - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
    - Grades 3-5: Target 8-12 practice problems (minimum 8) in Activity section
@@ -255,7 +261,11 @@ JSON STRUCTURE (STRICT - no deviations):
     }
   }],
   "metadata": {
-    "gradeGroups": [{ "grades": [1], "studentIds": ["string"], "activityLevel": "on" }],
+    "gradeGroups": [{
+      "grades": [1],
+      "studentIds": ["string"],
+      "activityLevel": "on"  // MUST be exactly: "below", "on", or "above" (not "at")
+    }],
     "validationStatus": "passed"
   }
 }
@@ -391,6 +401,8 @@ NEVER generate comprehension questions without including the actual story text f
 - Follow grade-based blank line rules: K-1 use 4 lines, 2-3 use 3 lines, 4-5 use 2 lines
 - Multiple choice questions must have exactly 4 choices (A, B, C, D)
 - ⚠️ MANDATORY: Include EXACTLY ${this.getActivityItemCount(request.students, request.duration)} practice problems in the Activity section (minimum ${this.getMinimumActivityCount(request.students, request.duration)})
+- ⚠️ COUNT VERIFICATION: You MUST generate at least ${this.getMinimumActivityCount(request.students, request.duration)} individual problem items in the Activity section
+- ⚠️ STRUCTURE: Activity section must have items array with ${this.getMinimumActivityCount(request.students, request.duration)}+ problem objects
 - Introduction section should have 1-2 example/instruction items only
 - All content must be complete and ready-to-use, no placeholders
 - Questions should be ${request.subjectType.toUpperCase()}-focused and grade-appropriate

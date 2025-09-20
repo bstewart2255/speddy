@@ -484,6 +484,11 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
       return false;
     }
     
+    // Allow 'at' as an alias for 'on' (AI sometimes abbreviates)
+    if ('activityLevel' in group && group.activityLevel === 'at') {
+      group.activityLevel = 'on';
+    }
+
     if (!('activityLevel' in group) || !['below', 'on', 'above'].includes(group.activityLevel)) {
       console.error(`Lesson validation failed: metadata.gradeGroups[${i}].activityLevel must be 'below', 'on', or 'above', got: ${group.activityLevel}`);
       return false;

@@ -6,7 +6,6 @@ import { materialsValidator, ValidationResult } from './validator';
 
 // Configuration constants
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
-const MAX_GENERATION_ATTEMPTS = 2;
 const SAMPLE_STUDENTS_FOR_BASE = 3;
 
 /**
@@ -107,122 +106,66 @@ export class LessonGenerator {
       console.log(`Generating lesson with ${this.provider.getName()}...`);
       const startTime = Date.now();
       
-      let lesson: LessonResponse | undefined;
-      let attempts = 0;
-      
-      // Try generation with retry on failure
-      let dynamicSystemPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
-      
-      while (attempts < MAX_GENERATION_ATTEMPTS) {
-        attempts++;
-        
-        try {
-          // Generate using the current dynamic prompt
-          lesson = await this.provider.generateLesson(enrichedRequest, dynamicSystemPrompt);
-          const validation = materialsValidator.validateLesson(lesson);
-          
-          if (validation.isValid) {
-            console.log(`Lesson generated successfully in ${Date.now() - startTime}ms`);
-            
-            // Ensure grade groups are properly set
-            if (!lesson.metadata.gradeGroups) {
-              lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
-            }
-            
-            // Stamp validation metadata on success
-            lesson.metadata.validationStatus = 'passed';
-            if ('validationErrors' in lesson.metadata) {
-              (lesson.metadata as any).validationErrors = [];
-            }
-            
-            return { 
-              lesson, 
-              validation,
-              metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
-            };
-          } else {
-            console.warn(`Validation failed on attempt ${attempts}:`, validation.errors);
-            
-            if (attempts < MAX_GENERATION_ATTEMPTS) {
-              console.log('Retrying with additional constraints...');
-              
-              // Persist additional constraints into the next attempt prompt
-              // Parse error messages to extract specific requirements
-              let specificRequirements = '';
-              validation.errors.forEach(error => {
-                if (error.includes('Insufficient practice problems')) {
-                  const match = error.match(/minimum (\d+) required/);
-                  if (match) {
-                    specificRequirements += `\n- MUST include AT LEAST ${match[1]} practice problems in the Activity section for each student`;
-                  }
-                }
-                if (error.includes('Insufficient whiteboard examples')) {
-                  const match = error.match(/minimum (\d+) required/);
-                  if (match) {
-                    specificRequirements += `\n- MUST include AT LEAST ${match[1]} whiteboard examples in the teacher lesson plan`;
-                  }
-                }
-              });
+      // Generate lesson with AI (single attempt, no retry)
+      const fullPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
 
-              const errorFeedback =
-                `\n\nPREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\n` +
-                `CRITICAL REQUIREMENTS TO FIX:${specificRequirements}\n\n` +
-                `You MUST generate the exact number of items required. This is not optional. ` +
-                `Count carefully and ensure each student worksheet has the minimum required practice problems.`;
-              dynamicSystemPrompt += errorFeedback;
-              continue;
-            }
-          }
-        } catch (error) {
-          console.error(`Generation attempt ${attempts} failed:`, error);
-          
-          if (attempts >= MAX_GENERATION_ATTEMPTS) {
-            throw error;
-          }
-        }
-      }
-      
-      // If we get here, we may have a lesson but validation may have failed
-      // Ensure we validate the final lesson attempt
-      if (lesson) {
-        const finalValidation = materialsValidator.validateLesson(lesson);
-        
+      try {
+        const lesson = await this.provider.generateLesson(enrichedRequest, fullPrompt);
+        const validation = materialsValidator.validateLesson(lesson);
+
+        console.log(`Lesson generated in ${Date.now() - startTime}ms`);
+
         // Ensure grade groups are properly set
         if (!lesson.metadata.gradeGroups) {
           lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
         }
-        
-        // Return the lesson even if validation failed (UI can show warnings)
-        return { 
-          lesson, 
-          validation: finalValidation 
-        };
-      }
-      
-      // No lesson was generated successfully
-      throw new Error('Failed to generate lesson after all attempts');
-      
-    } catch (error) {
-      console.error('Lesson generation failed:', error);
-      
-      // Return a mock lesson for development if generation fails
-      // Check multiple conditions that indicate development mode
-      const isDevelopment = process.env.NODE_ENV === 'development' || 
-                          process.env.USE_MOCK_LESSONS === 'true' ||
-                          !process.env.OPENAI_API_KEY;
-      
-      if (isDevelopment) {
-        console.log('API key missing or development mode - returning mock lesson');
-        return {
-          lesson: this.createMockLesson(request),
-          validation: {
-            isValid: true,
-            errors: [],
-            warnings: ['This is a mock lesson (API key not configured or development mode)']
+
+        // Stamp validation metadata
+        if (validation.isValid) {
+          lesson.metadata.validationStatus = 'passed';
+          if ('validationErrors' in lesson.metadata) {
+            (lesson.metadata as any).validationErrors = [];
           }
+        } else {
+          console.warn('Validation failed:', validation.errors);
+          lesson.metadata.validationStatus = 'failed';
+          if ('validationErrors' in lesson.metadata) {
+            (lesson.metadata as any).validationErrors = validation.errors;
+          }
+        }
+
+        // Return the lesson regardless of validation status
+        return {
+          lesson,
+          validation,
+          metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
         };
+      } catch (error) {
+        console.error('Lesson generation failed:', error);
+
+        // Return a mock lesson for development if generation fails
+        // Check multiple conditions that indicate development mode
+        const isDevelopment = process.env.NODE_ENV === 'development' ||
+                            process.env.USE_MOCK_LESSONS === 'true' ||
+                            !process.env.OPENAI_API_KEY;
+
+        if (isDevelopment) {
+          console.log('API key missing or development mode - returning mock lesson');
+          return {
+            lesson: this.createMockLesson(request),
+            validation: {
+              isValid: true,
+              errors: [],
+              warnings: ['This is a mock lesson (API key not configured or development mode)']
+            }
+          };
+        }
+
+        throw error;
       }
-      
+    } catch (error) {
+      // Outer catch for any unexpected errors
+      console.error('Unexpected error in lesson generation:', error);
       throw error;
     }
   }
