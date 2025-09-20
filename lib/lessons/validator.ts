@@ -256,14 +256,19 @@ export class MaterialsValidator {
       // Count items in Activity section
       material.worksheet.sections.forEach((section: any) => {
         if (section.title === 'Activity' && section.items) {
-          // Handle nested structure
           section.items.forEach((item: any) => {
+            // Handle both nested and flat structures
             if (item.items && Array.isArray(item.items)) {
-              // Count actual practice problems (exclude examples and passages)
+              // Nested structure: count items within item.items
               activityItemCount += item.items.filter((subItem: any) =>
                 subItem.type !== 'example' &&
                 subItem.type !== 'passage'
               ).length;
+            } else if (item.type) {
+              // Flat structure: count direct items (exclude examples and passages)
+              if (item.type !== 'example' && item.type !== 'passage') {
+                activityItemCount++;
+              }
             }
           });
         }
