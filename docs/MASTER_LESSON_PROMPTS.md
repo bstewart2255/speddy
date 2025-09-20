@@ -877,3 +877,53 @@ const errorFeedback =
 2. **AI Instructions**: More explicit and visually prominent instructions improve compliance
 3. **Retry Logic**: Specific, targeted feedback on retry attempts is more effective than generic messages
 4. **Validation**: Clear validation rules with exact numbers help both AI and developers understand requirements
+
+---
+
+### Version 2.3 - Removed Retry Logic
+
+After analysis showing that retry attempts often produced worse results (fewer problems generated on retry), we removed the retry mechanism entirely to focus on getting the first attempt right.
+
+#### Changes Made
+
+1. **Removed Retry Logic** (`generator.ts`)
+   - Eliminated the `MAX_GENERATION_ATTEMPTS` constant and retry loop
+   - Single attempt generation with clear, comprehensive prompts
+   - Returns lesson with validation status regardless of validation outcome
+
+2. **Benefits of Single-Attempt Approach**
+   - **Token Savings**: Eliminates double API calls and token usage
+   - **Clearer AI Instructions**: No confusion from retry prompts mixing with original prompts
+   - **Better First Attempts**: Forces focus on making initial prompts more effective
+   - **Simpler Code**: Removes complex retry logic and prompt reconstruction
+
+3. **Implementation**
+
+```typescript
+// Before: Multiple attempts with retry logic
+while (attempts < MAX_GENERATION_ATTEMPTS) {
+  // Generate, validate, retry with modified prompts
+}
+
+// After: Single attempt with clear expectations
+const fullPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
+const lesson = await this.provider.generateLesson(enrichedRequest, fullPrompt);
+const validation = materialsValidator.validateLesson(lesson);
+
+// Return lesson with validation status
+return {
+  lesson,
+  validation,
+  metadata: toSafeMetadata(this.provider.getLastGenerationMetadata()),
+};
+```
+
+4. **Focus Areas for Improvement**
+   - Making initial prompts clearer and more explicit
+   - Providing better examples in prompts
+   - Ensuring counting requirements are unambiguous
+   - Testing prompt effectiveness before deployment
+
+### Key Principle
+
+**"Better to optimize the first attempt than to rely on retries"** - This change emphasizes the importance of clear, effective initial prompts rather than depending on retry mechanisms that can confuse the AI and waste tokens.

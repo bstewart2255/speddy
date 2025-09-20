@@ -57,14 +57,11 @@
       "Bash(gh project create:*)",
       "Bash(gh project field-create:*)",
       "Bash(gh project item-add:*)",
-      "Bash(gh project item-create:*)"
+      "Bash(gh project item-create:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "context7",
-    "playwright",
-    "supabase"
-  ]
+  "enabledMcpjsonServers": ["context7", "playwright", "supabase"]
 }

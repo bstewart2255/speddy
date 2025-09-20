@@ -157,7 +157,7 @@ export default function LessonBuilder() {
       const response = await fetchLessonGeneration({
         students: selectedStudents.map(s => ({
           id: s.id,
-          grade: parseGradeLevel(s.grade_level)
+          grade: parseGradeLevel(String(s.grade_level))
         })),
         subject: subject,
         subjectType: formData.subjectType,
