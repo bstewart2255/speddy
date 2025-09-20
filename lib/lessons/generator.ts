@@ -164,12 +164,21 @@ export class LessonGenerator {
                 }
               });
 
-              const errorFeedback =
-                `\n\nPREVIOUS ATTEMPT HAD ERRORS:\n${validation.errors.join('\n')}\n\n` +
-                `CRITICAL REQUIREMENTS TO FIX:${specificRequirements}\n\n` +
-                `You MUST generate the exact number of items required. This is not optional. ` +
-                `Count carefully and ensure each student worksheet has the minimum required practice problems.`;
-              dynamicSystemPrompt += errorFeedback;
+              // Create a cleaner retry prompt that replaces confusing parts
+              const retryUserPrompt = `RETRY REQUIRED - Previous attempt had validation errors.
+
+SPECIFIC FIXES NEEDED:${specificRequirements}
+
+IMPORTANT REMINDERS:
+- Each student worksheet MUST have its own set of practice problems
+- Count each problem individually (not groups of problems)
+- For activityLevel in metadata, use exactly: "below", "on", or "above" (not "at")
+- Generate complete problems, not placeholders
+
+Please generate the lesson again with these corrections.`;
+
+              // Replace user portion of prompt for clarity, don't append to system
+              dynamicSystemPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + retryUserPrompt + '\n\nORIGINAL REQUEST:\n' + userPrompt;
               continue;
             }
           }
