@@ -66,6 +66,12 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    Generating fewer problems will cause IMMEDIATE VALIDATION FAILURE.
    Count carefully - each problem in the Activity section counts toward this total.
 
+   COUNTING EXAMPLE: "12 problems" means 12 separate items like:
+   - Problem 1: Multiple choice question
+   - Problem 2: Fill in the blank
+   - Problem 3: Short answer
+   ... continuing until you have all 12 individual problems
+
    For 5-15 minute lessons:
    - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
    - Grades 3-5: Target 8-12 practice problems (minimum 8) in Activity section
@@ -317,7 +323,11 @@ JSON STRUCTURE (STRICT - no deviations):
     }
   }],
   "metadata": {
-    "gradeGroups": [{ "grades": [1], "studentIds": ["string"], "activityLevel": "on" }],
+    "gradeGroups": [{
+      "grades": [1],
+      "studentIds": ["string"],
+      "activityLevel": "on"  // MUST be exactly: "below", "on", or "above" (not "at")
+    }],
     "validationStatus": "passed"
   }
 }
@@ -755,6 +765,55 @@ These updates maintain backward compatibility while improving output quality. Th
 4. **Validation Updates**: Ensure new rules are enforced during generation
 
 All changes are reflected in the prompt templates above and should be used for any new implementations or updates to the lesson generation system.
+
+---
+
+## Recent Updates (v2.2) - Validation and Structure Fixes
+
+### What Was Fixed
+
+#### 1. Flat vs Nested Structure Support
+
+**Problem**: AI was generating practice problems in both flat and nested structures, but validator only counted nested ones.
+
+**Solution**:
+
+- Updated validator to handle both structures:
+  - Flat: Items directly in Activity section
+  - Nested: Items wrapped in a group with `items` array
+- This eliminated false "Found 0 problems" errors
+
+#### 2. ActivityLevel Validation
+
+**Problem**: AI sometimes generated `activityLevel: "at"` which failed validation.
+
+**Solution**:
+
+- Made validation more forgiving - now accepts "at" and maps it to "on"
+- Added explicit comment in JSON schema example: `// MUST be exactly: "below", "on", or "above" (not "at")`
+- Prevents total failure from minor variations
+
+#### 3. Improved Retry Mechanism
+
+**Problem**: Appending error feedback to system prompt confused the AI and corrupted JSON structure.
+
+**Solution**:
+
+- Retry now replaces the user prompt with clearer instructions instead of appending
+- Provides structured retry requirements without making prompt too long
+- Explicitly reminds about valid activityLevel values
+
+#### 4. Enhanced Counting Examples
+
+**Added to prompts**:
+
+```
+COUNTING EXAMPLE: "12 problems" means 12 separate items like:
+- Problem 1: Multiple choice question
+- Problem 2: Fill in the blank
+- Problem 3: Short answer
+... continuing until you have all 12 individual problems
+```
 
 ---
 
