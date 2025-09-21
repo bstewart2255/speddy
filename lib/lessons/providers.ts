@@ -115,26 +115,24 @@ export class OpenAIProvider implements AIProvider {
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
-    
-    const userPrompt = this.buildUserPrompt(request);
-    
+
+    // The systemPrompt already contains both system and user prompts combined from the generator
+    // No need to create a separate user prompt - that was causing the duplicate prompt issue
+
     // Build system prompt
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
-    
+
     try {
       console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
-      
+
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
           {
             role: 'system',
             content: fullSystemPrompt
-          },
-          {
-            role: 'user',
-            content: userPrompt
           }
+          // Removed the duplicate user message - the fullSystemPrompt already contains everything
         ],
         temperature: 0.7,
         max_tokens: this.maxTokens,
@@ -146,8 +144,8 @@ export class OpenAIProvider implements AIProvider {
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
-        fullPromptSent: CAPTURE_FULL_PROMPTS 
-          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
+        fullPromptSent: CAPTURE_FULL_PROMPTS
+          ? redactStudentPII(`System: ${fullSystemPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag  
         aiRawResponse: CAPTURE_AI_RAW
@@ -294,11 +292,15 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
+  // DEPRECATED: This method is no longer used as it was causing duplicate prompts
+  // The generator already provides a complete prompt with all requirements
+  // Keeping for reference only - DO NOT USE
   private buildUserPrompt(request: LessonRequest): string {
+    console.warn('buildUserPrompt is deprecated and should not be called');
     const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-    
+
     return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-    
+
 Students: ${request.students.length} students (${gradeList})
 Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
 Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
@@ -379,12 +381,13 @@ export class AnthropicProvider implements AIProvider {
 
   async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
-    
-    const userPrompt = this.buildUserPrompt(request);
-    
+
+    // The systemPrompt already contains both system and user prompts combined from the generator
+    // No need to create a separate user prompt - that was causing the duplicate prompt issue
+
     // Build system prompt
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.';
-    
+
     try {
       const message = await this.client.messages.create({
         model: this.model,
@@ -394,7 +397,7 @@ export class AnthropicProvider implements AIProvider {
         messages: [
           {
             role: 'user',
-            content: userPrompt
+            content: 'Generate the lesson as specified in the system prompt.'
           }
         ]
       });
@@ -402,8 +405,8 @@ export class AnthropicProvider implements AIProvider {
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
-        fullPromptSent: CAPTURE_FULL_PROMPTS 
-          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
+        fullPromptSent: CAPTURE_FULL_PROMPTS
+          ? redactStudentPII(`System: ${fullSystemPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag
         aiRawResponse: CAPTURE_AI_RAW
@@ -510,11 +513,15 @@ export class AnthropicProvider implements AIProvider {
     }
   }
 
+  // DEPRECATED: This method is no longer used as it was causing duplicate prompts
+  // The generator already provides a complete prompt with all requirements
+  // Keeping for reference only - DO NOT USE
   private buildUserPrompt(request: LessonRequest): string {
+    console.warn('buildUserPrompt is deprecated and should not be called');
     const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-    
+
     return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-    
+
 Students: ${request.students.length} students (${gradeList})
 Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
 Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
