@@ -127,7 +127,23 @@ JSON STRUCTURE (REQUIRED):
       }
     }
   ],
-  "metadata": { /* auto-filled */ }
+  "metadata": { /* auto-filled */ },
+  "generation_explanation": {
+    "duration_interpretation": "string explaining understanding of duration requirements",
+    "actual_content_generated": {
+      "practice_problems": number,
+      "whiteboard_examples": number,
+      "reasoning": "string explaining content decisions"
+    },
+    "student_differentiation": {
+      "student-1": "explanation of how content was differentiated for student 1",
+      "student-2": "explanation of how content was differentiated for student 2"
+    },
+    "validation_expectations": "string explaining expected validation outcome",
+    "constraints_applied": ["list of constraints considered"],
+    "duration_scaling_applied": "string explaining how duration affected content amount",
+    "problems_with_requirements": "optional: any conflicts or issues with requirements"
+  }
 }
 
 KEY RULES:
@@ -136,7 +152,8 @@ KEY RULES:
 - Examples must show worked solutions, not tips
 - Include teacherLessonPlan with all fields
 - CRITICAL: Each section must have "items" array, NOT "content" array
-- Activity section must contain required number of problems in items array`;
+- Activity section must contain required number of problems in items array
+- REQUIRED: Include generation_explanation field with your reasoning about content decisions`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
