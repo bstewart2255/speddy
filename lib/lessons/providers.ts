@@ -75,7 +75,7 @@ const MODEL_MAX_TOKENS: Record<string, number> = {
 const DEFAULT_MAX_RESPONSE_TOKENS = 16000;
 
 export interface AIProvider {
-  generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
+  generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse>;
   getName(): string;
   getLastGenerationMetadata(): GenerationMetadata | null;
 }
@@ -113,17 +113,15 @@ export class OpenAIProvider implements AIProvider {
     console.log(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
-  async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
+  async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
-    
-    const userPrompt = this.buildUserPrompt(request);
-    
-    // Build system prompt
+
+    // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
-    
+
     try {
       console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
-      
+
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -146,7 +144,7 @@ export class OpenAIProvider implements AIProvider {
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
-        fullPromptSent: CAPTURE_FULL_PROMPTS 
+        fullPromptSent: CAPTURE_FULL_PROMPTS
           ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag  
@@ -224,6 +222,7 @@ export class OpenAIProvider implements AIProvider {
 
       if (!isValidLessonResponse(jsonResponse)) {
         jsonResponse.metadata.validationStatus = 'failed';
+        console.error('OpenAI response structure:', JSON.stringify(jsonResponse.lesson, null, 2).slice(0, 500));
         throw new Error('Invalid lesson response structure from OpenAI');
       }
       
@@ -294,27 +293,6 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
-  private buildUserPrompt(request: LessonRequest): string {
-    const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-    
-    return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-    
-Students: ${request.students.length} students (${gradeList})
-Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
-Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
-
-Student Details:
-${request.students.map((s, i) => `
-Student ${i + 1}:
-- ID: ${s.id}
-- Grade: ${s.grade}
-- Reading Level: ${s.readingLevel ? `Grade ${s.readingLevel}` : 'At grade level'}
-- IEP Goals: ${s.iepGoals?.join('; ') || 'None specified'}
-- Accommodations: ${s.accommodations?.join('; ') || 'None specified'}
-`).join('\n')}
-
-Generate a complete lesson plan with individualized worksheets for each student or grade group.`;
-  }
 
   getName(): string {
     return `OpenAI (${this.model})`;
@@ -377,14 +355,12 @@ export class AnthropicProvider implements AIProvider {
     console.log(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
-  async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
+  async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
-    
-    const userPrompt = this.buildUserPrompt(request);
-    
-    // Build system prompt
+
+    // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.';
-    
+
     try {
       const message = await this.client.messages.create({
         model: this.model,
@@ -402,7 +378,7 @@ export class AnthropicProvider implements AIProvider {
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
-        fullPromptSent: CAPTURE_FULL_PROMPTS 
+        fullPromptSent: CAPTURE_FULL_PROMPTS
           ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag
@@ -510,28 +486,6 @@ export class AnthropicProvider implements AIProvider {
     }
   }
 
-  private buildUserPrompt(request: LessonRequest): string {
-    const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-    
-    return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-    
-Students: ${request.students.length} students (${gradeList})
-Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
-Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
-
-Student Details:
-${request.students.map((s, i) => `
-Student ${i + 1}:
-- ID: ${s.id}
-- Grade: ${s.grade}
-- Reading Level: ${s.readingLevel ? `Grade ${s.readingLevel}` : 'At grade level'}
-- IEP Goals: ${s.iepGoals?.join('; ') || 'None specified'}
-- Accommodations: ${s.accommodations?.join('; ') || 'None specified'}
-`).join('\n')}
-
-Remember to group students who are within 1 grade level of each other for the same activities.
-Generate a complete lesson plan with individualized worksheets for each student or grade group.`;
-  }
 
   getName(): string {
     return `Anthropic (${this.model})`;
