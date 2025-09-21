@@ -222,6 +222,7 @@ export class OpenAIProvider implements AIProvider {
 
       if (!isValidLessonResponse(jsonResponse)) {
         jsonResponse.metadata.validationStatus = 'failed';
+        console.error('OpenAI response structure:', JSON.stringify(jsonResponse.lesson, null, 2).slice(0, 500));
         throw new Error('Invalid lesson response structure from OpenAI');
       }
       

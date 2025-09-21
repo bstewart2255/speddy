@@ -58,10 +58,25 @@ function toSafeMetadata(metadata: GenerationMetadata | null | undefined): SafeGe
 }
 
 export class LessonGenerator {
-  private provider: AIProvider;
+  private provider: AIProvider | null = null;
 
   constructor(provider?: AIProvider) {
-    this.provider = provider || createAIProvider();
+    // Defer provider creation to allow lazy initialization
+    // This prevents errors when OPENAI_API_KEY isn't available at module load time
+    if (provider) {
+      this.provider = provider;
+    }
+    // Don't create provider here - will create on first use
+  }
+
+  /**
+   * Lazily initialize the provider when needed
+   */
+  private getProvider(): AIProvider {
+    if (!this.provider) {
+      this.provider = createAIProvider();
+    }
+    return this.provider;
   }
 
   /**
@@ -70,7 +85,7 @@ export class LessonGenerator {
    * NEVER be exposed to the client. Only use for server-side logging/storage.
    */
   getFullMetadataForLogging(): GenerationMetadata | null {
-    return this.provider.getLastGenerationMetadata();
+    return this.provider?.getLastGenerationMetadata() || null;
   }
 
   /**
@@ -103,13 +118,13 @@ export class LessonGenerator {
       };
       
       // Generate lesson with AI
-      console.log(`Generating lesson with ${this.provider.getName()}...`);
+      console.log(`Generating lesson with ${this.getProvider().getName()}...`);
       const startTime = Date.now();
 
       // Generate lesson with AI (single attempt, no retry)
       // Now passing system and user prompts separately as intended
       try {
-        const lesson = await this.provider.generateLesson(enrichedRequest, systemPrompt, userPrompt);
+        const lesson = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
         const validation = materialsValidator.validateLesson(lesson);
 
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
@@ -137,7 +152,7 @@ export class LessonGenerator {
         return {
           lesson,
           validation,
-          metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
+          metadata: toSafeMetadata(this.provider?.getLastGenerationMetadata())
         };
       } catch (error) {
         console.error('Lesson generation failed:', error);
@@ -202,7 +217,7 @@ Focus on the teacher guidance and lesson structure. Generate placeholder student
 ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
 
       // Generate base lesson with separated prompts
-      const baseLesson = await this.provider.generateLesson(lessonPlanRequest, systemPrompt, lessonPlanUserPrompt);
+      const baseLesson = await this.getProvider().generateLesson(lessonPlanRequest, systemPrompt, lessonPlanUserPrompt);
       
       // Now generate student materials in chunks by grade group
       const studentMaterials: StudentMaterial[] = [];
@@ -244,7 +259,7 @@ Return ONLY the worksheet content in this structure:
           let worksheetResponse: any;
           try {
             // Try to get the response as a full lesson (for compatibility)
-            const fullResponse = await this.provider.generateLesson(worksheetRequest, worksheetSystemPrompt, worksheetUserPrompt);
+            const fullResponse = await this.getProvider().generateLesson(worksheetRequest, worksheetSystemPrompt, worksheetUserPrompt);
             worksheetResponse = fullResponse;
           } catch (error) {
             // If that fails, it might be because we got worksheet-only JSON
@@ -315,7 +330,7 @@ Return ONLY the worksheet content in this structure:
       return { 
         lesson: completeLesson, 
         validation,
-        metadata: toSafeMetadata(this.provider.getLastGenerationMetadata())
+        metadata: toSafeMetadata(this.provider?.getLastGenerationMetadata())
       };
       
     } catch (error) {

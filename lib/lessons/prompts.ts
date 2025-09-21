@@ -62,7 +62,33 @@ TEACHER LESSON PLAN:
 - Whiteboard examples: Based on duration (5-15min: 2, 20-30min: 2-3, 45min: 3-4, 60+min: 4-5)
 - Show all student problems with answers
 
-JSON STRUCTURE: Follow LessonResponse schema with lesson, studentMaterials, and metadata objects.
+JSON STRUCTURE (REQUIRED):
+{
+  "lesson": {
+    "title": "string",
+    "duration": number (minutes),
+    "objectives": ["string"],
+    "materials": "string",
+    "overview": "string",
+    "introduction": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "activity": { "description": "string", "duration": number, "instructions": ["string"], "materials": ["string"] },
+    "teacherLessonPlan": {
+      "studentInitials": ["string"],
+      "topic": "string",
+      "teacherIntroduction": { "script": "string" },
+      "whiteboardExamples": [{ "content": "string", "solution": "string" }],
+      "studentProblems": [{ "problem": "string", "answer": "string" }]
+    }
+  },
+  "studentMaterials": [
+    {
+      "studentId": "string",
+      "gradeGroup": number,
+      "worksheet": { "title": "string", "instructions": "string", "sections": [...], "accommodations": [...] }
+    }
+  ],
+  "metadata": { /* auto-filled */ }
+}
 
 KEY RULES:
 - No placeholders - all content must be complete
