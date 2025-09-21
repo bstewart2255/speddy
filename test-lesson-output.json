@@ -6,7 +6,7 @@
       "Strengthen number sense through addition and subtraction",
       "Enhance problem-solving skills with word problems"
     ],
-    "materials": "Worksheets, pencils, whiteboard, markers",
+    "materials": "Worksheets, pencils, whiteboard and markers only",
     "overview": "This lesson will help students in grades 2 and 3 practice their addition and subtraction skills with a focus on number sense and problem solving.",
     "introduction": {
       "description": "Introduce the concepts of addition and subtraction, emphasizing number sense and problem-solving strategies.",
@@ -15,7 +15,7 @@
         "Explain the importance of lining up numbers by place value in addition and subtraction.",
         "Discuss strategies for solving word problems, such as underlining key information."
       ],
-      "materials": ["Whiteboard", "Markers"]
+      "materials": ["whiteboard", "markers"]
     },
     "activity": {
       "description": "Students will complete a set of addition and subtraction problems to practice their computation and problem-solving skills.",
@@ -24,7 +24,7 @@
         "Complete the worksheet problems by showing your work for each computation problem.",
         "Read each word problem carefully and apply problem-solving strategies discussed."
       ],
-      "materials": ["Worksheets", "Pencils"]
+      "materials": ["worksheets", "pencils"]
     },
     "teacherLessonPlan": {
       "studentInitials": ["S1", "S2", "S3"],
@@ -409,14 +409,16 @@
   "generation_explanation": {
     "duration_interpretation": "The lesson is designed to fit within a 30-minute session, with 10 minutes for introduction and 20 minutes for activity.",
     "actual_content_generated": {
-      "practice_problems": 15,
+      "practice_problems": 27,
       "whiteboard_examples": 3,
       "reasoning": "The content is designed to cater to the students' grade level and IEP goals, focusing on computation and problem-solving skills."
     },
     "student_differentiation": {
-      "student_id": "Differentiation was applied by adjusting problem difficulty and providing accommodations based on reading levels and IEP goals."
+      "student-1": "Grade 2 level problems with simplified language and visual supports",
+      "student-2": "Grade 2 level problems with simplified language and visual supports",
+      "student-3": "Grade 5 level problems with grade-appropriate complexity"
     },
-    "validation_expectations": "The JSON should validate successfully as it includes all required fields with proper formatting.",
+    "validation_expectations": "Expected to fail validation due to materials format and student 3 problem count.",
     "constraints_applied": [
       "Activity section contains 12-15 problems",
       "Content is one grade level below current grade",

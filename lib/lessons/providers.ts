@@ -233,7 +233,10 @@ export class OpenAIProvider implements AIProvider {
       if (jsonResponse.generation_explanation) {
         this.lastGenerationMetadata = {
           ...this.lastGenerationMetadata,
-          generation_explanation: jsonResponse.generation_explanation
+          generationMetadata: {
+            ...this.lastGenerationMetadata?.generationMetadata,
+            generation_explanation: jsonResponse.generation_explanation
+          }
         };
       }
 
@@ -490,7 +493,10 @@ export class AnthropicProvider implements AIProvider {
       if (jsonResponse.generation_explanation) {
         this.lastGenerationMetadata = {
           ...this.lastGenerationMetadata,
-          generation_explanation: jsonResponse.generation_explanation
+          generationMetadata: {
+            ...this.lastGenerationMetadata?.generationMetadata,
+            generation_explanation: jsonResponse.generation_explanation
+          }
         };
       }
 

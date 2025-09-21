@@ -136,7 +136,8 @@ JSON STRUCTURE (REQUIRED):
       "reasoning": "string explaining content decisions"
     },
     "student_differentiation": {
-      "student_id": "explanation of how content was differentiated for this student"
+      "student-1": "explanation of how content was differentiated for student 1",
+      "student-2": "explanation of how content was differentiated for student 2"
     },
     "validation_expectations": "string explaining expected validation outcome",
     "constraints_applied": ["list of constraints considered"],

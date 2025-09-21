@@ -201,10 +201,12 @@ export interface GradeGroup {
 export interface GenerationExplanation {
   duration_interpretation: string;
   actual_content_generated: {
+    // Total count across all student worksheets (not per-student)
     practice_problems: number;
     whiteboard_examples: number;
     reasoning: string;
   };
+  // Keys are student IDs (e.g., "student-1", "student-2"), values are differentiation explanations
   student_differentiation: Record<string, string>;
   validation_expectations: string;
   constraints_applied: string[];
