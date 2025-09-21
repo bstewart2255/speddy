@@ -85,8 +85,8 @@ KEY RULES:
     const maxProblems = Math.ceil(minProblems * 1.33); // ~33% more than minimum
 
     // CRITICAL: Start with problem count requirement
-    let prompt = `CRITICAL REQUIREMENT: Generate EXACTLY ${minProblems}-${maxProblems} practice problems in the Activity section.\n`;
-    prompt += `Each student worksheet MUST have at least ${minProblems} problems. This is MANDATORY.\n\n`;
+    let prompt = `CRITICAL REQUIREMENT: Generate between ${minProblems} and ${maxProblems} problems (inclusive) in the Activity section.\n`;
+    prompt += `Each student worksheet MUST have between ${minProblems} and ${maxProblems} problems. This is MANDATORY.\n\n`;
 
     prompt += `Create a ${request.duration}-minute ${request.subjectType.toUpperCase()} lesson.\n`;
     prompt += `Subject: ${request.subject}\n`;
@@ -145,8 +145,8 @@ KEY RULES:
 - Target math skills appropriate for student levels`;
 
     prompt += `\nKEY REQUIREMENTS:
-- Minimum ${minProblems} problems per student (you provided the count above, now follow it!)
-- Use 2 sections: Introduction (1-2 examples), Activity (${minProblems}+ problems)
+- Between ${minProblems} and ${maxProblems} problems per student (inclusive, as stated above)
+- Use 2 sections: Introduction (1-2 examples), Activity (${minProblems}-${maxProblems} problems)
 - Include teacherLessonPlan with ${this.getExampleCount(request.duration)} whiteboard examples
 - Students in same grade group get identical activities
 - Adjust difficulty based on reading levels
