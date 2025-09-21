@@ -59,8 +59,9 @@ ${this.getSubjectSpecificRequirements(subjectType)}
 TEACHER LESSON PLAN:
 - Student initials: Use actual initials from student data
 - Teacher script: 2-3 sentence introduction
-- Whiteboard examples: Based on duration (5-15min: 2, 20-30min: 2-3, 45min: 3-4, 60+min: 4-5)
-- Show all student problems with answers
+- Whiteboard examples: Must have title, problem, steps array, and teachingPoint
+- Student problems: Group by student with studentInitials and problems array
+- Each problem needs: number, question, answer (and choices for multiple-choice)
 
 JSON STRUCTURE (REQUIRED):
 {
@@ -76,8 +77,22 @@ JSON STRUCTURE (REQUIRED):
       "studentInitials": ["string"],
       "topic": "string",
       "teacherIntroduction": { "script": "string" },
-      "whiteboardExamples": [{ "content": "string", "solution": "string" }],
-      "studentProblems": [{ "problem": "string", "answer": "string" }]
+      "whiteboardExamples": [
+        {
+          "title": "Example title",
+          "problem": "Problem statement",
+          "steps": ["Step 1", "Step 2", "Step 3"],
+          "teachingPoint": "Key concept to emphasize"
+        }
+      ],
+      "studentProblems": [
+        {
+          "studentInitials": "AB",
+          "problems": [
+            { "number": "1", "question": "problem text", "answer": "answer", "choices": ["optional for MC"] }
+          ]
+        }
+      ]
     }
   },
   "studentMaterials": [
