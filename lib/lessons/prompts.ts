@@ -56,16 +56,35 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Distractors should be plausible but wrong
 
 5. ACTIVITY ITEM COUNTS (DURATION-BASED MANDATORY MINIMUMS):
-   ⚠️ CRITICAL VALIDATION REQUIREMENT ⚠️
-   You MUST generate AT LEAST the minimum number of problems specified below.
-   Generating fewer problems will cause IMMEDIATE VALIDATION FAILURE.
-   Count carefully - each problem in the Activity section counts toward this total.
 
-   COUNTING EXAMPLE: "12 problems" means 12 separate items like:
-   - Problem 1: Multiple choice question
-   - Problem 2: Fill in the blank
-   - Problem 3: Short answer
-   ... continuing until you have all 12 individual problems
+   🚨🚨🚨 CRITICAL VALIDATION REQUIREMENT 🚨🚨🚨
+   FAILURE TO MEET THESE MINIMUMS WILL CAUSE IMMEDIATE REJECTION
+
+   You MUST generate AT LEAST the minimum number of problems specified below.
+   The Activity section items array MUST contain the required number of problem objects.
+
+   ⚠️ COUNTING INSTRUCTIONS - READ CAREFULLY:
+   - Count EACH problem as a separate item in the items array
+   - If you need 12 problems, the items array must have 12 objects
+   - Each object should have type: "multiple-choice", "fill-blank", "short-answer", etc.
+   - Do NOT group multiple problems into one item
+   - Do NOT use placeholders or suggestions instead of actual problems
+
+   EXAMPLE OF CORRECT STRUCTURE FOR 12 PROBLEMS:
+   "items": [
+     {"type": "multiple-choice", "question": "Problem 1...", ...},
+     {"type": "fill-blank", "question": "Problem 2...", ...},
+     {"type": "short-answer", "question": "Problem 3...", ...},
+     {"type": "multiple-choice", "question": "Problem 4...", ...},
+     {"type": "fill-blank", "question": "Problem 5...", ...},
+     {"type": "short-answer", "question": "Problem 6...", ...},
+     {"type": "multiple-choice", "question": "Problem 7...", ...},
+     {"type": "fill-blank", "question": "Problem 8...", ...},
+     {"type": "short-answer", "question": "Problem 9...", ...},
+     {"type": "multiple-choice", "question": "Problem 10...", ...},
+     {"type": "fill-blank", "question": "Problem 11...", ...},
+     {"type": "short-answer", "question": "Problem 12...", ...}
+   ]
 
    For 5-15 minute lessons:
    - Grades K-2: Target 6-8 practice problems (minimum 6) in Activity section
@@ -240,13 +259,17 @@ JSON STRUCTURE (STRICT - no deviations):
           ]
         },
         {
-          "title": "Activity", 
+          "title": "Activity",
           "instructions": "Complete all problems below",
           "items": [{
             "sectionType": "practice",
             "sectionTitle": "Practice Problems",
             "instructions": "Work through each problem carefully",
             "items": [
+              // 🚨 CRITICAL: Generate EXACTLY the required number of problems here
+              // For 45-min Grade 1-2: MUST have 12+ separate problem objects
+              // For 45-min Grade 3-5: MUST have 16+ separate problem objects
+              // Each problem is a separate object in this array
               {
                 "type": "multiple-choice|fill-blank|short-answer|long-answer|visual-math",
                 "content": "Complete question text here",
@@ -292,12 +315,12 @@ IMPORTANT:
 - Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.
 - Each question must be grade-appropriate and align with the specified subject area.
 
-CRITICAL FOR ELA READING COMPREHENSION LESSONS:
-When creating reading comprehension activities, the worksheet MUST include:
+CRITICAL - ONLY FOR READING COMPREHENSION LESSONS:
+IF the topic is "reading comprehension" or includes "story", the worksheet MUST include:
 1. FIRST: A complete story/passage as a separate item with type: "passage"
 2. THEN: Comprehension questions about that passage
 
-REQUIRED STRUCTURE FOR READING PASSAGES:
+REQUIRED STRUCTURE FOR READING PASSAGES (reading comprehension only):
 The Activity section must start with the passage, like this:
 {
   "title": "Activity",
@@ -325,7 +348,9 @@ The Activity section must start with the passage, like this:
   }]
 }
 
-NEVER generate comprehension questions without including the actual story text first!`;
+NEVER generate comprehension questions without including the actual story text first!
+
+REMEMBER: Stories are ONLY for reading comprehension lessons. For decoding, phonics, grammar, or writing lessons, focus on those specific skills without a story passage.`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
@@ -455,28 +480,42 @@ REMEMBER:
     if (subjectType === 'ela') {
       return `
 ELA-SPECIFIC REQUIREMENTS:
-- ALWAYS include complete story text as a type:"passage" item BEFORE comprehension questions
+
+IMPORTANT: Choose content based on the lesson topic/focus:
+
+FOR READING COMPREHENSION LESSONS (topic includes "reading", "comprehension", "story"):
+- MUST include complete story text as a type:"passage" item BEFORE comprehension questions
 - Story/passage should be 100-200 words, grade-appropriate
-- Focus on vocabulary, reading fluency, writing, grammar, or phonics
 - Questions should target: main idea, details, character analysis, sequence, cause/effect
-- Writing prompts should be clear and grade-appropriate
-- Include context clues for vocabulary questions
+- Structure: First item is passage, followed by comprehension questions about that passage
 
-ELA WORKSHEET CONTENT STRUCTURE:
-For reading comprehension lessons, Activity section MUST follow this pattern:
-1. FIRST ITEM: type: "passage" with the complete story text
-2. FOLLOWING ITEMS: comprehension questions about that specific passage
+FOR DECODING/PHONICS LESSONS (topic includes "decoding", "phonics", "letter sounds"):
+- DO NOT include a story passage
+- Focus on letter-sound relationships, word decoding, syllable breaking
+- Include words to decode, sound out, or identify
+- Use fill-blank for writing decoded words (1 blankLine)
+- Include letter recognition and formation practice
+- Example problems: "Sound out: cat", "Circle the word that says 'dog'", "Write the missing letter: b_t"
 
-Example: Instead of "What lesson does Tom learn?" without context,
-Generate: type:"passage" with "Tom was a young boy who... [full story]"
-Then: "What lesson does Tom learn in the story above?"
+FOR WRITING LESSONS (topic includes "writing", "sentences", "paragraphs"):
+- DO NOT include a story passage unless for inspiration
+- Focus on sentence construction, capitalization, punctuation, spacing
+- Include writing prompts appropriate to grade level
+- Use appropriate blankLines for extended responses
 
-ELA WORKSHEET CONTENT FOCUS:
-- Reading passages with comprehension questions (passage MUST be included)
-- Vocabulary exercises with sentence context
-- Writing activities (sentences, paragraphs, creative writing)
-- Grammar practice (parts of speech, sentence structure)
-- Phonics/spelling activities for younger grades
+FOR GRAMMAR/VOCABULARY LESSONS:
+- DO NOT include a story passage unless as context
+- Focus on the specific grammar concept or vocabulary words
+- Include practice identifying and using the target skill
+
+DEFAULT: If topic is unclear, focus on the skills mentioned in focusSkills array.
+
+ELA WORKSHEET CONTENT FOCUS (varies by topic):
+- Reading comprehension: passages with questions (passage MUST be included for this topic)
+- Decoding/phonics: letter sounds, word decoding, syllable work (NO passage needed)
+- Vocabulary: exercises with sentence context (passage optional)
+- Writing: sentence/paragraph construction (passage optional)
+- Grammar: parts of speech, sentence structure (passage optional)
 
 ELA EXAMPLES SECTION:
 - For phonics/decoding: "To decode a word, sound out each letter: c-a-t = cat"

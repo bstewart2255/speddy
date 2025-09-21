@@ -171,26 +171,41 @@ The lesson MUST include a structured teacher lesson plan with these exact compon
 SUBJECT-SPECIFIC REQUIREMENTS:
 
 ELA-SPECIFIC REQUIREMENTS:
-- ALWAYS include complete story text as a type:"passage" item BEFORE comprehension questions
+
+IMPORTANT: Choose content based on the lesson topic/focus:
+
+FOR READING COMPREHENSION LESSONS (topic includes "reading", "comprehension", "story"):
+- MUST include complete story text as a type:"passage" item BEFORE comprehension questions
 - Story/passage should be 100-200 words, grade-appropriate
-- Focus on vocabulary, reading fluency, writing, grammar, or phonics
 - Questions should target: main idea, details, character analysis, sequence, cause/effect
-- Writing prompts should be clear and grade-appropriate
-- Include context clues for vocabulary questions
+- Structure: First item is passage, followed by comprehension questions about that passage
 
-ELA WORKSHEET CONTENT STRUCTURE:
-For reading comprehension lessons, Activity section MUST follow this pattern:
-1. FIRST ITEM: type: "passage" with the complete story text
-2. FOLLOWING ITEMS: comprehension questions about that specific passage
+FOR DECODING/PHONICS LESSONS (topic includes "decoding", "phonics", "letter sounds"):
+- DO NOT include a story passage
+- Focus on letter-sound relationships, word decoding, syllable breaking
+- Include words to decode, sound out, or identify
+- Use fill-blank for writing decoded words (1 blankLine)
+- Include letter recognition and formation practice
+- Example problems: "Sound out: cat", "Circle the word that says 'dog'", "Write the missing letter: b_t"
 
-Example: Instead of "What lesson does Tom learn?" without context,
-Generate: type:"passage" with "Tom was a young boy who... [full story]"
-Then: "What lesson does Tom learn in the story above?"
+FOR WRITING LESSONS (topic includes "writing", "sentences", "paragraphs"):
+- DO NOT include a story passage unless for inspiration
+- Focus on sentence construction, capitalization, punctuation, spacing
+- Include writing prompts appropriate to grade level
+- Use appropriate blankLines for extended responses
 
-ELA WORKSHEET CONTENT FOCUS:
-- Reading passages with comprehension questions (passage MUST be included)
-- Vocabulary exercises with sentence context
-- Writing activities (sentences, paragraphs, creative writing)
+FOR GRAMMAR/VOCABULARY LESSONS:
+- DO NOT include a story passage unless as context
+- Focus on the specific grammar concept or vocabulary words
+- Include practice identifying and using the target skill
+
+DEFAULT: If topic is unclear, focus on the skills mentioned in focusSkills array.
+
+ELA WORKSHEET CONTENT FOCUS (varies by topic):
+- Reading comprehension: passages with questions (passage MUST be included for this topic)
+- Decoding/phonics: letter sounds, word decoding, syllable work (NO passage needed)
+- Vocabulary: exercises with sentence context (passage optional)
+- Writing: sentence/paragraph construction (passage optional)
 - Grammar practice (parts of speech, sentence structure)
 - Phonics/spelling activities for younger grades
 
@@ -346,12 +361,12 @@ IMPORTANT:
 - Return ONLY valid JSON - no comments, no markdown code blocks, no trailing commas.
 - Each question must be grade-appropriate and align with the specified subject area.
 
-CRITICAL FOR ELA READING COMPREHENSION LESSONS:
-When creating reading comprehension activities, the worksheet MUST include:
+CRITICAL - ONLY FOR READING COMPREHENSION LESSONS:
+IF the topic is "reading comprehension" or includes "story", the worksheet MUST include:
 1. FIRST: A complete story/passage as a separate item with type: "passage"
 2. THEN: Comprehension questions about that passage
 
-REQUIRED STRUCTURE FOR READING PASSAGES:
+REQUIRED STRUCTURE FOR READING PASSAGES (reading comprehension only):
 The Activity section must start with the passage, like this:
 {
   "title": "Activity",
@@ -372,7 +387,9 @@ The Activity section must start with the passage, like this:
   }]
 }
 
-NEVER generate comprehension questions without including the actual story text first!`;
+NEVER generate comprehension questions without including the actual story text first!
+
+REMEMBER: Stories are ONLY for reading comprehension lessons. For decoding, phonics, grammar, or writing lessons, focus on those specific skills without a story passage.`;
 
   // Add role-specific requirements
   const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
