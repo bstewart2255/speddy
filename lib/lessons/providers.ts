@@ -229,6 +229,14 @@ export class OpenAIProvider implements AIProvider {
       // Fill timing after successful validation
       jsonResponse.metadata.generationTime = Date.now() - startTime;
 
+      // Store generation explanation in generation metadata if provided
+      if (jsonResponse.generation_explanation) {
+        this.lastGenerationMetadata = {
+          ...this.lastGenerationMetadata,
+          generation_explanation: jsonResponse.generation_explanation
+        };
+      }
+
       return jsonResponse;
     } catch (error) {
       const timeElapsed = Date.now() - startTime;
@@ -477,6 +485,14 @@ export class AnthropicProvider implements AIProvider {
       
       // Fill timing after successful validation
       jsonResponse.metadata.generationTime = Date.now() - startTime;
+
+      // Store generation explanation in generation metadata if provided
+      if (jsonResponse.generation_explanation) {
+        this.lastGenerationMetadata = {
+          ...this.lastGenerationMetadata,
+          generation_explanation: jsonResponse.generation_explanation
+        };
+      }
 
       return jsonResponse;
     } catch (error) {

@@ -26,6 +26,7 @@ export interface LessonResponse {
   lesson: LessonPlan;
   studentMaterials: StudentMaterial[];
   metadata: LessonMetadata;
+  generation_explanation?: GenerationExplanation;
 }
 
 export interface LessonPlan {
@@ -195,6 +196,20 @@ export interface GradeGroup {
   studentCount?: number;
   readingLevels?: number[];
   activityLevel: 'below' | 'on' | 'above'; // Relative to grade level
+}
+
+export interface GenerationExplanation {
+  duration_interpretation: string;
+  actual_content_generated: {
+    practice_problems: number;
+    whiteboard_examples: number;
+    reasoning: string;
+  };
+  student_differentiation: Record<string, string>;
+  validation_expectations: string;
+  constraints_applied: string[];
+  duration_scaling_applied: string;
+  problems_with_requirements?: string;
 }
 
 // Validation constraints
