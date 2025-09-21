@@ -59,8 +59,10 @@ ${this.getSubjectSpecificRequirements(subjectType)}
 TEACHER LESSON PLAN:
 - Student initials: Use actual initials from student data
 - Teacher script: 2-3 sentence introduction
-- Whiteboard examples: Based on duration (5-15min: 2, 20-30min: 2-3, 45min: 3-4, 60+min: 4-5)
-- Show all student problems with answers
+- Whiteboard examples: Must have title, problem, steps array, and teachingPoint
+- Student problems: Create one entry for EACH student with their initials and problems
+- IMPORTANT: If 3 students, must have 3 studentProblems entries (one per student)
+- Each problem needs: number, question, answer (and choices for multiple-choice)
 
 JSON STRUCTURE (REQUIRED):
 {
@@ -76,15 +78,53 @@ JSON STRUCTURE (REQUIRED):
       "studentInitials": ["string"],
       "topic": "string",
       "teacherIntroduction": { "script": "string" },
-      "whiteboardExamples": [{ "content": "string", "solution": "string" }],
-      "studentProblems": [{ "problem": "string", "answer": "string" }]
+      "whiteboardExamples": [
+        {
+          "title": "Example title",
+          "problem": "Problem statement",
+          "steps": ["Step 1", "Step 2", "Step 3"],
+          "teachingPoint": "Key concept to emphasize"
+        }
+      ],
+      "studentProblems": [
+        {
+          "studentInitials": "AB",
+          "problems": [
+            { "number": "1", "question": "problem text", "answer": "answer", "choices": ["optional for MC"] }
+          ]
+        }
+      ]
     }
   },
   "studentMaterials": [
     {
       "studentId": "string",
       "gradeGroup": number,
-      "worksheet": { "title": "string", "instructions": "string", "sections": [...], "accommodations": [...] }
+      "worksheet": {
+        "title": "string",
+        "instructions": "string",
+        "sections": [
+          {
+            "title": "Introduction",
+            "instructions": "string",
+            "items": [
+              { "type": "example", "content": "example problem text" }
+            ]
+          },
+          {
+            "title": "Activity",
+            "instructions": "string",
+            "items": [
+              { "type": "multiple-choice", "content": "question", "choices": ["A", "B", "C", "D"] },
+              { "type": "fill-blank", "content": "text with ___", "blankLines": 1 },
+              { "type": "short-answer", "content": "question", "blankLines": 2 },
+              { "type": "long-answer", "content": "question", "blankLines": 4 },
+              { "type": "visual-math", "content": "25 + 17" }
+            ]
+          }
+        ],
+        "accommodations": ["string"]
+      }
     }
   ],
   "metadata": { /* auto-filled */ }
@@ -94,7 +134,9 @@ KEY RULES:
 - No placeholders - all content must be complete
 - Use 2 sections only: Introduction, Activity
 - Examples must show worked solutions, not tips
-- Include teacherLessonPlan with all fields`;
+- Include teacherLessonPlan with all fields
+- CRITICAL: Each section must have "items" array, NOT "content" array
+- Activity section must contain required number of problems in items array`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
@@ -108,7 +150,7 @@ KEY RULES:
   buildUserPrompt(request: LessonRequest): string {
     const gradeGroups = determineGradeGroups(request.students);
     const minProblems = this.getMinimumActivityCount(request.students, request.duration);
-    const maxProblems = Math.ceil(minProblems * 1.33); // ~33% more than minimum
+    const maxProblems = Math.ceil(minProblems * 1.25); // ~25% more than minimum for better balance
 
     // CRITICAL: Start with problem count requirement
     let prompt = `CRITICAL REQUIREMENT: Generate between ${minProblems} and ${maxProblems} problems (inclusive) in the Activity section.\n`;
@@ -171,9 +213,11 @@ KEY RULES:
 - Target math skills appropriate for student levels`;
 
     prompt += `\nKEY REQUIREMENTS:
-- Between ${minProblems} and ${maxProblems} problems per student (inclusive, as stated above)
-- Use 2 sections: Introduction (1-2 examples), Activity (${minProblems}-${maxProblems} problems)
+- Activity section MUST have between ${minProblems} and ${maxProblems} items in the items array (inclusive)
+- Use 2 sections: Introduction (1-2 example items), Activity (${minProblems}-${maxProblems} problem items)
+- CRITICAL: Use "items" array for problems, NOT "content" array - each problem is an object in items[]
 - Include teacherLessonPlan with ${this.getExampleCount(request.duration)} whiteboard examples
+- Teacher plan studentProblems: Must have ${request.students.length} entries (one per student)
 - Students in same grade group get identical activities
 - Adjust difficulty based on reading levels
 - Target IEP goals in content when provided
