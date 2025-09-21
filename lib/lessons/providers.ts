@@ -75,7 +75,7 @@ const MODEL_MAX_TOKENS: Record<string, number> = {
 const DEFAULT_MAX_RESPONSE_TOKENS = 16000;
 
 export interface AIProvider {
-  generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse>;
+  generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse>;
   getName(): string;
   getLastGenerationMetadata(): GenerationMetadata | null;
 }
@@ -113,13 +113,10 @@ export class OpenAIProvider implements AIProvider {
     console.log(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
-  async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
+  async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
 
-    // The systemPrompt already contains both system and user prompts combined from the generator
-    // No need to create a separate user prompt - that was causing the duplicate prompt issue
-
-    // Build system prompt
+    // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
 
     try {
@@ -131,8 +128,11 @@ export class OpenAIProvider implements AIProvider {
           {
             role: 'system',
             content: fullSystemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
           }
-          // Removed the duplicate user message - the fullSystemPrompt already contains everything
         ],
         temperature: 0.7,
         max_tokens: this.maxTokens,
@@ -145,7 +145,7 @@ export class OpenAIProvider implements AIProvider {
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
         fullPromptSent: CAPTURE_FULL_PROMPTS
-          ? redactStudentPII(`System: ${fullSystemPrompt}`)
+          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag  
         aiRawResponse: CAPTURE_AI_RAW
@@ -292,31 +292,6 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
-  // DEPRECATED: This method is no longer used as it was causing duplicate prompts
-  // The generator already provides a complete prompt with all requirements
-  // Keeping for reference only - DO NOT USE
-  private buildUserPrompt(request: LessonRequest): string {
-    console.warn('buildUserPrompt is deprecated and should not be called');
-    const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-
-    return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-
-Students: ${request.students.length} students (${gradeList})
-Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
-Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
-
-Student Details:
-${request.students.map((s, i) => `
-Student ${i + 1}:
-- ID: ${s.id}
-- Grade: ${s.grade}
-- Reading Level: ${s.readingLevel ? `Grade ${s.readingLevel}` : 'At grade level'}
-- IEP Goals: ${s.iepGoals?.join('; ') || 'None specified'}
-- Accommodations: ${s.accommodations?.join('; ') || 'None specified'}
-`).join('\n')}
-
-Generate a complete lesson plan with individualized worksheets for each student or grade group.`;
-  }
 
   getName(): string {
     return `OpenAI (${this.model})`;
@@ -379,13 +354,10 @@ export class AnthropicProvider implements AIProvider {
     console.log(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
-  async generateLesson(request: LessonRequest, systemPrompt: string): Promise<LessonResponse> {
+  async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
     const startTime = Date.now();
 
-    // The systemPrompt already contains both system and user prompts combined from the generator
-    // No need to create a separate user prompt - that was causing the duplicate prompt issue
-
-    // Build system prompt
+    // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.';
 
     try {
@@ -397,7 +369,7 @@ export class AnthropicProvider implements AIProvider {
         messages: [
           {
             role: 'user',
-            content: 'Generate the lesson as specified in the system prompt.'
+            content: userPrompt
           }
         ]
       });
@@ -406,7 +378,7 @@ export class AnthropicProvider implements AIProvider {
       this.lastGenerationMetadata = {
         // Only capture full prompts if explicitly enabled via environment flag
         fullPromptSent: CAPTURE_FULL_PROMPTS
-          ? redactStudentPII(`System: ${fullSystemPrompt}`)
+          ? redactStudentPII(`System: ${fullSystemPrompt}\n\nUser: ${userPrompt}`)
           : '[PROMPTS_NOT_CAPTURED]',
         // Only capture raw AI response if explicitly enabled via environment flag
         aiRawResponse: CAPTURE_AI_RAW
@@ -513,32 +485,6 @@ export class AnthropicProvider implements AIProvider {
     }
   }
 
-  // DEPRECATED: This method is no longer used as it was causing duplicate prompts
-  // The generator already provides a complete prompt with all requirements
-  // Keeping for reference only - DO NOT USE
-  private buildUserPrompt(request: LessonRequest): string {
-    console.warn('buildUserPrompt is deprecated and should not be called');
-    const gradeList = request.students.map(s => `Grade ${s.grade}`).join(', ');
-
-    return `Create a ${request.duration}-minute ${request.subject} lesson for the following students:
-
-Students: ${request.students.length} students (${gradeList})
-Topic: ${request.topic || 'Teacher\'s choice based on grade level'}
-Focus Skills: ${request.focusSkills?.join(', ') || 'Grade-appropriate skills'}
-
-Student Details:
-${request.students.map((s, i) => `
-Student ${i + 1}:
-- ID: ${s.id}
-- Grade: ${s.grade}
-- Reading Level: ${s.readingLevel ? `Grade ${s.readingLevel}` : 'At grade level'}
-- IEP Goals: ${s.iepGoals?.join('; ') || 'None specified'}
-- Accommodations: ${s.accommodations?.join('; ') || 'None specified'}
-`).join('\n')}
-
-Remember to group students who are within 1 grade level of each other for the same activities.
-Generate a complete lesson plan with individualized worksheets for each student or grade group.`;
-  }
 
   getName(): string {
     return `Anthropic (${this.model})`;

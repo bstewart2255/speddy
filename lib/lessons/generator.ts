@@ -105,12 +105,11 @@ export class LessonGenerator {
       // Generate lesson with AI
       console.log(`Generating lesson with ${this.provider.getName()}...`);
       const startTime = Date.now();
-      
-      // Generate lesson with AI (single attempt, no retry)
-      const fullPrompt = systemPrompt + '\n\nUSER REQUEST:\n' + userPrompt;
 
+      // Generate lesson with AI (single attempt, no retry)
+      // Now passing system and user prompts separately as intended
       try {
-        const lesson = await this.provider.generateLesson(enrichedRequest, fullPrompt);
+        const lesson = await this.provider.generateLesson(enrichedRequest, systemPrompt, userPrompt);
         const validation = materialsValidator.validateLesson(lesson);
 
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
@@ -198,12 +197,12 @@ export class LessonGenerator {
       };
       
       const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
-      const lessonPlanPrompt = `Create a lesson plan structure for a ${request.duration}-minute ${request.subject} lesson. 
+      const lessonPlanUserPrompt = `Create a lesson plan structure for a ${request.duration}-minute ${request.subject} lesson.
 Focus on the teacher guidance and lesson structure. Generate placeholder student materials only.
 ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
-      
-      // Generate base lesson
-      const baseLesson = await this.provider.generateLesson(lessonPlanRequest, systemPrompt + '\n\n' + lessonPlanPrompt);
+
+      // Generate base lesson with separated prompts
+      const baseLesson = await this.provider.generateLesson(lessonPlanRequest, systemPrompt, lessonPlanUserPrompt);
       
       // Now generate student materials in chunks by grade group
       const studentMaterials: StudentMaterial[] = [];
@@ -234,17 +233,18 @@ Return ONLY the worksheet content in this structure:
         try {
           // Generate just the worksheet for this grade group
           // We need to handle the response differently since we're not getting a full LessonResponse
-          const worksheetPrompt = systemPrompt + '\n\n' + materialsPrompt + 
+          const worksheetSystemPrompt = systemPrompt;
+          const worksheetUserPrompt = materialsPrompt +
             '\n\nIMPORTANT: Return ONLY the JSON object with the worksheet field. Do not include lesson or metadata fields.';
-          
+
           // Create a minimal request for worksheet generation
           const worksheetRequest = { ...request, students: groupStudents };
-          
+
           // Call provider with special handling for worksheet-only response
           let worksheetResponse: any;
           try {
             // Try to get the response as a full lesson (for compatibility)
-            const fullResponse = await this.provider.generateLesson(worksheetRequest, worksheetPrompt);
+            const fullResponse = await this.provider.generateLesson(worksheetRequest, worksheetSystemPrompt, worksheetUserPrompt);
             worksheetResponse = fullResponse;
           } catch (error) {
             // If that fails, it might be because we got worksheet-only JSON
