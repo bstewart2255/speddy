@@ -60,7 +60,8 @@ TEACHER LESSON PLAN:
 - Student initials: Use actual initials from student data
 - Teacher script: 2-3 sentence introduction
 - Whiteboard examples: Must have title, problem, steps array, and teachingPoint
-- Student problems: Group by student with studentInitials and problems array
+- Student problems: Create one entry for EACH student with their initials and problems
+- IMPORTANT: If 3 students, must have 3 studentProblems entries (one per student)
 - Each problem needs: number, question, answer (and choices for multiple-choice)
 
 JSON STRUCTURE (REQUIRED):
@@ -149,7 +150,7 @@ KEY RULES:
   buildUserPrompt(request: LessonRequest): string {
     const gradeGroups = determineGradeGroups(request.students);
     const minProblems = this.getMinimumActivityCount(request.students, request.duration);
-    const maxProblems = Math.ceil(minProblems * 1.33); // ~33% more than minimum
+    const maxProblems = Math.ceil(minProblems * 1.25); // ~25% more than minimum for better balance
 
     // CRITICAL: Start with problem count requirement
     let prompt = `CRITICAL REQUIREMENT: Generate between ${minProblems} and ${maxProblems} problems (inclusive) in the Activity section.\n`;
@@ -216,6 +217,7 @@ KEY RULES:
 - Use 2 sections: Introduction (1-2 example items), Activity (${minProblems}-${maxProblems} problem items)
 - CRITICAL: Use "items" array for problems, NOT "content" array - each problem is an object in items[]
 - Include teacherLessonPlan with ${this.getExampleCount(request.duration)} whiteboard examples
+- Teacher plan studentProblems: Must have ${request.students.length} entries (one per student)
 - Students in same grade group get identical activities
 - Adjust difficulty based on reading levels
 - Target IEP goals in content when provided
