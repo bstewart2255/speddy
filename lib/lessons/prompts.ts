@@ -84,7 +84,31 @@ JSON STRUCTURE (REQUIRED):
     {
       "studentId": "string",
       "gradeGroup": number,
-      "worksheet": { "title": "string", "instructions": "string", "sections": [...], "accommodations": [...] }
+      "worksheet": {
+        "title": "string",
+        "instructions": "string",
+        "sections": [
+          {
+            "title": "Introduction",
+            "instructions": "string",
+            "items": [
+              { "type": "example", "content": "example problem text" }
+            ]
+          },
+          {
+            "title": "Activity",
+            "instructions": "string",
+            "items": [
+              { "type": "multiple-choice", "content": "question", "choices": ["A", "B", "C", "D"] },
+              { "type": "fill-blank", "content": "text with ___", "blankLines": 1 },
+              { "type": "short-answer", "content": "question", "blankLines": 2 },
+              { "type": "long-answer", "content": "question", "blankLines": 4 },
+              { "type": "visual-math", "content": "25 + 17" }
+            ]
+          }
+        ],
+        "accommodations": ["string"]
+      }
     }
   ],
   "metadata": { /* auto-filled */ }
@@ -94,7 +118,9 @@ KEY RULES:
 - No placeholders - all content must be complete
 - Use 2 sections only: Introduction, Activity
 - Examples must show worked solutions, not tips
-- Include teacherLessonPlan with all fields`;
+- Include teacherLessonPlan with all fields
+- CRITICAL: Each section must have "items" array, NOT "content" array
+- Activity section must contain required number of problems in items array`;
 
     // Add role-specific requirements
     const rolePrompt = this.getRoleSpecificPrompt(role, subjectType);
@@ -171,8 +197,9 @@ KEY RULES:
 - Target math skills appropriate for student levels`;
 
     prompt += `\nKEY REQUIREMENTS:
-- Between ${minProblems} and ${maxProblems} problems per student (inclusive, as stated above)
-- Use 2 sections: Introduction (1-2 examples), Activity (${minProblems}-${maxProblems} problems)
+- Activity section MUST have between ${minProblems} and ${maxProblems} items in the items array (inclusive)
+- Use 2 sections: Introduction (1-2 example items), Activity (${minProblems}-${maxProblems} problem items)
+- CRITICAL: Use "items" array for problems, NOT "content" array - each problem is an object in items[]
 - Include teacherLessonPlan with ${this.getExampleCount(request.duration)} whiteboard examples
 - Students in same grade group get identical activities
 - Adjust difficulty based on reading levels

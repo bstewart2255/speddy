@@ -1,97 +1,71 @@
 {
   "lesson": {
-    "title": "Addition and Subtraction Practice",
+    "title": "Addition and Subtraction",
     "duration": 30,
-    "objectives": ["Develop addition and subtraction skills", "Enhance problem-solving abilities"],
-    "materials": "Worksheets, pencils, whiteboard, markers",
-    "overview": "This lesson focuses on improving number sense through addition and subtraction exercises, including both computation and word problems.",
+    "objectives": [
+      "Develop number sense through addition and subtraction",
+      "Enhance problem-solving skills with word problems"
+    ],
+    "materials": "worksheets, pencils, whiteboard, markers",
+    "overview": "This lesson focuses on building number sense through addition and subtraction, using both computation and word problems to enhance problem-solving skills.",
     "introduction": {
-      "description": "Introduce addition and subtraction with examples that demonstrate carrying and borrowing.",
+      "description": "Introduce addition and subtraction concepts with examples on the whiteboard.",
       "duration": 10,
       "instructions": [
-        "Explain how to align numbers by place value.",
-        "Demonstrate addition and subtraction with visual aids."
+        "Explain how to line up numbers by place value for addition and subtraction.",
+        "Demonstrate solving word problems by identifying key information."
       ],
-      "materials": ["Whiteboard", "Markers"]
+      "materials": ["whiteboard", "markers"]
     },
     "activity": {
-      "description": "Students will complete a series of addition and subtraction problems, including word problems to apply their skills in realistic contexts.",
+      "description": "Students practice addition and subtraction through computation problems and word problems.",
       "duration": 20,
       "instructions": [
-        "Solve the problems on the worksheet.",
-        "Show your work for word problems.",
-        "Use the space provided for calculations."
+        "Complete the problems on the worksheet.",
+        "Use strategies discussed in class to solve word problems."
       ],
-      "materials": ["Worksheets", "Pencils"]
+      "materials": ["worksheets", "pencils"]
     },
     "teacherLessonPlan": {
-      "studentInitials": ["student-1", "student-2", "student-3"],
+      "studentInitials": ["S1", "S2", "S3"],
       "topic": "Addition and Subtraction",
       "teacherIntroduction": {
-        "script": "Today we're going to practice addition and subtraction. Remember to line up your numbers by place value and take your time reading the word problems."
+        "script": "Today, we are going to practice addition and subtraction. Remember to line up your numbers by place value. For word problems, read carefully and underline what the problem is asking."
       },
       "whiteboardExamples": [
         {
-          "content": "56 + 37",
-          "solution": "93"
+          "content": "Solve 23 + 15",
+          "solution": "First, add the ones: 3 + 5 = 8. Then add the tens: 2 + 1 = 3. The answer is 38."
         },
         {
-          "content": "82 - 45",
-          "solution": "37"
-        },
-        {
-          "content": "A word problem: If you have 23 apples and you buy 15 more, how many apples do you have now?",
-          "solution": "You have 38 apples."
+          "content": "Solve 41 - 19",
+          "solution": "First, subtract the ones: 1 - 9 (borrow to make 11 - 9 = 2). Then subtract the tens: 3 - 1 = 2. The answer is 22."
         }
       ],
       "studentProblems": [
         {
-          "problem": "29 + 54",
-          "answer": "83"
+          "problem": "Solve 34 + 27",
+          "answer": "61"
         },
         {
-          "problem": "76 - 28",
-          "answer": "48"
+          "problem": "Solve 53 - 29",
+          "answer": "24"
         },
         {
-          "problem": "14 + 19",
-          "answer": "33"
+          "problem": "Solve 15 + 16",
+          "answer": "31"
         },
         {
-          "problem": "93 - 47",
-          "answer": "46"
+          "problem": "Solve 42 - 18",
+          "answer": "24"
         },
         {
-          "problem": "A word problem: Sara has 45 candies. She gives 12 to her friend. How many does she have left?",
-          "answer": "33"
+          "problem": "John has 23 apples. He buys 12 more. How many apples does he have now?",
+          "answer": "35"
         },
         {
-          "problem": "38 + 25",
-          "answer": "63"
-        },
-        {
-          "problem": "57 - 29",
-          "answer": "28"
-        },
-        {
-          "problem": "A word problem: Tom sees 34 birds. 9 fly away. How many birds are left?",
+          "problem": "Lisa has 40 candies. She gives 15 to her friend. How many candies does she have left?",
           "answer": "25"
-        },
-        {
-          "problem": "61 + 18",
-          "answer": "79"
-        },
-        {
-          "problem": "84 - 36",
-          "answer": "48"
-        },
-        {
-          "problem": "A word problem: You have 22 books. You buy 15 more. How many books do you have?",
-          "answer": "37"
-        },
-        {
-          "problem": "45 + 33",
-          "answer": "78"
         }
       ]
     }
@@ -101,233 +75,269 @@
       "studentId": "student-1",
       "gradeGroup": 2,
       "worksheet": {
-        "title": "Addition and Subtraction Practice - Grade 2",
-        "instructions": "Solve the problems below. Show your work for the word problems.",
+        "title": "Addition and Subtraction Practice",
+        "instructions": "Solve the following problems using the strategies we discussed.",
         "sections": [
           {
-            "type": "Introduction",
-            "content": [
+            "title": "Introduction",
+            "instructions": "Study the examples carefully.",
+            "items": [
               {
                 "type": "example",
-                "text": "Example: 23 + 19 = 42"
+                "content": "Solve 12 + 7. Add the ones: 2 + 7 = 9. Add the tens: 1 + 0 = 1. The answer is 19."
               },
               {
                 "type": "example",
-                "text": "Example: 58 - 34 = 24"
+                "content": "Solve 29 - 14. Subtract the ones: 9 - 4 = 5. Subtract the tens: 2 - 1 = 1. The answer is 15."
               }
             ]
           },
           {
-            "type": "Activity",
-            "content": [
+            "title": "Activity",
+            "instructions": "Solve each of the problems below.",
+            "items": [
               {
                 "type": "visual-math",
-                "text": "29 + 54"
+                "content": "34 + 27"
               },
               {
                 "type": "visual-math",
-                "text": "76 - 28"
+                "content": "53 - 29"
               },
               {
                 "type": "visual-math",
-                "text": "14 + 19"
+                "content": "15 + 16"
               },
               {
                 "type": "visual-math",
-                "text": "93 - 47"
+                "content": "42 - 18"
               },
               {
                 "type": "short-answer",
-                "text": "Sara has 45 candies. She gives 12 to her friend. How many does she have left? ___"
-              },
-              {
-                "type": "visual-math",
-                "text": "38 + 25"
-              },
-              {
-                "type": "visual-math",
-                "text": "57 - 29"
+                "content": "Tom has 10 marbles. He finds 8 more. How many does he have now?",
+                "blankLines": 2
               },
               {
                 "type": "short-answer",
-                "text": "Tom sees 34 birds. 9 fly away. How many birds are left? ___"
+                "content": "Sarah has 22 stickers. She gives 5 to her friend. How many does she have left?",
+                "blankLines": 2
               },
               {
-                "type": "visual-math",
-                "text": "61 + 18"
+                "type": "multiple-choice",
+                "content": "What is 26 + 15?",
+                "choices": ["41", "39", "40", "42"]
               },
               {
-                "type": "visual-math",
-                "text": "84 - 36"
+                "type": "multiple-choice",
+                "content": "What is 37 - 21?",
+                "choices": ["16", "18", "15", "17"]
               },
               {
-                "type": "short-answer",
-                "text": "You have 22 books. You buy 15 more. How many books do you have? ___"
+                "type": "multiple-choice",
+                "content": "If you have 50 candies and eat 23, how many are left?",
+                "choices": ["27", "28", "29", "30"]
               },
               {
-                "type": "visual-math",
-                "text": "45 + 33"
+                "type": "multiple-choice",
+                "content": "You have 60 apples, and you give 15 away. How many apples do you have?",
+                "choices": ["45", "46", "47", "44"]
+              },
+              {
+                "type": "fill-blank",
+                "content": "If you add 7 and 8, you get ___",
+                "blankLines": 1
+              },
+              {
+                "type": "fill-blank",
+                "content": "Subtracting 10 from 25 gives you ___",
+                "blankLines": 1
               }
             ]
           }
         ],
-        "accommodations": ["Use of manipulatives for visual aid", "Step-by-step guidance as needed"]
+        "accommodations": [
+          "Provide visual aids for problem solving",
+          "Read problems aloud if necessary"
+        ]
       }
     },
     {
       "studentId": "student-2",
       "gradeGroup": 2,
       "worksheet": {
-        "title": "Addition and Subtraction Practice - Grade 3",
-        "instructions": "Solve the problems below. Show your work for the word problems.",
+        "title": "Addition and Subtraction Practice",
+        "instructions": "Solve the following problems using the strategies we discussed.",
         "sections": [
           {
-            "type": "Introduction",
-            "content": [
+            "title": "Introduction",
+            "instructions": "Study the examples carefully.",
+            "items": [
               {
                 "type": "example",
-                "text": "Example: 23 + 19 = 42"
+                "content": "Solve 12 + 7. Add the ones: 2 + 7 = 9. Add the tens: 1 + 0 = 1. The answer is 19."
               },
               {
                 "type": "example",
-                "text": "Example: 58 - 34 = 24"
+                "content": "Solve 29 - 14. Subtract the ones: 9 - 4 = 5. Subtract the tens: 2 - 1 = 1. The answer is 15."
               }
             ]
           },
           {
-            "type": "Activity",
-            "content": [
+            "title": "Activity",
+            "instructions": "Solve each of the problems below.",
+            "items": [
               {
                 "type": "visual-math",
-                "text": "29 + 54"
+                "content": "34 + 27"
               },
               {
                 "type": "visual-math",
-                "text": "76 - 28"
+                "content": "53 - 29"
               },
               {
                 "type": "visual-math",
-                "text": "14 + 19"
+                "content": "15 + 16"
               },
               {
                 "type": "visual-math",
-                "text": "93 - 47"
+                "content": "42 - 18"
               },
               {
                 "type": "short-answer",
-                "text": "Sara has 45 candies. She gives 12 to her friend. How many does she have left? ___"
-              },
-              {
-                "type": "visual-math",
-                "text": "38 + 25"
-              },
-              {
-                "type": "visual-math",
-                "text": "57 - 29"
+                "content": "Tom has 10 marbles. He finds 8 more. How many does he have now?",
+                "blankLines": 2
               },
               {
                 "type": "short-answer",
-                "text": "Tom sees 34 birds. 9 fly away. How many birds are left? ___"
+                "content": "Sarah has 22 stickers. She gives 5 to her friend. How many does she have left?",
+                "blankLines": 2
               },
               {
-                "type": "visual-math",
-                "text": "61 + 18"
+                "type": "multiple-choice",
+                "content": "What is 26 + 15?",
+                "choices": ["41", "39", "40", "42"]
               },
               {
-                "type": "visual-math",
-                "text": "84 - 36"
+                "type": "multiple-choice",
+                "content": "What is 37 - 21?",
+                "choices": ["16", "18", "15", "17"]
               },
               {
-                "type": "short-answer",
-                "text": "You have 22 books. You buy 15 more. How many books do you have? ___"
+                "type": "multiple-choice",
+                "content": "If you have 50 candies and eat 23, how many are left?",
+                "choices": ["27", "28", "29", "30"]
               },
               {
-                "type": "visual-math",
-                "text": "45 + 33"
+                "type": "multiple-choice",
+                "content": "You have 60 apples, and you give 15 away. How many apples do you have?",
+                "choices": ["45", "46", "47", "44"]
+              },
+              {
+                "type": "fill-blank",
+                "content": "If you add 7 and 8, you get ___",
+                "blankLines": 1
+              },
+              {
+                "type": "fill-blank",
+                "content": "Subtracting 10 from 25 gives you ___",
+                "blankLines": 1
               }
             ]
           }
         ],
-        "accommodations": ["Chunk tasks into smaller parts", "Provide visual aids and examples"]
+        "accommodations": [
+          "Provide visual aids for problem solving",
+          "Read problems aloud if necessary"
+        ]
       }
     },
     {
       "studentId": "student-3",
       "gradeGroup": 5,
       "worksheet": {
-        "title": "Addition and Subtraction Practice - Grade 5",
-        "instructions": "Solve the problems below. Show your work for the word problems.",
+        "title": "Advanced Addition and Subtraction",
+        "instructions": "Solve the following problems using the strategies we discussed.",
         "sections": [
           {
-            "type": "Introduction",
-            "content": [
+            "title": "Introduction",
+            "instructions": "Study the examples carefully.",
+            "items": [
               {
                 "type": "example",
-                "text": "Example: 234 + 319 = 553"
+                "content": "Solve 125 + 78. Add the ones: 5 + 8 = 13, write 3 and carry over 1. Add the tens: 2 + 7 = 9, plus 1 = 10, write 0 and carry over 1. Add the hundreds: 1 + 1 = 2. The answer is 203."
               },
               {
                 "type": "example",
-                "text": "Example: 758 - 534 = 224"
+                "content": "Solve 234 - 89. Subtract the ones: 4 - 9 (borrow to make 14 - 9 = 5). Subtract the tens: 2 - 8 (borrow to make 12 - 8 = 4). Subtract the hundreds: 1 - 0 = 1. The answer is 145."
               }
             ]
           },
           {
-            "type": "Activity",
-            "content": [
+            "title": "Activity",
+            "instructions": "Solve each of the problems below.",
+            "items": [
               {
                 "type": "visual-math",
-                "text": "245 + 678"
+                "content": "125 + 78"
               },
               {
                 "type": "visual-math",
-                "text": "932 - 487"
+                "content": "234 - 89"
               },
               {
                 "type": "visual-math",
-                "text": "154 + 298"
+                "content": "312 + 256"
               },
               {
                 "type": "visual-math",
-                "text": "763 - 312"
+                "content": "481 - 173"
               },
               {
                 "type": "short-answer",
-                "text": "You have 345 marbles. You give 123 to a friend. How many marbles do you have left? ___"
-              },
-              {
-                "type": "visual-math",
-                "text": "583 + 249"
-              },
-              {
-                "type": "visual-math",
-                "text": "801 - 346"
+                "content": "A farmer has 150 chickens. He buys 75 more. How many chickens does he have now?",
+                "blankLines": 3
               },
               {
                 "type": "short-answer",
-                "text": "A train has 234 passengers. 87 get off at the next stop. How many are left? ___"
+                "content": "A library has 600 books. 245 are borrowed. How many books are left?",
+                "blankLines": 3
               },
               {
-                "type": "visual-math",
-                "text": "476 + 589"
+                "type": "multiple-choice",
+                "content": "What is 567 + 298?",
+                "choices": ["865", "855", "875", "845"]
               },
               {
-                "type": "visual-math",
-                "text": "923 - 578"
+                "type": "multiple-choice",
+                "content": "What is 763 - 482?",
+                "choices": ["281", "283", "279", "285"]
               },
               {
-                "type": "short-answer",
-                "text": "You have 150 stickers. You buy 75 more. How many stickers do you have now? ___"
+                "type": "multiple-choice",
+                "content": "If you have 800 candies and give 350 away, how many are left?",
+                "choices": ["450", "445", "455", "460"]
               },
               {
-                "type": "visual-math",
-                "text": "398 + 267"
+                "type": "multiple-choice",
+                "content": "You have 950 apples, and you give 400 away. How many apples do you have?",
+                "choices": ["550", "540", "560", "570"]
+              },
+              {
+                "type": "fill-blank",
+                "content": "Add 123 and 456 to get ___",
+                "blankLines": 1
+              },
+              {
+                "type": "fill-blank",
+                "content": "Subtracting 298 from 500 gives you ___",
+                "blankLines": 1
               }
             ]
           }
         ],
         "accommodations": [
-          "Provide step-by-step instructions",
-          "Allow use of calculators for checking work"
+          "Provide step-by-step guides for complex problems",
+          "Allow extra time for completion"
         ]
       }
     }
@@ -335,19 +345,15 @@
   "metadata": {
     "modelUsed": "OpenAI",
     "modelVersion": "gpt-4o",
-    "generationTime": 21105,
-    "generatedAt": "2025-09-21T03:26:08.107Z",
+    "generationTime": 29909,
+    "generatedAt": "2025-09-21T03:42:04.720Z",
     "gradeGroups": [],
     "validationStatus": "failed",
     "validationErrors": [
       "Lesson materials: Must specify \"only\" when listing materials",
-      "Student 1 (Grade 2): Insufficient practice problems. Found 0, minimum 9 required for 30-minute lesson",
-      "Student 2 (Grade 2): Insufficient practice problems. Found 0, minimum 9 required for 30-minute lesson",
-      "Student 3 (Grade 5): Insufficient practice problems. Found 0, minimum 12 required for 30-minute lesson",
       "Teacher lesson plan: Introduction materials must be an array",
       "Teacher lesson plan: Whiteboard example 1 missing required fields",
       "Teacher lesson plan: Whiteboard example 2 missing required fields",
-      "Teacher lesson plan: Whiteboard example 3 missing required fields",
       "Teacher lesson plan: Student problem set 1 missing student initials",
       "Teacher lesson plan: Student 1 has no problems",
       "Teacher lesson plan: Student problem set 2 missing student initials",
@@ -359,19 +365,7 @@
       "Teacher lesson plan: Student problem set 5 missing student initials",
       "Teacher lesson plan: Student 5 has no problems",
       "Teacher lesson plan: Student problem set 6 missing student initials",
-      "Teacher lesson plan: Student 6 has no problems",
-      "Teacher lesson plan: Student problem set 7 missing student initials",
-      "Teacher lesson plan: Student 7 has no problems",
-      "Teacher lesson plan: Student problem set 8 missing student initials",
-      "Teacher lesson plan: Student 8 has no problems",
-      "Teacher lesson plan: Student problem set 9 missing student initials",
-      "Teacher lesson plan: Student 9 has no problems",
-      "Teacher lesson plan: Student problem set 10 missing student initials",
-      "Teacher lesson plan: Student 10 has no problems",
-      "Teacher lesson plan: Student problem set 11 missing student initials",
-      "Teacher lesson plan: Student 11 has no problems",
-      "Teacher lesson plan: Student problem set 12 missing student initials",
-      "Teacher lesson plan: Student 12 has no problems"
+      "Teacher lesson plan: Student 6 has no problems"
     ]
   }
 }
