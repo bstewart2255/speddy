@@ -61,7 +61,7 @@ TEACHER LESSON PLAN:
 - Student problems: List which students will work on these problems (use initials)
 - Each problem needs: number, question, answer (and choices for multiple-choice)
 
-JSON STRUCTURE (REQUIRED):
+JSON STRUCTURE (REQUIRED - MUST HAVE ALL THREE TOP-LEVEL FIELDS):
 {
   "lesson": {
     "title": "string",
