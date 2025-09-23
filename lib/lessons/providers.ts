@@ -156,7 +156,6 @@ export class OpenAIProvider implements AIProvider {
       console.log(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
 
       // Log token usage details
-      const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
       if (debugEnabled) {
         const usage = completion.usage;
         const totalTokens = (usage?.prompt_tokens || 0) + (usage?.completion_tokens || 0);
@@ -219,7 +218,6 @@ export class OpenAIProvider implements AIProvider {
       }
 
       // Check for truncation indicators
-      const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
       if (debugEnabled && content) {
         const lastChars = content.slice(-50);
         console.log(`[OpenAI] Response ends with: "${lastChars}"`);
@@ -392,8 +390,7 @@ export class OpenAIProvider implements AIProvider {
         cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
 
         // Log repair details if debugging is enabled
-        const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
-        if (debugEnabled) {
+        if (process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true') {
           console.log(`[OpenAI] JSON Repair:
   - Original ended with: "${content.slice(-50)}"
   - Added ${Math.max(0, openBrackets - closeBrackets)} brackets
