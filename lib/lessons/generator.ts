@@ -258,8 +258,8 @@ export class LessonGenerator {
     console.log(`Using chunked generation for ${request.students.length} students`);
     
     try {
-      // Determine grade groups
-      const gradeGroups = determineGradeGroups(request.students);
+      // Grade groups not needed in single-worksheet approach
+      const gradeGroups: any[] = [];
       
       // Generate the base lesson plan first (without student materials)
       // Pick representative students from different grade groups
@@ -417,8 +417,9 @@ Return ONLY the worksheet content in this structure:
       const worksheet = rawResponse.worksheet;
 
       // Create studentMaterials array with same worksheet for each student
-      const studentMaterials = request.students.map(student => ({
+      const studentMaterials: StudentMaterial[] = request.students.map(student => ({
         studentId: student.id,
+        gradeGroup: 0, // Single group for all in new approach
         worksheet: worksheet
       }));
 
@@ -532,12 +533,14 @@ Return ONLY the worksheet content in this structure:
       },
       studentMaterials: request.students.map(student => ({
         studentId: student.id,
+        gradeGroup: 0, // Single group for all
         worksheet: mockWorksheet
       })),
       metadata: {
         generatedAt: new Date().toISOString(),
         modelUsed: 'Mock',
         generationTime: 0,
+        gradeGroups: [], // Empty in new approach
         validationStatus: 'passed',
         validationErrors: []
       }

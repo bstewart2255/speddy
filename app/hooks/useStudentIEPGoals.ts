@@ -69,7 +69,7 @@ export function useStudentIEPGoals(studentIds: string[]) {
     }
 
     fetchIEPGoalsInner();
-  }, [studentIdsKey]);
+  }, [studentIdsKey, studentIds]);
 
 
   /**
