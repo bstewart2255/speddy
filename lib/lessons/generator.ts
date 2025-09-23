@@ -1,5 +1,5 @@
 // Main lesson generator that orchestrates the JSON-first generation
-import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determineGradeGroups } from './schema';
+import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial } from './schema';
 import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
@@ -105,7 +105,6 @@ export class LessonGenerator {
     // Log generation strategy decision
     const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
     if (debugEnabled) {
-      const gradeGroups = determineGradeGroups(request.students);
       const maxGrade = Math.max(...request.students.map(s => s.grade));
       const baseMin = getBaseMinimum(maxGrade);
       const baseMax = getBaseMaximum(maxGrade);
@@ -113,32 +112,23 @@ export class LessonGenerator {
       const minProblems = Math.ceil(baseMin * multiplier);
       const maxProblems = Math.ceil(baseMax * multiplier);
 
-      console.log(`[Generator] Lesson generation for ${request.students.length} students:
-  - Using ${request.students.length > CHUNK_THRESHOLD ? 'CHUNKED' : 'SINGLE'} generation
-  - CHUNK_THRESHOLD: ${CHUNK_THRESHOLD}
-  - Grade groups: ${gradeGroups.length}
-  - Max grade: ${maxGrade}
+      console.log(`[Generator] Lesson generation for group of ${request.students.length} students:
+  - Generating ONE worksheet for the entire group
+  - Grade range: ${Math.min(...request.students.map(s => s.grade))}-${maxGrade}
   - Duration: ${request.duration || 30} minutes
   - Duration multiplier: ${multiplier}
-  - Expected problems per student: ${minProblems}-${maxProblems}
-  - Total expected problems: ${minProblems * request.students.length}-${maxProblems * request.students.length}`);
+  - Expected problems for worksheet: ${minProblems}-${maxProblems}`);
     }
 
-    // Use chunked generation for large groups of students
-    if (request.students.length > CHUNK_THRESHOLD) {
-      return this.generateChunkedLesson(request);
-    }
+    // No longer using chunked generation since we generate one worksheet for all
 
     try {
       // Build prompts based on role and subject type
       const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
       const userPrompt = promptBuilder.buildUserPrompt(request);
       
-      // Add grade groups to request for provider
-      const enrichedRequest = {
-        ...request,
-        gradeGroups: determineGradeGroups(request.students)
-      };
+      // Pass request as-is (no grade grouping needed)
+      const enrichedRequest = { ...request };
       
       // Generate lesson with AI
       console.log(`Generating lesson with ${this.getProvider().getName()}...`);
@@ -147,7 +137,10 @@ export class LessonGenerator {
       // Generate lesson with AI (single attempt, no retry)
       // Now passing system and user prompts separately as intended
       try {
-        const lesson = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
+        const rawResponse = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
+
+        // Convert single worksheet response to expected format
+        const lesson = this.convertToLessonFormat(rawResponse, request);
         const validation = materialsValidator.validateLesson(lesson);
 
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
@@ -155,31 +148,22 @@ export class LessonGenerator {
         // Log what we actually got
         const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
         if (debugEnabled) {
-          const actualStudentCount = lesson.studentMaterials?.length || 0;
-          const problemsPerStudent = lesson.studentMaterials?.map((m, i) => {
-            const activitySection = m.worksheet?.sections?.find(s => s.title === 'Activity');
-            let problemCount = 0;
+          const worksheet = (lesson as any).worksheet;
+          const activitySection = worksheet?.sections?.find((s: any) => s.title === 'Activity');
+          let problemCount = 0;
 
-            if (activitySection?.items) {
-              activitySection.items.forEach((item: any) => {
-                // Handle both nested and flat structures
-                if (item.items && Array.isArray(item.items)) {
-                  problemCount += item.items.filter((subItem: any) =>
-                    subItem.type !== 'example' && subItem.type !== 'passage'
-                  ).length;
-                } else if (item.type && item.type !== 'example' && item.type !== 'passage') {
-                  problemCount += 1;
-                }
-              });
-            }
-
-            return { student: i + 1, problems: problemCount };
-          });
+          if (activitySection?.items) {
+            activitySection.items.forEach((item: any) => {
+              if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                problemCount += 1;
+              }
+            });
+          }
 
           console.log(`[Generator] Generation Result:
-  - Expected students: ${request.students.length}
-  - Actual students: ${actualStudentCount}
-  - Problems per student: ${JSON.stringify(problemsPerStudent)}
+  - Group size: ${request.students.length} students
+  - Single worksheet generated: YES
+  - Problems in worksheet: ${problemCount}
   - Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
   - Errors: ${validation.errors.join('; ') || 'None'}`);
 
@@ -193,10 +177,7 @@ export class LessonGenerator {
           }
         }
 
-        // Ensure grade groups are properly set
-        if (!lesson.metadata.gradeGroups) {
-          lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
-        }
+        // No grade groups needed in new single-worksheet approach
 
         // Stamp validation metadata
         if (validation.isValid) {
@@ -412,6 +393,40 @@ Return ONLY the worksheet content in this structure:
   }
   
   /**
+   * Converts the new single-worksheet format to the expected LessonResponse format
+   */
+  private convertToLessonFormat(rawResponse: any, request: LessonRequest): LessonResponse {
+    // Handle both new format (single worksheet) and legacy format (studentMaterials array)
+    if (rawResponse.worksheet) {
+      // New format: single worksheet for all students
+      const worksheet = rawResponse.worksheet;
+
+      // Create studentMaterials array with same worksheet for each student
+      const studentMaterials = request.students.map(student => ({
+        studentId: student.id,
+        worksheet: worksheet
+      }));
+
+      return {
+        lesson: rawResponse.lesson,
+        studentMaterials,
+        metadata: rawResponse.metadata || {
+          generatedAt: new Date().toISOString(),
+          modelUsed: this.getProvider().getName(),
+          generationTime: 0,
+          validationStatus: 'pending'
+        }
+      };
+    } else if (rawResponse.studentMaterials) {
+      // Legacy format - return as-is
+      return rawResponse;
+    } else {
+      // Unexpected format - throw error
+      throw new Error('Invalid response format: missing both worksheet and studentMaterials');
+    }
+  }
+
+  /**
    * Creates a mock worksheet for a specific grade
    */
   private createMockWorksheet(grade: number, subject: string): any {
@@ -464,8 +479,9 @@ Return ONLY the worksheet content in this structure:
    * Creates a mock lesson for development/testing
    */
   private createMockLesson(request: LessonRequest): LessonResponse {
-    const gradeGroups = determineGradeGroups(request.students);
-    
+    const maxGrade = Math.max(...request.students.map(s => s.grade));
+    const mockWorksheet = this.createMockWorksheet(maxGrade, request.subject);
+
     return {
       lesson: {
         title: `${request.subject} Lesson - ${request.topic || 'Practice'}`,
@@ -499,59 +515,14 @@ Return ONLY the worksheet content in this structure:
         },
         roleSpecificContent: this.getMockRoleContent(request.teacherRole)
       },
-      studentMaterials: request.students.map(student => {
-        const gradeGroup = gradeGroups.findIndex(g => g.studentIds.includes(student.id));
-        
-        return {
-          studentId: student.id,
-          gradeGroup,
-          gradeLevel: student.grade, // Add student's actual grade
-          worksheet: {
-            title: `${request.subject} Practice - Grade ${student.grade}`,
-            grade: student.grade, // Add grade to worksheet
-            instructions: 'Complete all sections. Show your work.',
-            sections: [
-              {
-                title: 'Examples',
-                instructions: 'Review these examples',
-                items: [
-                  {
-                    type: 'example',
-                    content: `Here's how to solve ${request.subject} problems for grade ${student.grade}`
-                  }
-                ]
-              },
-              {
-                title: 'Practice',
-                instructions: 'Complete these problems',
-                items: [
-                  {
-                    type: 'short-answer',
-                    content: `Sample ${request.subject} question for grade ${student.grade}`,
-                    blankLines: student.grade <= 1 ? 4 : student.grade <= 3 ? 3 : 2
-                  },
-                  {
-                    type: 'multiple-choice',
-                    content: `Choose the correct answer for this grade ${student.grade} problem`,
-                    choices: ['Option A', 'Option B', 'Option C', 'Option D']
-                  },
-                  {
-                    type: 'long-answer',
-                    content: 'What did you learn today?',
-                    blankLines: student.grade <= 3 ? 5 : 4
-                  }
-                ]
-              }
-            ],
-            accommodations: student.accommodations || []
-          }
-        };
-      }),
+      studentMaterials: request.students.map(student => ({
+        studentId: student.id,
+        worksheet: mockWorksheet
+      })),
       metadata: {
         generatedAt: new Date().toISOString(),
         modelUsed: 'Mock',
         generationTime: 0,
-        gradeGroups,
         validationStatus: 'passed',
         validationErrors: []
       }

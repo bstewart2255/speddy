@@ -17,7 +17,7 @@ export class PromptBuilder {
 REQUIREMENTS:
 1. Return ONLY valid JSON matching LessonResponse schema
 2. Materials: worksheets, pencils, whiteboard, markers ONLY
-3. Group students within 1 grade level
+3. Generate ONE worksheet for the entire group
 4. Include complete content - no placeholders
 
 WORKSHEET FORMATTING STANDARDS (MANDATORY):
@@ -47,12 +47,10 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
 
 5. ACTIVITY COUNTS: Problem count requirements are specified in the user prompt
 
-DIFFERENTIATION:
-- Students in same grade group: identical activities
-- Adjust language complexity based on reading level
-- Target IEP goals when provided
-- Resource role: content one grade below student level
-- Mixed IEP goals: target majority, include minority when possible
+WORKSHEET CONTENT:
+- Generate ONE worksheet that will be used by all students in the group
+- Resource role: content one grade below highest student level
+- The worksheet should be appropriate for the group as a whole
 
 ${this.getSubjectSpecificRequirements(subjectType)}
 
@@ -60,8 +58,7 @@ TEACHER LESSON PLAN:
 - Student initials: Use actual initials from student data
 - Teacher script: 2-3 sentence introduction
 - Whiteboard examples: Must have title, problem, steps array, and teachingPoint
-- Student problems: Create one entry for EACH student with their initials and problems
-- IMPORTANT: If 3 students, must have 3 studentProblems entries (one per student)
+- Student problems: List which students will work on these problems (use initials)
 - Each problem needs: number, question, answer (and choices for multiple-choice)
 
 JSON STRUCTURE (REQUIRED):
@@ -96,37 +93,31 @@ JSON STRUCTURE (REQUIRED):
       ]
     }
   },
-  "studentMaterials": [
-    {
-      "studentId": "string",
-      "gradeGroup": number,
-      "worksheet": {
-        "title": "string",
+  "worksheet": {
+    "title": "string",
+    "instructions": "string",
+    "sections": [
+      {
+        "title": "Introduction",
         "instructions": "string",
-        "sections": [
-          {
-            "title": "Introduction",
-            "instructions": "string",
-            "items": [
-              { "type": "example", "content": "example problem text" }
-            ]
-          },
-          {
-            "title": "Activity",
-            "instructions": "string",
-            "items": [
-              { "type": "multiple-choice", "content": "question", "choices": ["A", "B", "C", "D"] },
-              { "type": "fill-blank", "content": "text with ___", "blankLines": 1 },
-              { "type": "short-answer", "content": "question", "blankLines": 2 },
-              { "type": "long-answer", "content": "question", "blankLines": 4 },
-              { "type": "visual-math", "content": "25 + 17" }
-            ]
-          }
-        ],
-        "accommodations": ["string"]
+        "items": [
+          { "type": "example", "content": "example problem text" }
+        ]
+      },
+      {
+        "title": "Activity",
+        "instructions": "string",
+        "items": [
+          { "type": "multiple-choice", "content": "question", "choices": ["A", "B", "C", "D"] },
+          { "type": "fill-blank", "content": "text with ___", "blankLines": 1 },
+          { "type": "short-answer", "content": "question", "blankLines": 2 },
+          { "type": "long-answer", "content": "question", "blankLines": 4 },
+          { "type": "visual-math", "content": "25 + 17" }
+        ]
       }
-    }
-  ],
+    ]
+  },
+  "studentIds": ["string"],
   "metadata": { /* auto-filled */ },
   "generation_explanation": {
     "duration_interpretation": "string explaining understanding of duration requirements",
@@ -135,10 +126,7 @@ JSON STRUCTURE (REQUIRED):
       "whiteboard_examples": number,
       "reasoning": "string explaining content decisions"
     },
-    "student_differentiation": {
-      "student-1": "explanation of how content was differentiated for student 1",
-      "student-2": "explanation of how content was differentiated for student 2"
-    },
+    "group_composition": "string explaining the group of students this worksheet is for",
     "validation_expectations": "string explaining expected validation outcome",
     "constraints_applied": ["list of constraints considered"],
     "duration_scaling_applied": "string explaining how duration affected content amount",
@@ -147,12 +135,14 @@ JSON STRUCTURE (REQUIRED):
 }
 
 KEY RULES:
+- Generate ONE worksheet for the entire group of students
 - No placeholders - all content must be complete
 - Use 2 sections only: Introduction, Activity
 - Examples must show worked solutions, not tips
 - Include teacherLessonPlan with all fields
 - CRITICAL: Each section must have "items" array, NOT "content" array
 - Activity section must contain required number of problems in items array
+- For reading comprehension: Include a complete story/passage (200+ words) as type:"passage" BEFORE questions
 - REQUIRED: Include generation_explanation field with your reasoning about content decisions`;
 
     // Add role-specific requirements
@@ -165,13 +155,12 @@ KEY RULES:
    * Builds the user prompt with student and lesson details
    */
   buildUserPrompt(request: LessonRequest): string {
-    const gradeGroups = determineGradeGroups(request.students);
     const minProblems = this.getMinimumActivityCount(request.students, request.duration);
     const maxProblems = Math.ceil(minProblems * 1.25); // ~25% more than minimum for better balance
 
     // CRITICAL: Start with problem count requirement
-    let prompt = `CRITICAL REQUIREMENT: Generate between ${minProblems} and ${maxProblems} problems (inclusive) in the Activity section.\n`;
-    prompt += `Each student worksheet MUST have between ${minProblems} and ${maxProblems} problems. This is MANDATORY.\n\n`;
+    let prompt = `CRITICAL REQUIREMENT: Generate ONE worksheet with ${minProblems}-${maxProblems} problems in the Activity section.\n`;
+    prompt += `This single worksheet will be used by all ${request.students.length} students in the group.\n\n`;
 
     prompt += `Create a ${request.duration}-minute ${request.subjectType.toUpperCase()} lesson.\n`;
     prompt += `Subject: ${request.subject}\n`;
@@ -184,60 +173,40 @@ KEY RULES:
       prompt += `Focus Skills: ${request.focusSkills.join(', ')}\n`;
     }
 
-    prompt += `\nSTUDENT INFORMATION:\n`;
-    prompt += `Total Students: ${request.students.length}\n`;
-    prompt += `Grade Groups: ${gradeGroups.length}\n\n`;
+    prompt += `\nGROUP INFORMATION:\n`;
+    prompt += `Number of Students: ${request.students.length}\n`;
+
+    // Get grade range for the group
+    const grades = [...new Set(request.students.map(s => s.grade))].sort();
+    const gradeRange = grades.length === 1 ? `Grade ${grades[0]}` : `Grades ${Math.min(...grades)}-${Math.max(...grades)}`;
+    prompt += `Grade Range: ${gradeRange}\n`;
+
+    // List student initials for reference
+    const studentInitials = request.students.map(s => s.initials || s.id).join(', ');
+    prompt += `Students: ${studentInitials}\n\n`;
     
-    // Describe each grade group
-    gradeGroups.forEach((group, index) => {
-      const groupStudents = request.students.filter(s => 
-        group.studentIds.includes(s.id)
-      );
-      
-      prompt += `GRADE GROUP ${index + 1}:\n`;
-      prompt += `Grades: ${group.grades.join(', ')}\n`;
-      prompt += `Number of students: ${group.studentIds.length}\n`;
-      
-      groupStudents.forEach(student => {
-        const studentIdentifier = student.initials || student.id;
-        prompt += `\nStudent ${studentIdentifier}:\n`;
-        prompt += `- Grade: ${student.grade}\n`;
-        
-        if (student.readingLevel) {
-          prompt += `- Reading Level: Grade ${student.readingLevel}\n`;
-        }
-        
-        if (student.iepGoals && student.iepGoals.length > 0) {
-          prompt += `- IEP Goals: ${student.iepGoals.join('; ')}\n`;
-        }
-      });
-      
-      prompt += '\n';
-    });
-    
-    // Add subject-specific reminders
+    // Add subject-specific reminders with emphasis on story inclusion
     const subjectReminder = request.subjectType === 'ela'
       ? `SUBJECT-SPECIFIC REMINDERS:
-- Include complete story text for reading activities
+- For reading comprehension: MUST include a complete story/passage (200+ words) as type:"passage" in Introduction section
+- Story must come BEFORE comprehension questions
 - Focus on reading comprehension, vocabulary, writing, or grammar
-- Use grade-appropriate text complexity based on reading levels
+- Use grade-appropriate text complexity
 - Questions should target: main idea, details, character analysis, sequence, cause/effect`
       : `SUBJECT-SPECIFIC REMINDERS:
 - Focus on mathematical concepts and problem-solving
-- Include computation practice and word problems  
+- Include computation practice and word problems
 - Use "visual-math" question type for math computations
 - Use visual representations where helpful
-- Target math skills appropriate for student levels`;
+- Target math skills appropriate for the grade range`;
 
     prompt += `\nKEY REQUIREMENTS:
-- Activity section MUST have between ${minProblems} and ${maxProblems} items in the items array (inclusive)
-- Use 2 sections: Introduction (1-2 example items), Activity (${minProblems}-${maxProblems} problem items)
-- CRITICAL: Use "items" array for problems, NOT "content" array - each problem is an object in items[]
+- Generate ONE worksheet for all ${request.students.length} students
+- Activity section MUST have ${minProblems}-${maxProblems} problems in the items array
+- Use 2 sections: Introduction (examples and/or story), Activity (practice problems)
+- CRITICAL: Use "items" array for problems, NOT "content" array
 - Include teacherLessonPlan with ${this.getExampleCount(request.duration)} whiteboard examples
-- Teacher plan studentProblems: Must have ${request.students.length} entries (one per student)
-- Students in same grade group get identical activities
-- Adjust difficulty based on reading levels
-- Target IEP goals in content when provided
+- Teacher plan should reference the group, not individual students
 
 ${subjectReminder}`;
     
@@ -263,11 +232,15 @@ ${subjectReminder}`;
     if (subjectType === 'ela') {
       return `
 ELA TOPIC RULES:
-IF topic="reading/comprehension": Include story passage (100-200 words) FIRST, then comprehension questions
+IF topic includes "reading" or "comprehension":
+  - MUST include a complete story passage (200-300 words) as type:"passage" in Introduction section
+  - Story must be complete and coherent
+  - Include title for the story
+  - Then add comprehension questions in Activity section
 IF topic="decoding/phonics": NO story. Focus on letter sounds, word decoding. Example: "Sound out: cat"
 IF topic="writing": NO story. Focus on sentence construction and writing prompts
 IF topic="grammar/vocabulary": NO story. Focus on the specific concept
-DEFAULT: Follow focusSkills array`;
+DEFAULT: Check if comprehension questions exist - if yes, include story`;
     } else {
       return `
 MATH-SPECIFIC REQUIREMENTS:
