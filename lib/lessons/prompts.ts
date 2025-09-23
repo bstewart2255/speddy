@@ -16,7 +16,7 @@ export class PromptBuilder {
 
 REQUIREMENTS:
 1. Return ONLY valid JSON matching LessonResponse schema
-2. Materials: worksheets, pencils, whiteboard, markers ONLY
+2. Materials: Must be exactly "worksheets, pencils, whiteboard, markers only"
 3. Generate ONE worksheet for the entire group
 4. Include complete content - no placeholders
 
@@ -46,6 +46,11 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Distractors should be plausible but wrong
 
 5. ACTIVITY COUNTS: Problem count requirements are specified in the user prompt
+
+6. VARIETY REQUIREMENT: Mix different question types! Do NOT make all questions the same format.
+   - Use at least 3 different question types per worksheet
+   - Vary the cognitive demands (recall, apply, analyze)
+   - Include both closed (multiple-choice, fill-blank) and open (short-answer, long-answer) questions
 
 WORKSHEET CONTENT:
 - Generate ONE worksheet that will be used by all students in the group
@@ -237,7 +242,13 @@ IF topic includes "reading" or "comprehension":
   - Story must be complete and coherent
   - Include title for the story
   - Then add comprehension questions in Activity section
-IF topic="decoding/phonics": NO story. Focus on letter sounds, word decoding. Example: "Sound out: cat"
+IF topic="decoding/phonics":
+  - NO story needed
+  - Mix different question types:
+    * Sound out words: "Sound out: cat" (type: "fill-blank")
+    * Write the word you hear: "___ (hint: rhymes with mat)" (type: "fill-blank")
+    * Circle the correct spelling (type: "multiple-choice")
+    * Write a sentence using the word (type: "short-answer")
 IF topic="writing": NO story. Focus on sentence construction and writing prompts
 IF topic="grammar/vocabulary": NO story. Focus on the specific concept
 DEFAULT: Check if comprehension questions exist - if yes, include story`;

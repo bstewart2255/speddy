@@ -148,16 +148,31 @@ export class LessonGenerator {
         // Log what we actually got
         const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
         if (debugEnabled) {
-          const worksheet = (lesson as any).worksheet;
-          const activitySection = worksheet?.sections?.find((s: any) => s.title === 'Activity');
+          // Check if it's new format (single worksheet) or old format (studentMaterials)
           let problemCount = 0;
 
-          if (activitySection?.items) {
-            activitySection.items.forEach((item: any) => {
-              if (item.type && item.type !== 'example' && item.type !== 'passage') {
-                problemCount += 1;
-              }
-            });
+          if ((rawResponse as any).worksheet) {
+            // New format - single worksheet
+            const worksheet = (rawResponse as any).worksheet;
+            const activitySection = worksheet?.sections?.find((s: any) => s.title === 'Activity');
+            if (activitySection?.items) {
+              activitySection.items.forEach((item: any) => {
+                if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                  problemCount += 1;
+                }
+              });
+            }
+          } else if (lesson.studentMaterials && lesson.studentMaterials.length > 0) {
+            // Old format - check first student's worksheet
+            const firstWorksheet = lesson.studentMaterials[0].worksheet;
+            const activitySection = firstWorksheet?.sections?.find((s: any) => s.title === 'Activity');
+            if (activitySection?.items) {
+              activitySection.items.forEach((item: any) => {
+                if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                  problemCount += 1;
+                }
+              });
+            }
           }
 
           console.log(`[Generator] Generation Result:
