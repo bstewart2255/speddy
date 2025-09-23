@@ -119,6 +119,20 @@ export class OpenAIProvider implements AIProvider {
     // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No other text.';
 
+    // Log prompt sizes for debugging
+    const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
+    if (debugEnabled) {
+      const systemPromptTokens = Math.ceil(fullSystemPrompt.length / 4); // Rough estimate
+      const userPromptTokens = Math.ceil(userPrompt.length / 4);
+      const estimatedPromptTokens = systemPromptTokens + userPromptTokens;
+
+      console.log(`[OpenAI] Prompt Size Estimate:
+  - System prompt: ~${systemPromptTokens} tokens (${fullSystemPrompt.length} chars)
+  - User prompt: ~${userPromptTokens} tokens (${userPrompt.length} chars)
+  - Total prompt: ~${estimatedPromptTokens} tokens
+  - Available for response: ~${this.maxTokens} tokens`);
+    }
+
     try {
       console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
 
@@ -138,8 +152,33 @@ export class OpenAIProvider implements AIProvider {
         max_tokens: this.maxTokens,
         response_format: { type: 'json_object' } // Force JSON response
       });
-      
+
       console.log(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
+
+      // Log token usage details
+      const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
+      if (debugEnabled) {
+        const usage = completion.usage;
+        const totalTokens = (usage?.prompt_tokens || 0) + (usage?.completion_tokens || 0);
+        const modelLimit = MODEL_MAX_TOKENS[this.model] || 128000;
+        const tokenPercentage = (totalTokens / modelLimit) * 100;
+
+        console.log(`[OpenAI] Token Usage:
+  - Prompt tokens: ${usage?.prompt_tokens || 0}
+  - Completion tokens: ${usage?.completion_tokens || 0}
+  - Total tokens: ${totalTokens}
+  - Model limit: ${modelLimit}
+  - Usage: ${tokenPercentage.toFixed(1)}%
+  - Max response tokens configured: ${this.maxTokens}`);
+
+        // Detect potential truncation
+        const finishReason = completion.choices[0]?.finish_reason;
+        if (finishReason === 'length') {
+          console.error('[OpenAI] WARNING: Response was truncated due to token limit!');
+        } else {
+          console.log(`[OpenAI] Finish reason: ${finishReason}`);
+        }
+      }
 
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
@@ -178,7 +217,24 @@ export class OpenAIProvider implements AIProvider {
       if (!content) {
         throw new Error('Empty response from OpenAI');
       }
-      
+
+      // Check for truncation indicators
+      const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
+      if (debugEnabled && content) {
+        const lastChars = content.slice(-50);
+        console.log(`[OpenAI] Response ends with: "${lastChars}"`);
+        console.log(`[OpenAI] Response length: ${content.length} characters`);
+
+        if (!content.endsWith('}')) {
+          console.warn('[OpenAI] Response may be truncated - does not end with }');
+        }
+
+        // Try to detect if students are missing
+        const studentMatches = content.match(/"studentId"/g);
+        const studentCount = studentMatches ? studentMatches.length : 0;
+        console.log(`[OpenAI] Found ${studentCount} student entries in response`);
+      }
+
       let jsonResponse: any;
       try {
         jsonResponse = JSON.parse(content);
@@ -322,7 +378,7 @@ export class OpenAIProvider implements AIProvider {
     try {
       // Remove any leading/trailing whitespace
       let cleaned = content.trim();
-      
+
       // Check if response appears truncated (doesn't end with })
       if (!cleaned.endsWith('}')) {
         // Count open and close braces to determine nesting level
@@ -330,12 +386,22 @@ export class OpenAIProvider implements AIProvider {
         const closeBraces = (cleaned.match(/}/g) || []).length;
         const openBrackets = (cleaned.match(/\[/g) || []).length;
         const closeBrackets = (cleaned.match(/\]/g) || []).length;
-        
+
         // Add missing closing brackets and braces
         cleaned += ']'.repeat(Math.max(0, openBrackets - closeBrackets));
         cleaned += '}'.repeat(Math.max(0, openBraces - closeBraces));
+
+        // Log repair details if debugging is enabled
+        const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true';
+        if (debugEnabled) {
+          console.log(`[OpenAI] JSON Repair:
+  - Original ended with: "${content.slice(-50)}"
+  - Added ${Math.max(0, openBrackets - closeBrackets)} brackets
+  - Added ${Math.max(0, openBraces - closeBraces)} braces
+  - Repair ${cleaned.endsWith('}') ? 'succeeded' : 'may have failed'}`);
+        }
       }
-      
+
       // Attempt to parse the repaired JSON
       JSON.parse(cleaned);
       return cleaned;
@@ -372,6 +438,20 @@ export class AnthropicProvider implements AIProvider {
     // Now properly using separate system and user prompts as intended
     const fullSystemPrompt = systemPrompt + '\n\nYou must respond with ONLY a valid JSON object. No markdown code blocks, no explanation, just the JSON.';
 
+    // Log prompt sizes for debugging
+    const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
+    if (debugEnabled) {
+      const systemPromptTokens = Math.ceil(fullSystemPrompt.length / 4); // Rough estimate
+      const userPromptTokens = Math.ceil(userPrompt.length / 4);
+      const estimatedPromptTokens = systemPromptTokens + userPromptTokens;
+
+      console.log(`[Anthropic] Prompt Size Estimate:
+  - System prompt: ~${systemPromptTokens} tokens (${fullSystemPrompt.length} chars)
+  - User prompt: ~${userPromptTokens} tokens (${userPrompt.length} chars)
+  - Total prompt: ~${estimatedPromptTokens} tokens
+  - Available for response: ~${this.maxTokens} tokens`);
+    }
+
     try {
       const message = await this.client.messages.create({
         model: this.model,
@@ -385,6 +465,25 @@ export class AnthropicProvider implements AIProvider {
           }
         ]
       });
+
+      // Log token usage details
+      if (debugEnabled) {
+        const usage = message.usage;
+        const totalTokens = (usage?.input_tokens || 0) + (usage?.output_tokens || 0);
+        const modelLimit = MODEL_MAX_TOKENS[this.model] || 200000;
+        const tokenPercentage = (totalTokens / modelLimit) * 100;
+
+        console.log(`[Anthropic] Token Usage:
+  - Input tokens: ${usage?.input_tokens || 0}
+  - Output tokens: ${usage?.output_tokens || 0}
+  - Total tokens: ${totalTokens}
+  - Model limit: ${modelLimit}
+  - Usage: ${tokenPercentage.toFixed(1)}%
+  - Max response tokens configured: ${this.maxTokens}`);
+
+        // Anthropic doesn't provide finish_reason in the same way
+        console.log(`[Anthropic] Response completed in ${Date.now() - startTime}ms`);
+      }
 
       // Capture metadata for logging (with environment flag gating)
       this.lastGenerationMetadata = {
@@ -439,7 +538,23 @@ export class AnthropicProvider implements AIProvider {
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
         .trim();
-      
+
+      // Check for truncation indicators
+      if (debugEnabled && cleanedResponse) {
+        const lastChars = cleanedResponse.slice(-50);
+        console.log(`[Anthropic] Response ends with: "${lastChars}"`);
+        console.log(`[Anthropic] Response length: ${cleanedResponse.length} characters`);
+
+        if (!cleanedResponse.endsWith('}')) {
+          console.warn('[Anthropic] Response may be truncated - does not end with }');
+        }
+
+        // Try to detect if students are missing
+        const studentMatches = cleanedResponse.match(/"studentId"/g);
+        const studentCount = studentMatches ? studentMatches.length : 0;
+        console.log(`[Anthropic] Found ${studentCount} student entries in response`);
+      }
+
       let jsonResponse: any;
       try {
         jsonResponse = JSON.parse(cleanedResponse);

@@ -3,6 +3,7 @@ import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determi
 import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
+import { getDurationMultiplier, getBaseMinimum, getBaseMaximum } from './duration-constants';
 
 // Configuration constants
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
@@ -101,11 +102,33 @@ export class LessonGenerator {
     validation: ValidationResult;
     metadata?: SafeGenerationMetadata;
   }> {
+    // Log generation strategy decision
+    const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
+    if (debugEnabled) {
+      const gradeGroups = determineGradeGroups(request.students);
+      const maxGrade = Math.max(...request.students.map(s => s.grade));
+      const baseMin = getBaseMinimum(maxGrade);
+      const baseMax = getBaseMaximum(maxGrade);
+      const multiplier = getDurationMultiplier(request.duration || 30);
+      const minProblems = Math.ceil(baseMin * multiplier);
+      const maxProblems = Math.ceil(baseMax * multiplier);
+
+      console.log(`[Generator] Lesson generation for ${request.students.length} students:
+  - Using ${request.students.length > CHUNK_THRESHOLD ? 'CHUNKED' : 'SINGLE'} generation
+  - CHUNK_THRESHOLD: ${CHUNK_THRESHOLD}
+  - Grade groups: ${gradeGroups.length}
+  - Max grade: ${maxGrade}
+  - Duration: ${request.duration || 30} minutes
+  - Duration multiplier: ${multiplier}
+  - Expected problems per student: ${minProblems}-${maxProblems}
+  - Total expected problems: ${minProblems * request.students.length}-${maxProblems * request.students.length}`);
+    }
+
     // Use chunked generation for large groups of students
     if (request.students.length > CHUNK_THRESHOLD) {
       return this.generateChunkedLesson(request);
     }
-    
+
     try {
       // Build prompts based on role and subject type
       const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
@@ -128,6 +151,47 @@ export class LessonGenerator {
         const validation = materialsValidator.validateLesson(lesson);
 
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
+
+        // Log what we actually got
+        const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
+        if (debugEnabled) {
+          const actualStudentCount = lesson.studentMaterials?.length || 0;
+          const problemsPerStudent = lesson.studentMaterials?.map((m, i) => {
+            const activitySection = m.worksheet?.sections?.find(s => s.title === 'Activity');
+            let problemCount = 0;
+
+            if (activitySection?.items) {
+              activitySection.items.forEach((item: any) => {
+                // Handle both nested and flat structures
+                if (item.items && Array.isArray(item.items)) {
+                  problemCount += item.items.filter((subItem: any) =>
+                    subItem.type !== 'example' && subItem.type !== 'passage'
+                  ).length;
+                } else if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                  problemCount += 1;
+                }
+              });
+            }
+
+            return { student: i + 1, problems: problemCount };
+          });
+
+          console.log(`[Generator] Generation Result:
+  - Expected students: ${request.students.length}
+  - Actual students: ${actualStudentCount}
+  - Problems per student: ${JSON.stringify(problemsPerStudent)}
+  - Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
+  - Errors: ${validation.errors.join('; ') || 'None'}`);
+
+          // Check if generation_explanation exists
+          if ((lesson as any).generation_explanation) {
+            const genExpl = (lesson as any).generation_explanation;
+            console.log(`[Generator] AI Self-Reported:
+  - Problems generated: ${genExpl.actual_content_generated?.practice_problems || 'N/A'}
+  - Whiteboard examples: ${genExpl.actual_content_generated?.whiteboard_examples || 'N/A'}
+  - Reasoning: ${genExpl.actual_content_generated?.reasoning || 'N/A'}`);
+          }
+        }
 
         // Ensure grade groups are properly set
         if (!lesson.metadata.gradeGroups) {
