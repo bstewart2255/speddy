@@ -48,8 +48,6 @@ const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
 };
 
 const loadSessionTags = (): Record<string, string> => {
-  console.log('[SchedulePage] Initializing sessionTags from localStorage...');
-
   if (typeof window === 'undefined') {
     return {};
   }
@@ -57,16 +55,30 @@ const loadSessionTags = (): Record<string, string> => {
   const savedTags = localStorage.getItem('speddy-session-tags');
 
   if (!savedTags) {
-    console.log('[SchedulePage] No saved tags found, initializing empty');
     return {};
   }
 
   try {
-    const parsedTags = JSON.parse(savedTags);
-    console.log('[SchedulePage] Initialized with tags from localStorage:', parsedTags);
-    return parsedTags;
-  } catch (error) {
-    console.error('[SchedulePage] Failed to parse saved tags:', error);
+    const parsed = JSON.parse(savedTags);
+
+    // Verify parsed value is a non-null object (not an array)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    // Build a clean Record<string, string> from the parsed data
+    const result: Record<string, string> = {};
+
+    for (const key of Object.keys(parsed)) {
+      const value = parsed[key];
+      // Skip keys with undefined or function values
+      if (value !== undefined && typeof value !== 'function') {
+        result[key] = String(value);
+      }
+    }
+
+    return result;
+  } catch {
     return {};
   }
 };
