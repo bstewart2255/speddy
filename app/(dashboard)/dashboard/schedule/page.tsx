@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -14,83 +14,107 @@ import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '../../../../lib/supabase/client';
 
+type VisualFilters = {
+  bellScheduleGrade: string | null;
+  specialActivityTeacher: string | null;
+};
+
+const DEFAULT_VISUAL_FILTERS: VisualFilters = {
+  bellScheduleGrade: null,
+  specialActivityTeacher: null,
+};
+
+const getSchoolSpecificKey = (key: string, schoolId?: string | null) =>
+  schoolId ? `${key}-${schoolId}` : key;
+
+const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_VISUAL_FILTERS };
+  }
+
+  const savedFilters = localStorage.getItem(
+    getSchoolSpecificKey('speddy-visual-filters', schoolId)
+  );
+
+  if (!savedFilters) {
+    return { ...DEFAULT_VISUAL_FILTERS };
+  }
+
+  try {
+    return JSON.parse(savedFilters) as VisualFilters;
+  } catch {
+    return { ...DEFAULT_VISUAL_FILTERS };
+  }
+};
+
+const loadSessionTags = (): Record<string, string> => {
+  console.log('[SchedulePage] Initializing sessionTags from localStorage...');
+
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  const savedTags = localStorage.getItem('speddy-session-tags');
+
+  if (!savedTags) {
+    console.log('[SchedulePage] No saved tags found, initializing empty');
+    return {};
+  }
+
+  try {
+    const parsedTags = JSON.parse(savedTags);
+    console.log('[SchedulePage] Initialized with tags from localStorage:', parsedTags);
+    return parsedTags;
+  } catch (error) {
+    console.error('[SchedulePage] Failed to parse saved tags:', error);
+    return {};
+  }
+};
+
+const getTeacherDisplayName = (teacher: any) =>
+  typeof teacher === 'string'
+    ? teacher
+    : `${teacher.first_name ?? ''} ${teacher.last_name ?? ''}`.trim();
+
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
   const supabase = createClient();
   const [teachers, setTeachers] = useState<any[]>([]);
-  
+
   // Session tags state (persisted to localStorage) - Initialize with localStorage data
-  const [sessionTags, setSessionTags] = useState<Record<string, string>>(() => {
-    console.log('[SchedulePage] Initializing sessionTags from localStorage...');
-    if (typeof window === 'undefined') {
-      return {};
-    }
-    
-    const savedTags = localStorage.getItem('speddy-session-tags');
-    if (savedTags) {
-      try {
-        const parsedTags = JSON.parse(savedTags);
-        console.log('[SchedulePage] Initialized with tags from localStorage:', parsedTags);
-        return parsedTags;
-      } catch (error) {
-        console.error('[SchedulePage] Failed to parse saved tags:', error);
-        return {};
-      }
-    } else {
-      console.log('[SchedulePage] No saved tags found, initializing empty');
-      return {};
-    }
-  });
-  
+  const [sessionTags, setSessionTags] = useState<Record<string, string>>(loadSessionTags);
+
   // Track if this is the first render to avoid saving on mount
   const isFirstRender = useRef(true);
-  
-  // Helper function to generate school-specific localStorage keys
-  const getSchoolSpecificKey = (key: string, schoolId?: string | null) => {
-    if (!schoolId) return key; // fallback for no school
-    return `${key}-${schoolId}`;
-  };
 
   // Visual filter state (persisted to localStorage with school-specific keys)
-  const [visualFilters, setVisualFilters] = useState(() => {
-    if (typeof window === 'undefined') {
-      return {
-        bellScheduleGrade: null as string | null,
-        specialActivityTeacher: null as string | null,
-      };
-    }
-    
-    const savedFilters = localStorage.getItem(
-      getSchoolSpecificKey('speddy-visual-filters', currentSchool?.school_id)
-    );
-    if (savedFilters) {
-      try {
-        return JSON.parse(savedFilters);
-      } catch {
-        return {
-          bellScheduleGrade: null as string | null,
-          specialActivityTeacher: null as string | null,
-        };
+  const [visualFilters, setVisualFilters] = useState<VisualFilters>(() =>
+    loadVisualFilters(currentSchool?.school_id)
+  );
+
+  const filterSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedSaveFilters = useCallback(
+    (filters: VisualFilters, schoolId?: string) => {
+      if (filterSaveTimeout.current) {
+        clearTimeout(filterSaveTimeout.current);
       }
-    }
-    
-    return {
-      bellScheduleGrade: null as string | null,
-      specialActivityTeacher: null as string | null,
-    };
-  });
-  
-  // Debounced save function to avoid excessive localStorage writes
-  const debouncedSaveFilters = useMemo(() => {
-    let timeoutId: NodeJS.Timeout | number;
-    return (filters: typeof visualFilters, schoolId?: string) => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
+
+      filterSaveTimeout.current = setTimeout(() => {
         if (typeof window !== 'undefined') {
           const key = getSchoolSpecificKey('speddy-visual-filters', schoolId);
           localStorage.setItem(key, JSON.stringify(filters));
         }
       }, 300); // 300ms debounce delay
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (filterSaveTimeout.current) {
+        clearTimeout(filterSaveTimeout.current);
+      }
     };
   }, []);
 
@@ -103,13 +127,10 @@ export default function SchedulePage() {
   useEffect(() => {
     if (currentSchool?.school_id && visualFilters.specialActivityTeacher) {
       // Check if the selected teacher exists in the current school's teacher list
-      const teacherExists = teachers.some(teacher => {
-        // Handle both string format and object format
-        const teacherName = typeof teacher === 'string' ? teacher : 
-          `${teacher.first_name} ${teacher.last_name}`.trim();
-        return teacherName === visualFilters.specialActivityTeacher;
-      });
-      
+      const teacherExists = teachers.some(
+        teacher => getTeacherDisplayName(teacher) === visualFilters.specialActivityTeacher
+      );
+
       if (!teacherExists) {
         console.log('[SchedulePage] Clearing teacher filter - teacher not found in current school:', visualFilters.specialActivityTeacher);
         setVisualFilters(prev => ({
@@ -382,6 +403,42 @@ export default function SchedulePage() {
     }
   }, [selectedDay, clearDay, setSelectedDay, setSelectedTimeSlot]);
 
+  const getFilteredSessions = useCallback(
+    (allSessions: any[]) => {
+      // Special handling for SEA users - always show their assigned sessions
+      if (providerRole === 'sea' && currentUserId) {
+        return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
+      }
+
+      // Special handling for specialist users - show their assigned sessions for 'mine' filter
+      if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
+        return allSessions.filter(s =>
+          s.assigned_to_specialist_id === currentUserId ||
+          (s.delivered_by === 'provider' && !s.assigned_to_sea_id && !s.assigned_to_specialist_id)
+        );
+      }
+
+      // Standard filtering based on delivered_by
+      switch (sessionFilter) {
+        case 'mine':
+          return allSessions.filter(s => s.delivered_by === 'provider');
+        case 'sea':
+          return allSessions.filter(s => s.delivered_by === 'sea');
+        case 'specialist':
+          return allSessions.filter(s => s.delivered_by === 'specialist');
+        default:
+          return allSessions;
+      }
+    },
+    [providerRole, currentUserId, sessionFilter]
+  );
+
+  // Count filtered sessions using the same logic as the grid
+  const filteredSessionsCount = useMemo(
+    () => getFilteredSessions(sessions).length,
+    [getFilteredSessions, sessions]
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -411,37 +468,6 @@ export default function SchedulePage() {
       </div>
     );
   }
-
-  // Unified session filtering function matching ScheduleGrid logic
-  const getFilteredSessions = (allSessions: any[]) => {
-    // Special handling for SEA users - always show their assigned sessions
-    if (providerRole === 'sea' && currentUserId) {
-      return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
-    }
-    
-    // Special handling for specialist users - show their assigned sessions for 'mine' filter
-    if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
-      return allSessions.filter(s => 
-        s.assigned_to_specialist_id === currentUserId ||
-        (s.delivered_by === 'provider' && !s.assigned_to_sea_id && !s.assigned_to_specialist_id)
-      );
-    }
-    
-    // Standard filtering based on delivered_by
-    switch (sessionFilter) {
-      case 'mine':
-        return allSessions.filter(s => s.delivered_by === 'provider');
-      case 'sea':
-        return allSessions.filter(s => s.delivered_by === 'sea');
-      case 'specialist':
-        return allSessions.filter(s => s.delivered_by === 'specialist');
-      default:
-        return allSessions;
-    }
-  };
-  
-  // Count filtered sessions using the same logic as the grid
-  const filteredSessionsCount = getFilteredSessions(sessions).length;
 
   return (
     <ScheduleErrorBoundary>
