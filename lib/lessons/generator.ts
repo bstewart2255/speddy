@@ -1,5 +1,5 @@
 // Main lesson generator that orchestrates the JSON-first generation
-import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial } from './schema';
+import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, WorksheetItem } from './schema';
 import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
@@ -8,6 +8,29 @@ import { getDurationMultiplier, getBaseMinimum, getBaseMaximum } from './duratio
 // Configuration constants
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
 const SAMPLE_STUDENTS_FOR_BASE = 3;
+
+// Type definitions for better type safety
+interface WorksheetSection {
+  title: string;
+  instructions: string;
+  items: WorksheetItem[];
+}
+
+interface Worksheet {
+  title: string;
+  grade?: number;
+  instructions: string;
+  sections: WorksheetSection[];
+  accommodations?: string[];
+}
+
+interface GenerationExplanation {
+  actual_content_generated?: {
+    practice_problems?: number;
+    whiteboard_examples?: number;
+    reasoning?: string;
+  };
+}
 
 /**
  * Safe metadata type for client exposure
@@ -105,7 +128,8 @@ export class LessonGenerator {
     // Log generation strategy decision
     const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
     if (debugEnabled) {
-      const maxGrade = Math.max(...request.students.map(s => s.grade));
+      const grades = request.students.map(s => s.grade);
+      const maxGrade = grades.length ? Math.max(...grades) : 0;
       const baseMin = getBaseMinimum(maxGrade);
       const baseMax = getBaseMaximum(maxGrade);
       const multiplier = getDurationMultiplier(request.duration || 30);
@@ -146,17 +170,21 @@ export class LessonGenerator {
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
 
         // Log what we actually got
-        const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
         if (debugEnabled) {
           // Check if it's new format (single worksheet) or old format (studentMaterials)
           let problemCount = 0;
 
-          if ((rawResponse as any).worksheet) {
+          const responseWithWorksheet = rawResponse as { worksheet?: Worksheet };
+          if (responseWithWorksheet.worksheet) {
             // New format - single worksheet
-            const worksheet = (rawResponse as any).worksheet;
-            const activitySection = worksheet?.sections?.find((s: any) => s.title === 'Activity');
+            const worksheet = responseWithWorksheet.worksheet;
+            const activitySection = worksheet?.sections?.find((s: WorksheetSection) =>
+              s?.title === 'Activity' ||
+              (s as any)?.sectionType === 'practice' ||
+              /activity/i.test((s as any)?.sectionTitle || '')
+            );
             if (activitySection?.items) {
-              activitySection.items.forEach((item: any) => {
+              activitySection.items.forEach((item: WorksheetItem) => {
                 if (item.type && item.type !== 'example' && item.type !== 'passage') {
                   problemCount += 1;
                 }
@@ -165,7 +193,11 @@ export class LessonGenerator {
           } else if (lesson.studentMaterials && lesson.studentMaterials.length > 0) {
             // Old format - check first student's worksheet
             const firstWorksheet = lesson.studentMaterials[0].worksheet;
-            const activitySection = firstWorksheet?.sections?.find((s: any) => s.title === 'Activity');
+            const activitySection = firstWorksheet?.sections?.find((s: any) =>
+              s?.title === 'Activity' ||
+              s?.sectionType === 'practice' ||
+              /activity/i.test(s?.sectionTitle || '')
+            );
             if (activitySection?.items) {
               activitySection.items.forEach((item: any) => {
                 if (item.type && item.type !== 'example' && item.type !== 'passage') {
@@ -183,8 +215,9 @@ export class LessonGenerator {
   - Errors: ${validation.errors.join('; ') || 'None'}`);
 
           // Check if generation_explanation exists
-          if ((lesson as any).generation_explanation) {
-            const genExpl = (lesson as any).generation_explanation;
+          const lessonWithExplanation = lesson as LessonResponse & { generation_explanation?: GenerationExplanation };
+          if (lessonWithExplanation.generation_explanation) {
+            const genExpl = lessonWithExplanation.generation_explanation;
             console.log(`[Generator] AI Self-Reported:
   - Problems generated: ${genExpl.actual_content_generated?.practice_problems || 'N/A'}
   - Whiteboard examples: ${genExpl.actual_content_generated?.whiteboard_examples || 'N/A'}
@@ -410,7 +443,7 @@ Return ONLY the worksheet content in this structure:
   /**
    * Converts the new single-worksheet format to the expected LessonResponse format
    */
-  private convertToLessonFormat(rawResponse: any, request: LessonRequest): LessonResponse {
+  private convertToLessonFormat(rawResponse: { worksheet?: Worksheet; studentMaterials?: StudentMaterial[]; lesson?: any; metadata?: LessonMetadata }, request: LessonRequest): LessonResponse {
     // Handle both new format (single worksheet) and legacy format (studentMaterials array)
     if (rawResponse.worksheet) {
       // New format: single worksheet for all students
@@ -430,12 +463,22 @@ Return ONLY the worksheet content in this structure:
           generatedAt: new Date().toISOString(),
           modelUsed: this.getProvider().getName(),
           generationTime: 0,
-          validationStatus: 'pending'
+          validationStatus: 'passed',
+          gradeGroups: []
         }
       };
     } else if (rawResponse.studentMaterials) {
-      // Legacy format - return as-is
-      return rawResponse;
+      // Legacy format - return as-is with metadata
+      return {
+        ...rawResponse,
+        metadata: rawResponse.metadata || {
+          generatedAt: new Date().toISOString(),
+          modelUsed: this.getProvider().getName(),
+          generationTime: 0,
+          validationStatus: 'passed',
+          gradeGroups: []
+        }
+      } as LessonResponse;
     } else {
       // Unexpected format - throw error
       throw new Error('Invalid response format: missing both worksheet and studentMaterials');
@@ -445,7 +488,7 @@ Return ONLY the worksheet content in this structure:
   /**
    * Creates a mock worksheet for a specific grade
    */
-  private createMockWorksheet(grade: number, subject: string): any {
+  private createMockWorksheet(grade: number, subject: string): Worksheet {
     return {
       title: `${subject} Practice - Grade ${grade}`,
       instructions: 'Complete all sections. Show your work.',
@@ -455,16 +498,14 @@ Return ONLY the worksheet content in this structure:
           instructions: 'Complete these problems to get started',
           items: [
             {
-              sectionType: 'warmup',
-              sectionTitle: 'Warm Up',
-              instructions: 'Complete these problems',
-              items: [
-                {
-                  type: 'problem',
-                  content: `Sample ${subject} problem for grade ${grade}`,
-                  space: 'medium'
-                }
-              ]
+              type: 'short-answer',
+              content: `Sample ${subject} warm-up problem for grade ${grade}`,
+              blankLines: 2
+            },
+            {
+              type: 'short-answer',
+              content: `Another ${subject} warm-up for grade ${grade}`,
+              blankLines: 2
             }
           ]
         },
@@ -473,16 +514,19 @@ Return ONLY the worksheet content in this structure:
           instructions: 'Work through the main activity',
           items: [
             {
-              sectionType: 'practice',
-              sectionTitle: 'Main Activity',
-              instructions: 'Complete these tasks',
-              items: [
-                {
-                  type: 'problem',
-                  content: `Main ${subject} activity for grade ${grade}`,
-                  space: 'large'
-                }
-              ]
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 1 for grade ${grade}`,
+              blankLines: 4
+            },
+            {
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 2 for grade ${grade}`,
+              blankLines: 4
+            },
+            {
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 3 for grade ${grade}`,
+              blankLines: 4
             }
           ]
         }

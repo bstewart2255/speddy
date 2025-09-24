@@ -57,18 +57,18 @@ function sanitizeAndLogDebug(context: string, content: string): void {
   console.debug(`[${context}] Response preview:`, truncated);
 }
 
-// Model token limits (input + output combined)
+// Model token limits (context window - input + output combined)
 const MODEL_MAX_TOKENS: Record<string, number> = {
-  'gpt-4o': 128000,
-  'gpt-4o-mini': 128000,
-  'gpt-4-turbo': 128000,
-  'gpt-4-turbo-preview': 128000,
-  'gpt-4': 8192,
-  'gpt-3.5-turbo': 16385,
-  'claude-3-5-sonnet-20241022': 200000,
-  'claude-3-opus-20240229': 200000,
-  'claude-3-sonnet-20240229': 200000,
-  'claude-3-haiku-20240307': 200000
+  'gpt-4o': 128000,  // Context window
+  'gpt-4o-mini': 128000,  // Context window
+  'gpt-4-turbo': 128000,  // Context window
+  'gpt-4-turbo-preview': 128000,  // Context window
+  'gpt-4': 8192,  // Legacy model
+  'gpt-3.5-turbo': 16384,  // Updated context window
+  'claude-3-5-sonnet-20241022': 200000,  // Context window
+  'claude-3-opus-20240229': 200000,  // Context window
+  'claude-3-sonnet-20240229': 200000,  // Context window
+  'claude-3-haiku-20240307': 200000  // Context window
 };
 
 // Default max tokens for response (can be overridden by env var)
@@ -110,7 +110,7 @@ export class OpenAIProvider implements AIProvider {
     // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
     this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
     
-    console.log(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
+    logger.debug(`OpenAI Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
@@ -126,7 +126,7 @@ export class OpenAIProvider implements AIProvider {
       const userPromptTokens = Math.ceil(userPrompt.length / 4);
       const estimatedPromptTokens = systemPromptTokens + userPromptTokens;
 
-      console.log(`[OpenAI] Prompt Size Estimate:
+      logger.debug(`[OpenAI] Prompt Size Estimate:
   - System prompt: ~${systemPromptTokens} tokens (${fullSystemPrompt.length} chars)
   - User prompt: ~${userPromptTokens} tokens (${userPrompt.length} chars)
   - Total prompt: ~${estimatedPromptTokens} tokens
@@ -134,7 +134,7 @@ export class OpenAIProvider implements AIProvider {
     }
 
     try {
-      console.log(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
+      logger.debug(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
 
       const completion = await this.client.chat.completions.create({
         model: this.model,
@@ -153,7 +153,7 @@ export class OpenAIProvider implements AIProvider {
         response_format: { type: 'json_object' } // Force JSON response
       });
 
-      console.log(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
+      logger.debug(`[OpenAI] API call completed successfully in ${Date.now() - startTime}ms`);
 
       // Log token usage details
       if (debugEnabled) {
@@ -162,7 +162,7 @@ export class OpenAIProvider implements AIProvider {
         const modelLimit = MODEL_MAX_TOKENS[this.model] || 128000;
         const tokenPercentage = (totalTokens / modelLimit) * 100;
 
-        console.log(`[OpenAI] Token Usage:
+        logger.debug(`[OpenAI] Token Usage:
   - Prompt tokens: ${usage?.prompt_tokens || 0}
   - Completion tokens: ${usage?.completion_tokens || 0}
   - Total tokens: ${totalTokens}
@@ -173,9 +173,9 @@ export class OpenAIProvider implements AIProvider {
         // Detect potential truncation
         const finishReason = completion.choices[0]?.finish_reason;
         if (finishReason === 'length') {
-          console.error('[OpenAI] WARNING: Response was truncated due to token limit!');
+          logger.error('[OpenAI] WARNING: Response was truncated due to token limit!');
         } else {
-          console.log(`[OpenAI] Finish reason: ${finishReason}`);
+          logger.debug(`[OpenAI] Finish reason: ${finishReason}`);
         }
       }
 
@@ -220,8 +220,8 @@ export class OpenAIProvider implements AIProvider {
       // Check for truncation indicators
       if (debugEnabled && content) {
         const lastChars = content.slice(-50);
-        console.log(`[OpenAI] Response ends with: "${lastChars}"`);
-        console.log(`[OpenAI] Response length: ${content.length} characters`);
+        logger.debug(`[OpenAI] Response ends with: "${lastChars}"`);
+        logger.debug(`[OpenAI] Response length: ${content.length} characters`);
 
         if (!content.endsWith('}')) {
           console.warn('[OpenAI] Response may be truncated - does not end with }');
@@ -230,7 +230,7 @@ export class OpenAIProvider implements AIProvider {
         // Try to detect if students are missing
         const studentMatches = content.match(/"studentId"/g);
         const studentCount = studentMatches ? studentMatches.length : 0;
-        console.log(`[OpenAI] Found ${studentCount} student entries in response`);
+        logger.debug(`[OpenAI] Found ${studentCount} student entries in response`);
       }
 
       let jsonResponse: any;
@@ -242,19 +242,19 @@ export class OpenAIProvider implements AIProvider {
         
         // Try to repair truncated JSON
         const contentLength = content.length;
-        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
+        logger.debug(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
         const repairedContent = this.attemptJsonRepair(content);
         
         if (repairedContent) {
           try {
             jsonResponse = JSON.parse(repairedContent);
-            console.log('Successfully repaired and parsed JSON');
+            logger.debug('Successfully repaired and parsed JSON');
           } catch (repairError) {
-            console.error(`Failed to parse OpenAI response after repair attempt (original length: ${contentLength})`);
+            logger.error(`Failed to parse OpenAI response after repair attempt (original length: ${contentLength})`);
             throw new Error('Non-JSON response from OpenAI - repair attempt failed');
           }
         } else {
-          console.error(`Failed to parse OpenAI response: Invalid JSON format (length: ${contentLength})`);
+          logger.error(`Failed to parse OpenAI response: Invalid JSON format (length: ${contentLength})`);
           throw new Error('Non-JSON response from OpenAI - unable to repair');
         }
       }
@@ -276,7 +276,7 @@ export class OpenAIProvider implements AIProvider {
 
       if (!isValidLessonResponse(jsonResponse)) {
         jsonResponse.metadata.validationStatus = 'failed';
-        console.error('OpenAI response structure:', JSON.stringify(jsonResponse.lesson, null, 2).slice(0, 500));
+        logger.error('OpenAI response structure:', JSON.stringify(jsonResponse.lesson, null, 2).slice(0, 500));
         throw new Error('Invalid lesson response structure from OpenAI');
       }
       
@@ -391,7 +391,7 @@ export class OpenAIProvider implements AIProvider {
 
         // Log repair details if debugging is enabled
         if (process.env.DEBUG_LESSON_GENERATION === 'true' || process.env.DEBUG_OPENAI === 'true') {
-          console.log(`[OpenAI] JSON Repair:
+          logger.debug(`[OpenAI] JSON Repair:
   - Original ended with: "${content.slice(-50)}"
   - Added ${Math.max(0, openBrackets - closeBrackets)} brackets
   - Added ${Math.max(0, openBraces - closeBraces)} braces
@@ -426,7 +426,7 @@ export class AnthropicProvider implements AIProvider {
     // Use the minimum of: env setting, default, or 50% of model limit (to leave room for prompt)
     this.maxTokens = Math.min(envMaxTokens, DEFAULT_MAX_RESPONSE_TOKENS, Math.floor(modelLimit * 0.5));
     
-    console.log(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
+    logger.debug(`Anthropic Provider initialized: model=${model}, maxTokens=${this.maxTokens}`);
   }
 
   async generateLesson(request: LessonRequest, systemPrompt: string, userPrompt: string): Promise<LessonResponse> {
@@ -442,7 +442,7 @@ export class AnthropicProvider implements AIProvider {
       const userPromptTokens = Math.ceil(userPrompt.length / 4);
       const estimatedPromptTokens = systemPromptTokens + userPromptTokens;
 
-      console.log(`[Anthropic] Prompt Size Estimate:
+      logger.debug(`[Anthropic] Prompt Size Estimate:
   - System prompt: ~${systemPromptTokens} tokens (${fullSystemPrompt.length} chars)
   - User prompt: ~${userPromptTokens} tokens (${userPrompt.length} chars)
   - Total prompt: ~${estimatedPromptTokens} tokens
@@ -470,7 +470,7 @@ export class AnthropicProvider implements AIProvider {
         const modelLimit = MODEL_MAX_TOKENS[this.model] || 200000;
         const tokenPercentage = (totalTokens / modelLimit) * 100;
 
-        console.log(`[Anthropic] Token Usage:
+        logger.debug(`[Anthropic] Token Usage:
   - Input tokens: ${usage?.input_tokens || 0}
   - Output tokens: ${usage?.output_tokens || 0}
   - Total tokens: ${totalTokens}
@@ -478,8 +478,14 @@ export class AnthropicProvider implements AIProvider {
   - Usage: ${tokenPercentage.toFixed(1)}%
   - Max response tokens configured: ${this.maxTokens}`);
 
-        // Anthropic doesn't provide finish_reason in the same way
-        console.log(`[Anthropic] Response completed in ${Date.now() - startTime}ms`);
+        // Log stop reason for truncation detection
+        const stopReason = (message as any).stop_reason || 'unknown';
+        logger.debug(`[Anthropic] Response completed in ${Date.now() - startTime}ms; stop_reason=${stopReason}`);
+
+        // Detect potential truncation
+        if (stopReason === 'max_tokens') {
+          logger.error('[Anthropic] WARNING: Response was truncated due to token limit!');
+        }
       }
 
       // Capture metadata for logging (with environment flag gating)
@@ -539,8 +545,8 @@ export class AnthropicProvider implements AIProvider {
       // Check for truncation indicators
       if (debugEnabled && cleanedResponse) {
         const lastChars = cleanedResponse.slice(-50);
-        console.log(`[Anthropic] Response ends with: "${lastChars}"`);
-        console.log(`[Anthropic] Response length: ${cleanedResponse.length} characters`);
+        logger.debug(`[Anthropic] Response ends with: "${lastChars}"`);
+        logger.debug(`[Anthropic] Response length: ${cleanedResponse.length} characters`);
 
         if (!cleanedResponse.endsWith('}')) {
           console.warn('[Anthropic] Response may be truncated - does not end with }');
@@ -549,7 +555,7 @@ export class AnthropicProvider implements AIProvider {
         // Try to detect if students are missing
         const studentMatches = cleanedResponse.match(/"studentId"/g);
         const studentCount = studentMatches ? studentMatches.length : 0;
-        console.log(`[Anthropic] Found ${studentCount} student entries in response`);
+        logger.debug(`[Anthropic] Found ${studentCount} student entries in response`);
       }
 
       let jsonResponse: any;
@@ -561,19 +567,19 @@ export class AnthropicProvider implements AIProvider {
         
         // Try to repair truncated JSON
         const contentLength = cleanedResponse.length;
-        console.log(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
+        logger.debug(`Attempting to repair potentially truncated JSON (length: ${contentLength})...`);
         const repairedContent = this.attemptJsonRepair(cleanedResponse);
         
         if (repairedContent) {
           try {
             jsonResponse = JSON.parse(repairedContent);
-            console.log('Successfully repaired and parsed JSON');
+            logger.debug('Successfully repaired and parsed JSON');
           } catch (repairError) {
-            console.error(`Failed to parse Anthropic response after repair attempt (original length: ${contentLength})`);
+            logger.error(`Failed to parse Anthropic response after repair attempt (original length: ${contentLength})`);
             throw new Error('Non-JSON response from Anthropic - repair attempt failed');
           }
         } else {
-          console.error(`Failed to parse Anthropic response: Invalid JSON format (length: ${contentLength})`);
+          logger.error(`Failed to parse Anthropic response: Invalid JSON format (length: ${contentLength})`);
           throw new Error('Non-JSON response from Anthropic - unable to repair');
         }
       }
@@ -614,7 +620,7 @@ export class AnthropicProvider implements AIProvider {
 
       return jsonResponse;
     } catch (error) {
-      console.error('Anthropic generation error:', error);
+      logger.error('Anthropic generation error:', error);
       const msg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to generate lesson with Anthropic: ${msg}`);
     }

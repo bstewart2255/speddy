@@ -143,7 +143,7 @@ export interface StudentMaterial {
       items: WorksheetContent[] | WorksheetItem[]; // Support both nested and flat
     }>;
     content?: WorksheetContent[]; // Legacy support
-    accommodations: string[]; // Applied accommodations
+    accommodations?: string[]; // Applied accommodations (optional)
   };
   
   accommodations?: string[];
