@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Teacher } from '../types/teacher';
 
 interface SchoolInfo {
   school_id?: string | null;
 }
 
-export const useTeachers = (supabase: any, currentSchool: SchoolInfo | null | undefined) => {
-  const [teachers, setTeachers] = useState<any[]>([]);
+export const useTeachers = (supabase: SupabaseClient, currentSchool: SchoolInfo | null | undefined) => {
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -22,11 +24,10 @@ export const useTeachers = (supabase: any, currentSchool: SchoolInfo | null | un
 
       const { data: allTeachers, error: checkError } = await supabase
         .from('teachers')
-        .select('*')
+        .select('school_id')
         .eq('provider_id', user.user.id);
 
       if (checkError) {
-        console.error('[SchedulePage] Error checking teachers:', checkError);
         if (isMounted) {
           setTeachers([]);
         }
@@ -40,16 +41,11 @@ export const useTeachers = (supabase: any, currentSchool: SchoolInfo | null | un
 
       if (schoolId && allTeachers?.some(t => t.school_id)) {
         query = query.eq('school_id', schoolId);
-      } else if (schoolId) {
-        console.warn(
-          '[SchedulePage] Current school has school_id but teachers do not have school_id values set'
-        );
       }
 
       const { data, error } = await query.order('last_name');
 
       if (error) {
-        console.error('[SchedulePage] Error fetching teachers:', error);
         if (isMounted) {
           setTeachers([]);
         }

@@ -22,7 +22,7 @@ const loadSessionTags = (): Record<string, string> => {
 
     for (const key of Object.keys(parsed)) {
       const value = parsed[key];
-      if (value !== undefined && typeof value !== 'function') {
+      if (value !== undefined) {
         result[key] = String(value);
       }
     }
