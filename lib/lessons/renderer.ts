@@ -176,7 +176,7 @@ export class WorksheetRenderer {
 <body>
   <h1>${this.escapeHtml(plan.title)}</h1>
   
-  ${this.renderTeacherLessonPlan(plan)}
+  ${this.renderTeacherLessonPlan(plan, lesson)}
   
   ${!plan.teacherLessonPlan ? `
   <div class="section">
@@ -696,9 +696,9 @@ export class WorksheetRenderer {
 </html>`;
   }
 
-  private renderTeacherLessonPlan(plan: any): string {
+  private renderTeacherLessonPlan(plan: any, fullLesson?: LessonResponse): string {
     if (!plan.teacherLessonPlan) return '';
-    
+
     const tlp = plan.teacherLessonPlan;
     
     return `
@@ -752,34 +752,101 @@ export class WorksheetRenderer {
       
       <div style="margin: 20px 0;">
         <h3>📝 Student Worksheet Problems</h3>
-        ${tlp.studentProblems?.map((studentSet: any) => `
-          <div class="student-problems">
-            <h4>Student: ${this.escapeHtml(studentSet.studentInitials || '')}</h4>
-            <ol>
-              ${studentSet.problems?.map((problem: any) => `
-                <li>
-                  <strong>Problem ${this.escapeHtml(problem.number || '')}:</strong> 
-                  ${this.escapeHtml(problem.question || '')}
-                  ${problem.choices ? `
-                    <ul style="list-style-type: upper-alpha;">
-                      ${problem.choices.map((choice: string) => 
-                        `<li>${this.escapeHtml(choice)}</li>`
-                      ).join('')}
-                    </ul>
-                  ` : ''}
-                  <span class="problem-answer">Answer: ${this.escapeHtml(problem.answer || '')}</span>
-                  ${problem.commonErrors?.length ? `
-                    <div style="margin-top: 5px; color: #dc3545;">
-                      ⚠️ Common errors: ${problem.commonErrors.map((err: string) => 
-                        this.escapeHtml(err)
-                      ).join(', ')}
+        ${(() => {
+          // If we have the full lesson with studentMaterials, show all problems
+          if (fullLesson && fullLesson.studentMaterials && fullLesson.studentMaterials.length > 0) {
+            return fullLesson.studentMaterials.map((material: any) => {
+              // Find the index of current material to match with studentInitials array
+              const materialIndex = fullLesson.studentMaterials.findIndex(mat => mat === material);
+              const studentInitials = materialIndex >= 0 && materialIndex < (tlp.studentInitials?.length || 0)
+                ? tlp.studentInitials[materialIndex]
+                : 'Student';
+
+              return `
+                <div class="student-problems">
+                  <h4>Student: ${this.escapeHtml(studentInitials)}</h4>
+                  ${material.worksheet?.sections?.map((section: any) => `
+                    <div style="margin: 15px 0;">
+                      <h5 style="color: #007bff;">${this.escapeHtml(section.title || 'Section')}</h5>
+                      ${section.instructions ? `<p style="font-style: italic; color: #666;">${this.escapeHtml(section.instructions)}</p>` : ''}
+                      <ol>
+                        ${section.items?.map((item: any, index: number) => {
+                          // Skip examples and text-only items in the problem list
+                          if (item.type === 'example' || item.type === 'text' || item.type === 'passage') {
+                            const typeLabel = item.type === 'example' ? 'Example' :
+                                            item.type === 'passage' ? 'Reading Passage' : 'Instructions';
+                            return `<div class="materials">
+                              <strong>${typeLabel}:</strong> ${this.escapeHtml(item.content)}
+                            </div>`;
+                          }
+
+                          return `
+                            <li style="margin: 10px 0;">
+                              <strong>${this.escapeHtml(item.content)}</strong>
+                              ${item.type === 'multiple-choice' && item.choices ? `
+                                <ul style="list-style-type: upper-alpha; margin-top: 5px;">
+                                  ${item.choices.map((choice: string) =>
+                                    `<li>${this.escapeHtml(String(choice).replace(/^\s*[A-H]\s*[.):]\s*/i, ''))}</li>`
+                                  ).join('')}
+                                </ul>
+                              ` : ''}
+                              <div style="color: #28a745; margin-top: 5px;">
+                                <em>Type: ${this.escapeHtml(item.type || 'unknown')}</em>
+                                ${item.blankLines ? ` | Lines: ${item.blankLines}` : ''}
+                              </div>
+                              ${item.answer ? `
+                                <div style="color: #28a745; margin-top: 5px;">
+                                  <strong>Answer:</strong> ${this.escapeHtml(item.answer)}
+                                </div>
+                              ` : ''}
+                              ${item.commonErrors && item.commonErrors.length ? `
+                                <div style="margin-top: 5px; color: #dc3545;">
+                                  ⚠️ Common errors: ${item.commonErrors.map((err: string) =>
+                                    this.escapeHtml(err)
+                                  ).join(', ')}
+                                </div>
+                              ` : ''}
+                            </li>
+                          `;
+                        }).join('') || ''}
+                      </ol>
                     </div>
-                  ` : ''}
-                </li>
-              `).join('') || ''}
-            </ol>
-          </div>
-        `).join('') || ''}
+                  `).join('') || ''}
+                </div>
+              `;
+            }).join('') || '';
+          }
+
+          // Fallback to original sample problems if no full lesson data
+          return tlp.studentProblems?.map((studentSet: any) => `
+            <div class="student-problems">
+              <h4>Student: ${this.escapeHtml(studentSet.studentInitials || '')}</h4>
+              <ol>
+                ${studentSet.problems?.map((problem: any) => `
+                  <li>
+                    <strong>Problem ${this.escapeHtml(problem.number || '')}:</strong>
+                    ${this.escapeHtml(problem.question || '')}
+                    ${problem.choices ? `
+                      <ul style="list-style-type: upper-alpha;">
+                        ${problem.choices.map((choice: string) =>
+                          `<li>${this.escapeHtml(choice)}</li>`
+                        ).join('')}
+                      </ul>
+                    ` : ''}
+                    <span class="problem-answer">Answer: ${this.escapeHtml(problem.answer || '')}</span>
+                    ${problem.commonErrors?.length ? `
+                      <div style="margin-top: 5px; color: #dc3545;">
+                        ⚠️ Common errors: ${problem.commonErrors.map((err: string) =>
+                          this.escapeHtml(err)
+                        ).join(', ')}
+                      </div>
+                    ` : ''}
+                  </li>
+                `).join('') || ''}
+              </ol>
+            </div>
+          `).join('') || '';
+        })()}
       </div>
       
       ${tlp.teachingNotes ? `
