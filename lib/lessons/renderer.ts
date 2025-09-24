@@ -756,10 +756,11 @@ export class WorksheetRenderer {
           // If we have the full lesson with studentMaterials, show all problems
           if (fullLesson && fullLesson.studentMaterials && fullLesson.studentMaterials.length > 0) {
             return fullLesson.studentMaterials.map((material: any) => {
-              const studentInitials = material.studentId ?
-                (tlp.studentInitials?.find((init: string, idx: number) =>
-                  fullLesson.studentMaterials[idx]?.studentId === material.studentId
-                ) || 'Student') : 'Student';
+              // Find the index of current material to match with studentInitials array
+              const materialIndex = fullLesson.studentMaterials.findIndex(mat => mat === material);
+              const studentInitials = materialIndex >= 0 && materialIndex < (tlp.studentInitials?.length || 0)
+                ? tlp.studentInitials[materialIndex]
+                : 'Student';
 
               return `
                 <div class="student-problems">
@@ -772,8 +773,10 @@ export class WorksheetRenderer {
                         ${section.items?.map((item: any, index: number) => {
                           // Skip examples and text-only items in the problem list
                           if (item.type === 'example' || item.type === 'text' || item.type === 'passage') {
-                            return `<div style="margin: 10px 0; padding: 8px; background: #f8f9fa; border-left: 3px solid #6c757d;">
-                              <strong>Example/Instructions:</strong> ${this.escapeHtml(item.content)}
+                            const typeLabel = item.type === 'example' ? 'Example' :
+                                            item.type === 'passage' ? 'Reading Passage' : 'Instructions';
+                            return `<div class="materials">
+                              <strong>${typeLabel}:</strong> ${this.escapeHtml(item.content)}
                             </div>`;
                           }
 
@@ -783,7 +786,7 @@ export class WorksheetRenderer {
                               ${item.type === 'multiple-choice' && item.choices ? `
                                 <ul style="list-style-type: upper-alpha; margin-top: 5px;">
                                   ${item.choices.map((choice: string) =>
-                                    `<li>${this.escapeHtml(String(choice).replace(/^\s*[A-H]\s*[\\.\\)\\:]\s*/i, ''))}</li>`
+                                    `<li>${this.escapeHtml(String(choice).replace(/^\s*[A-H]\s*[.):]\s*/i, ''))}</li>`
                                   ).join('')}
                                 </ul>
                               ` : ''}
@@ -791,6 +794,18 @@ export class WorksheetRenderer {
                                 <em>Type: ${this.escapeHtml(item.type || 'unknown')}</em>
                                 ${item.blankLines ? ` | Lines: ${item.blankLines}` : ''}
                               </div>
+                              ${item.answer ? `
+                                <div style="color: #28a745; margin-top: 5px;">
+                                  <strong>Answer:</strong> ${this.escapeHtml(item.answer)}
+                                </div>
+                              ` : ''}
+                              ${item.commonErrors && item.commonErrors.length ? `
+                                <div style="margin-top: 5px; color: #dc3545;">
+                                  ⚠️ Common errors: ${item.commonErrors.map((err: string) =>
+                                    this.escapeHtml(err)
+                                  ).join(', ')}
+                                </div>
+                              ` : ''}
                             </li>
                           `;
                         }).join('') || ''}
