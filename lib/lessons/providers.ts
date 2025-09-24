@@ -60,6 +60,8 @@ function sanitizeAndLogDebug(context: string, content: string): void {
 // Model token limits (context window - input + output combined)
 const MODEL_MAX_TOKENS: Record<string, number> = {
   'gpt-5': 200000,  // Context window for GPT-5
+  'gpt-5-mini': 200000,  // Context window for GPT-5-mini
+  'gpt-5-nano': 200000,  // Context window for GPT-5-nano
   'gpt-4o': 128000,  // Context window
   'gpt-4o-mini': 128000,  // Context window
   'gpt-4-turbo': 128000,  // Context window
@@ -96,10 +98,12 @@ export class OpenAIProvider implements AIProvider {
   private maxTokens: number;
   private lastGenerationMetadata: GenerationMetadata | null = null;
 
-  constructor(apiKey: string, model: string = 'gpt-5') {
-    this.client = new OpenAI({ 
+  constructor(apiKey: string, model: string = 'gpt-5-mini') {
+    // Increase timeout for GPT-5 models as they may take longer
+    const timeout = model.startsWith('gpt-5') ? 300000 : 60000; // 5 min for GPT-5, 1 min for others
+    this.client = new OpenAI({
       apiKey,
-      timeout: 60000, // 60 second timeout
+      timeout,
       maxRetries: 2
     });
     this.model = model;
@@ -137,8 +141,9 @@ export class OpenAIProvider implements AIProvider {
     try {
       logger.debug(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
 
-      // Use correct parameter based on model version
-      const tokenParam = this.model === 'gpt-5'
+      // Use correct parameters based on model version
+      const isGPT5 = this.model.startsWith('gpt-5');
+      const tokenParam = isGPT5
         ? { max_completion_tokens: this.maxTokens }
         : { max_tokens: this.maxTokens };
 
@@ -154,7 +159,7 @@ export class OpenAIProvider implements AIProvider {
             content: userPrompt
           }
         ],
-        temperature: 0.7,
+        ...(isGPT5 ? {} : { temperature: 0.7 }), // GPT-5 only supports default temperature
         ...tokenParam,
         response_format: { type: 'json_object' } // Force JSON response
       });
@@ -700,8 +705,8 @@ export function createAIProvider(): AIProvider {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY is required for OpenAI provider');
       }
-      // Use gpt-5 for better performance with large responses, fallback to gpt-5
-      const openaiModel = process.env.OPENAI_MODEL || 'gpt-5';
+      // Use gpt-5-mini for better performance with large responses
+      const openaiModel = process.env.OPENAI_MODEL || 'gpt-5-mini';
       return new OpenAIProvider(process.env.OPENAI_API_KEY, openaiModel);
     }
   }
