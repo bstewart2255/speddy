@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useScheduleState } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
-import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-error-boundary';
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
@@ -13,232 +12,19 @@ import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '../../../../lib/supabase/client';
-
-type VisualFilters = {
-  bellScheduleGrade: string | null;
-  specialActivityTeacher: string | null;
-};
-
-const DEFAULT_VISUAL_FILTERS: VisualFilters = {
-  bellScheduleGrade: null,
-  specialActivityTeacher: null,
-};
-
-const getSchoolSpecificKey = (key: string, schoolId?: string | null) =>
-  schoolId ? `${key}-${schoolId}` : key;
-
-const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
-  if (typeof window === 'undefined') {
-    return { ...DEFAULT_VISUAL_FILTERS };
-  }
-
-  const savedFilters = localStorage.getItem(
-    getSchoolSpecificKey('speddy-visual-filters', schoolId)
-  );
-
-  if (!savedFilters) {
-    return { ...DEFAULT_VISUAL_FILTERS };
-  }
-
-  try {
-    return JSON.parse(savedFilters) as VisualFilters;
-  } catch {
-    return { ...DEFAULT_VISUAL_FILTERS };
-  }
-};
-
-const loadSessionTags = (): Record<string, string> => {
-  if (typeof window === 'undefined') {
-    return {};
-  }
-
-  const savedTags = localStorage.getItem('speddy-session-tags');
-
-  if (!savedTags) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(savedTags);
-
-    // Verify parsed value is a non-null object (not an array)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {};
-    }
-
-    // Build a clean Record<string, string> from the parsed data
-    const result: Record<string, string> = {};
-
-    for (const key of Object.keys(parsed)) {
-      const value = parsed[key];
-      // Skip keys with undefined or function values
-      if (value !== undefined && typeof value !== 'function') {
-        result[key] = String(value);
-      }
-    }
-
-    return result;
-  } catch {
-    return {};
-  }
-};
-
-const getTeacherDisplayName = (teacher: any) =>
-  typeof teacher === 'string'
-    ? teacher
-    : `${teacher.first_name ?? ''} ${teacher.last_name ?? ''}`.trim();
+import { useSessionTags } from './hooks/useSessionTags';
+import { useVisualFilters } from './hooks/useVisualFilters';
+import { useTeachers } from './hooks/useTeachers';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
   const supabase = createClient();
-  const [teachers, setTeachers] = useState<any[]>([]);
-
-  // Session tags state (persisted to localStorage) - Initialize with localStorage data
-  const [sessionTags, setSessionTags] = useState<Record<string, string>>(loadSessionTags);
-
-  // Track if this is the first render to avoid saving on mount
-  const isFirstRender = useRef(true);
-
-  // Visual filter state (persisted to localStorage with school-specific keys)
-  const [visualFilters, setVisualFilters] = useState<VisualFilters>(() =>
-    loadVisualFilters(currentSchool?.school_id)
+  const teachers = useTeachers(supabase, currentSchool);
+  const { visualFilters, setVisualFilters } = useVisualFilters(
+    currentSchool?.school_id,
+    teachers
   );
-
-  const filterSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const debouncedSaveFilters = useCallback(
-    (filters: VisualFilters, schoolId?: string) => {
-      if (filterSaveTimeout.current) {
-        clearTimeout(filterSaveTimeout.current);
-      }
-
-      filterSaveTimeout.current = setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          const key = getSchoolSpecificKey('speddy-visual-filters', schoolId);
-          localStorage.setItem(key, JSON.stringify(filters));
-        }
-      }, 300); // 300ms debounce delay
-    },
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      if (filterSaveTimeout.current) {
-        clearTimeout(filterSaveTimeout.current);
-      }
-    };
-  }, []);
-
-  // Save visual filters to localStorage with school-specific key (debounced)
-  useEffect(() => {
-    debouncedSaveFilters(visualFilters, currentSchool?.school_id || undefined);
-  }, [visualFilters, currentSchool?.school_id, debouncedSaveFilters]);
-
-  // Clear visual filters when switching schools if teacher is not valid
-  useEffect(() => {
-    if (currentSchool?.school_id && visualFilters.specialActivityTeacher) {
-      // Check if the selected teacher exists in the current school's teacher list
-      const teacherExists = teachers.some(
-        teacher => getTeacherDisplayName(teacher) === visualFilters.specialActivityTeacher
-      );
-
-      if (!teacherExists) {
-        console.log('[SchedulePage] Clearing teacher filter - teacher not found in current school:', visualFilters.specialActivityTeacher);
-        setVisualFilters(prev => ({
-          ...prev,
-          specialActivityTeacher: null,
-        }));
-      }
-    }
-  }, [currentSchool?.school_id, teachers, visualFilters.specialActivityTeacher]);
-  
-  // Fetch teachers from the teachers table filtered by current school
-  useEffect(() => {
-    async function fetchTeachers() {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user?.user) return;
-      
-      console.log('[SchedulePage] Current school for teacher fetch:', {
-        display_name: currentSchool?.display_name,
-        school_id: currentSchool?.school_id,
-        school_site: currentSchool?.school_site,
-        school_district: currentSchool?.school_district
-      });
-      
-      // First, fetch all teachers for this provider to check their school_id values
-      const { data: allTeachers, error: checkError } = await supabase
-        .from('teachers')
-        .select('*')
-        .eq('provider_id', user.user.id);
-      
-      if (checkError) {
-        console.error('[SchedulePage] Error checking teachers:', checkError);
-        return;
-      }
-      
-      console.log('[SchedulePage] All teachers before filtering:');
-      allTeachers?.forEach(t => {
-        console.log(`  - ${t.first_name} ${t.last_name}: school_id = "${t.school_id}"`);
-      });
-      
-      // Build query with provider filter
-      let query = supabase
-        .from('teachers')
-        .select('*')
-        .eq('provider_id', user.user.id);
-      
-      // Add school filter if current school has a school_id
-      // Only filter if teachers actually have school_id values set
-      if (currentSchool?.school_id && allTeachers?.some(t => t.school_id)) {
-        console.log('[SchedulePage] Applying filter - school_id:', currentSchool.school_id);
-        console.log('[SchedulePage] Teachers with this school_id:', allTeachers.filter(t => t.school_id === currentSchool.school_id).length);
-        console.log('[SchedulePage] Teachers with different school_id:', allTeachers.filter(t => t.school_id !== currentSchool.school_id).map(t => ({
-          name: `${t.first_name} ${t.last_name}`,
-          school_id: t.school_id
-        })));
-        query = query.eq('school_id', currentSchool.school_id);
-      } else if (currentSchool?.school_id) {
-        // If current school has school_id but teachers don't have school_id set,
-        // we can't filter properly - log a warning
-        console.warn('[SchedulePage] Current school has school_id but teachers do not have school_id values set');
-      }
-      
-      // Execute query with ordering
-      console.log('[SchedulePage] Executing query with school_id filter:', currentSchool?.school_id || 'none');
-      const { data, error } = await query.order('last_name');
-      
-      if (data && !error) {
-        console.log('[SchedulePage] Fetched teachers after filtering:', data.length, 'for school:', currentSchool?.display_name);
-        console.log('[SchedulePage] Filtered teachers with school_ids:');
-        data.forEach(t => {
-          console.log(`  - ${t.first_name} ${t.last_name}: school_id = "${t.school_id}"`);
-        });
-        setTeachers(data);
-      } else {
-        console.error('[SchedulePage] Error fetching teachers:', error);
-      }
-    }
-    
-    fetchTeachers();
-  }, [supabase, currentSchool]);
-  
-  // Save tags to localStorage whenever they change (but not on first render)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      console.log('[SchedulePage] First render, skipping localStorage save');
-      return;
-    }
-    
-    console.log('[SchedulePage] sessionTags state changed:', sessionTags);
-    console.log('[SchedulePage] Saving to localStorage:', JSON.stringify(sessionTags));
-    localStorage.setItem('speddy-session-tags', JSON.stringify(sessionTags));
-    
-    // Verify what was actually saved
-    const verifyStored = localStorage.getItem('speddy-session-tags');
-    console.log('[SchedulePage] Verified localStorage content:', verifyStored);
-  }, [sessionTags]);
+  const { sessionTags, setSessionTags } = useSessionTags();
   
   // Data management hook
   const {
