@@ -59,6 +59,7 @@ function sanitizeAndLogDebug(context: string, content: string): void {
 
 // Model token limits (context window - input + output combined)
 const MODEL_MAX_TOKENS: Record<string, number> = {
+  'gpt-5': 200000,  // Context window for GPT-5
   'gpt-4o': 128000,  // Context window
   'gpt-4o-mini': 128000,  // Context window
   'gpt-4-turbo': 128000,  // Context window
@@ -95,7 +96,7 @@ export class OpenAIProvider implements AIProvider {
   private maxTokens: number;
   private lastGenerationMetadata: GenerationMetadata | null = null;
 
-  constructor(apiKey: string, model: string = 'gpt-4o-mini') {
+  constructor(apiKey: string, model: string = 'gpt-5') {
     this.client = new OpenAI({ 
       apiKey,
       timeout: 60000, // 60 second timeout
@@ -694,8 +695,8 @@ export function createAIProvider(): AIProvider {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY is required for OpenAI provider');
       }
-      // Use gpt-4o for better performance with large responses, fallback to gpt-4o-mini
-      const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o';
+      // Use gpt-5 for better performance with large responses, fallback to gpt-5
+      const openaiModel = process.env.OPENAI_MODEL || 'gpt-5';
       return new OpenAIProvider(process.env.OPENAI_API_KEY, openaiModel);
     }
   }
