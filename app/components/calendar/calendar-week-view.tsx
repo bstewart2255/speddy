@@ -7,7 +7,6 @@ import type { Database } from "../../../src/types/database";
 import { AIContentModal } from "../ai-content-modal";
 import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
-import { LessonTypeModal } from "../modals/lesson-type-modal";
 import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
 import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
 import { useToast } from "../../contexts/toast-context";
@@ -112,7 +111,6 @@ export function CalendarWeekView({
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
   
   // State for manual lesson creation
-  const [showLessonTypeModal, setShowLessonTypeModal] = useState(false);
   const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
   const [showManualLessonForm, setShowManualLessonForm] = useState(false);
   const [manualLessons, setManualLessons] = useState<Map<string, ManualLesson[]>>(new Map());
@@ -918,7 +916,7 @@ export function CalendarWeekView({
   const handleCreateDailyLesson = (date: Date, daySessions: ScheduleSession[]) => {
     setSelectedLessonDate(date);
     setSelectedDaySessions(daySessions);
-    setShowLessonTypeModal(true);
+    setShowManualLessonForm(true);
   };
 
   // Handle viewing all AI lessons for a day
@@ -1086,32 +1084,12 @@ export function CalendarWeekView({
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
   };
 
-  // Handler for Create Lesson button
+  // Handler for Create Lesson button - goes directly to manual lesson form
   const handleCreateLesson = (date: Date) => {
     setSelectedLessonDate(date);
-    setShowLessonTypeModal(true);
+    setShowManualLessonForm(true);
   };
 
-  const handleLessonTypeSelect = async (type: 'ai' | 'manual') => {
-    setShowLessonTypeModal(false);
-    
-    if (type === 'ai' && selectedLessonDate) {
-      // Use the sessions that were set when Create Lesson button was clicked
-      const daySessions = selectedDaySessions;
-      
-      if (!daySessions || daySessions.length === 0) {
-        showToast('No sessions scheduled for this day', 'warning');
-        return;
-      }
-
-      // Show subject type popup instead of generating immediately
-      setPendingLessonData({ date: selectedLessonDate, daySessions });
-      setSubjectTypePopupOpen(true);
-      return;
-    } else if (type === 'manual') {
-      setShowManualLessonForm(true);
-    }
-  };
 
   // Function to handle AI lesson generation with subject type
   const generateAILessons = async (date: Date, daySessions: ScheduleSession[], subjectType: 'ela' | 'math') => {
@@ -1788,16 +1766,6 @@ export function CalendarWeekView({
         isViewingSaved={viewingSavedLesson}
       />
 
-      {/* Lesson Type Modal */}
-      <LessonTypeModal
-        isOpen={showLessonTypeModal}
-        onClose={() => {
-          setShowLessonTypeModal(false);
-          setSelectedLessonDate(null);
-        }}
-        onSelectAI={() => handleLessonTypeSelect('ai')}
-        onSelectManual={() => handleLessonTypeSelect('manual')}
-      />
 
       {/* Subject Type Selection Popup */}
       {subjectTypePopupOpen && (
