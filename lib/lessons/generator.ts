@@ -453,6 +453,7 @@ Return ONLY the worksheet content in this structure:
       const studentMaterials: StudentMaterial[] = request.students.map(student => ({
         studentId: student.id,
         gradeGroup: 0, // Single group for all in new approach
+        gradeLevel: student.grade, // Add student's actual grade level
         worksheet: worksheet
       }));
 
@@ -578,6 +579,7 @@ Return ONLY the worksheet content in this structure:
       studentMaterials: request.students.map(student => ({
         studentId: student.id,
         gradeGroup: 0, // Single group for all
+        gradeLevel: student.grade, // Add student's actual grade level
         worksheet: mockWorksheet
       })),
       metadata: {
