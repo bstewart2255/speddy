@@ -143,7 +143,7 @@ export interface StudentMaterial {
       items: WorksheetContent[] | WorksheetItem[]; // Support both nested and flat
     }>;
     content?: WorksheetContent[]; // Legacy support
-    accommodations: string[]; // Applied accommodations
+    accommodations?: string[]; // Applied accommodations (optional)
   };
   
   accommodations?: string[];
@@ -302,9 +302,19 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     return false;
   }
   
-  // Check top-level required fields
-  if (!('lesson' in data) || !('studentMaterials' in data) || !('metadata' in data)) {
-    console.error('Lesson validation failed: Missing required top-level fields');
+  // Check top-level required fields - accept either new format (worksheet) or old format (studentMaterials)
+  if (!('lesson' in data)) {
+    console.error('Lesson validation failed: Missing required "lesson" field');
+    return false;
+  }
+
+  if (!('worksheet' in data) && !('studentMaterials' in data)) {
+    console.error('Lesson validation failed: Missing both "worksheet" and "studentMaterials" fields');
+    return false;
+  }
+
+  if (!('metadata' in data)) {
+    console.error('Lesson validation failed: Missing required "metadata" field');
     return false;
   }
   
@@ -419,20 +429,34 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     }
   }
   
-  // Validate studentMaterials array
-  if (!Array.isArray(data.studentMaterials)) {
-    console.error('Lesson validation failed: studentMaterials must be an array');
+  // Validate worksheet or studentMaterials
+  if (data.worksheet) {
+    // New format: single worksheet
+    if (!data.worksheet || typeof data.worksheet !== 'object') {
+      console.error('Lesson validation failed: worksheet must be an object');
+      return false;
+    }
+    // Skip detailed worksheet validation for now, as it will be validated when converted
+  } else if (data.studentMaterials) {
+    // Old format: array of student materials
+    if (!Array.isArray(data.studentMaterials)) {
+      console.error('Lesson validation failed: studentMaterials must be an array');
+      return false;
+    }
+
+    if (data.studentMaterials.length === 0) {
+      console.error('Lesson validation failed: studentMaterials cannot be empty');
+      return false;
+    }
+  } else {
+    console.error('Lesson validation failed: Must have either worksheet or studentMaterials');
     return false;
   }
   
-  if (data.studentMaterials.length === 0) {
-    console.error('Lesson validation failed: studentMaterials cannot be empty');
-    return false;
-  }
-  
-  // Check each student material with detailed validation
-  for (let i = 0; i < data.studentMaterials.length; i++) {
-    const material = data.studentMaterials[i];
+  // Check each student material with detailed validation (only for old format)
+  if (data.studentMaterials) {
+    for (let i = 0; i < data.studentMaterials.length; i++) {
+      const material = data.studentMaterials[i];
     if (!material || typeof material !== 'object') {
       console.error(`Lesson validation failed: studentMaterials[${i}] must be an object`);
       return false;
@@ -443,8 +467,9 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
       return false;
     }
     
-    if (!('gradeGroup' in material) || typeof material.gradeGroup !== 'number') {
-      console.error(`Lesson validation failed: studentMaterials[${i}].gradeGroup must be a number, got: ${typeof material.gradeGroup}`);
+    // gradeGroup is now optional in the new single-worksheet approach
+    if ('gradeGroup' in material && typeof material.gradeGroup !== 'number') {
+      console.error(`Lesson validation failed: studentMaterials[${i}].gradeGroup must be a number if present, got: ${typeof material.gradeGroup}`);
       return false;
     }
     
@@ -469,8 +494,9 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
       console.error(`Lesson validation failed: studentMaterials[${i}].worksheet.accommodations must be an array if present`);
       return false;
     }
+    }
   }
-  
+
   // Validate metadata with detailed type checking
   const metadata = data.metadata;
   if (!metadata || typeof metadata !== 'object') {
@@ -478,14 +504,16 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
     return false;
   }
   
-  if (!('gradeGroups' in metadata) || !Array.isArray(metadata.gradeGroups)) {
-    console.error(`Lesson validation failed: metadata.gradeGroups must be an array, got: ${typeof metadata.gradeGroups}`);
+  // gradeGroups is optional in new single-worksheet approach
+  if ('gradeGroups' in metadata && !Array.isArray(metadata.gradeGroups)) {
+    console.error(`Lesson validation failed: metadata.gradeGroups must be an array if present, got: ${typeof metadata.gradeGroups}`);
     return false;
   }
   
-  // Validate each grade group
-  for (let i = 0; i < metadata.gradeGroups.length; i++) {
-    const group = metadata.gradeGroups[i];
+  // Validate each grade group (if present)
+  if (metadata.gradeGroups) {
+    for (let i = 0; i < metadata.gradeGroups.length; i++) {
+      const group = metadata.gradeGroups[i];
     if (!group || typeof group !== 'object') {
       console.error(`Lesson validation failed: metadata.gradeGroups[${i}] must be an object`);
       return false;
@@ -510,8 +538,9 @@ export function isValidLessonResponse(data: any): data is LessonResponse {
       console.error(`Lesson validation failed: metadata.gradeGroups[${i}].activityLevel must be 'below', 'on', or 'above', got: ${group.activityLevel}`);
       return false;
     }
+    }
   }
-  
+
   if (!('validationStatus' in metadata) || !['passed', 'failed'].includes(metadata.validationStatus)) {
     console.error(`Lesson validation failed: metadata.validationStatus must be 'passed' or 'failed', got: ${metadata.validationStatus}`);
     return false;

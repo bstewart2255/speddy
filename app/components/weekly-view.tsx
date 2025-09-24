@@ -311,7 +311,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, selectedSchoolFilter]); // Re-run when viewMode, weekStart, or school filter changes
+  }, [viewMode, weekStart, selectedSchoolFilter, filterableSchools.length, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school filter changes
 
   // Use session sync hook for real-time updates
   const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
@@ -472,7 +472,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  }, [timeToMinutes]);
+  }, []);
 
   const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
     event.preventDefault();

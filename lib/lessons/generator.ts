@@ -1,12 +1,36 @@
 // Main lesson generator that orchestrates the JSON-first generation
-import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, determineGradeGroups } from './schema';
+import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, WorksheetItem } from './schema';
 import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
+import { getDurationMultiplier, getBaseMinimum, getBaseMaximum } from './duration-constants';
 
 // Configuration constants
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
 const SAMPLE_STUDENTS_FOR_BASE = 3;
+
+// Type definitions for better type safety
+interface WorksheetSection {
+  title: string;
+  instructions: string;
+  items: WorksheetItem[];
+}
+
+interface Worksheet {
+  title: string;
+  grade?: number;
+  instructions: string;
+  sections: WorksheetSection[];
+  accommodations?: string[];
+}
+
+interface GenerationExplanation {
+  actual_content_generated?: {
+    practice_problems?: number;
+    whiteboard_examples?: number;
+    reasoning?: string;
+  };
+}
 
 /**
  * Safe metadata type for client exposure
@@ -101,21 +125,34 @@ export class LessonGenerator {
     validation: ValidationResult;
     metadata?: SafeGenerationMetadata;
   }> {
-    // Use chunked generation for large groups of students
-    if (request.students.length > CHUNK_THRESHOLD) {
-      return this.generateChunkedLesson(request);
+    // Log generation strategy decision
+    const debugEnabled = process.env.DEBUG_LESSON_GENERATION === 'true';
+    if (debugEnabled) {
+      const grades = request.students.map(s => s.grade);
+      const maxGrade = grades.length ? Math.max(...grades) : 0;
+      const baseMin = getBaseMinimum(maxGrade);
+      const baseMax = getBaseMaximum(maxGrade);
+      const multiplier = getDurationMultiplier(request.duration || 30);
+      const minProblems = Math.ceil(baseMin * multiplier);
+      const maxProblems = Math.ceil(baseMax * multiplier);
+
+      console.log(`[Generator] Lesson generation for group of ${request.students.length} students:
+  - Generating ONE worksheet for the entire group
+  - Grade range: ${Math.min(...request.students.map(s => s.grade))}-${maxGrade}
+  - Duration: ${request.duration || 30} minutes
+  - Duration multiplier: ${multiplier}
+  - Expected problems for worksheet: ${minProblems}-${maxProblems}`);
     }
-    
+
+    // No longer using chunked generation since we generate one worksheet for all
+
     try {
       // Build prompts based on role and subject type
       const systemPrompt = promptBuilder.buildSystemPrompt(request.teacherRole, request.subjectType);
       const userPrompt = promptBuilder.buildUserPrompt(request);
       
-      // Add grade groups to request for provider
-      const enrichedRequest = {
-        ...request,
-        gradeGroups: determineGradeGroups(request.students)
-      };
+      // Pass request as-is (no grade grouping needed)
+      const enrichedRequest = { ...request };
       
       // Generate lesson with AI
       console.log(`Generating lesson with ${this.getProvider().getName()}...`);
@@ -124,15 +161,71 @@ export class LessonGenerator {
       // Generate lesson with AI (single attempt, no retry)
       // Now passing system and user prompts separately as intended
       try {
-        const lesson = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
+        const rawResponse = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
+
+        // Convert single worksheet response to expected format
+        const lesson = this.convertToLessonFormat(rawResponse, request);
         const validation = materialsValidator.validateLesson(lesson);
 
         console.log(`Lesson generated in ${Date.now() - startTime}ms`);
 
-        // Ensure grade groups are properly set
-        if (!lesson.metadata.gradeGroups) {
-          lesson.metadata.gradeGroups = enrichedRequest.gradeGroups;
+        // Log what we actually got
+        if (debugEnabled) {
+          // Check if it's new format (single worksheet) or old format (studentMaterials)
+          let problemCount = 0;
+
+          const responseWithWorksheet = rawResponse as { worksheet?: Worksheet };
+          if (responseWithWorksheet.worksheet) {
+            // New format - single worksheet
+            const worksheet = responseWithWorksheet.worksheet;
+            const activitySection = worksheet?.sections?.find((s: WorksheetSection) =>
+              s?.title === 'Activity' ||
+              (s as any)?.sectionType === 'practice' ||
+              /activity/i.test((s as any)?.sectionTitle || '')
+            );
+            if (activitySection?.items) {
+              activitySection.items.forEach((item: WorksheetItem) => {
+                if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                  problemCount += 1;
+                }
+              });
+            }
+          } else if (lesson.studentMaterials && lesson.studentMaterials.length > 0) {
+            // Old format - check first student's worksheet
+            const firstWorksheet = lesson.studentMaterials[0].worksheet;
+            const activitySection = firstWorksheet?.sections?.find((s: any) =>
+              s?.title === 'Activity' ||
+              s?.sectionType === 'practice' ||
+              /activity/i.test(s?.sectionTitle || '')
+            );
+            if (activitySection?.items) {
+              activitySection.items.forEach((item: any) => {
+                if (item.type && item.type !== 'example' && item.type !== 'passage') {
+                  problemCount += 1;
+                }
+              });
+            }
+          }
+
+          console.log(`[Generator] Generation Result:
+  - Group size: ${request.students.length} students
+  - Single worksheet generated: YES
+  - Problems in worksheet: ${problemCount}
+  - Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
+  - Errors: ${validation.errors.join('; ') || 'None'}`);
+
+          // Check if generation_explanation exists
+          const lessonWithExplanation = lesson as LessonResponse & { generation_explanation?: GenerationExplanation };
+          if (lessonWithExplanation.generation_explanation) {
+            const genExpl = lessonWithExplanation.generation_explanation;
+            console.log(`[Generator] AI Self-Reported:
+  - Problems generated: ${genExpl.actual_content_generated?.practice_problems || 'N/A'}
+  - Whiteboard examples: ${genExpl.actual_content_generated?.whiteboard_examples || 'N/A'}
+  - Reasoning: ${genExpl.actual_content_generated?.reasoning || 'N/A'}`);
+          }
         }
+
+        // No grade groups needed in new single-worksheet approach
 
         // Stamp validation metadata
         if (validation.isValid) {
@@ -198,8 +291,8 @@ export class LessonGenerator {
     console.log(`Using chunked generation for ${request.students.length} students`);
     
     try {
-      // Determine grade groups
-      const gradeGroups = determineGradeGroups(request.students);
+      // Grade groups not needed in single-worksheet approach
+      const gradeGroups: any[] = [];
       
       // Generate the base lesson plan first (without student materials)
       // Pick representative students from different grade groups
@@ -348,9 +441,55 @@ Return ONLY the worksheet content in this structure:
   }
   
   /**
+   * Converts the new single-worksheet format to the expected LessonResponse format
+   */
+  private convertToLessonFormat(rawResponse: { worksheet?: Worksheet; studentMaterials?: StudentMaterial[]; lesson?: any; metadata?: LessonMetadata }, request: LessonRequest): LessonResponse {
+    // Handle both new format (single worksheet) and legacy format (studentMaterials array)
+    if (rawResponse.worksheet) {
+      // New format: single worksheet for all students
+      const worksheet = rawResponse.worksheet;
+
+      // Create studentMaterials array with same worksheet for each student
+      const studentMaterials: StudentMaterial[] = request.students.map(student => ({
+        studentId: student.id,
+        gradeGroup: 0, // Single group for all in new approach
+        gradeLevel: student.grade, // Add student's actual grade level
+        worksheet: worksheet
+      }));
+
+      return {
+        lesson: rawResponse.lesson,
+        studentMaterials,
+        metadata: rawResponse.metadata || {
+          generatedAt: new Date().toISOString(),
+          modelUsed: this.getProvider().getName(),
+          generationTime: 0,
+          validationStatus: 'passed',
+          gradeGroups: []
+        }
+      };
+    } else if (rawResponse.studentMaterials) {
+      // Legacy format - return as-is with metadata
+      return {
+        ...rawResponse,
+        metadata: rawResponse.metadata || {
+          generatedAt: new Date().toISOString(),
+          modelUsed: this.getProvider().getName(),
+          generationTime: 0,
+          validationStatus: 'passed',
+          gradeGroups: []
+        }
+      } as LessonResponse;
+    } else {
+      // Unexpected format - throw error
+      throw new Error('Invalid response format: missing both worksheet and studentMaterials');
+    }
+  }
+
+  /**
    * Creates a mock worksheet for a specific grade
    */
-  private createMockWorksheet(grade: number, subject: string): any {
+  private createMockWorksheet(grade: number, subject: string): Worksheet {
     return {
       title: `${subject} Practice - Grade ${grade}`,
       instructions: 'Complete all sections. Show your work.',
@@ -360,16 +499,14 @@ Return ONLY the worksheet content in this structure:
           instructions: 'Complete these problems to get started',
           items: [
             {
-              sectionType: 'warmup',
-              sectionTitle: 'Warm Up',
-              instructions: 'Complete these problems',
-              items: [
-                {
-                  type: 'problem',
-                  content: `Sample ${subject} problem for grade ${grade}`,
-                  space: 'medium'
-                }
-              ]
+              type: 'short-answer',
+              content: `Sample ${subject} warm-up problem for grade ${grade}`,
+              blankLines: 2
+            },
+            {
+              type: 'short-answer',
+              content: `Another ${subject} warm-up for grade ${grade}`,
+              blankLines: 2
             }
           ]
         },
@@ -378,16 +515,19 @@ Return ONLY the worksheet content in this structure:
           instructions: 'Work through the main activity',
           items: [
             {
-              sectionType: 'practice',
-              sectionTitle: 'Main Activity',
-              instructions: 'Complete these tasks',
-              items: [
-                {
-                  type: 'problem',
-                  content: `Main ${subject} activity for grade ${grade}`,
-                  space: 'large'
-                }
-              ]
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 1 for grade ${grade}`,
+              blankLines: 4
+            },
+            {
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 2 for grade ${grade}`,
+              blankLines: 4
+            },
+            {
+              type: 'long-answer',
+              content: `Main ${subject} activity problem 3 for grade ${grade}`,
+              blankLines: 4
             }
           ]
         }
@@ -400,8 +540,9 @@ Return ONLY the worksheet content in this structure:
    * Creates a mock lesson for development/testing
    */
   private createMockLesson(request: LessonRequest): LessonResponse {
-    const gradeGroups = determineGradeGroups(request.students);
-    
+    const maxGrade = Math.max(...request.students.map(s => s.grade));
+    const mockWorksheet = this.createMockWorksheet(maxGrade, request.subject);
+
     return {
       lesson: {
         title: `${request.subject} Lesson - ${request.topic || 'Practice'}`,
@@ -435,59 +576,17 @@ Return ONLY the worksheet content in this structure:
         },
         roleSpecificContent: this.getMockRoleContent(request.teacherRole)
       },
-      studentMaterials: request.students.map(student => {
-        const gradeGroup = gradeGroups.findIndex(g => g.studentIds.includes(student.id));
-        
-        return {
-          studentId: student.id,
-          gradeGroup,
-          gradeLevel: student.grade, // Add student's actual grade
-          worksheet: {
-            title: `${request.subject} Practice - Grade ${student.grade}`,
-            grade: student.grade, // Add grade to worksheet
-            instructions: 'Complete all sections. Show your work.',
-            sections: [
-              {
-                title: 'Examples',
-                instructions: 'Review these examples',
-                items: [
-                  {
-                    type: 'example',
-                    content: `Here's how to solve ${request.subject} problems for grade ${student.grade}`
-                  }
-                ]
-              },
-              {
-                title: 'Practice',
-                instructions: 'Complete these problems',
-                items: [
-                  {
-                    type: 'short-answer',
-                    content: `Sample ${request.subject} question for grade ${student.grade}`,
-                    blankLines: student.grade <= 1 ? 4 : student.grade <= 3 ? 3 : 2
-                  },
-                  {
-                    type: 'multiple-choice',
-                    content: `Choose the correct answer for this grade ${student.grade} problem`,
-                    choices: ['Option A', 'Option B', 'Option C', 'Option D']
-                  },
-                  {
-                    type: 'long-answer',
-                    content: 'What did you learn today?',
-                    blankLines: student.grade <= 3 ? 5 : 4
-                  }
-                ]
-              }
-            ],
-            accommodations: student.accommodations || []
-          }
-        };
-      }),
+      studentMaterials: request.students.map(student => ({
+        studentId: student.id,
+        gradeGroup: 0, // Single group for all
+        gradeLevel: student.grade, // Add student's actual grade level
+        worksheet: mockWorksheet
+      })),
       metadata: {
         generatedAt: new Date().toISOString(),
         modelUsed: 'Mock',
         generationTime: 0,
-        gradeGroups,
+        gradeGroups: [], // Empty in new approach
         validationStatus: 'passed',
         validationErrors: []
       }

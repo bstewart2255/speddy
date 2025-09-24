@@ -83,7 +83,7 @@ async function testLessonGeneration() {
       console.log(`  Student ${material.studentId}:`);
       console.log(`    - Worksheet: ${material.worksheet.title}`);
       console.log(`    - Sections: ${material.worksheet.content?.length || 0}`);
-      console.log(`    - Accommodations: ${material.worksheet.accommodations.join(', ') || 'None'}`);
+      console.log(`    - Accommodations: ${material.worksheet.accommodations?.join(', ') || 'None'}`);
     });
     
     // Show metadata
