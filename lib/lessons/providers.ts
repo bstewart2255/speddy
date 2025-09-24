@@ -137,6 +137,11 @@ export class OpenAIProvider implements AIProvider {
     try {
       logger.debug(`[OpenAI] Starting API call with model ${this.model}, max tokens: ${this.maxTokens}`);
 
+      // Use correct parameter based on model version
+      const tokenParam = this.model === 'gpt-5'
+        ? { max_completion_tokens: this.maxTokens }
+        : { max_tokens: this.maxTokens };
+
       const completion = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -150,7 +155,7 @@ export class OpenAIProvider implements AIProvider {
           }
         ],
         temperature: 0.7,
-        max_tokens: this.maxTokens,
+        ...tokenParam,
         response_format: { type: 'json_object' } // Force JSON response
       });
 
