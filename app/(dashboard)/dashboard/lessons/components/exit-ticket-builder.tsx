@@ -30,6 +30,7 @@ export default function ExitTicketBuilder() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState('');
   const [generatedTickets, setGeneratedTickets] = useState<ExitTicket[]>([]);
   const [showDisplay, setShowDisplay] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -72,7 +73,13 @@ export default function ExitTicketBuilder() {
         query = query.eq('school_id', currentSchool.school_id);
       }
 
-      const { data } = await query;
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error loading students:', error);
+        showToast('Failed to load students', 'error');
+        return;
+      }
 
       if (data) {
         // Filter to only show students with IEP goals
@@ -80,8 +87,10 @@ export default function ExitTicketBuilder() {
           const details = s.student_details as any;
           return details &&
             details.iep_goals &&
+            Array.isArray(details.iep_goals) &&
             details.iep_goals.length > 0;
         });
+        console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
       }
     }
@@ -120,7 +129,10 @@ export default function ExitTicketBuilder() {
     }
 
     setIsGenerating(true);
+    setGenerationProgress('Preparing exit tickets...');
+
     try {
+      setGenerationProgress('Generating AI-powered problems...');
       const response = await fetch('/api/exit-tickets/generate', {
         method: 'POST',
         headers: {
@@ -137,14 +149,21 @@ export default function ExitTicketBuilder() {
       }
 
       const data = await response.json();
+
+      if (data.warning) {
+        showToast(data.warning, 'warning');
+      }
+
+      setGenerationProgress('Finalizing exit tickets...');
       setGeneratedTickets(data.tickets);
       setShowDisplay(true);
-      showToast('Exit tickets generated successfully!', 'success');
+      showToast(`${data.message || 'Exit tickets generated successfully!'}`, 'success');
     } catch (error: any) {
       console.error('Error generating exit tickets:', error);
       showToast(error.message || 'Failed to generate exit tickets', 'error');
     } finally {
       setIsGenerating(false);
+      setGenerationProgress('');
     }
   };
 
@@ -195,7 +214,7 @@ export default function ExitTicketBuilder() {
             </button>
 
             {dropdownOpen && (
-              <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+              <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-96 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
                 {students.length === 0 ? (
                   <div className="text-gray-500 px-3 py-2">
                     No students with IEP goals found
@@ -278,7 +297,7 @@ export default function ExitTicketBuilder() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Generating Exit Tickets...
+                {generationProgress || 'Generating Exit Tickets...'}
               </>
             ) : (
               'Generate Exit Tickets'

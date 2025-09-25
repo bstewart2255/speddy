@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       // Generate exit tickets for each student
       const tickets: any[] = [];
       const rotationUpdates: { studentId: string; nextIndex: number }[] = [];
+      const failedStudents: string[] = [];
 
       for (const student of students) {
         const studentDetails = student.student_details as any;
@@ -81,58 +82,67 @@ export async function POST(request: NextRequest) {
 
         if (iepGoals.length === 0) {
           console.warn(`Student ${student.id} has no IEP goals, skipping`);
+          failedStudents.push(student.initials);
           continue;
         }
 
         // Calculate the next goal index using rotation
+        // Ensure lastIndex is within valid range in case goals were removed
         const lastIndex = studentDetails?.last_exit_ticket_goal_index || 0;
-        const currentIndex = lastIndex % iepGoals.length;
+        const currentIndex = Math.min(lastIndex, iepGoals.length - 1);
         const selectedGoal = iepGoals[currentIndex];
         const nextIndex = (currentIndex + 1) % iepGoals.length;
 
-        // Generate exit ticket content using AI
-        const ticketContent = await generateExitTicket({
-          studentInitials: student.initials,
-          gradeLevel: student.grade_level,
-          iepGoal: selectedGoal,
-        });
+        try {
+          // Generate exit ticket content using AI
+          const ticketContent = await generateExitTicket({
+            studentInitials: student.initials,
+            gradeLevel: student.grade_level,
+            iepGoal: selectedGoal,
+          });
 
-        // Save the exit ticket to database
-        const { data: exitTicket, error: ticketError } = await supabase
-          .from('exit_tickets')
-          .insert({
-            provider_id: userId,
+          // Save the exit ticket to database
+          const { data: exitTicket, error: ticketError } = await supabase
+            .from('exit_tickets')
+            .insert({
+              provider_id: userId,
+              student_id: student.id,
+              iep_goal_index: currentIndex,
+              iep_goal_text: selectedGoal,
+              content: ticketContent,
+              school_id: student.school_id || profile.school_id,
+              district_id: profile.district_id,
+              state_id: profile.state_id,
+            })
+            .select()
+            .single();
+
+          if (ticketError) {
+            console.error(`Error saving exit ticket for student ${student.initials}:`, ticketError);
+            failedStudents.push(student.initials);
+            continue;
+          }
+
+          // Prepare rotation update
+          rotationUpdates.push({
+            studentId: student.id,
+            nextIndex: nextIndex,
+          });
+
+          tickets.push({
+            id: exitTicket.id,
             student_id: student.id,
-            iep_goal_index: currentIndex,
+            student_initials: student.initials,
+            student_grade: student.grade_level,
             iep_goal_text: selectedGoal,
             content: ticketContent,
-            school_id: student.school_id || profile.school_id,
-            district_id: profile.district_id,
-            state_id: profile.state_id,
-          })
-          .select()
-          .single();
-
-        if (ticketError) {
-          console.error('Error saving exit ticket:', ticketError);
+            created_at: exitTicket.created_at,
+          });
+        } catch (error) {
+          console.error(`Error generating ticket for student ${student.initials}:`, error);
+          failedStudents.push(student.initials);
           continue;
         }
-
-        // Prepare rotation update
-        rotationUpdates.push({
-          studentId: student.id,
-          nextIndex: nextIndex,
-        });
-
-        tickets.push({
-          id: exitTicket.id,
-          student_id: student.id,
-          student_initials: student.initials,
-          student_grade: student.grade_level,
-          iep_goal_text: selectedGoal,
-          content: ticketContent,
-          created_at: exitTicket.created_at,
-        });
       }
 
       // Update rotation indexes for all students
@@ -150,11 +160,18 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({
+      // Prepare response with any warnings about failed students
+      const response: any = {
         success: true,
         tickets: tickets,
         message: `Generated ${tickets.length} exit ticket${tickets.length > 1 ? 's' : ''}`,
-      });
+      };
+
+      if (failedStudents.length > 0) {
+        response.warning = `Could not generate tickets for: ${failedStudents.join(', ')}`;
+      }
+
+      return NextResponse.json(response);
 
     } catch (error: any) {
       console.error('Error in exit ticket generation:', error);

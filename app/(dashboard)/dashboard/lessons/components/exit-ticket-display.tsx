@@ -42,12 +42,16 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           <div className="mb-2">{problem.question || problem.prompt}</div>
           {problem.options && (
             <div className="ml-4 space-y-1">
-              {problem.options.map((option: string, i: number) => (
-                <div key={i} className="flex items-start">
-                  <span className="mr-2">{String.fromCharCode(65 + i)}.</span>
-                  <span>{option}</span>
-                </div>
-              ))}
+              {problem.options.map((option: string, i: number) => {
+                // Remove any existing letter prefix if it exists (e.g., "A) " or "A. ")
+                const cleanOption = option.replace(/^[A-D][\)\.]\s*/i, '');
+                return (
+                  <div key={i} className="flex items-start">
+                    <span className="mr-2">{String.fromCharCode(65 + i)}.</span>
+                    <span>{cleanOption}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
