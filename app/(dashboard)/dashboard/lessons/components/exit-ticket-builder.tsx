@@ -108,15 +108,6 @@ export default function ExitTicketBuilder() {
     setSelectedStudentIds(prev => prev.filter(id => id !== studentId));
   };
 
-  const getSelectedStudentNames = () => {
-    return selectedStudentIds
-      .map(id => {
-        const student = students.find(s => s.id === id);
-        return student ? `${student.initials} (Grade ${student.grade_level})` : '';
-      })
-      .filter(Boolean);
-  };
-
   const handleGenerate = async () => {
     if (selectedStudentIds.length === 0) {
       showToast('Please select at least one student', 'error');
@@ -248,21 +239,26 @@ export default function ExitTicketBuilder() {
           {/* Selected Students Display */}
           {selectedStudentIds.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {getSelectedStudentNames().map((name, index) => (
-                <span
-                  key={selectedStudentIds[index]}
-                  className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
-                >
-                  {name}
-                  <button
-                    type="button"
-                    onClick={() => removeStudent(selectedStudentIds[index])}
-                    className="ml-2 inline-flex items-center justify-center w-4 h-4 text-blue-600 hover:text-blue-800"
+              {selectedStudentIds.map((id) => {
+                const student = students.find(s => s.id === id);
+                if (!student) return null;
+
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
                   >
-                    <XMarkIcon className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+                    {student.initials} (Grade {student.grade_level})
+                    <button
+                      type="button"
+                      onClick={() => removeStudent(id)}
+                      className="ml-2 inline-flex items-center justify-center w-4 h-4 text-blue-600 hover:text-blue-800"
+                    >
+                      <XMarkIcon className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
