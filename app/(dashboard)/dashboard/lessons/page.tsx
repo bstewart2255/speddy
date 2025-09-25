@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { BookOpenIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, FolderOpenIcon, TicketIcon } from '@heroicons/react/24/outline';
 import { ToastProvider } from '@/app/contexts/toast-context';
 import LessonBuilder from './components/lesson-builder';
 import LessonBank from './components/lesson-bank';
+import ExitTicketBuilder from './components/exit-ticket-builder';
 
 export default function LessonsPage() {
-  const [activeTab, setActiveTab] = useState<'builder' | 'bank'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets'>('builder');
 
   return (
     <ToastProvider>
@@ -50,6 +51,20 @@ export default function LessonsPage() {
                 <FolderOpenIcon className="w-5 h-5" />
                 Lesson Bank
               </button>
+              <button
+                onClick={() => setActiveTab('exit-tickets')}
+                className={`
+                  flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
+                  transition-colors duration-200 flex items-center justify-center gap-2
+                  ${activeTab === 'exit-tickets'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <TicketIcon className="w-5 h-5" />
+                Exit Tickets
+              </button>
             </nav>
           </div>
         </div>
@@ -58,6 +73,7 @@ export default function LessonsPage() {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'builder' && <LessonBuilder />}
           {activeTab === 'bank' && <LessonBank />}
+          {activeTab === 'exit-tickets' && <ExitTicketBuilder />}
         </div>
       </div>
     </div>
