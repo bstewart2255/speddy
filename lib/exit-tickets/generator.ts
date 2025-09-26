@@ -6,6 +6,11 @@ interface ExitTicketRequest {
   iepGoal: string;
 }
 
+interface AnswerFormat {
+  drawing_space?: boolean;
+  lines?: number;
+}
+
 interface ExitTicketProblem {
   type: 'multiple_choice' | 'short_answer' | 'problem' | 'fill_in_blank';
   question?: string;
@@ -13,9 +18,11 @@ interface ExitTicketProblem {
   problem?: string;
   options?: string[];
   answer?: string;
+  answer_format?: AnswerFormat;
 }
 
 interface ExitTicketContent {
+  passage?: string; // Optional reading passage for comprehension questions
   problems: ExitTicketProblem[];
 }
 
@@ -42,23 +49,60 @@ Requirements:
 5. Language should be clear and grade-appropriate
 6. For multiple choice, provide 3-4 options
 
+SPECIAL INSTRUCTIONS FOR READING COMPREHENSION:
+- If the IEP goal involves reading comprehension, include a "passage" field with a short text (3-5 sentences)
+- The passage should be appropriate for grade ${request.gradeLevel}
+- All comprehension questions should reference "the passage above"
+- Make the passage interesting and engaging for students
+
+FOR OTHER GOALS:
+- Each problem must be completely self-contained with all needed information
+- Math word problems must include all numbers and context
+- Never reference external materials
+
+ANSWER FORMAT SPECIFICATIONS:
+For short_answer and fill_in_blank problems, include an "answer_format" object when needed:
+- If the problem asks for drawing/sketching: add "drawing_space": true
+- Specify "lines" based on expected response:
+  - 1 line for single words or numbers
+  - 2 lines for one sentence
+  - 3 lines for multiple sentences (e.g., "write 3 sentences")
+  - 5-6 lines for a paragraph
+  - If both drawing and writing are needed, include both fields
+
+Examples:
+- "Draw a picture and write 2 sentences" → {"drawing_space": true, "lines": 2}
+- "Write a paragraph about..." → {"lines": 5}
+- "Write three facts about..." → {"lines": 3}
+- "What is 5 + 3?" → {"lines": 1} or omit answer_format
+
 Return the response in this exact JSON format:
+
+For reading comprehension goals:
 {
+  "passage": "A short reading passage here (3-5 sentences for grade ${request.gradeLevel})",
   "problems": [
     {
       "type": "multiple_choice",
-      "question": "Problem text here",
+      "question": "Based on the passage above, what...",
       "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
       "answer": "A"
     },
     {
       "type": "short_answer",
-      "question": "Problem text here",
-      "answer": "Expected answer"
-    },
+      "question": "According to the passage, why did...",
+      "answer": "Expected answer",
+      "answer_format": {"lines": 2}
+    }
+  ]
+}
+
+For other goals (no passage needed):
+{
+  "problems": [
     {
       "type": "problem",
-      "problem": "Math problem or word problem here",
+      "problem": "Complete self-contained problem with all information",
       "answer": "Solution"
     }
   ]
@@ -68,7 +112,8 @@ Important:
 - Keep problems concise and focused on the IEP goal
 - Ensure all problems are solvable with paper and pencil only
 - Do not include images or complex diagrams
-- Make sure the difficulty is appropriate for independent work`;
+- Make sure the difficulty is appropriate for independent work
+- For reading comprehension, use the "passage" field once, then reference it in questions`;
 
   try {
     const completion = await openai.chat.completions.create({

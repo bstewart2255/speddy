@@ -19,7 +19,379 @@ interface ExitTicketDisplayProps {
 
 export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplayProps) {
   const handlePrint = () => {
-    window.print();
+    // Create complete HTML document for printing
+    const generatePrintHTML = () => {
+      // Escape HTML to prevent XSS
+      const escapeHtml = (value: unknown) => {
+        if (value === null || value === undefined) return '';
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
+      const ticketsHTML = tickets.map((ticket, index) => `
+        <div class="exit-ticket-page">
+          <div class="header">
+            <div class="header-left">
+              <h1>Exit Ticket</h1>
+              <div class="student-info">
+                Student: ${escapeHtml(ticket.student_initials)} (Grade ${escapeHtml(ticket.student_grade)})
+              </div>
+            </div>
+            <div class="header-right">
+              <div class="date">Date: ${escapeHtml(formatDate(ticket.created_at))}</div>
+            </div>
+          </div>
+
+          <div class="content">
+            ${ticket.content.passage ? `
+              <div class="passage-section">
+                <div class="passage-header">Read the following passage:</div>
+                <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
+                <div class="passage-divider"></div>
+              </div>
+            ` : ''}
+            ${ticket.content.problems ?
+              ticket.content.problems.map((problem: any, pIndex: number) => {
+                let problemHTML = `<div class="problem">
+                  <div class="problem-number">${pIndex + 1}.</div>
+                  <div class="problem-content">`;
+
+                if (typeof problem === 'string') {
+                  problemHTML += `<div class="problem-text">${escapeHtml(problem)}</div>`;
+                } else if (problem.type === 'multiple_choice') {
+                  problemHTML += `
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || 'Question text missing')}</div>
+                    ${problem.options ? `
+                      <div class="options">
+                        ${problem.options.map((option: string, i: number) => {
+                          const cleanOption = option.replace(/^[A-D][\)\.]\s*/i, '');
+                          return `
+                            <div class="option">
+                              <span class="option-letter">${String.fromCharCode(65 + i)}.</span>
+                              <span>${escapeHtml(cleanOption)}</span>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    ` : ''}
+                  `;
+                } else if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
+                  const answerFormat = problem.answer_format || {};
+                  const lineCount = answerFormat.lines || 2;
+
+                  problemHTML += `<div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || problem.text || 'Question text missing')}</div>`;
+
+                  // Add drawing space if requested
+                  if (answerFormat.drawing_space) {
+                    problemHTML += `
+                      <div class="drawing-box">
+                        <div class="drawing-label">Drawing Space</div>
+                      </div>
+                    `;
+                  }
+
+                  // Add answer lines
+                  for (let i = 0; i < lineCount; i++) {
+                    problemHTML += `<div class="answer-line"></div>`;
+                  }
+                  problemHTML += ``;
+                } else if (problem.type === 'word_problem' || problem.type === 'problem') {
+                  problemHTML += `
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || 'Problem text missing')}</div>
+                    <div class="work-space">
+                      <div class="answer-line"></div>
+                      <div class="answer-line"></div>
+                    </div>
+                  `;
+                } else {
+                  problemHTML += `
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.text || 'Problem content not available')}</div>
+                    <div class="answer-line"></div>
+                  `;
+                }
+
+                problemHTML += `</div></div>`;
+                return problemHTML;
+              }).join('')
+              : ticket.content.items ?
+                ticket.content.items.map((item: any, iIndex: number) => {
+                  // Similar rendering logic for items
+                  return `<div class="problem">
+                    <div class="problem-number">${iIndex + 1}.</div>
+                    <div class="problem-content">
+                      <div class="problem-text">${escapeHtml(item.question || item.prompt || item.text || 'Item content not available')}</div>
+                      <div class="answer-line"></div>
+                    </div>
+                  </div>`;
+                }).join('')
+              : '<div>No problems generated</div>'
+            }
+          </div>
+
+          <div class="footer">
+            <div class="footer-line"></div>
+            <div class="footer-text">Complete all problems. Show your work.</div>
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Exit Tickets - ${formatDate(tickets[0]?.created_at || new Date().toISOString())}</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 13pt;
+              line-height: 1.5;
+              color: #000;
+              background: white;
+            }
+
+            .exit-ticket-page {
+              width: 8.5in;
+              min-height: 11in;
+              padding: 0.5in;
+              margin: 0 auto;
+              background: white;
+              page-break-after: always;
+              page-break-inside: avoid;
+              display: flex;
+              flex-direction: column;
+              overflow: visible;
+              position: relative;
+            }
+
+            .exit-ticket-page:last-child {
+              page-break-after: auto;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+              border-bottom: 3px solid #333;
+            }
+
+            .header h1 {
+              font-size: 24pt;
+              margin: 0 0 5px 0;
+            }
+
+            .student-info {
+              font-size: 12pt;
+              color: #333;
+            }
+
+            .date {
+              font-size: 12pt;
+              color: #333;
+              text-align: right;
+            }
+
+            .content {
+              flex: 1;
+              padding: 10px 0;
+            }
+
+            .passage-section {
+              margin-bottom: 25px;
+              padding: 15px;
+              background: #f8f9fa;
+              border: 1px solid #dee2e6;
+              border-radius: 4px;
+            }
+
+            .passage-header {
+              font-weight: bold;
+              margin-bottom: 10px;
+              font-size: 12pt;
+            }
+
+            .passage-text {
+              line-height: 1.8;
+              font-size: 13pt;
+              padding: 10px 0;
+              white-space: pre-wrap;
+            }
+
+            .passage-divider {
+              border-bottom: 2px solid #dee2e6;
+              margin-top: 15px;
+            }
+
+            .problem {
+              display: flex;
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+
+            .problem-number {
+              font-weight: bold;
+              margin-right: 10px;
+              min-width: 25px;
+            }
+
+            .problem-content {
+              flex: 1;
+            }
+
+            .problem-text {
+              margin-bottom: 10px;
+              line-height: 1.8;
+            }
+
+            .options {
+              margin-left: 20px;
+              margin-top: 10px;
+            }
+
+            .option {
+              display: flex;
+              margin: 8px 0;
+            }
+
+            .option-letter {
+              font-weight: bold;
+              margin-right: 10px;
+              min-width: 25px;
+            }
+
+            .answer-line {
+              border-bottom: 2px solid #666;
+              height: 30px;
+              margin: 8px 0;
+            }
+
+            .work-space .answer-line {
+              margin: 10px 0;
+            }
+
+            .drawing-box {
+              border: 2px solid #666;
+              height: 3in;
+              margin: 10px 0;
+              position: relative;
+              background: white;
+            }
+
+            .drawing-label {
+              position: absolute;
+              top: 2px;
+              left: 50%;
+              transform: translateX(-50%);
+              font-size: 10pt;
+              color: #999;
+              text-align: center;
+            }
+
+            .footer {
+              margin-top: auto;
+              padding-top: 20px;
+            }
+
+            .footer-line {
+              border-top: 2px solid #ccc;
+              margin-bottom: 10px;
+            }
+
+            .footer-text {
+              text-align: center;
+              font-size: 11pt;
+              color: #666;
+              font-style: italic;
+            }
+
+            @media print {
+              body {
+                margin: 0;
+                padding: 0;
+              }
+
+              .exit-ticket-page {
+                width: 100%;
+                margin: 0;
+                padding: 0.5in;
+              }
+
+              @page {
+                margin: 0;
+                size: letter;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${ticketsHTML}
+        </body>
+        </html>
+      `;
+    };
+
+    // Create iframe for isolated printing
+    const printHTML = generatePrintHTML();
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.visibility = 'hidden';
+
+    document.body.appendChild(iframe);
+
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        throw new Error('Unable to access iframe document');
+      }
+
+      iframeDoc.write(printHTML);
+      iframeDoc.close();
+
+      // Wait for content to load then print
+      const printAndCleanup = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (error) {
+          console.error('Failed to print:', error);
+        } finally {
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+        }
+      };
+
+      if (iframe.contentWindow?.document.readyState === 'complete') {
+        printAndCleanup();
+      } else {
+        iframe.onload = printAndCleanup;
+      }
+    } catch (error) {
+      console.error('Error creating print document:', error);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      // Fallback to window.print if iframe fails
+      window.print();
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -59,10 +431,25 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     }
 
     if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
+      const answerFormat = problem.answer_format || {};
+      const lineCount = answerFormat.lines || 2; // Default to 2 lines
+
       return (
         <div className="mb-6">
-          <div className="mb-2">{problem.question || problem.prompt}</div>
-          <div className="border-b-2 border-gray-300 h-8"></div>
+          <div className="mb-2">{problem.question || problem.prompt || problem.problem || problem.text}</div>
+
+          {/* Drawing space if requested */}
+          {answerFormat.drawing_space && (
+            <div className="border-2 border-gray-400 h-32 mb-3 bg-white"
+                 style={{ minHeight: '3in' }}>
+              <div className="text-xs text-gray-400 text-center mt-1">Drawing Space</div>
+            </div>
+          )}
+
+          {/* Answer lines */}
+          {Array.from({ length: lineCount }, (_, i) => (
+            <div key={i} className="border-b-2 border-gray-300 h-8 mb-1"></div>
+          ))}
         </div>
       );
     }
@@ -83,7 +470,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     return (
       <div className="mb-6">
         <div className="mb-2">
-          {problem.question || problem.prompt || problem.text || JSON.stringify(problem)}
+          {problem.question || problem.prompt || problem.text || 'Problem content not available'}
         </div>
         <div className="mt-4 border-b-2 border-gray-300 h-8"></div>
       </div>
@@ -132,6 +519,17 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               </div>
               <div className="border-b-2 border-gray-400 mb-4"></div>
             </div>
+
+            {/* Reading Passage (if present) */}
+            {ticket.content.passage && (
+              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
+                <h3 className="font-semibold text-sm mb-2">Read the following passage:</h3>
+                <div className="text-gray-800 leading-relaxed whitespace-pre-line">
+                  {ticket.content.passage}
+                </div>
+                <div className="border-b-2 border-gray-300 mt-4"></div>
+              </div>
+            )}
 
             {/* Problems */}
             <div className="exit-ticket-content">
