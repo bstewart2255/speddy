@@ -70,7 +70,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   `;
                 } else if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
                   problemHTML += `
-                    <div class="problem-text">${problem.question || problem.prompt}</div>
+                    <div class="problem-text">${problem.question || problem.prompt || problem.problem || problem.text}</div>
                     <div class="answer-line"></div>
                   `;
                 } else if (problem.type === 'word_problem' || problem.type === 'problem') {
@@ -388,7 +388,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
       return (
         <div className="mb-6">
-          <div className="mb-2">{problem.question || problem.prompt}</div>
+          <div className="mb-2">{problem.question || problem.prompt || problem.problem || problem.text}</div>
           <div className="border-b-2 border-gray-300 h-8"></div>
         </div>
       );
