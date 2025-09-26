@@ -21,17 +21,28 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
   const handlePrint = () => {
     // Create complete HTML document for printing
     const generatePrintHTML = () => {
+      // Escape HTML to prevent XSS
+      const escapeHtml = (value: unknown) => {
+        if (value === null || value === undefined) return '';
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
       const ticketsHTML = tickets.map((ticket, index) => `
         <div class="exit-ticket-page">
           <div class="header">
             <div class="header-left">
               <h1>Exit Ticket</h1>
               <div class="student-info">
-                Student: ${ticket.student_initials} (Grade ${ticket.student_grade})
+                Student: ${escapeHtml(ticket.student_initials)} (Grade ${escapeHtml(ticket.student_grade)})
               </div>
             </div>
             <div class="header-right">
-              <div class="date">Date: ${formatDate(ticket.created_at)}</div>
+              <div class="date">Date: ${escapeHtml(formatDate(ticket.created_at))}</div>
             </div>
           </div>
 
@@ -39,7 +50,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             ${ticket.content.passage ? `
               <div class="passage-section">
                 <div class="passage-header">Read the following passage:</div>
-                <div class="passage-text">${ticket.content.passage}</div>
+                <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
                 <div class="passage-divider"></div>
               </div>
             ` : ''}
@@ -50,10 +61,10 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   <div class="problem-content">`;
 
                 if (typeof problem === 'string') {
-                  problemHTML += `<div class="problem-text">${problem}</div>`;
+                  problemHTML += `<div class="problem-text">${escapeHtml(problem)}</div>`;
                 } else if (problem.type === 'multiple_choice') {
                   problemHTML += `
-                    <div class="problem-text">${problem.question || problem.prompt}</div>
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || 'Question text missing')}</div>
                     ${problem.options ? `
                       <div class="options">
                         ${problem.options.map((option: string, i: number) => {
@@ -61,7 +72,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                           return `
                             <div class="option">
                               <span class="option-letter">${String.fromCharCode(65 + i)}.</span>
-                              <span>${cleanOption}</span>
+                              <span>${escapeHtml(cleanOption)}</span>
                             </div>
                           `;
                         }).join('')}
@@ -72,7 +83,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   const answerFormat = problem.answer_format || {};
                   const lineCount = answerFormat.lines || 2;
 
-                  problemHTML += `<div class="problem-text">${problem.question || problem.prompt || problem.problem || problem.text}</div>`;
+                  problemHTML += `<div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || problem.text || 'Question text missing')}</div>`;
 
                   // Add drawing space if requested
                   if (answerFormat.drawing_space) {
@@ -90,7 +101,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   problemHTML += ``;
                 } else if (problem.type === 'word_problem' || problem.type === 'problem') {
                   problemHTML += `
-                    <div class="problem-text">${problem.question || problem.prompt || problem.problem}</div>
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || 'Problem text missing')}</div>
                     <div class="work-space">
                       <div class="answer-line"></div>
                       <div class="answer-line"></div>
@@ -98,7 +109,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   `;
                 } else {
                   problemHTML += `
-                    <div class="problem-text">${problem.question || problem.prompt || problem.text || JSON.stringify(problem)}</div>
+                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.text || 'Problem content not available')}</div>
                     <div class="answer-line"></div>
                   `;
                 }
@@ -112,7 +123,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   return `<div class="problem">
                     <div class="problem-number">${iIndex + 1}.</div>
                     <div class="problem-content">
-                      <div class="problem-text">${item.question || item.prompt || item.text || JSON.stringify(item)}</div>
+                      <div class="problem-text">${escapeHtml(item.question || item.prompt || item.text || 'Item content not available')}</div>
                       <div class="answer-line"></div>
                     </div>
                   </div>`;
@@ -152,7 +163,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
 
             .exit-ticket-page {
               width: 8.5in;
-              height: 11in;
+              min-height: 11in;
               padding: 0.5in;
               margin: 0 auto;
               background: white;
@@ -160,7 +171,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               page-break-inside: avoid;
               display: flex;
               flex-direction: column;
-              overflow: hidden;
+              overflow: visible;
               position: relative;
             }
 
@@ -216,6 +227,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               line-height: 1.8;
               font-size: 13pt;
               padding: 10px 0;
+              white-space: pre-wrap;
             }
 
             .passage-divider {
@@ -458,7 +470,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     return (
       <div className="mb-6">
         <div className="mb-2">
-          {problem.question || problem.prompt || problem.text || JSON.stringify(problem)}
+          {problem.question || problem.prompt || problem.text || 'Problem content not available'}
         </div>
         <div className="mt-4 border-b-2 border-gray-300 h-8"></div>
       </div>
@@ -512,7 +524,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             {ticket.content.passage && (
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
                 <h3 className="font-semibold text-sm mb-2">Read the following passage:</h3>
-                <div className="text-gray-800 leading-relaxed">
+                <div className="text-gray-800 leading-relaxed whitespace-pre-line">
                   {ticket.content.passage}
                 </div>
                 <div className="border-b-2 border-gray-300 mt-4"></div>
