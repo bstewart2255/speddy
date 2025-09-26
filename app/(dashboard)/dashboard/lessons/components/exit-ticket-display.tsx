@@ -19,7 +19,302 @@ interface ExitTicketDisplayProps {
 
 export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplayProps) {
   const handlePrint = () => {
-    window.print();
+    // Create complete HTML document for printing
+    const generatePrintHTML = () => {
+      const ticketsHTML = tickets.map((ticket, index) => `
+        <div class="exit-ticket-page">
+          <div class="header">
+            <div class="header-left">
+              <h1>Exit Ticket</h1>
+              <div class="student-info">
+                Student: ${ticket.student_initials} (Grade ${ticket.student_grade})
+              </div>
+            </div>
+            <div class="header-right">
+              <div class="date">Date: ${formatDate(ticket.created_at)}</div>
+            </div>
+          </div>
+
+          <div class="content">
+            ${ticket.content.problems ?
+              ticket.content.problems.map((problem: any, pIndex: number) => {
+                let problemHTML = `<div class="problem">
+                  <div class="problem-number">${pIndex + 1}.</div>
+                  <div class="problem-content">`;
+
+                if (typeof problem === 'string') {
+                  problemHTML += `<div class="problem-text">${problem}</div>`;
+                } else if (problem.type === 'multiple_choice') {
+                  problemHTML += `
+                    <div class="problem-text">${problem.question || problem.prompt}</div>
+                    ${problem.options ? `
+                      <div class="options">
+                        ${problem.options.map((option: string, i: number) => {
+                          const cleanOption = option.replace(/^[A-D][\)\.]\s*/i, '');
+                          return `
+                            <div class="option">
+                              <span class="option-letter">${String.fromCharCode(65 + i)}.</span>
+                              <span>${cleanOption}</span>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    ` : ''}
+                  `;
+                } else if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
+                  problemHTML += `
+                    <div class="problem-text">${problem.question || problem.prompt}</div>
+                    <div class="answer-line"></div>
+                  `;
+                } else if (problem.type === 'word_problem' || problem.type === 'problem') {
+                  problemHTML += `
+                    <div class="problem-text">${problem.question || problem.prompt || problem.problem}</div>
+                    <div class="work-space">
+                      <div class="answer-line"></div>
+                      <div class="answer-line"></div>
+                    </div>
+                  `;
+                } else {
+                  problemHTML += `
+                    <div class="problem-text">${problem.question || problem.prompt || problem.text || JSON.stringify(problem)}</div>
+                    <div class="answer-line"></div>
+                  `;
+                }
+
+                problemHTML += `</div></div>`;
+                return problemHTML;
+              }).join('')
+              : ticket.content.items ?
+                ticket.content.items.map((item: any, iIndex: number) => {
+                  // Similar rendering logic for items
+                  return `<div class="problem">
+                    <div class="problem-number">${iIndex + 1}.</div>
+                    <div class="problem-content">
+                      <div class="problem-text">${item.question || item.prompt || item.text || JSON.stringify(item)}</div>
+                      <div class="answer-line"></div>
+                    </div>
+                  </div>`;
+                }).join('')
+              : '<div>No problems generated</div>'
+            }
+          </div>
+
+          <div class="footer">
+            <div class="footer-line"></div>
+            <div class="footer-text">Complete all problems. Show your work.</div>
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Exit Tickets - ${formatDate(tickets[0]?.created_at || new Date().toISOString())}</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 13pt;
+              line-height: 1.5;
+              color: #000;
+              background: white;
+            }
+
+            .exit-ticket-page {
+              width: 8.5in;
+              height: 11in;
+              padding: 0.5in;
+              margin: 0 auto;
+              background: white;
+              page-break-after: always;
+              page-break-inside: avoid;
+              display: flex;
+              flex-direction: column;
+              overflow: hidden;
+              position: relative;
+            }
+
+            .exit-ticket-page:last-child {
+              page-break-after: auto;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+              border-bottom: 3px solid #333;
+            }
+
+            .header h1 {
+              font-size: 24pt;
+              margin: 0 0 5px 0;
+            }
+
+            .student-info {
+              font-size: 12pt;
+              color: #333;
+            }
+
+            .date {
+              font-size: 12pt;
+              color: #333;
+              text-align: right;
+            }
+
+            .content {
+              flex: 1;
+              padding: 10px 0;
+            }
+
+            .problem {
+              display: flex;
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+
+            .problem-number {
+              font-weight: bold;
+              margin-right: 10px;
+              min-width: 25px;
+            }
+
+            .problem-content {
+              flex: 1;
+            }
+
+            .problem-text {
+              margin-bottom: 10px;
+              line-height: 1.8;
+            }
+
+            .options {
+              margin-left: 20px;
+              margin-top: 10px;
+            }
+
+            .option {
+              display: flex;
+              margin: 8px 0;
+            }
+
+            .option-letter {
+              font-weight: bold;
+              margin-right: 10px;
+              min-width: 25px;
+            }
+
+            .answer-line {
+              border-bottom: 2px solid #666;
+              height: 30px;
+              margin: 8px 0;
+            }
+
+            .work-space .answer-line {
+              margin: 10px 0;
+            }
+
+            .footer {
+              margin-top: auto;
+              padding-top: 20px;
+            }
+
+            .footer-line {
+              border-top: 2px solid #ccc;
+              margin-bottom: 10px;
+            }
+
+            .footer-text {
+              text-align: center;
+              font-size: 11pt;
+              color: #666;
+              font-style: italic;
+            }
+
+            @media print {
+              body {
+                margin: 0;
+                padding: 0;
+              }
+
+              .exit-ticket-page {
+                width: 100%;
+                margin: 0;
+                padding: 0.5in;
+              }
+
+              @page {
+                margin: 0;
+                size: letter;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${ticketsHTML}
+        </body>
+        </html>
+      `;
+    };
+
+    // Create iframe for isolated printing
+    const printHTML = generatePrintHTML();
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.visibility = 'hidden';
+
+    document.body.appendChild(iframe);
+
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        throw new Error('Unable to access iframe document');
+      }
+
+      iframeDoc.write(printHTML);
+      iframeDoc.close();
+
+      // Wait for content to load then print
+      const printAndCleanup = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (error) {
+          console.error('Failed to print:', error);
+        } finally {
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+        }
+      };
+
+      if (iframe.contentWindow?.document.readyState === 'complete') {
+        printAndCleanup();
+      } else {
+        iframe.onload = printAndCleanup;
+      }
+    } catch (error) {
+      console.error('Error creating print document:', error);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      // Fallback to window.print if iframe fails
+      window.print();
+    }
   };
 
   const formatDate = (dateString: string) => {

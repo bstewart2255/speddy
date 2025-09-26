@@ -187,6 +187,9 @@ export default function ExitTicketBuilder() {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Students (max 7)
           </label>
+          <p className="text-xs text-gray-500 mb-2 italic">
+            *Students without IEP goals saved will not be shown.
+          </p>
 
           <div ref={dropdownRef} className="relative">
             <button
