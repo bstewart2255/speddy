@@ -36,6 +36,13 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           </div>
 
           <div class="content">
+            ${ticket.content.passage ? `
+              <div class="passage-section">
+                <div class="passage-header">Read the following passage:</div>
+                <div class="passage-text">${ticket.content.passage}</div>
+                <div class="passage-divider"></div>
+              </div>
+            ` : ''}
             ${ticket.content.problems ?
               ticket.content.problems.map((problem: any, pIndex: number) => {
                 let problemHTML = `<div class="problem">
@@ -174,6 +181,31 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             .content {
               flex: 1;
               padding: 10px 0;
+            }
+
+            .passage-section {
+              margin-bottom: 25px;
+              padding: 15px;
+              background: #f8f9fa;
+              border: 1px solid #dee2e6;
+              border-radius: 4px;
+            }
+
+            .passage-header {
+              font-weight: bold;
+              margin-bottom: 10px;
+              font-size: 12pt;
+            }
+
+            .passage-text {
+              line-height: 1.8;
+              font-size: 13pt;
+              padding: 10px 0;
+            }
+
+            .passage-divider {
+              border-bottom: 2px solid #dee2e6;
+              margin-top: 15px;
             }
 
             .problem {
@@ -427,6 +459,17 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               </div>
               <div className="border-b-2 border-gray-400 mb-4"></div>
             </div>
+
+            {/* Reading Passage (if present) */}
+            {ticket.content.passage && (
+              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
+                <h3 className="font-semibold text-sm mb-2">Read the following passage:</h3>
+                <div className="text-gray-800 leading-relaxed">
+                  {ticket.content.passage}
+                </div>
+                <div className="border-b-2 border-gray-300 mt-4"></div>
+              </div>
+            )}
 
             {/* Problems */}
             <div className="exit-ticket-content">

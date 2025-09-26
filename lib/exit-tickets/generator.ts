@@ -16,6 +16,7 @@ interface ExitTicketProblem {
 }
 
 interface ExitTicketContent {
+  passage?: string; // Optional reading passage for comprehension questions
   problems: ExitTicketProblem[];
 }
 
@@ -42,23 +43,43 @@ Requirements:
 5. Language should be clear and grade-appropriate
 6. For multiple choice, provide 3-4 options
 
+SPECIAL INSTRUCTIONS FOR READING COMPREHENSION:
+- If the IEP goal involves reading comprehension, include a "passage" field with a short text (3-5 sentences)
+- The passage should be appropriate for grade ${request.gradeLevel}
+- All comprehension questions should reference "the passage above"
+- Make the passage interesting and engaging for students
+
+FOR OTHER GOALS:
+- Each problem must be completely self-contained with all needed information
+- Math word problems must include all numbers and context
+- Never reference external materials
+
 Return the response in this exact JSON format:
+
+For reading comprehension goals:
 {
+  "passage": "A short reading passage here (3-5 sentences for grade ${request.gradeLevel})",
   "problems": [
     {
       "type": "multiple_choice",
-      "question": "Problem text here",
+      "question": "Based on the passage above, what...",
       "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
       "answer": "A"
     },
     {
       "type": "short_answer",
-      "question": "Problem text here",
+      "question": "According to the passage, why did...",
       "answer": "Expected answer"
-    },
+    }
+  ]
+}
+
+For other goals (no passage needed):
+{
+  "problems": [
     {
       "type": "problem",
-      "problem": "Math problem or word problem here",
+      "problem": "Complete self-contained problem with all information",
       "answer": "Solution"
     }
   ]
@@ -68,7 +89,8 @@ Important:
 - Keep problems concise and focused on the IEP goal
 - Ensure all problems are solvable with paper and pencil only
 - Do not include images or complex diagrams
-- Make sure the difficulty is appropriate for independent work`;
+- Make sure the difficulty is appropriate for independent work
+- For reading comprehension, use the "passage" field once, then reference it in questions`;
 
   try {
     const completion = await openai.chat.completions.create({
