@@ -69,10 +69,25 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                     ` : ''}
                   `;
                 } else if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
-                  problemHTML += `
-                    <div class="problem-text">${problem.question || problem.prompt || problem.problem || problem.text}</div>
-                    <div class="answer-line"></div>
-                  `;
+                  const answerFormat = problem.answer_format || {};
+                  const lineCount = answerFormat.lines || 2;
+
+                  problemHTML += `<div class="problem-text">${problem.question || problem.prompt || problem.problem || problem.text}</div>`;
+
+                  // Add drawing space if requested
+                  if (answerFormat.drawing_space) {
+                    problemHTML += `
+                      <div class="drawing-box">
+                        <div class="drawing-label">Drawing Space</div>
+                      </div>
+                    `;
+                  }
+
+                  // Add answer lines
+                  for (let i = 0; i < lineCount; i++) {
+                    problemHTML += `<div class="answer-line"></div>`;
+                  }
+                  problemHTML += ``;
                 } else if (problem.type === 'word_problem' || problem.type === 'problem') {
                   problemHTML += `
                     <div class="problem-text">${problem.question || problem.prompt || problem.problem}</div>
@@ -255,6 +270,24 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               margin: 10px 0;
             }
 
+            .drawing-box {
+              border: 2px solid #666;
+              height: 3in;
+              margin: 10px 0;
+              position: relative;
+              background: white;
+            }
+
+            .drawing-label {
+              position: absolute;
+              top: 2px;
+              left: 50%;
+              transform: translateX(-50%);
+              font-size: 10pt;
+              color: #999;
+              text-align: center;
+            }
+
             .footer {
               margin-top: auto;
               padding-top: 20px;
@@ -386,10 +419,25 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     }
 
     if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
+      const answerFormat = problem.answer_format || {};
+      const lineCount = answerFormat.lines || 2; // Default to 2 lines
+
       return (
         <div className="mb-6">
           <div className="mb-2">{problem.question || problem.prompt || problem.problem || problem.text}</div>
-          <div className="border-b-2 border-gray-300 h-8"></div>
+
+          {/* Drawing space if requested */}
+          {answerFormat.drawing_space && (
+            <div className="border-2 border-gray-400 h-32 mb-3 bg-white"
+                 style={{ minHeight: '3in' }}>
+              <div className="text-xs text-gray-400 text-center mt-1">Drawing Space</div>
+            </div>
+          )}
+
+          {/* Answer lines */}
+          {Array.from({ length: lineCount }, (_, i) => (
+            <div key={i} className="border-b-2 border-gray-300 h-8 mb-1"></div>
+          ))}
         </div>
       );
     }

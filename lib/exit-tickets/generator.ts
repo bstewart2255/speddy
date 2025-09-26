@@ -6,6 +6,11 @@ interface ExitTicketRequest {
   iepGoal: string;
 }
 
+interface AnswerFormat {
+  drawing_space?: boolean;
+  lines?: number;
+}
+
 interface ExitTicketProblem {
   type: 'multiple_choice' | 'short_answer' | 'problem' | 'fill_in_blank';
   question?: string;
@@ -13,6 +18,7 @@ interface ExitTicketProblem {
   problem?: string;
   options?: string[];
   answer?: string;
+  answer_format?: AnswerFormat;
 }
 
 interface ExitTicketContent {
@@ -54,6 +60,22 @@ FOR OTHER GOALS:
 - Math word problems must include all numbers and context
 - Never reference external materials
 
+ANSWER FORMAT SPECIFICATIONS:
+For short_answer and fill_in_blank problems, include an "answer_format" object when needed:
+- If the problem asks for drawing/sketching: add "drawing_space": true
+- Specify "lines" based on expected response:
+  - 1 line for single words or numbers
+  - 2 lines for one sentence
+  - 3 lines for multiple sentences (e.g., "write 3 sentences")
+  - 5-6 lines for a paragraph
+  - If both drawing and writing are needed, include both fields
+
+Examples:
+- "Draw a picture and write 2 sentences" → {"drawing_space": true, "lines": 2}
+- "Write a paragraph about..." → {"lines": 5}
+- "Write three facts about..." → {"lines": 3}
+- "What is 5 + 3?" → {"lines": 1} or omit answer_format
+
 Return the response in this exact JSON format:
 
 For reading comprehension goals:
@@ -69,7 +91,8 @@ For reading comprehension goals:
     {
       "type": "short_answer",
       "question": "According to the passage, why did...",
-      "answer": "Expected answer"
+      "answer": "Expected answer",
+      "answer_format": {"lines": 2}
     }
   ]
 }
