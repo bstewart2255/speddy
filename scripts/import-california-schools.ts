@@ -68,8 +68,18 @@ interface NCESSchool {
 }
 
 // Helper functions
+/**
+ * Pauses execution for specified milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>} Promise that resolves after delay
+ */
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * Cleans and formats a phone number to XXX-XXX-XXXX format
+ * @param {string | null} phone - Phone number to clean
+ * @returns {string | null} Formatted phone number or null
+ */
 const cleanPhoneNumber = (phone: string | null): string | null => {
   if (!phone) return null;
   // Remove non-numeric characters and format
@@ -80,6 +90,12 @@ const cleanPhoneNumber = (phone: string | null): string | null => {
   return phone;
 };
 
+/**
+ * Determines the school type based on grade range
+ * @param {string} lowestGrade - Lowest grade offered (PK, K, 1-12)
+ * @param {string} highestGrade - Highest grade offered (PK, K, 1-12)
+ * @returns {string} School type (Elementary, Middle, High, K-8, K-12, or Other)
+ */
 const determineSchoolType = (lowestGrade: string, highestGrade: string): string => {
   const gradeMap: { [key: string]: number } = {
     'PK': -1, 'K': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
@@ -97,7 +113,12 @@ const determineSchoolType = (lowestGrade: string, highestGrade: string): string 
   return 'Other';
 };
 
-// Fetch districts from Urban Institute API
+/**
+ * Fetches all California school districts from the Urban Institute Education Data API
+ * Handles pagination and rate limiting automatically
+ * @returns {Promise<NCESDistrict[]>} Array of California districts
+ * @throws {Error} If API request fails
+ */
 async function fetchCaliforniaDistricts(): Promise<NCESDistrict[]> {
   console.log('📚 Fetching California districts from Urban Institute API...');
 
@@ -134,7 +155,12 @@ async function fetchCaliforniaDistricts(): Promise<NCESDistrict[]> {
   return districts;
 }
 
-// Fetch schools for a specific district
+/**
+ * Fetches all schools for a specific district from the Urban Institute API
+ * @param {string} districtId - NCES district ID (LEAID)
+ * @returns {Promise<NCESSchool[]>} Array of schools in the district
+ * @throws {Error} If API request fails (except 404 which returns empty array)
+ */
 async function fetchSchoolsForDistrict(districtId: string): Promise<NCESSchool[]> {
   const schools: NCESSchool[] = [];
   let page = 1;
@@ -171,7 +197,12 @@ async function fetchSchoolsForDistrict(districtId: string): Promise<NCESSchool[]
   return schools;
 }
 
-// Transform and insert districts
+/**
+ * Transforms and inserts California districts into the database
+ * Processes districts in batches to avoid overwhelming the database
+ * @param {NCESDistrict[]} districts - Array of districts to insert
+ * @returns {Promise<void>} Resolves when all districts are processed
+ */
 async function insertDistricts(districts: NCESDistrict[]) {
   console.log('\n💾 Inserting districts into database...');
 
@@ -216,7 +247,13 @@ async function insertDistricts(districts: NCESDistrict[]) {
   return successCount;
 }
 
-// Transform and insert schools
+/**
+ * Transforms and inserts elementary/K-8 schools into the database
+ * Filters for elementary and K-8 schools only
+ * @param {NCESSchool[]} schools - Array of schools to insert
+ * @param {string} districtName - Name of the district (for logging)
+ * @returns {Promise<number>} Number of schools successfully inserted
+ */
 async function insertSchools(schools: NCESSchool[], districtName: string) {
   if (schools.length === 0) return 0;
 
@@ -277,7 +314,11 @@ async function insertSchools(schools: NCESSchool[], districtName: string) {
   return successCount;
 }
 
-// Main import function
+/**
+ * Main function to orchestrate the import of California schools data
+ * Fetches districts from API, inserts them, then fetches and inserts schools
+ * @returns {Promise<void>} Resolves when import is complete
+ */
 async function importCaliforniaSchools() {
   console.log('🚀 Starting California schools import...\n');
 

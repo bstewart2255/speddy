@@ -75,7 +75,7 @@ const californiaDistricts = [
     county: 'Sacramento',
     zip: '95814',
     schools: [
-      { name: 'Albert Einstein Middle School', id: '063432000001' },
+      // Note: Removed Albert Einstein Middle School as it's not an elementary school
       { name: 'Alice Birney Elementary School', id: '063432000002' },
       { name: 'Bret Harte Elementary School', id: '063432000003' },
       { name: 'Camellia Elementary School', id: '063432000004' },
@@ -84,7 +84,8 @@ const californiaDistricts = [
       { name: 'Cesar Chavez Elementary School', id: '063432000007' },
       { name: 'David Lubin Elementary School', id: '063432000008' },
       { name: 'Earl Warren Elementary School', id: '063432000009' },
-      { name: 'Edward Kemble Elementary School', id: '063432000010' }
+      { name: 'Edward Kemble Elementary School', id: '063432000010' },
+      { name: 'Elder Creek Elementary School', id: '063432000011' }
     ]
   },
   {
@@ -323,6 +324,14 @@ const californiaDistricts = [
   }
 ];
 
+/**
+ * Imports California school districts and their elementary schools into the database.
+ * This function processes a predefined list of major CA districts and their schools,
+ * upserting them into the districts and schools tables.
+ *
+ * @returns {Promise<void>} Resolves when import is complete
+ * @throws {Error} If database connection or upsert operations fail
+ */
 async function importCaliforniaData() {
   console.log('🚀 Starting California districts and elementary schools import...\n');
 
@@ -404,11 +413,11 @@ async function importCaliforniaData() {
   const { count: schoolCount } = await supabase
     .from('schools')
     .select('*', { count: 'exact', head: true })
-    .eq('school_type', 'Elementary');
+    .in('school_type', ['Elementary', 'K-8']);
 
   console.log(`\n📊 Database verification:`);
   console.log(`   Total CA districts in DB: ${districtCount}`);
-  console.log(`   Total CA elementary schools in DB: ${schoolCount}`);
+  console.log(`   Total CA elementary/K-8 schools in DB: ${schoolCount}`);
 }
 
 // Run the import

@@ -29,15 +29,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   }
 });
 
+/**
+ * Pauses execution for specified milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>} Promise that resolves after delay
+ */
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * Test function to import a small batch of California districts and schools
+ * Used for validating the import process before running full import
+ * Imports only 3 districts and their elementary schools
+ * @returns {Promise<void>} Resolves when test import is complete
+ */
 async function testCaliforniaImport() {
   console.log('🧪 TEST MODE: Importing only 3 California districts and their elementary schools\n');
 
   try {
     // Fetch a small batch of districts
     console.log('📚 Fetching test batch of California districts...');
-    const url = `https://educationdata.urban.org/api/v1/schools/ccd/directory/?year=2022&fips=6&level=2&page=1&per_page=${MAX_DISTRICTS}`;
+    const url = `https://educationdata.urban.org/api/v1/schools/ccd/lea/directory/2022/?fips=6&page=1&per_page=${MAX_DISTRICTS}`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -87,7 +98,7 @@ async function testCaliforniaImport() {
 
       await sleep(API_DELAY);
 
-      const schoolsUrl = `https://educationdata.urban.org/api/v1/schools/ccd/directory/?year=2022&leaid=${testDistrict.leaid}&level=3&page=1&per_page=10`;
+      const schoolsUrl = `https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?leaid=${testDistrict.leaid}&page=1&per_page=10`;
       const schoolsResponse = await fetch(schoolsUrl);
 
       if (schoolsResponse.ok) {
