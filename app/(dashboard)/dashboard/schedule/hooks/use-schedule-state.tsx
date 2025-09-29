@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DEFAULT_SCHEDULING_CONFIG } from '../../../../../lib/scheduling/scheduling-config';
+import type { ScheduleSession } from '@/src/types/database';
+
+export interface ScheduleDragPosition {
+  day: number;
+  time: string;
+  pixelY: number;
+}
 
 export interface ScheduleUIState {
   selectedGrades: Set<string>;
@@ -9,14 +16,10 @@ export interface ScheduleUIState {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
-  draggedSession: any | null;
+  draggedSession: ScheduleSession | null;
   dragOffset: number;
-  dragPosition: {
-    day: number;
-    time: string;
-    pixelY: number;
-  } | null;
-  selectedSession: any | null;
+  dragPosition: ScheduleDragPosition | null;
+  selectedSession: ScheduleSession | null;
   popupPosition: DOMRect | null;
 }
 
@@ -31,16 +34,12 @@ export function useScheduleState() {
   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea' | 'specialist'>('all');
 
   // Drag and drop states
-  const [draggedSession, setDraggedSession] = useState<any | null>(null);
+  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
   const [dragOffset, setDragOffset] = useState<number>(0);
-  const [dragPosition, setDragPosition] = useState<{
-    day: number;
-    time: string;
-    pixelY: number;
-  } | null>(null);
+  const [dragPosition, setDragPosition] = useState<ScheduleDragPosition | null>(null);
 
   // Popup states
-  const [selectedSession, setSelectedSession] = useState<any | null>(null);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
   const [popupPosition, setPopupPosition] = useState<DOMRect | null>(null);
 
   // Grid configuration from config
@@ -82,12 +81,12 @@ export function useScheduleState() {
   }, []);
 
   // Drag handlers
-  const startDrag = useCallback((session: any, offset: number) => {
+  const startDrag = useCallback((session: ScheduleSession, offset: number) => {
     setDraggedSession(session);
     setDragOffset(offset);
   }, []);
 
-  const updateDragPosition = useCallback((position: { day: number; time: string; pixelY: number } | null) => {
+  const updateDragPosition = useCallback((position: ScheduleDragPosition | null) => {
     setDragPosition(position);
   }, []);
 
@@ -99,7 +98,7 @@ export function useScheduleState() {
 
 
   // Popup handlers
-  const openSessionPopup = useCallback((session: any, triggerRect: DOMRect) => {
+  const openSessionPopup = useCallback((session: ScheduleSession, triggerRect: DOMRect) => {
     setSelectedSession(session);
     setPopupPosition(triggerRect);
   }, []);

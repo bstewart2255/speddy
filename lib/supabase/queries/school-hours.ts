@@ -1,15 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
-import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
+import { type SchoolIdentifier } from '@/lib/school-helpers';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import type { Database } from '../../../src/types/database';
+import type { Database, SchoolHour } from '../../../src/types/database';
 
-type SchoolHours = Database['public']['Tables']['school_hours']['Insert'];
+type SchoolHoursInput = Database['public']['Tables']['school_hours']['Insert'];
 
 /**
  * Get school hours for the current user and school.
  * Uses intelligent filtering based on available school identifiers.
  */
-export async function getSchoolHours(school?: SchoolIdentifier) {
+export async function getSchoolHours(school?: SchoolIdentifier): Promise<SchoolHour[]> {
   const supabase = createClient<Database>();
   const queryType = school?.school_id ? 'indexed' : 'text-based';
   
@@ -51,7 +51,7 @@ export async function getSchoolHours(school?: SchoolIdentifier) {
  * Stores both structured and text-based school identifiers.
  */
 export async function upsertSchoolHours(
-  hours: Omit<SchoolHours, 'id' | 'created_at' | 'updated_at' | 'provider_id'> & Partial<SchoolIdentifier>
+  hours: Omit<SchoolHoursInput, 'id' | 'created_at' | 'updated_at' | 'provider_id'> & Partial<SchoolIdentifier>
 ) {
   const supabase = createClient<Database>();
 

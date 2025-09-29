@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { useScheduleState } from './hooks/use-schedule-state';
+import { useScheduleState, type ScheduleDragPosition } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
 import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-error-boundary';
@@ -15,6 +15,7 @@ import { createClient } from '../../../../lib/supabase/client';
 import { useSessionTags } from './hooks/useSessionTags';
 import { useVisualFilters } from './hooks/useVisualFilters';
 import { useTeachers } from './hooks/useTeachers';
+import type { ScheduleSession } from '@/src/types/database';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
@@ -83,11 +84,11 @@ export default function SchedulePage() {
 
 
   // Handle drag start - Simple drag without validation
-  const handleDragStart = useCallback((e: React.DragEvent, session: any) => {
+  const handleDragStart = useCallback((e: React.DragEvent, session: ScheduleSession) => {
     e.dataTransfer.effectAllowed = 'move';
     const rect = e.currentTarget.getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
-    
+
     // Start the drag
     startDrag(session, offsetY);
   }, [startDrag]);
@@ -119,11 +120,13 @@ export default function SchedulePage() {
     const minutesFromStart = Math.round(((relativeY / gridConfig.pixelsPerHour) * 60) / snapInterval) * snapInterval;
     const time = pixelsToTime((minutesFromStart * gridConfig.pixelsPerHour) / 60);
 
-    updateDragPosition({
+    const nextPosition: ScheduleDragPosition = {
       day,
       time,
       pixelY: (minutesFromStart * gridConfig.pixelsPerHour) / 60,
-    });
+    };
+
+    updateDragPosition(nextPosition);
   }, [draggedSession, dragOffset, gridConfig, updateDragPosition, pixelsToTime]);
 
   // Handle drop
@@ -202,7 +205,7 @@ export default function SchedulePage() {
   }, [selectedDay, clearDay, setSelectedDay, setSelectedTimeSlot]);
 
   const getFilteredSessions = useCallback(
-    (allSessions: any[]) => {
+    (allSessions: ScheduleSession[]) => {
       // Special handling for SEA users - always show their assigned sessions
       if (providerRole === 'sea' && currentUserId) {
         return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);

@@ -1310,6 +1310,7 @@ export type BellSchedule = Tables<'bell_schedules'>;
 export type SpecialActivity = Tables<'special_activities'>;
 export type ScheduleSession = Tables<'schedule_sessions'>;
 export type Worksheet = Tables<'worksheets'>;
+export type SchoolHour = Tables<'school_hours'>;
 export type WorksheetSubmission = Tables<'worksheet_submissions'>;
 export type State = Tables<'states'>;
 export type District = Tables<'districts'>;

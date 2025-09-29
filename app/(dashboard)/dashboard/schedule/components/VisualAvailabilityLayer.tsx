@@ -2,14 +2,21 @@
 
 import React, { useMemo } from 'react';
 import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
+import type {
+  BellSchedule,
+  ScheduleSession,
+  SchoolHour,
+  SpecialActivity,
+  Student,
+} from '@/src/types/database';
 
 interface VisualAvailabilityLayerProps {
   day: number;
-  bellSchedules: any[];
-  specialActivities: any[];
-  schoolHours: any[];
-  sessions: any[];
-  students: any[];
+  bellSchedules: BellSchedule[];
+  specialActivities: SpecialActivity[];
+  schoolHours: SchoolHour[];
+  sessions: ScheduleSession[];
+  students: Student[];
   filters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;

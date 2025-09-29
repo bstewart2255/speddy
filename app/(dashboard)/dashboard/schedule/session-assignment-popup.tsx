@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
+import type { Database, ScheduleSession, Student } from '@/src/types/database';
+
+type ScheduleSessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];
 
 interface SessionAssignmentPopupProps {
-  session: any;
-  student: any;
+  session: ScheduleSession;
+  student?: Student;
   triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
@@ -76,7 +79,7 @@ export function SessionAssignmentPopup({
     }
 
     try {
-      const updateData: any = {};
+      const updateData: ScheduleSessionUpdate = {};
 
       if (isSeaAssignment) {
         // Validate assignment ID

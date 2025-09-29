@@ -4,13 +4,21 @@ import React, { useMemo, memo } from 'react';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
+import type {
+  BellSchedule,
+  ScheduleSession,
+  SchoolHour,
+  SpecialActivity,
+  Student,
+} from '@/src/types/database';
+import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
 
 interface ScheduleGridProps {
-  sessions: any[];
-  students: any[];
-  schoolHours: any[];
-  bellSchedules: any[];
-  specialActivities: any[];
+  sessions: ScheduleSession[];
+  students: Student[];
+  schoolHours: SchoolHour[];
+  bellSchedules: BellSchedule[];
+  specialActivities: SpecialActivity[];
   visualFilters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
@@ -20,10 +28,10 @@ interface ScheduleGridProps {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
-  draggedSession: any | null;
-  dragPosition: any | null;
-  selectedSession: any | null;
-  popupPosition: any | null;
+  draggedSession: ScheduleSession | null;
+  dragPosition: ScheduleDragPosition | null;
+  selectedSession: ScheduleSession | null;
+  popupPosition: DOMRect | null;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   providerRole: string;
@@ -37,13 +45,13 @@ interface ScheduleGridProps {
     snapInterval: number;
     totalHeight: number;
   };
-  onDragStart: (e: React.DragEvent, session: any) => void;
+  onDragStart: (e: React.DragEvent, session: ScheduleSession) => void;
   onDragEnd: () => void;
   onDragOver: (e: React.DragEvent, day: number) => void;
   onDrop: (e: React.DragEvent, day: number) => void;
   onTimeSlotClick: (time: string) => void;
   onDayClick: (day: number) => void;
-  onSessionClick: (session: any, triggerRect: DOMRect) => void;
+  onSessionClick: (session: ScheduleSession, triggerRect: DOMRect) => void;
   onHighlightToggle: (studentId: string) => void;
   onPopupClose: () => void;
   onPopupUpdate: () => void;
@@ -124,7 +132,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     return (totalMinutes * gridConfig.pixelsPerHour) / 60;
   };
 
-  const sessionOverlapsTimeSlot = (session: any, timeSlot: string): boolean => {
+  const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
     const [slotHour, slotMinute] = timeSlot.split(':').map(Number);
     const slotStartMinutes = slotHour * 60 + slotMinute;
     const slotEndMinutes = slotStartMinutes + 15;
@@ -138,7 +146,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   };
 
   // Filter sessions
-  const getFilteredSessions = (allSessions: any[]) => {
+  const getFilteredSessions = (allSessions: ScheduleSession[]) => {
     switch (sessionFilter) {
       case 'mine':
         return allSessions.filter(s => s.delivered_by === 'provider');
@@ -153,7 +161,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
 
   // Calculate session columns to prevent overlaps
   const daySessionColumns = useMemo(() => {
-    const columns: Record<number, Array<Array<any>>> = {};
+    const columns: Record<number, Array<Array<ScheduleSession>>> = {};
     
     DAYS.forEach((_, dayIndex) => {
       const dayNumber = dayIndex + 1;
@@ -172,7 +180,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
       });
 
       // Group into columns
-      const sessionColumns: Array<Array<any>> = [];
+      const sessionColumns: Array<Array<ScheduleSession>> = [];
       daySessions.forEach(session => {
         const sessionStart = parseInt(session.start_time.replace(':', ''));
         const sessionEnd = parseInt(session.end_time.replace(':', ''));
@@ -344,7 +352,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         className="absolute w-full rounded pointer-events-none z-20 bg-blue-200 border-2 border-blue-500"
                         style={{
                           top: `${dragPosition.pixelY}px`,
-                          height: `${((students.find((s: any) => s.id === draggedSession.student_id)?.minutes_per_session || 30) * gridConfig.pixelsPerHour) / 60}px`,
+                          height: `${((students.find(student => student.id === draggedSession.student_id)?.minutes_per_session || 30) * gridConfig.pixelsPerHour) / 60}px`,
                           left: '2px',
                           right: '2px',
                         }}
@@ -357,7 +365,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
 
                     {/* Sessions */}
                     {daySessions.map(session => {
-                      const student = students.find((s: any) => s.id === session.student_id);
+                      const student = students.find(s => s.id === session.student_id);
                       const startTime = session.start_time.substring(0, 5);
                       const endTime = session.end_time.substring(0, 5);
                       const top = timeToPixels(startTime);
@@ -441,7 +449,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
       {selectedSession && popupPosition && (
         <SessionAssignmentPopup
           session={selectedSession}
-          student={students.find((s: any) => s.id === selectedSession.student_id)}
+          student={students.find(s => s.id === selectedSession.student_id)}
           triggerRect={popupPosition}
           seaProfiles={seaProfiles}
           otherSpecialists={otherSpecialists}
