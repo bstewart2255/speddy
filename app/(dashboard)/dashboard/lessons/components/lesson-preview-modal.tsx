@@ -340,8 +340,21 @@ export default function LessonPreviewModal({
       // Generate unique worksheet ID
       const worksheetId = generateWorksheetId(studentId, subject);
 
-      // Get student initials (for now using Student # as we don't have the actual initials in this context)
-      const studentInitials = `Student ${studentIdx + 1}`;
+      // Try to get student initials from teacherLessonPlan if available
+      let studentInitials = `Student ${studentIdx + 1}`;
+
+      // Check if we have student initials in the teacherLessonPlan
+      if (content.lesson?.teacherLessonPlan?.studentInitials) {
+        const tlpInitials = content.lesson.teacherLessonPlan.studentInitials;
+        if (Array.isArray(tlpInitials) && tlpInitials[studentIdx]) {
+          studentInitials = tlpInitials[studentIdx];
+        }
+      }
+
+      // Also check if the studentMaterial itself has initials
+      if (studentMaterial.studentInitials) {
+        studentInitials = studentMaterial.studentInitials;
+      }
 
       // Generate HTML for the worksheet with subject handling
       const subjectType = formData.subjectType as 'math' | 'ela' | undefined;

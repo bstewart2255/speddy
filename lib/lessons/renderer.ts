@@ -345,35 +345,56 @@ export class WorksheetRenderer {
       body {
         max-width: 100%;
         margin: 0;
-        padding: 15px;
+        padding: 10px;
       }
       .header {
         page-break-inside: avoid;
+        margin-bottom: 10px;
+      }
+      h1 {
+        margin: 5px 0 10px 0;
+        font-size: 1.3em;
         page-break-after: avoid;
       }
-      h1, h2, h3 {
+      h2 {
+        margin: 10px 0 5px 0;
+        font-size: 1.1em;
         page-break-after: avoid;
-        page-break-inside: avoid;
+      }
+      h3 {
+        page-break-after: avoid;
       }
       .section {
-        page-break-inside: avoid;
-        margin: 15px 0;
+        /* Allow sections to break naturally if needed */
+        margin: 10px 0;
       }
       .item {
+        /* Keep individual questions together but allow page breaks between them */
         page-break-inside: avoid;
+        margin: 10px 0;
       }
       .instructions {
-        page-break-after: avoid;
+        margin: 10px 0;
       }
       .accommodations {
         page-break-inside: avoid;
+        margin: 8px 0;
       }
       /* Keep questions with their answer spaces */
       .question {
         page-break-after: avoid;
+        margin-bottom: 5px;
       }
       .answer-lines {
         page-break-inside: avoid;
+        margin: 4px 0;
+      }
+      /* Reduce excessive white space */
+      .passage {
+        margin: 10px 0;
+      }
+      .example {
+        margin: 8px 0;
       }
       /* Hide UI elements */
       .no-print { display: none !important; }
@@ -506,7 +527,7 @@ export class WorksheetRenderer {
         </div>
       </div>`;
     }
-    
+
     // Render examples without numbering
     if (item.type === 'example') {
       return `
@@ -516,7 +537,7 @@ export class WorksheetRenderer {
         </div>
       </div>`;
     }
-    
+
     // Generate appropriate number of answer lines based on blankLines property
     const generateAnswerLines = (lines: number = 1) => {
       let html = '';
@@ -525,13 +546,24 @@ export class WorksheetRenderer {
       }
       return html;
     };
-    
+
+    // Clean the content to remove any existing numbering/lettering at the start
+    let cleanContent = item.content || '';
+    // Remove patterns like "1. ", "1) ", "(1) ", "A. ", "A) ", etc. from the beginning
+    cleanContent = String(cleanContent)
+      .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+      .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+      .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+      .replace(/^\s*[A-H]\.\s+/i, '') // Remove "A. " pattern
+      .replace(/^\s*[A-H]\)\s*/i, '')  // Remove "A)" pattern
+      .replace(/^\s*\([A-H]\)\s*/i, ''); // Remove "(A)" pattern
+
     // Simple sequential numbering
     const questionNumber = showNumber ? `${itemIndex}. ` : '';
-    
+
     return `
     <div class="item">
-      <div class="question">${questionNumber}${this.escapeHtml(item.content)}</div>
+      <div class="question">${questionNumber}${this.escapeHtml(cleanContent)}</div>
       ${item.type === 'multiple-choice' && item.choices ? `
         <ul class="choices">
           ${item.choices.map((choice: string, idx: number) => {
