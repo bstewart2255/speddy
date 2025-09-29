@@ -14,19 +14,52 @@ interface JsonLessonRendererProps {
   }>;
 }
 
-export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRendererProps) {
-  // Parse the lesson data if it's a string
-  const response: LessonResponse = typeof lessonData === 'string' 
-    ? JSON.parse(lessonData) 
-    : lessonData;
+type StudentInfo = JsonLessonRendererProps['students'] extends Array<infer S> ? S : never;
 
-  if (!response || !response.lesson) {
+export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRendererProps) {
+  // Parse the lesson data if it's a string and memoize the result to avoid repeat work
+  const response = React.useMemo<LessonResponse | null>(() => {
+    if (!lessonData) {
+      return null;
+    }
+
+    if (typeof lessonData === 'string') {
+      try {
+        return JSON.parse(lessonData) as LessonResponse;
+      } catch (error) {
+        console.error('Failed to parse lesson data', error);
+        return null;
+      }
+    }
+
+    return lessonData;
+  }, [lessonData]);
+
+  const lesson = response?.lesson;
+  const studentMaterials = response?.studentMaterials;
+
+  const studentsById = React.useMemo<Record<string, StudentInfo>>(() => {
+    return students.reduce<Record<string, StudentInfo>>((acc, student) => {
+      if (student?.id) {
+        acc[student.id] = student;
+      }
+      return acc;
+    }, {});
+  }, [students]);
+
+  const safeStudentMaterials = React.useMemo(() => {
+    return Array.isArray(studentMaterials) ? studentMaterials : [];
+  }, [studentMaterials]);
+
+  if (!lesson) {
     return <div className="text-gray-500">No lesson content available</div>;
   }
 
-  const { lesson, studentMaterials } = response;
-
   const renderWorksheetContent = (content: WorksheetContent, index: number) => {
+    if (!content) {
+      return null;
+    }
+
     return (
       <div key={index} className="mb-6 p-4 bg-gray-50 rounded-lg">
         <div className="flex items-center justify-between mb-2">
@@ -38,7 +71,7 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
         {content.instructions && (
           <p className="text-sm text-gray-600 mb-3">{content.instructions}</p>
         )}
-        {content.items && content.items.length > 0 && (
+        {Array.isArray(content.items) && content.items.length > 0 && (
           <div className="space-y-2">
             {content.items.map((item, idx) => (
               <div key={idx} className="pl-4 border-l-2 border-gray-300">
@@ -69,8 +102,8 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
   };
 
   const renderStudentMaterial = (material: StudentMaterial, index: number) => {
-    const student = students.find(s => s.id === material.studentId);
-    
+    const student = material?.studentId ? studentsById[material.studentId] : undefined;
+
     return (
       <div key={index} className="mb-8 border-l-4 border-blue-500 pl-4">
         <h3 className="text-xl font-bold mb-4 text-blue-700">
@@ -239,10 +272,10 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
       )}
 
       {/* Student Materials */}
-      {studentMaterials && studentMaterials.length > 0 && (
+      {safeStudentMaterials.length > 0 && (
         <div className="mb-6">
           <h3 className="font-semibold text-xl mb-4">Student Materials</h3>
-          {studentMaterials.map((material, idx) => renderStudentMaterial(material, idx))}
+          {safeStudentMaterials.map((material, idx) => renderStudentMaterial(material, idx))}
         </div>
       )}
     </div>
