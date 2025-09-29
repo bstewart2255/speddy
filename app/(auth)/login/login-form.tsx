@@ -50,15 +50,18 @@ export default function LoginForm() {
         return;
       }
 
-      logger.info('Login successful', { 
+      logger.info('Login successful', {
         email,
-        needsPayment: data.needsPayment 
+        needsPayment: data.needsPayment
       });
+
+      // Use router.refresh() to ensure cookies are set before navigation
+      router.refresh();
 
       if (data.needsPayment) {
         router.push('/signup?step=payment&subscription_required=true');
       } else {
-        window.location.href = '/dashboard';
+        router.push('/dashboard');
       }
     } catch (err) {
       handleClientError(err, 'login-form');

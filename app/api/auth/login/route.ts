@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr';
 import { withErrorHandling } from '@/lib/api/with-error-handling';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
@@ -24,9 +25,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Input validation with logging
   if (!email || !password) {
-    log.warn('Login attempt with missing credentials', { 
+    log.warn('Login attempt with missing credentials', {
       hasEmail: !!email,
-      hasPassword: !!password 
+      hasPassword: !!password
     });
 
     return NextResponse.json(
@@ -38,7 +39,32 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Log login attempt (without password!)
   log.info('Login attempt started', { email });
 
-  const supabase = await createClient();
+  // Create a response that we'll return at the end
+  const cookieStore = await cookies();
+
+  // Create supabase client with cookie handling
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set({
+              name,
+              value,
+              ...options,
+              sameSite: 'lax',
+              secure: process.env.NODE_ENV === 'production',
+            });
+          });
+        },
+      },
+    }
+  );
 
   // Sign in the user with performance tracking
   const authPerf = measurePerformance('supabase_auth_signin');

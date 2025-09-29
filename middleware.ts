@@ -57,6 +57,8 @@ export async function middleware(request: NextRequest) {
               name,
               value,
               ...options,
+              sameSite: 'lax',
+              secure: process.env.NODE_ENV === 'production',
             })
           })
         },
@@ -64,7 +66,7 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Verify the session
+  // Refresh the session to ensure it's valid and update cookies
   const { data: { session }, error } = await supabase.auth.getSession()
 
   // If no valid session and trying to access protected route, redirect to login
