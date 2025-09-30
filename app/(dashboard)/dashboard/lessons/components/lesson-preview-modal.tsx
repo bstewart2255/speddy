@@ -240,7 +240,17 @@ export default function LessonPreviewModal({
                               </div>
                             ) : (
                               <p className="text-gray-700">
-                                {problemCounter}. {problem.question || problem.content || problem}
+                                {(() => {
+                                  // Clean the content to remove existing numbering patterns
+                                  let content = problem.question || problem.content || problem;
+                                  content = String(content)
+                                    .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                                    .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                                    .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                                    .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                                    .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                                  return `${problemCounter}. ${content}`;
+                                })()}
                               </p>
                             )}
                             {problem.blankLines && (
@@ -270,13 +280,32 @@ export default function LessonPreviewModal({
                   {section.items.map((item: any, j: number) => (
                     <div key={j} className="ml-4">
                       {typeof item === 'string' ? (
-                        <p>{j + 1}. {item}</p>
+                        <p>{(() => {
+                          // Clean the content to remove existing numbering patterns
+                          let content = String(item)
+                            .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                            .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                            .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                            .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                            .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                          return `${j + 1}. ${content}`;
+                        })()}</p>
                       ) : item.type === 'visual' ? (
                         <div className="font-mono text-lg bg-white p-2 rounded border">
                           {item.content}
                         </div>
                       ) : (
-                        <p>{j + 1}. {item.question || item.content}</p>
+                        <p>{(() => {
+                          // Clean the content to remove existing numbering patterns
+                          let content = item.question || item.content || '';
+                          content = String(content)
+                            .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                            .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                            .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                            .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                            .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                          return `${j + 1}. ${content}`;
+                        })()}</p>
                       )}
                     </div>
                   ))}
