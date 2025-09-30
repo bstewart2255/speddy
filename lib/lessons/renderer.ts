@@ -298,7 +298,6 @@ export class WorksheetRenderer {
       padding: 5px;
       border: 1px solid #ddd;
       background: white;
-      page-break-inside: avoid; /* Keep individual items together */
     }
     .question {
       font-weight: bold;
