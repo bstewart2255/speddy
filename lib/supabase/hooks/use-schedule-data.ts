@@ -6,7 +6,7 @@ import { useSchool } from '../../../app/components/providers/school-context';
 import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
-import type { Database } from '../../../src/types/database';
+import type { Database, SchoolHour } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -19,7 +19,7 @@ interface ScheduleData {
   sessions: ScheduleSession[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
-  schoolHours: any[];
+  schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
   unscheduledCount: number;
@@ -193,8 +193,6 @@ export function useScheduleData() {
               code: error.code,
               details: error.details,
               hint: error.hint,
-              status: (error as any).status,
-              statusText: (error as any).statusText
             });
           } else if (schoolSeas) {
             seaProfiles = schoolSeas.map(sea => ({
