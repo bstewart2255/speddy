@@ -532,7 +532,7 @@ export class WorksheetRenderer {
       return `
       <div class="item">
         <div class="passage" style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-left: 3px solid #4a90e2;">
-          ${this.escapeHtml(item.content)}
+          ${this.escapeHtml(item.content).replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}
         </div>
       </div>`;
     }
