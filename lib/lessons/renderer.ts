@@ -245,24 +245,27 @@ export class WorksheetRenderer {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${this.escapeHtml(worksheet.title)}</title>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
+    body {
+      font-family: Arial, sans-serif;
       font-size: 14pt;
-      line-height: 1.8; 
-      max-width: 700px; 
-      margin: 0 auto; 
-      padding: 20px;
+      line-height: 1.8;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 5px;
     }
-    h1 { 
-      color: #333; 
-      font-size: 1.5em;
+    h1 {
+      color: #333;
+      font-size: 2em;
+      font-weight: bold;
       text-align: center;
-      margin-bottom: 10px;
+      margin-bottom: 20px;
+      padding: 10px 0;
+      border-bottom: 2px solid #007bff;
     }
     .header {
       border: 2px solid #333;
       padding: 10px;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -276,14 +279,14 @@ export class WorksheetRenderer {
     }
     .instructions {
       background: #f0f0f0;
-      padding: 10px;
-      margin: 15px 0;
+      padding: 8px;
+      margin: 5px 0;
       border-left: 3px solid #007bff;
       font-size: 1em;
     }
     .section {
-      margin: 20px 0;
-      page-break-inside: avoid;
+      margin: 10px 0;
+      /* Allow sections to break across pages naturally */
     }
     .section h2 {
       font-size: 1.2em;
@@ -291,10 +294,11 @@ export class WorksheetRenderer {
       margin-bottom: 10px;
     }
     .item {
-      margin: 15px 0;
-      padding: 10px;
+      margin: 8px 0;
+      padding: 5px;
       border: 1px solid #ddd;
       background: white;
+      page-break-inside: avoid; /* Keep individual items together */
     }
     .question {
       font-weight: bold;
@@ -320,16 +324,16 @@ export class WorksheetRenderer {
       width: 100%;
     }
     .passage {
-      margin-bottom: 20px;
-      padding: 15px;
+      margin-bottom: 10px;
+      padding: 10px;
       background: #f8f9fa;
       border-left: 4px solid #007bff;
       font-size: 1em;
       line-height: 1.8;
     }
     .example {
-      margin-bottom: 15px;
-      padding: 10px;
+      margin-bottom: 8px;
+      padding: 8px;
       background: #fff9e6;
       border-left: 4px solid #ffc107;
       font-style: italic;
@@ -345,16 +349,17 @@ export class WorksheetRenderer {
       body {
         max-width: 100%;
         margin: 0;
-        padding: 10px;
+        padding: 5px;
       }
       .header {
         page-break-inside: avoid;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
       }
       h1 {
         margin: 5px 0 10px 0;
-        font-size: 1.3em;
-        page-break-after: avoid;
+        font-size: 1.6em;
+        font-weight: bold;
+        /* Remove page-break-after to allow content to flow */
       }
       h2 {
         margin: 10px 0 5px 0;
@@ -366,15 +371,16 @@ export class WorksheetRenderer {
       }
       .section {
         /* Allow sections to break naturally if needed */
-        margin: 10px 0;
+        margin: 5px 0;
       }
       .item {
         /* Keep individual questions together but allow page breaks between them */
         page-break-inside: avoid;
-        margin: 10px 0;
+        margin: 5px 0;
+        padding: 3px;
       }
       .instructions {
-        margin: 10px 0;
+        margin: 5px 0;
       }
       .accommodations {
         page-break-inside: avoid;
@@ -391,10 +397,10 @@ export class WorksheetRenderer {
       }
       /* Reduce excessive white space */
       .passage {
-        margin: 10px 0;
+        margin: 5px 0;
       }
       .example {
-        margin: 8px 0;
+        margin: 5px 0;
       }
       /* Hide UI elements */
       .no-print { display: none !important; }
@@ -530,10 +536,18 @@ export class WorksheetRenderer {
 
     // Render examples without numbering
     if (item.type === 'example') {
+      // Check if content already starts with "Example" to avoid duplication
+      const content = item.content || '';
+      const trimmedContent = content.trim();
+      const startsWithExample = trimmedContent.toLowerCase().startsWith('example');
+
       return `
       <div class="item">
         <div class="example" style="margin-bottom: 10px; padding: 8px; background: #fffacd; border-left: 3px solid #ffd700;">
-          <strong>Example:</strong> ${this.escapeHtml(item.content)}
+          ${startsWithExample ?
+            this.escapeHtml(trimmedContent) :
+            `<strong>Example:</strong> ${this.escapeHtml(trimmedContent)}`
+          }
         </div>
       </div>`;
     }
@@ -812,9 +826,18 @@ export class WorksheetRenderer {
                             </div>`;
                           }
 
+                          // Clean the content to remove existing numbering patterns
+                          let cleanContent = item.content || '';
+                          cleanContent = String(cleanContent)
+                            .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                            .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                            .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                            .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                            .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+
                           return `
                             <li style="margin: 10px 0;">
-                              <strong>${this.escapeHtml(item.content)}</strong>
+                              <strong>${this.escapeHtml(cleanContent)}</strong>
                               ${item.type === 'multiple-choice' && item.choices ? `
                                 <ul style="list-style-type: upper-alpha; margin-top: 5px;">
                                   ${item.choices.map((choice: string) =>

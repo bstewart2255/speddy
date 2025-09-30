@@ -10,6 +10,13 @@ import {
   printHtmlWorksheet 
 } from '@/lib/utils/worksheet-utils';
 
+interface Student {
+  id: string;
+  initials: string;
+  grade_level: number;
+  name?: string;
+}
+
 interface LessonPreviewModalProps {
   lesson: {
     content: any;
@@ -23,15 +30,17 @@ interface LessonPreviewModalProps {
     lessonId?: string;
   };
   formData: any;
+  students: Student[];
   onClose: () => void;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function LessonPreviewModal({ 
-  lesson, 
-  formData, 
-  onClose, 
-  showToast 
+export default function LessonPreviewModal({
+  lesson,
+  formData,
+  students,
+  onClose,
+  showToast
 }: LessonPreviewModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'worksheets'>('overview');
@@ -340,20 +349,20 @@ export default function LessonPreviewModal({
       // Generate unique worksheet ID
       const worksheetId = generateWorksheetId(studentId, subject);
 
-      // Try to get student initials from teacherLessonPlan if available
+      // Get student initials from the students array first
       let studentInitials = `Student ${studentIdx + 1}`;
 
-      // Check if we have student initials in the teacherLessonPlan
-      if (content.lesson?.teacherLessonPlan?.studentInitials) {
+      // Try to get the actual student data
+      const student = students.find(s => s.id === studentId);
+      if (student && student.initials) {
+        studentInitials = student.initials;
+      }
+      // Fallback to teacherLessonPlan if available
+      else if (content.lesson?.teacherLessonPlan?.studentInitials) {
         const tlpInitials = content.lesson.teacherLessonPlan.studentInitials;
         if (Array.isArray(tlpInitials) && tlpInitials[studentIdx]) {
           studentInitials = tlpInitials[studentIdx];
         }
-      }
-
-      // Also check if the studentMaterial itself has initials
-      if (studentMaterial.studentInitials) {
-        studentInitials = studentMaterial.studentInitials;
       }
 
       // Generate HTML for the worksheet with subject handling
