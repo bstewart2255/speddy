@@ -254,15 +254,13 @@ export class WorksheetRenderer {
       padding: 5px;
     }
     h1 {
-      color: #000;
-      font-size: 2.2em;
+      color: #333;
+      font-size: 2em;
       font-weight: bold;
       text-align: center;
-      margin-bottom: 25px;
-      padding: 12px 0;
-      border-bottom: 3px solid #007bff;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+      padding: 10px 0;
+      border-bottom: 2px solid #007bff;
     }
     .header {
       border: 2px solid #333;
@@ -357,11 +355,9 @@ export class WorksheetRenderer {
         margin-bottom: 5px;
       }
       h1 {
-        margin: 10px 0 15px 0;
-        font-size: 2.2em;
+        margin: 5px 0 10px 0;
+        font-size: 1.6em;
         font-weight: bold;
-        border-bottom: 2px solid #007bff;
-        padding-bottom: 8px;
         /* Remove page-break-after to allow content to flow */
       }
       h2 {
