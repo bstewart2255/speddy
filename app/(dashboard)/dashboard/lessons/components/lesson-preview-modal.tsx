@@ -10,6 +10,13 @@ import {
   printHtmlWorksheet 
 } from '@/lib/utils/worksheet-utils';
 
+interface Student {
+  id: string;
+  initials: string;
+  grade_level: number;
+  name?: string;
+}
+
 interface LessonPreviewModalProps {
   lesson: {
     content: any;
@@ -23,15 +30,17 @@ interface LessonPreviewModalProps {
     lessonId?: string;
   };
   formData: any;
+  students: Student[];
   onClose: () => void;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function LessonPreviewModal({ 
-  lesson, 
-  formData, 
-  onClose, 
-  showToast 
+export default function LessonPreviewModal({
+  lesson,
+  formData,
+  students,
+  onClose,
+  showToast
 }: LessonPreviewModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'worksheets'>('overview');
@@ -231,7 +240,17 @@ export default function LessonPreviewModal({
                               </div>
                             ) : (
                               <p className="text-gray-700">
-                                {problemCounter}. {problem.question || problem.content || problem}
+                                {(() => {
+                                  // Clean the content to remove existing numbering patterns
+                                  let content = problem.question || problem.content || problem;
+                                  content = String(content)
+                                    .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                                    .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                                    .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                                    .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                                    .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                                  return `${problemCounter}. ${content}`;
+                                })()}
                               </p>
                             )}
                             {problem.blankLines && (
@@ -261,13 +280,32 @@ export default function LessonPreviewModal({
                   {section.items.map((item: any, j: number) => (
                     <div key={j} className="ml-4">
                       {typeof item === 'string' ? (
-                        <p>{j + 1}. {item}</p>
+                        <p>{(() => {
+                          // Clean the content to remove existing numbering patterns
+                          let content = String(item)
+                            .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                            .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                            .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                            .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                            .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                          return `${j + 1}. ${content}`;
+                        })()}</p>
                       ) : item.type === 'visual' ? (
                         <div className="font-mono text-lg bg-white p-2 rounded border">
                           {item.content}
                         </div>
                       ) : (
-                        <p>{j + 1}. {item.question || item.content}</p>
+                        <p>{(() => {
+                          // Clean the content to remove existing numbering patterns
+                          let content = item.question || item.content || '';
+                          content = String(content)
+                            .replace(/^\s*\d+\.\s+/, '')    // Remove "1. " pattern
+                            .replace(/^\s*\d+\)\s*/, '')    // Remove "1)" pattern
+                            .replace(/^\s*\(\d+\)\s*/, '')  // Remove "(1)" pattern
+                            .replace(/^Question\s+\d+:?\s*/i, '') // Remove "Question 1:" pattern
+                            .replace(/^Q\d+:?\s*/i, '');    // Remove "Q1:" pattern
+                          return `${j + 1}. ${content}`;
+                        })()}</p>
                       )}
                     </div>
                   ))}
@@ -340,8 +378,21 @@ export default function LessonPreviewModal({
       // Generate unique worksheet ID
       const worksheetId = generateWorksheetId(studentId, subject);
 
-      // Get student initials (for now using Student # as we don't have the actual initials in this context)
-      const studentInitials = `Student ${studentIdx + 1}`;
+      // Get student initials from the students array first
+      let studentInitials = `Student ${studentIdx + 1}`;
+
+      // Try to get the actual student data
+      const student = students.find(s => s.id === studentId);
+      if (student && student.initials) {
+        studentInitials = student.initials;
+      }
+      // Fallback to teacherLessonPlan if available
+      else if (content.lesson?.teacherLessonPlan?.studentInitials) {
+        const tlpInitials = content.lesson.teacherLessonPlan.studentInitials;
+        if (Array.isArray(tlpInitials) && tlpInitials[studentIdx]) {
+          studentInitials = tlpInitials[studentIdx];
+        }
+      }
 
       // Generate HTML for the worksheet with subject handling
       const subjectType = formData.subjectType as 'math' | 'ela' | undefined;

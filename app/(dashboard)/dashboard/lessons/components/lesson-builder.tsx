@@ -360,6 +360,7 @@ export default function LessonBuilder() {
         <LessonPreviewModal
           lesson={generatedLesson}
           formData={formData}
+          students={students}
           onClose={() => setShowPreview(false)}
           showToast={showToast}
         />
