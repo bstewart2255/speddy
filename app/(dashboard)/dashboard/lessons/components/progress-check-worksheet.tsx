@@ -32,21 +32,53 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
   };
 
   // Helper function to determine number of lines for short answer questions
+  // Students typically need 2-3 lines per sentence for handwriting
   const getLineCount = (item: AssessmentItem): number => {
     const { prompt } = item;
 
-    // Check for explicit sentence count in prompt
-    const sentenceMatch = prompt.match(/(\d+)\s+sentence/i);
-    if (sentenceMatch) {
-      const count = parseInt(sentenceMatch[1]);
-      return count + 1; // Add one extra line
+    // Check for explicit paragraph count (e.g., "Write 2 paragraphs")
+    const paragraphMatch = prompt.match(/(\d+)\s+paragraph/i);
+    if (paragraphMatch) {
+      const paragraphCount = parseInt(paragraphMatch[1]);
+      // Each paragraph typically needs 8-10 lines
+      return Math.min(paragraphCount * 8, 20);
     }
 
-    // Default based on prompt length
-    if (prompt.length < 50) return 3;
-    if (prompt.length > 100) return 8;
+    // Check for explicit sentence count (e.g., "Write 5 sentences")
+    const sentenceMatch = prompt.match(/(\d+)(?:-(\d+))?\s+sentence/i);
+    if (sentenceMatch) {
+      const minCount = parseInt(sentenceMatch[1]);
+      const maxCount = sentenceMatch[2] ? parseInt(sentenceMatch[2]) : minCount;
+      const avgCount = (minCount + maxCount) / 2;
 
-    return 5; // Default
+      // Students need ~2.5 lines per sentence on average, plus 2 extra for safety
+      const lineCount = Math.ceil(avgCount * 2.5) + 2;
+      return Math.min(lineCount, 20);
+    }
+
+    // Check for word count hints (e.g., "Write 50-100 words")
+    const wordMatch = prompt.match(/(\d+)(?:-(\d+))?\s+word/i);
+    if (wordMatch) {
+      const minWords = parseInt(wordMatch[1]);
+      const maxWords = wordMatch[2] ? parseInt(wordMatch[2]) : minWords;
+      const avgWords = (minWords + maxWords) / 2;
+
+      // Roughly 10-12 words per line of student handwriting
+      const lineCount = Math.ceil(avgWords / 10) + 2;
+      return Math.min(lineCount, 20);
+    }
+
+    // Default based on prompt complexity and length
+    if (prompt.length < 50) {
+      // Short, simple question: 5 lines
+      return 5;
+    } else if (prompt.length > 150) {
+      // Complex question: 12 lines
+      return 12;
+    } else {
+      // Medium question: 8 lines
+      return 8;
+    }
   };
 
   const renderAssessmentItem = (item: AssessmentItem, itemIndex: number) => {
@@ -159,54 +191,42 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
   );
 
   return (
-    <>
-      {/* Modal overlay - only shown on screen, hidden in print */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 screen-only">
-        <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Progress Check Worksheets ({worksheets.length})
-            </h2>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handlePrint}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <PrinterIcon className="w-5 h-5" />
-                Print All
-              </button>
-              <button
-                onClick={onClose}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-
-          {/* Worksheets Content - Scrollable preview */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {worksheets.map((worksheet) => (
-              <div
-                key={worksheet.studentId}
-                className="mb-8 pb-8 border-b-2 border-gray-200 last:border-b-0"
-              >
-                {renderWorksheetContent(worksheet)}
-              </div>
-            ))}
+    <div className="worksheet-modal-container fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="worksheet-modal bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header - hidden in print */}
+        <div className="worksheet-modal-header flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Progress Check Worksheets ({worksheets.length})
+          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <PrinterIcon className="w-5 h-5" />
+              Print All
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <XMarkIcon className="w-6 h-6" />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Print-only content */}
-      <div className="worksheet-print-container">
-        {worksheets.map((worksheet) => (
-          <div key={`print-${worksheet.studentId}`} className="worksheet-page">
-            {renderWorksheetContent(worksheet)}
-          </div>
-        ))}
+        {/* Worksheets Content - Scrollable preview on screen, flows naturally in print */}
+        <div className="worksheet-modal-content flex-1 overflow-y-auto p-6">
+          {worksheets.map((worksheet, index) => (
+            <div
+              key={worksheet.studentId}
+              className={`worksheet-page ${index > 0 ? 'mt-8' : ''} ${index < worksheets.length - 1 ? 'mb-8 pb-8 border-b-2 border-gray-200' : ''}`}
+            >
+              {renderWorksheetContent(worksheet)}
+            </div>
+          ))}
+        </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -8,12 +8,12 @@ import { z } from 'zod';
 export const maxDuration = 300; // 5 minutes
 
 // Zod schema for progress check response validation
+// Note: No scoringNotes field - worksheets are student-facing only
 const AssessmentItemSchema = z.object({
   type: z.enum(['multiple_choice', 'short_answer', 'problem', 'observation']),
   prompt: z.string(),
   passage: z.string().optional(), // For reading comprehension questions
   options: z.array(z.string()).optional(),
-  scoringNotes: z.string().optional(),
 });
 
 const IEPGoalAssessmentSchema = z.object({
@@ -29,7 +29,12 @@ const WorksheetSchema = z.object({
 // System prompt for progress check generation
 const SYSTEM_PROMPT = `You are an expert special education assessment designer. Create assessment items to evaluate student progress on IEP goals.
 
-CRITICAL: This worksheet is for the STUDENT to complete. Do NOT include teacher notes, scoring criteria, or references to IEP goals on the worksheet. Students should NOT see their IEP goals - only the assessment questions.
+CRITICAL RULES:
+1. This worksheet is for STUDENTS to complete, NOT teachers
+2. Do NOT include teacher notes, scoring criteria, scoring rubrics, or assessment guidelines
+3. Do NOT mention IEP goals on the worksheet - students should only see questions
+4. Do NOT include any meta-commentary about what the question tests
+5. All prompts must be direct instructions the student can read and follow
 
 REQUIREMENTS:
 1. Test EVERY IEP goal provided
@@ -37,46 +42,53 @@ REQUIREMENTS:
 3. Vary formats based on goal type
 4. Keep language grade-appropriate and student-friendly
 5. For reading comprehension goals, ALWAYS include a passage followed by questions
+6. For writing goals, specify how many sentences or paragraphs to write
 
 ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 4 TYPES:
-1. "multiple_choice" - Questions with 4 answer choices (A, B, C, D)
-2. "short_answer" - Open-ended questions requiring written responses
+1. "multiple_choice" - Questions with 4 answer choices (must include "options" array with exactly 4 options)
+2. "short_answer" - Open-ended questions requiring written responses (specify length: "Write 3-5 sentences...")
 3. "problem" - Math problems or exercises requiring work space
-4. "observation" - Behavioral tasks for teacher observation (include scoringNotes)
+4. "observation" - Behavioral/performance tasks the student will demonstrate
 
 MAPPING GOALS TO ASSESSMENT TYPES:
 - Reading comprehension → Use "short_answer" with passage field
-- Writing goals → Use "short_answer" (provides lines for student writing)
-- Math goals → Use "problem" (provides work space) or "multiple_choice"
-- Behavioral/Social goals → Use "observation" (include scoringNotes)
+- Writing goals → Use "short_answer" (specify number of sentences: "Write 5 sentences about...")
+- Math goals → Use "problem" or "multiple_choice"
+- Behavioral/Social goals → Use "observation" (write what student should demonstrate)
 - Knowledge recall → Use "multiple_choice" or "short_answer"
 
-EXAMPLES:
+CORRECT EXAMPLES:
 
 Reading comprehension (short_answer with passage):
 {
   "type": "short_answer",
   "passage": "The cat sat on the mat. It was a sunny day. The cat purred happily as it watched birds fly by the window.",
-  "prompt": "What was the cat doing on the mat?"
+  "prompt": "Write 3-4 sentences describing what the cat was doing and how it felt."
 }
 
 Writing goal (short_answer without passage):
 {
   "type": "short_answer",
-  "prompt": "Write 3 sentences about your favorite animal."
+  "prompt": "Write 5 sentences about your favorite animal. Include what it looks like, where it lives, and why you like it."
 }
 
 Math goal (problem):
 {
   "type": "problem",
-  "prompt": "Solve: 12 + 15 = ?"
+  "prompt": "Solve the problem and show your work: 12 + 15 = ?"
 }
 
 Behavioral goal (observation):
 {
   "type": "observation",
-  "prompt": "Demonstrate raising your hand before speaking",
-  "scoringNotes": "Award point if student raises hand and waits to be called on"
+  "prompt": "Raise your hand and wait to be called on before speaking."
+}
+
+Multiple choice (must have exactly 4 options):
+{
+  "type": "multiple_choice",
+  "prompt": "Which of these is a mammal?",
+  "options": ["Snake", "Shark", "Dog", "Lizard"]
 }
 
 OUTPUT FORMAT (valid JSON):
@@ -84,23 +96,89 @@ OUTPUT FORMAT (valid JSON):
   "studentInitials": "J.D.",
   "iepGoals": [
     {
-      "goal": "[exact IEP goal text - this is for internal use only, NOT shown to student]",
+      "goal": "[exact IEP goal text - for internal tracking only, NOT shown to student]",
       "assessmentItems": [
         {
           "type": "multiple_choice" | "short_answer" | "problem" | "observation",
-          "passage": "Include ONLY if this is a reading comprehension question",
-          "prompt": "The actual question the student will see",
-          "options": ["A", "B", "C", "D"],
-          "scoringNotes": "For teacher use only, not shown to student"
+          "passage": "ONLY include for reading comprehension questions",
+          "prompt": "The actual instruction/question the student will read",
+          "options": ["Option A", "Option B", "Option C", "Option D"]
         }
       ]
     }
   ]
 }
 
+VALIDATION CHECKLIST BEFORE RESPONDING:
+✓ No teacher-facing notes or scoring criteria anywhere
+✓ All prompts are student-readable instructions
+✓ Multiple choice items have exactly 4 options
+✓ Short answer items specify expected length (number of sentences)
+✓ Observation items describe what student should do, not how teacher should score
+✓ Reading comprehension items include the passage in the "passage" field
+
 CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", "problem", or "observation". Do not create any other type names.
 
 You must respond with ONLY a valid JSON object. No other text.`;
+
+// Validation function to detect teacher-facing content
+function validateStudentFacingContent(worksheet: any): { isValid: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+
+  // Teacher-facing terms that should NOT appear in student prompts
+  const teacherTerms = [
+    /scoring\s+(note|criteria|rubric|guide)/i,
+    /award\s+point/i,
+    /teacher\s+(should|will|must)\s+(observe|assess|evaluate|score)/i,
+    /assessment\s+criteria/i,
+    /rubric/i,
+    /learning\s+objective/i,
+    /iep\s+goal/i,
+    /mastery\s+level/i,
+    /performance\s+indicator/i,
+    /grading/i
+  ];
+
+  // Check all assessment item prompts
+  worksheet.iepGoals?.forEach((goal: any, goalIndex: number) => {
+    goal.assessmentItems?.forEach((item: any, itemIndex: number) => {
+      const prompt = item.prompt || '';
+
+      // Check for teacher-facing terms
+      teacherTerms.forEach(pattern => {
+        if (pattern.test(prompt)) {
+          warnings.push(
+            `Goal ${goalIndex + 1}, Item ${itemIndex + 1}: Prompt contains teacher-facing language: "${prompt.substring(0, 50)}..."`
+          );
+        }
+      });
+
+      // Check that prompt is in imperative/question form (student-facing)
+      const isQuestionOrCommand = /^(write|solve|read|demonstrate|explain|describe|calculate|show|draw|identify|list|what|which|how|why|when|where|who)/i.test(prompt.trim());
+      if (!isQuestionOrCommand && item.type !== 'observation') {
+        warnings.push(
+          `Goal ${goalIndex + 1}, Item ${itemIndex + 1}: Prompt may not be student-facing (doesn't start with action verb or question word)`
+        );
+      }
+
+      // Validate passage doesn't contain teacher notes
+      if (item.passage) {
+        teacherTerms.forEach(pattern => {
+          if (pattern.test(item.passage)) {
+            warnings.push(
+              `Goal ${goalIndex + 1}, Item ${itemIndex + 1}: Passage contains teacher-facing language`
+            );
+          }
+        });
+      }
+    });
+  });
+
+  return {
+    isValid: warnings.length === 0,
+    warnings
+  };
+}
 
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
@@ -234,7 +312,15 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
 
             // Validate with Zod
             const parsedWorksheet = WorksheetSchema.parse(jsonResponse);
-            console.log(`[Progress Check] Validation passed for ${student.initials}`);
+            console.log(`[Progress Check] Zod validation passed for ${student.initials}`);
+
+            // Validate that content is student-facing (no teacher notes)
+            const contentValidation = validateStudentFacingContent(parsedWorksheet);
+            if (!contentValidation.isValid) {
+              console.warn(`[Progress Check] Content validation warnings for ${student.initials}:`, contentValidation.warnings);
+              // Log warnings but don't fail - let the worksheet through with warnings
+              // This allows some flexibility while logging potential issues
+            }
 
             return {
               success: true,

@@ -163,42 +163,89 @@
   /* Reset page margins for print */
   @page {
     margin: 0.5in;
+    size: letter portrait;
   }
 
+  /* Reset body */
   body {
     margin: 0;
     padding: 0;
+    background: white !important;
   }
 
-  /* Hide everything by making it invisible */
-  body * {
-    visibility: hidden !important;
-  }
-
-  /* Hide screen-only elements completely */
-  .screen-only,
-  button,
+  /* Hide all dashboard UI elements */
   nav,
   header,
   footer,
+  aside,
+  button,
   [role="navigation"],
   [role="banner"],
-  [role="contentinfo"] {
+  [role="contentinfo"],
+  [role="complementary"] {
     display: none !important;
   }
 
-  /* Show only worksheet print content */
-  .worksheet-print-container,
-  .worksheet-print-container * {
-    visibility: visible !important;
+  /* Hide modal chrome - keep only worksheet content */
+  .worksheet-modal-container {
+    position: static !important;
+    background: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
   }
 
-  .worksheet-print-container {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  .worksheet-modal {
+    position: static !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
+  .worksheet-modal-header {
+    display: none !important;
+  }
+
+  .worksheet-modal-content {
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Worksheet page breaks - modern CSS */
+  .worksheet-page {
+    position: static !important;
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+
+    /* Prevent breaking within a worksheet */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Add page break before each worksheet except the first */
+  .worksheet-page + .worksheet-page {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  /* Remove all shadows, rounded corners, and decorative styles */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    text-shadow: none !important;
+  }
+
+  /* Simplify colors for print */
   .lesson-content {
     @apply text-black;
   }
@@ -215,28 +262,18 @@
     @apply border-2 border-black bg-white;
   }
 
-  /* Progress check worksheet page breaks */
-  .worksheet-page {
-    page-break-before: always;
-    page-break-after: always;
-    page-break-inside: avoid;
+  /* Make worksheet backgrounds white and borders simple */
+  .bg-blue-50,
+  .bg-gray-50,
+  .bg-green-50,
+  .bg-yellow-50 {
     background: white !important;
-    padding: 0;
-    margin: 0;
   }
 
-  /* First worksheet should not have page break before */
-  .worksheet-page:first-child {
-    page-break-before: auto;
-  }
-
-  /* Avoid breaking last worksheet after */
-  .worksheet-page:last-child {
-    page-break-after: auto;
-  }
-
-  /* Remove backgrounds and shadows for print */
-  * {
-    box-shadow: none !important;
+  /* Ensure readable borders */
+  .border-blue-400,
+  .border-gray-400,
+  .border-green-400 {
+    border-color: #666 !important;
   }
 }
