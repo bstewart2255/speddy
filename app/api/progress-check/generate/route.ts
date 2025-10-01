@@ -38,19 +38,45 @@ REQUIREMENTS:
 4. Keep language grade-appropriate and student-friendly
 5. For reading comprehension goals, ALWAYS include a passage followed by questions
 
-ASSESSMENT FORMATS:
-- Reading comprehension: Include a grade-appropriate passage, then ask 3 questions about it
-- Math goals: Problems, equations, word problems
-- Writing goals: Writing prompts or sentence completion
-- Behavioral goals: Observation items (for teacher use, but don't mention IEP goals)
-- Social goals: Scenario-based questions
-- Speech/OT goals: Practical tasks
+ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 4 TYPES:
+1. "multiple_choice" - Questions with 4 answer choices (A, B, C, D)
+2. "short_answer" - Open-ended questions requiring written responses
+3. "problem" - Math problems or exercises requiring work space
+4. "observation" - Behavioral tasks for teacher observation (include scoringNotes)
 
-READING COMPREHENSION EXAMPLE:
+MAPPING GOALS TO ASSESSMENT TYPES:
+- Reading comprehension → Use "short_answer" with passage field
+- Writing goals → Use "short_answer" (provides lines for student writing)
+- Math goals → Use "problem" (provides work space) or "multiple_choice"
+- Behavioral/Social goals → Use "observation" (include scoringNotes)
+- Knowledge recall → Use "multiple_choice" or "short_answer"
+
+EXAMPLES:
+
+Reading comprehension (short_answer with passage):
 {
   "type": "short_answer",
   "passage": "The cat sat on the mat. It was a sunny day. The cat purred happily as it watched birds fly by the window.",
   "prompt": "What was the cat doing on the mat?"
+}
+
+Writing goal (short_answer without passage):
+{
+  "type": "short_answer",
+  "prompt": "Write 3 sentences about your favorite animal."
+}
+
+Math goal (problem):
+{
+  "type": "problem",
+  "prompt": "Solve: 12 + 15 = ?"
+}
+
+Behavioral goal (observation):
+{
+  "type": "observation",
+  "prompt": "Demonstrate raising your hand before speaking",
+  "scoringNotes": "Award point if student raises hand and waits to be called on"
 }
 
 OUTPUT FORMAT (valid JSON):
@@ -71,6 +97,8 @@ OUTPUT FORMAT (valid JSON):
     }
   ]
 }
+
+CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", "problem", or "observation". Do not create any other type names.
 
 You must respond with ONLY a valid JSON object. No other text.`;
 
