@@ -170,12 +170,29 @@
     padding: 0;
   }
 
-  /* Hide UI elements that shouldn't print */
+  /* Hide ALL page elements by default */
+  body > *:not(.print-container) {
+    display: none !important;
+  }
+
+  /* Hide everything except print content */
   .print\:hidden,
   button,
   nav,
-  [role="navigation"] {
+  header,
+  footer,
+  [role="navigation"],
+  [role="banner"],
+  [role="contentinfo"] {
     display: none !important;
+  }
+
+  /* Show only print-specific content */
+  .print-container {
+    display: block !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .lesson-content {

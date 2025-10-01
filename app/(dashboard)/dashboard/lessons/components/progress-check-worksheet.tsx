@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface AssessmentItem {
@@ -27,6 +29,12 @@ interface ProgressCheckWorksheetProps {
 }
 
 export default function ProgressCheckWorksheet({ worksheets, onClose }: ProgressCheckWorksheetProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handlePrint = () => {
     window.print();
   };
@@ -85,6 +93,62 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
       </div>
     );
   };
+
+  const printContent = (
+    <div className="hidden print:block print-container">
+      {worksheets.map((worksheet, worksheetIndex) => (
+        <div
+          key={`print-${worksheet.studentId}`}
+          className="worksheet print-worksheet"
+        >
+          {/* Worksheet Header */}
+          <div className="mb-6 pb-4 border-b-2 border-gray-300">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Progress Check Assessment
+            </h1>
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-lg font-medium text-gray-700">
+                  Student: <span className="text-blue-600">{worksheet.studentInitials}</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Date: _________________</p>
+                <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
+            <p className="text-sm text-gray-700">
+              <strong>Instructions:</strong> Complete all questions and problems below.
+              Show your work where applicable. Read each question carefully before answering.
+            </p>
+          </div>
+
+          {/* Assessment Items (without showing IEP goals) */}
+          {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
+            <div key={goalIndex} className="mb-8">
+              {/* Section Header */}
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Section {goalIndex + 1}
+                </h3>
+              </div>
+
+              {/* Assessment Items for this Goal */}
+              <div className="ml-2">
+                {goalAssessment.assessmentItems.map((item, itemIndex) =>
+                  renderAssessmentItem(item, itemIndex)
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <>
@@ -170,60 +234,8 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
         </div>
       </div>
 
-      {/* Print-only content - separate from modal, properly formatted for printing */}
-      <div className="hidden print:block">
-        {worksheets.map((worksheet, worksheetIndex) => (
-          <div
-            key={`print-${worksheet.studentId}`}
-            className="worksheet print-worksheet"
-          >
-              {/* Worksheet Header */}
-              <div className="mb-6 pb-4 border-b-2 border-gray-300">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Progress Check Assessment
-                </h1>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-lg font-medium text-gray-700">
-                      Student: <span className="text-blue-600">{worksheet.studentInitials}</span>
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600">Date: _________________</p>
-                    <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Instructions */}
-              <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
-                <p className="text-sm text-gray-700">
-                  <strong>Instructions:</strong> Complete all questions and problems below.
-                  Show your work where applicable. Read each question carefully before answering.
-                </p>
-              </div>
-
-              {/* Assessment Items (without showing IEP goals) */}
-              {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
-                <div key={goalIndex} className="mb-8">
-                  {/* Section Header */}
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Section {goalIndex + 1}
-                    </h3>
-                  </div>
-
-                  {/* Assessment Items for this Goal */}
-                  <div className="ml-2">
-                    {goalAssessment.assessmentItems.map((item, itemIndex) =>
-                      renderAssessmentItem(item, itemIndex)
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
+      {/* Render print content to body via portal */}
+      {mounted && typeof document !== 'undefined' && createPortal(printContent, document.body)}
     </>
   );
 }
