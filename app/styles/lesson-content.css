@@ -160,6 +160,24 @@
 
 /* Print styles */
 @media print {
+  /* Reset page margins for print */
+  @page {
+    margin: 0.5in;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Hide UI elements that shouldn't print */
+  .print\:hidden,
+  button,
+  nav,
+  [role="navigation"] {
+    display: none !important;
+  }
+
   .lesson-content {
     @apply text-black;
   }
@@ -180,10 +198,16 @@
   .worksheet {
     page-break-after: always;
     page-break-inside: avoid;
+    background: white !important;
   }
 
   /* Avoid breaking last worksheet */
   .worksheet:last-child {
     page-break-after: auto;
+  }
+
+  /* Remove backgrounds and shadows for print */
+  * {
+    box-shadow: none !important;
   }
 }

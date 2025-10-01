@@ -5,6 +5,7 @@ import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
 interface AssessmentItem {
   type: 'multiple_choice' | 'short_answer' | 'problem' | 'observation';
   prompt: string;
+  passage?: string; // For reading comprehension questions
   options?: string[];
   scoringNotes?: string;
 }
@@ -31,10 +32,19 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
   };
 
   const renderAssessmentItem = (item: AssessmentItem, itemIndex: number) => {
-    const { type, prompt, options, scoringNotes } = item;
+    const { type, prompt, passage, options, scoringNotes } = item;
 
     return (
-      <div key={itemIndex} className="mb-4 pl-4">
+      <div key={itemIndex} className="mb-6 pl-4">
+        {/* Reading Passage (if present) */}
+        {passage && (
+          <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+            <p className="text-sm font-medium text-blue-900 mb-2">Reading Passage:</p>
+            <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{passage}</p>
+          </div>
+        )}
+
+        {/* Question */}
         <div className="mb-2">
           <span className="font-medium text-gray-700">{itemIndex + 1}. </span>
           <span className="text-gray-800">{prompt}</span>
@@ -77,10 +87,10 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 print:relative print:bg-transparent print:p-0">
-      <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col print:max-h-none print:shadow-none print:overflow-visible">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 print:fixed print:inset-0 print:bg-white print:p-0 print:z-0">
+      <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col print:max-w-none print:max-h-none print:shadow-none print:overflow-visible print:rounded-none">
         {/* Header - Hidden in print */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 print:hidden">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 print:!hidden">
           <h2 className="text-2xl font-bold text-gray-900">
             Progress Check Worksheets ({worksheets.length})
           </h2>
@@ -102,7 +112,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
         </div>
 
         {/* Worksheets Content */}
-        <div className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">
+        <div className="flex-1 overflow-y-auto p-6 print:overflow-visible print:p-4">
           {worksheets.map((worksheet, worksheetIndex) => (
             <div
               key={worksheet.studentId}
@@ -129,23 +139,19 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               {/* Instructions */}
               <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
                 <p className="text-sm text-gray-700">
-                  <strong>Instructions:</strong> Complete all assessment items for each IEP goal.
-                  Show your work where applicable. For observation items, the teacher will score
-                  based on the provided criteria.
+                  <strong>Instructions:</strong> Complete all questions and problems below.
+                  Show your work where applicable. Read each question carefully before answering.
                 </p>
               </div>
 
-              {/* IEP Goals and Assessment Items */}
+              {/* Assessment Items (without showing IEP goals) */}
               {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
                 <div key={goalIndex} className="mb-8">
-                  {/* IEP Goal */}
-                  <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
-                    <h3 className="text-sm font-semibold text-blue-900 mb-1">
-                      IEP Goal {goalIndex + 1}:
+                  {/* Section Header */}
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Section {goalIndex + 1}
                     </h3>
-                    <p className="text-sm text-blue-800 italic">
-                      {goalAssessment.goal}
-                    </p>
                   </div>
 
                   {/* Assessment Items for this Goal */}
@@ -154,46 +160,8 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
                       renderAssessmentItem(item, itemIndex)
                     )}
                   </div>
-
-                  {/* Teacher Scoring Section */}
-                  <div className="mt-4 p-3 bg-gray-50 border border-gray-300 rounded">
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm font-medium text-gray-700">Teacher Assessment:</p>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center">
-                          <span className="w-5 h-5 border-2 border-gray-400 rounded mr-2"></span>
-                          <span className="text-sm text-gray-700">Goal Met</span>
-                        </label>
-                        <label className="flex items-center">
-                          <span className="w-5 h-5 border-2 border-gray-400 rounded mr-2"></span>
-                          <span className="text-sm text-gray-700">In Progress</span>
-                        </label>
-                        <label className="flex items-center">
-                          <span className="w-5 h-5 border-2 border-gray-400 rounded mr-2"></span>
-                          <span className="text-sm text-gray-700">Not Met</span>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-600 mb-1">Notes:</p>
-                      <div className="border-b border-gray-300 h-6"></div>
-                      <div className="border-b border-gray-300 h-6 mt-1"></div>
-                    </div>
-                  </div>
                 </div>
               ))}
-
-              {/* Overall Summary Section */}
-              <div className="mt-8 p-4 bg-gray-50 border border-gray-300 rounded">
-                <h4 className="text-base font-semibold text-gray-900 mb-3">
-                  Overall Progress Summary
-                </h4>
-                <div className="space-y-2">
-                  <div className="border-b border-gray-300 h-6"></div>
-                  <div className="border-b border-gray-300 h-6"></div>
-                  <div className="border-b border-gray-300 h-6"></div>
-                </div>
-              </div>
             </div>
           ))}
         </div>
