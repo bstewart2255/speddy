@@ -23,13 +23,10 @@
       "Bash(gh issue:*)",
       "Bash(npm install openai)",
       "Bash(node:*)",
-      "Bash(npx playwright test --reporter=list)",
-      "Bash(npx playwright test --reporter=list --grep-invert \"Referral Code Display|Billing Page\")",
       "Bash(gh pr checks 103)",
       "Bash(gh run view 17012559764 --log)",
       "Bash(gh run view 17012559764 --job 48230548253 --log)",
       "Bash(gh pr checks 103 --watch=false)",
-      "Bash(npx playwright test:*)",
       "Bash(gh run view:*)",
       "Bash(npm search @modelcontextprotocol/server-context7)",
       "Bash(npm search context7 mcp)",
@@ -40,7 +37,6 @@
       "Bash(npm search serena)",
       "Bash(npm info serena)",
       "Bash(git clone https://github.com/oraios/serena.git /tmp/serena-mcp)",
-      "Bash(npm search @modelcontextprotocol/server-playwright)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
       "Bash(psql:*)",
@@ -63,9 +59,5 @@
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "context7",
-    "playwright",
-    "supabase"
-  ]
+  "enabledMcpjsonServers": ["context7", "supabase"]
 }
