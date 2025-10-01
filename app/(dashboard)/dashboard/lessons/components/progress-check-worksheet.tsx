@@ -87,12 +87,31 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
                 itemHTML += '<div class="answer-line"></div>';
               }
             } else if (type === 'problem') {
-              itemHTML += `
-                <div class="work-space">
-                  <div class="work-space-label">Work space:</div>
-                  <div class="work-space-area"></div>
-                </div>
-              `;
+              // Check if this is actually a number-writing task (should use lines, not work box)
+              const numberSequencePatterns = [
+                /write\s+(down\s+)?(the\s+)?numbers/i,
+                /count\s+(from|to|forward|backwards?)/i,
+                /list\s+the\s+numbers/i,
+                /write\s+down\s+what\s+you\s+(count|say)/i,
+                /start\s+at\s+\d+\s+and\s+count/i
+              ];
+
+              const isNumberSequence = numberSequencePatterns.some(pattern => pattern.test(prompt));
+
+              if (isNumberSequence) {
+                // Use answer lines for number sequences (not a work box)
+                for (let i = 0; i < Math.min(lineCount, 8); i++) {
+                  itemHTML += '<div class="answer-line"></div>';
+                }
+              } else {
+                // Use work box for actual calculation problems
+                itemHTML += `
+                  <div class="work-space">
+                    <div class="work-space-label">Work space:</div>
+                    <div class="work-space-area"></div>
+                  </div>
+                `;
+              }
             } else if (type === 'observation') {
               itemHTML += `
                 <div class="observation-note">
@@ -284,8 +303,8 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
 
             .option-box {
               display: inline-block;
-              width: 16px;
-              height: 16px;
+              width: 22px;
+              height: 22px;
               border: 2px solid #333;
               margin-right: 10px;
               flex-shrink: 0;
@@ -308,13 +327,14 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
 
             .work-space-label {
               font-size: 9pt;
-              color: #666;
+              color: #333;
+              font-weight: 600;
               margin-bottom: 4px;
             }
 
             .work-space-area {
               border: 2px solid #666;
-              min-height: 2.5in;
+              min-height: 1.5in;
               background: white;
             }
 
@@ -323,7 +343,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               margin-top: 8px;
               padding: 10px;
               background: #f5f5f5;
-              border-left: 2px solid #666;
+              border-left: 3px solid #666;
               font-size: 10pt;
               color: #555;
             }
@@ -409,6 +429,20 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
   // Students typically need 2-3 lines per sentence for handwriting
   const getLineCount = (item: AssessmentItem): number => {
     const { prompt } = item;
+
+    // Check for single-letter/sound questions (phonics/phonemic awareness)
+    const singleLetterPatterns = [
+      /write\s+(down\s+)?the\s+(first|middle|last|beginning|ending)\s+sound/i,
+      /what\s+(is\s+)?the\s+(first|middle|last|beginning|ending)\s+(sound|letter)/i,
+      /write\s+the\s+(letter|sound)\s+(you\s+hear|that\s+makes)/i,
+      /circle\s+the\s+(first|middle|last)\s+(sound|letter)/i
+    ];
+
+    const isSingleLetterQuestion = singleLetterPatterns.some(pattern => pattern.test(prompt));
+    if (isSingleLetterQuestion) {
+      // Single letter/sound only needs 2 lines max
+      return 2;
+    }
 
     // Check for explicit paragraph count (e.g., "Write 2 paragraphs")
     const paragraphMatch = prompt.match(/(\d+)\s+paragraph/i);
