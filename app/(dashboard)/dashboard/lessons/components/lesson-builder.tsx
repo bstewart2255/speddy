@@ -296,9 +296,6 @@ export default function LessonBuilder() {
             <option value="ela">ELA (English Language Arts)</option>
             <option value="math">Math</option>
           </select>
-          <p className="mt-1 text-xs text-gray-500">
-            Choose ELA for reading, writing, grammar, vocabulary lessons. Choose Math for computation, problem-solving, number sense lessons.
-          </p>
         </div>
 
         {/* Topic Input */}
@@ -310,7 +307,7 @@ export default function LessonBuilder() {
             type="text"
             value={formData.topic}
             onChange={(e) => handleInputChange('topic', e.target.value)}
-            placeholder="e.g., Addition and subtraction, Photosynthesis, Civil War"
+            placeholder="ex: Addition and subtraction, reading comprehension, etc."
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

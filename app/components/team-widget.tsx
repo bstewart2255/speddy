@@ -195,10 +195,7 @@
             </CardHeader>
             <CardBody>
               <h3 className="font-semibold text-lg mb-3">{school.school_name}</h3>
-              {school.district_name && (
-                <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
-              )}
-              
+
               {/* Share Request Notices - Hidden for SEA users */}
               {currentUser.role !== 'sea' && (
                 <ShareRequestNotice 
@@ -257,8 +254,6 @@
                   </CardTitle>
                 </CardHeader>
                 <CardBody>
-                  <p className="text-sm text-gray-500 mb-3">{school.district_name}</p>
-                  
                   {/* Share Request Notices - Hidden for SEA users */}
                   {currentUser.role !== 'sea' && (
                     <ShareRequestNotice 

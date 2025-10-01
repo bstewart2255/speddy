@@ -32,9 +32,6 @@ function SchoolOption({
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {school.full_address || `${school.school_site}`}
-          </div>
         </div>
       </div>
     </button>

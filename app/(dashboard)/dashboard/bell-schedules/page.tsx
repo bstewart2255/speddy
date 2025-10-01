@@ -154,11 +154,6 @@ export default function BellSchedulesPage() {
               {currentSchool && (
                 <p className="text-sm text-gray-500 mt-1">
                   {currentSchool.display_name}
-                  {currentSchool.is_migrated && (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      Optimized
-                    </span>
-                  )}
                 </p>
               )}
             </div>

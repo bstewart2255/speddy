@@ -37,7 +37,7 @@ export default function LessonsPage() {
                 <BookOpenIcon className="w-5 h-5" />
                 AI Lesson Builder
               </button>
-              <button
+              {/* <button
                 onClick={() => setActiveTab('bank')}
                 className={`
                   flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
@@ -50,7 +50,7 @@ export default function LessonsPage() {
               >
                 <FolderOpenIcon className="w-5 h-5" />
                 Lesson Bank
-              </button>
+              </button> */}
               <button
                 onClick={() => setActiveTab('exit-tickets')}
                 className={`
@@ -72,7 +72,7 @@ export default function LessonsPage() {
         {/* Tab Content */}
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'builder' && <LessonBuilder />}
-          {activeTab === 'bank' && <LessonBank />}
+          {/* {activeTab === 'bank' && <LessonBank />} */}
           {activeTab === 'exit-tickets' && <ExitTicketBuilder />}
         </div>
       </div>

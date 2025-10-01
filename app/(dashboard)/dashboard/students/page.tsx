@@ -463,7 +463,7 @@ export default function StudentsPage() {
                   <TableHead>Grade</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Schedule Requirements</TableHead>
-                  <TableHead>Progress</TableHead>
+                  {/* <TableHead>Progress</TableHead> */}
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -531,14 +531,14 @@ export default function StudentsPage() {
                         `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
                       )}
                     </TableCell>
-                    <TableCell>
+                    {/* <TableCell>
                       <button
                         onClick={() => router.push(`/progress/${student.id}`)}
                         className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                       >
                         View Progress
                       </button>
-                    </TableCell>
+                    </TableCell> */}
                     <TableActionCell>
                       {editingId === student.id ? (
                         <>
