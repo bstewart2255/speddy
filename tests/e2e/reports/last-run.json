@@ -1,6 +1,0 @@
-{
-  "success": false,
-  "output": "\n> my-app@0.1.0 test:e2e\n> playwright test\n\n",
-  "errorOutput": "error: unknown command 'test'\n",
-  "duration": 11538
-}
