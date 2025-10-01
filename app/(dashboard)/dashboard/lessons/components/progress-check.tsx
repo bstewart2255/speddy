@@ -69,7 +69,7 @@ export default function ProgressCheck() {
     if (user && currentSchool) {
       let query = supabase
         .from('students')
-        .select('id, initials, grade_level, school_id')
+        .select('id, initials, grade_level, school_id, student_details(iep_goals)')
         .eq('provider_id', user.id)
         .order('initials');
 
@@ -80,7 +80,17 @@ export default function ProgressCheck() {
       const { data } = await query;
 
       if (data) {
-        setStudents(data);
+        // Filter to only show students with IEP goals
+        const studentsWithGoals = data.filter(student => {
+          const studentDetails = Array.isArray(student.student_details)
+            ? student.student_details[0]
+            : student.student_details;
+          const iepGoals = studentDetails?.iep_goals || [];
+          return iepGoals.length > 0;
+        });
+
+        console.log(`[Progress Check] Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
+        setStudents(studentsWithGoals as any);
       }
     }
   }
@@ -166,7 +176,20 @@ export default function ProgressCheck() {
         <h2 className="text-2xl font-bold mb-2">Progress Check Generator</h2>
         <p className="text-gray-600 mb-6">
           Generate IEP goal assessment worksheets for your students. Select up to 10 students to create individual progress checks.
+          <br />
+          <span className="text-sm text-gray-500">
+            Note: Only students with IEP goals will appear in the list.
+          </span>
         </p>
+
+        {students.length === 0 && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md">
+            <p className="text-sm text-amber-800">
+              <strong>No students available:</strong> To use Progress Check, students must have IEP goals entered in their details.
+              Please add IEP goals to your students first.
+            </p>
+          </div>
+        )}
 
         {/* Student Multi-Select Dropdown */}
         <div className="mb-6" ref={dropdownRef}>
@@ -221,7 +244,7 @@ export default function ProgressCheck() {
               <div className="max-h-60 overflow-auto py-1">
                 {students.length === 0 ? (
                   <div className="px-3 py-2 text-gray-500 text-sm">
-                    No students found. Please add students first.
+                    No students with IEP goals found. Please add IEP goals to your students.
                   </div>
                 ) : (
                   students.map(student => (
