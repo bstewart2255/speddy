@@ -240,6 +240,7 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
               success: true,
               studentId: student.id,
               studentInitials: student.initials,
+              gradeLevel: student.grade_level,
               iepGoals: parsedWorksheet.iepGoals
             };
           } catch (error) {

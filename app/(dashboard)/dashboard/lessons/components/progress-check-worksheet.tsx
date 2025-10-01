@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface AssessmentItem {
@@ -9,7 +7,6 @@ interface AssessmentItem {
   prompt: string;
   passage?: string; // For reading comprehension questions
   options?: string[];
-  scoringNotes?: string;
 }
 
 interface IEPGoalAssessment {
@@ -20,6 +17,7 @@ interface IEPGoalAssessment {
 interface Worksheet {
   studentId: string;
   studentInitials: string;
+  gradeLevel?: number;
   iepGoals: IEPGoalAssessment[];
 }
 
@@ -29,18 +27,30 @@ interface ProgressCheckWorksheetProps {
 }
 
 export default function ProgressCheckWorksheet({ worksheets, onClose }: ProgressCheckWorksheetProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const handlePrint = () => {
     window.print();
   };
 
+  // Helper function to determine number of lines for short answer questions
+  const getLineCount = (item: AssessmentItem): number => {
+    const { prompt } = item;
+
+    // Check for explicit sentence count in prompt
+    const sentenceMatch = prompt.match(/(\d+)\s+sentence/i);
+    if (sentenceMatch) {
+      const count = parseInt(sentenceMatch[1]);
+      return count + 1; // Add one extra line
+    }
+
+    // Default based on prompt length
+    if (prompt.length < 50) return 3;
+    if (prompt.length > 100) return 8;
+
+    return 5; // Default
+  };
+
   const renderAssessmentItem = (item: AssessmentItem, itemIndex: number) => {
-    const { type, prompt, passage, options, scoringNotes } = item;
+    const { type, prompt, passage, options } = item;
 
     return (
       <div key={itemIndex} className="mb-6 pl-4">
@@ -70,9 +80,10 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
         )}
 
         {type === 'short_answer' && (
-          <div className="ml-6 mt-2">
-            <div className="border-b-2 border-gray-300 w-full h-8"></div>
-            <div className="border-b-2 border-gray-300 w-full h-8 mt-2"></div>
+          <div className="ml-6 mt-2 space-y-2">
+            {Array.from({ length: getLineCount(item) }).map((_, idx) => (
+              <div key={idx} className="border-b-2 border-gray-300 w-full h-8"></div>
+            ))}
           </div>
         )}
 
@@ -84,78 +95,75 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           </div>
         )}
 
-        {type === 'observation' && scoringNotes && (
-          <div className="ml-6 mt-2 p-3 bg-blue-50 border-l-4 border-blue-400">
-            <p className="text-xs font-medium text-blue-900 mb-1">Scoring Notes:</p>
-            <p className="text-sm text-blue-800">{scoringNotes}</p>
+        {type === 'observation' && (
+          <div className="ml-6 mt-2 p-3 bg-gray-50 border-l-2 border-gray-400 rounded">
+            <p className="text-sm text-gray-600 italic">
+              Teacher will observe and assess this skill.
+            </p>
           </div>
         )}
       </div>
     );
   };
 
-  const printContent = (
-    <div className="hidden print:block print-container">
-      {worksheets.map((worksheet, worksheetIndex) => (
-        <div
-          key={`print-${worksheet.studentId}`}
-          className="worksheet print-worksheet"
-        >
-          {/* Worksheet Header */}
-          <div className="mb-6 pb-4 border-b-2 border-gray-300">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Progress Check Assessment
-            </h1>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-lg font-medium text-gray-700">
-                  Student: <span className="text-blue-600">{worksheet.studentInitials}</span>
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Date: _________________</p>
-                <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
-            <p className="text-sm text-gray-700">
-              <strong>Instructions:</strong> Complete all questions and problems below.
-              Show your work where applicable. Read each question carefully before answering.
+  const renderWorksheetContent = (worksheet: Worksheet) => (
+    <>
+      {/* Worksheet Header */}
+      <div className="mb-6 pb-4 border-b-2 border-gray-300">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Progress Check Assessment
+        </h1>
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-lg font-medium text-gray-700">
+              Student: <span className="text-blue-600">{worksheet.studentInitials}</span>
             </p>
+            {worksheet.gradeLevel && (
+              <p className="text-sm text-gray-600 mt-1">Grade: {worksheet.gradeLevel}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-600">Date: _________________</p>
+            <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Instructions */}
+      <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
+        <p className="text-sm text-gray-700">
+          <strong>Instructions:</strong> Complete all questions and problems below.
+          Show your work where applicable. Read each question carefully before answering.
+        </p>
+      </div>
+
+      {/* Assessment Items (without showing IEP goals) */}
+      {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
+        <div key={goalIndex} className="mb-8">
+          {/* Section Header */}
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Section {goalIndex + 1}
+            </h3>
           </div>
 
-          {/* Assessment Items (without showing IEP goals) */}
-          {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
-            <div key={goalIndex} className="mb-8">
-              {/* Section Header */}
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Section {goalIndex + 1}
-                </h3>
-              </div>
-
-              {/* Assessment Items for this Goal */}
-              <div className="ml-2">
-                {goalAssessment.assessmentItems.map((item, itemIndex) =>
-                  renderAssessmentItem(item, itemIndex)
-                )}
-              </div>
-            </div>
-          ))}
+          {/* Assessment Items for this Goal */}
+          <div className="ml-2">
+            {goalAssessment.assessmentItems.map((item, itemIndex) =>
+              renderAssessmentItem(item, itemIndex)
+            )}
+          </div>
         </div>
       ))}
-    </div>
+    </>
   );
 
   return (
     <>
       {/* Modal overlay - only shown on screen, hidden in print */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 print:hidden">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 screen-only">
         <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          {/* Header - Hidden in print */}
+          {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-gray-900">
               Progress Check Worksheets ({worksheets.length})
@@ -179,63 +187,26 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
 
           {/* Worksheets Content - Scrollable preview */}
           <div className="flex-1 overflow-y-auto p-6">
-            {worksheets.map((worksheet, worksheetIndex) => (
+            {worksheets.map((worksheet) => (
               <div
                 key={worksheet.studentId}
                 className="mb-8 pb-8 border-b-2 border-gray-200 last:border-b-0"
               >
-                {/* Worksheet Header */}
-                <div className="mb-6 pb-4 border-b-2 border-gray-300">
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                    Progress Check Assessment
-                  </h1>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-lg font-medium text-gray-700">
-                        Student: <span className="text-blue-600">{worksheet.studentInitials}</span>
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600">Date: _________________</p>
-                      <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Instructions */}
-                <div className="mb-6 p-4 bg-gray-50 border-l-4 border-gray-400 rounded">
-                  <p className="text-sm text-gray-700">
-                    <strong>Instructions:</strong> Complete all questions and problems below.
-                    Show your work where applicable. Read each question carefully before answering.
-                  </p>
-                </div>
-
-                {/* Assessment Items (without showing IEP goals) */}
-                {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
-                  <div key={goalIndex} className="mb-8">
-                    {/* Section Header */}
-                    <div className="mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        Section {goalIndex + 1}
-                      </h3>
-                    </div>
-
-                    {/* Assessment Items for this Goal */}
-                    <div className="ml-2">
-                      {goalAssessment.assessmentItems.map((item, itemIndex) =>
-                        renderAssessmentItem(item, itemIndex)
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {renderWorksheetContent(worksheet)}
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Render print content to body via portal */}
-      {mounted && typeof document !== 'undefined' && createPortal(printContent, document.body)}
+      {/* Print-only content */}
+      <div className="worksheet-print-container">
+        {worksheets.map((worksheet) => (
+          <div key={`print-${worksheet.studentId}`} className="worksheet-page">
+            {renderWorksheetContent(worksheet)}
+          </div>
+        ))}
+      </div>
     </>
   );
 }

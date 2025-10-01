@@ -29,6 +29,7 @@ interface IEPGoalAssessment {
 interface Worksheet {
   studentId: string;
   studentInitials: string;
+  gradeLevel?: number;
   iepGoals: IEPGoalAssessment[];
 }
 
