@@ -28,7 +28,381 @@ interface ProgressCheckWorksheetProps {
 
 export default function ProgressCheckWorksheet({ worksheets, onClose }: ProgressCheckWorksheetProps) {
   const handlePrint = () => {
-    window.print();
+    // Generate complete HTML document for printing (Exit Ticket pattern)
+    const generatePrintHTML = () => {
+      // Escape HTML to prevent XSS
+      const escapeHtml = (value: unknown) => {
+        if (value === null || value === undefined) return '';
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
+      const worksheetsHTML = worksheets.map((worksheet, wsIndex) => {
+        const { studentInitials, gradeLevel, iepGoals } = worksheet;
+
+        // Generate assessment items HTML
+        const assessmentHTML = iepGoals.map((goalAssessment, goalIndex) => {
+          const itemsHTML = goalAssessment.assessmentItems.map((item, itemIndex) => {
+            const { type, prompt, passage, options } = item;
+            const lineCount = getLineCount(item);
+
+            let itemHTML = `<div class="assessment-item">`;
+
+            // Reading passage (if present)
+            if (passage) {
+              itemHTML += `
+                <div class="passage-section">
+                  <div class="passage-header">Reading Passage:</div>
+                  <div class="passage-text">${escapeHtml(passage)}</div>
+                </div>
+              `;
+            }
+
+            // Question number and prompt
+            itemHTML += `
+              <div class="question-prompt">
+                <span class="question-number">${itemIndex + 1}.</span>
+                <span class="question-text">${escapeHtml(prompt)}</span>
+              </div>
+            `;
+
+            // Answer area based on type
+            if (type === 'multiple_choice' && options && options.length > 0) {
+              itemHTML += '<div class="multiple-choice-options">';
+              options.forEach((option, optIdx) => {
+                itemHTML += `
+                  <div class="option-row">
+                    <span class="option-box"></span>
+                    <span class="option-text">${escapeHtml(option)}</span>
+                  </div>
+                `;
+              });
+              itemHTML += '</div>';
+            } else if (type === 'short_answer') {
+              for (let i = 0; i < lineCount; i++) {
+                itemHTML += '<div class="answer-line"></div>';
+              }
+            } else if (type === 'problem') {
+              itemHTML += `
+                <div class="work-space">
+                  <div class="work-space-label">Work space:</div>
+                  <div class="work-space-area"></div>
+                </div>
+              `;
+            } else if (type === 'observation') {
+              itemHTML += `
+                <div class="observation-note">
+                  <em>Teacher will observe and assess this skill.</em>
+                </div>
+              `;
+            }
+
+            itemHTML += '</div>'; // Close assessment-item
+            return itemHTML;
+          }).join('');
+
+          return `
+            <div class="goal-section">
+              <h3 class="section-title">Section ${goalIndex + 1}</h3>
+              <div class="assessment-items">
+                ${itemsHTML}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="worksheet-page">
+            <!-- Header -->
+            <div class="worksheet-header">
+              <h1>Progress Check Assessment</h1>
+              <div class="header-row">
+                <div class="header-left">
+                  <div class="student-info">Student: <strong>${escapeHtml(studentInitials)}</strong></div>
+                  ${gradeLevel ? `<div class="grade-info">Grade: ${escapeHtml(gradeLevel)}</div>` : ''}
+                </div>
+                <div class="header-right">
+                  <div class="date-line">Date: _________________</div>
+                  <div class="teacher-line">Teacher: _________________</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions-box">
+              <strong>Instructions:</strong> Complete all questions and problems below.
+              Show your work where applicable. Read each question carefully before answering.
+            </div>
+
+            <!-- Assessment Content -->
+            <div class="assessment-content">
+              ${assessmentHTML}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Progress Check Worksheets</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 12pt;
+              line-height: 1.6;
+              color: #000;
+              background: white;
+            }
+
+            .worksheet-page {
+              width: 8.5in;
+              min-height: 11in;
+              padding: 0.5in;
+              margin: 0 auto;
+              background: white;
+              page-break-after: always;
+              page-break-inside: avoid;
+              position: relative;
+            }
+
+            .worksheet-page:last-child {
+              page-break-after: auto;
+            }
+
+            .worksheet-header {
+              border-bottom: 3px solid #333;
+              padding-bottom: 12px;
+              margin-bottom: 20px;
+            }
+
+            .worksheet-header h1 {
+              font-size: 22pt;
+              margin-bottom: 10px;
+            }
+
+            .header-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+            }
+
+            .student-info, .grade-info {
+              font-size: 11pt;
+              margin-top: 4px;
+            }
+
+            .date-line, .teacher-line {
+              font-size: 10pt;
+              margin-top: 2px;
+            }
+
+            .instructions-box {
+              background: #f5f5f5;
+              border-left: 4px solid #666;
+              padding: 12px;
+              margin-bottom: 20px;
+              font-size: 10pt;
+            }
+
+            .goal-section {
+              margin-bottom: 24px;
+            }
+
+            .section-title {
+              font-size: 14pt;
+              font-weight: bold;
+              margin-bottom: 12px;
+            }
+
+            .assessment-item {
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+
+            .passage-section {
+              background: #f8f9fa;
+              border: 1px solid #dee2e6;
+              border-left: 4px solid #0066cc;
+              padding: 12px;
+              margin-bottom: 12px;
+              border-radius: 4px;
+            }
+
+            .passage-header {
+              font-weight: bold;
+              font-size: 10pt;
+              margin-bottom: 6px;
+            }
+
+            .passage-text {
+              font-size: 11pt;
+              line-height: 1.7;
+              white-space: pre-wrap;
+            }
+
+            .question-prompt {
+              margin-bottom: 10px;
+              display: flex;
+              align-items: flex-start;
+            }
+
+            .question-number {
+              font-weight: bold;
+              margin-right: 8px;
+              min-width: 24px;
+            }
+
+            .question-text {
+              flex: 1;
+              line-height: 1.5;
+            }
+
+            .multiple-choice-options {
+              margin-left: 32px;
+              margin-top: 8px;
+            }
+
+            .option-row {
+              display: flex;
+              align-items: center;
+              margin: 6px 0;
+            }
+
+            .option-box {
+              display: inline-block;
+              width: 16px;
+              height: 16px;
+              border: 2px solid #333;
+              margin-right: 10px;
+              flex-shrink: 0;
+            }
+
+            .option-text {
+              flex: 1;
+            }
+
+            .answer-line {
+              border-bottom: 2px solid #666;
+              height: 30px;
+              margin: 8px 0 8px 32px;
+            }
+
+            .work-space {
+              margin-left: 32px;
+              margin-top: 10px;
+            }
+
+            .work-space-label {
+              font-size: 9pt;
+              color: #666;
+              margin-bottom: 4px;
+            }
+
+            .work-space-area {
+              border: 2px solid #666;
+              min-height: 2.5in;
+              background: white;
+            }
+
+            .observation-note {
+              margin-left: 32px;
+              margin-top: 8px;
+              padding: 10px;
+              background: #f5f5f5;
+              border-left: 2px solid #666;
+              font-size: 10pt;
+              color: #555;
+            }
+
+            @media print {
+              @page {
+                margin: 0;
+                size: letter portrait;
+              }
+
+              body {
+                margin: 0;
+                padding: 0;
+              }
+
+              .worksheet-page {
+                width: 100%;
+                margin: 0;
+                padding: 0.5in;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${worksheetsHTML}
+        </body>
+        </html>
+      `;
+    };
+
+    // Create hidden iframe for printing (Exit Ticket pattern)
+    const printHTML = generatePrintHTML();
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.style.visibility = 'hidden';
+
+    document.body.appendChild(iframe);
+
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        throw new Error('Unable to access iframe document');
+      }
+
+      iframeDoc.write(printHTML);
+      iframeDoc.close();
+
+      // Wait for content to load then print
+      const printAndCleanup = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (error) {
+          console.error('Failed to print:', error);
+        } finally {
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+        }
+      };
+
+      if (iframe.contentWindow?.document.readyState === 'complete') {
+        printAndCleanup();
+      } else {
+        iframe.onload = printAndCleanup;
+      }
+    } catch (error) {
+      console.error('Error creating print document:', error);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      // Fallback to window.print if iframe fails
+      window.print();
+    }
   };
 
   // Helper function to determine number of lines for short answer questions
