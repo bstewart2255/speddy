@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
-import { createAIProvider } from '@/lib/lessons/providers';
+import OpenAI from 'openai';
 import { z } from 'zod';
 
 // Extended timeout for AI generation
@@ -114,8 +114,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Initialize AI provider
-      const provider = createAIProvider();
+      // Initialize OpenAI client
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY not configured');
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
 
       // Process students in parallel with Promise.allSettled
       const worksheetPromises = studentsData.map(async (student) => {
@@ -151,69 +157,34 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
 - Problems for skill demonstration
 - Observation prompts for behaviors/social skills`;
 
-          // Create a minimal request object for the provider
-          const mockRequest = {
-            students: [{ id: student.id, grade: parseInt(student.grade_level) || 3 }],
-            teacherRole: 'resource' as const,
-            subject: 'Progress Check',
-            subjectType: 'ela' as const,
-            topic: 'IEP Goal Assessment',
-            duration: 30
-          };
-
-          // Call AI provider with timeout
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s per student
-
+          // Call OpenAI directly with timeout
           try {
-            const response = await Promise.race([
-              provider.generateLesson(mockRequest, SYSTEM_PROMPT, userPrompt),
-              new Promise((_, reject) =>
+            const completion = await Promise.race([
+              openai.chat.completions.create({
+                model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                messages: [
+                  { role: 'system', content: SYSTEM_PROMPT },
+                  { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 4000,
+                response_format: { type: 'json_object' }
+              }),
+              new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout')), 30000)
               )
-            ]) as any;
+            ]);
 
-            clearTimeout(timeoutId);
-
-            // Log the actual response structure for debugging
-            console.log('[Progress Check] AI Response structure:', {
-              hasLesson: !!response.lesson,
-              hasWorksheet: !!response.worksheet,
-              hasStudentMaterials: !!response.studentMaterials,
-              lessonKeys: response.lesson ? Object.keys(response.lesson) : [],
-              topLevelKeys: Object.keys(response)
-            });
-
-            // Parse and validate response
-            let parsedWorksheet;
-            try {
-              // The response is a LessonResponse, try multiple extraction paths
-              let content = response;
-
-              // Try to extract from lesson.content or similar nested paths
-              if (response.lesson) {
-                content = response.lesson;
-              }
-
-              // If it's wrapped in studentMaterials, try to extract
-              if (response.studentMaterials && response.studentMaterials.length > 0) {
-                content = response.studentMaterials[0].worksheet || response.studentMaterials[0];
-              }
-
-              // Log what we're trying to parse
-              console.log('[Progress Check] Attempting to parse content:', {
-                contentType: typeof content,
-                hasStudentInitials: !!content.studentInitials,
-                hasIepGoals: !!content.iepGoals,
-                contentKeys: typeof content === 'object' ? Object.keys(content) : []
-              });
-
-              parsedWorksheet = WorksheetSchema.parse(content);
-            } catch (parseError) {
-              console.error('[Progress Check] Failed to parse AI response:', parseError);
-              console.error('[Progress Check] Raw response:', JSON.stringify(response, null, 2).slice(0, 500));
-              throw new Error('Invalid AI response format');
+            const content = completion.choices[0]?.message?.content;
+            if (!content) {
+              throw new Error('Empty response from OpenAI');
             }
+
+            // Parse JSON response
+            const jsonResponse = JSON.parse(content);
+
+            // Validate with Zod
+            const parsedWorksheet = WorksheetSchema.parse(jsonResponse);
 
             return {
               success: true,
@@ -221,8 +192,11 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
               studentInitials: student.initials,
               iepGoals: parsedWorksheet.iepGoals
             };
-          } finally {
-            clearTimeout(timeoutId);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Timeout') {
+              throw new Error('Generation timeout');
+            }
+            throw error;
           }
         } catch (error) {
           console.error(`Error generating worksheet for student ${student.id}:`, error);
