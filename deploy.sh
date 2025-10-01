@@ -4,8 +4,8 @@ echo "🚀 Replit Deployment Process Starting..."
 echo "======================================="
 
 # 1. Run tests
-echo "📋 Running E2E deployment checks..."
-npm run test:e2e:ci
+echo "📋 Running integration deployment checks..."
+npm run test:integration
 
 if [ $? -ne 0 ]; then
   echo "❌ Deployment checks failed! Aborting deployment."
