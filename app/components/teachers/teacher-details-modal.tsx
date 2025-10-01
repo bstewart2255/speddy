@@ -97,6 +97,7 @@ export function TeacherDetailsModal({
           classroom_number: formData.classroom_number || null,
           phone_number: formData.phone_number || null,
           school_id: teacher.school_id,
+          school_site: teacher.school_site,
         });
       } else {
         savedTeacher = await getOrCreateTeacher(
@@ -112,6 +113,7 @@ export function TeacherDetailsModal({
             email: formData.email || null,
             classroom_number: formData.classroom_number || null,
             phone_number: formData.phone_number || null,
+            school_site: savedTeacher.school_site,
             school_id: savedTeacher.school_id,
           });
         }
