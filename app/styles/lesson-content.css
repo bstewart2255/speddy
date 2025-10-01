@@ -163,16 +163,27 @@
   .lesson-content {
     @apply text-black;
   }
-  
+
   .lesson-content h2::before,
   .lesson-content ul li::before {
     content: '•';
     @apply text-black;
   }
-  
+
   .lesson-content .activity-block,
   .lesson-content .materials-section,
   .lesson-content .objectives-section {
     @apply border-2 border-black bg-white;
+  }
+
+  /* Progress check worksheet page breaks */
+  .worksheet {
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+
+  /* Avoid breaking last worksheet */
+  .worksheet:last-child {
+    page-break-after: auto;
   }
 }
