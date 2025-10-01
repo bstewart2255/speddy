@@ -3,9 +3,8 @@
 import React, { useMemo } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
-import type { BellSchedule, SpecialActivity, Student, Database } from '@/src/types/database';
-
-type Teacher = Database['public']['Tables']['teachers']['Row'];
+import type { BellSchedule, SpecialActivity, Student } from '@/src/types/database';
+import type { Teacher } from '../types/teacher';
 
 interface ConflictFilterPanelProps {
   bellSchedules: BellSchedule[];
