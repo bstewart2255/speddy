@@ -126,6 +126,8 @@ export async function POST(request: NextRequest) {
       // Process students in parallel with Promise.allSettled
       const worksheetPromises = studentsData.map(async (student) => {
         try {
+          console.log(`[Progress Check] Processing student ${student.id} (${student.initials})`);
+
           // Extract IEP goals
           const studentDetails = Array.isArray(student.student_details)
             ? student.student_details[0]
@@ -133,8 +135,11 @@ export async function POST(request: NextRequest) {
 
           const iepGoals = studentDetails?.iep_goals || [];
 
+          console.log(`[Progress Check] Student ${student.initials} has ${iepGoals.length} IEP goals`);
+
           // Skip if no IEP goals
           if (iepGoals.length === 0) {
+            console.log(`[Progress Check] Skipping student ${student.initials} - no IEP goals`);
             return {
               success: false,
               studentId: student.id,
@@ -159,6 +164,8 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
 
           // Call OpenAI directly with timeout
           try {
+            console.log(`[Progress Check] Calling OpenAI for student ${student.initials}...`);
+
             const completion = await Promise.race([
               openai.chat.completions.create({
                 model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -175,6 +182,8 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
               )
             ]);
 
+            console.log(`[Progress Check] OpenAI response received for ${student.initials}`);
+
             const content = completion.choices[0]?.message?.content;
             if (!content) {
               throw new Error('Empty response from OpenAI');
@@ -182,9 +191,15 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
 
             // Parse JSON response
             const jsonResponse = JSON.parse(content);
+            console.log(`[Progress Check] JSON parsed for ${student.initials}:`, {
+              hasStudentInitials: !!jsonResponse.studentInitials,
+              hasIepGoals: !!jsonResponse.iepGoals,
+              iepGoalCount: jsonResponse.iepGoals?.length || 0
+            });
 
             // Validate with Zod
             const parsedWorksheet = WorksheetSchema.parse(jsonResponse);
+            console.log(`[Progress Check] Validation passed for ${student.initials}`);
 
             return {
               success: true,
@@ -193,6 +208,7 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
               iepGoals: parsedWorksheet.iepGoals
             };
           } catch (error) {
+            console.error(`[Progress Check] Error in OpenAI call for ${student.initials}:`, error);
             if (error instanceof Error && error.message === 'Timeout') {
               throw new Error('Generation timeout');
             }
@@ -215,8 +231,20 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
       const worksheets: any[] = [];
       const errors: any[] = [];
 
+      console.log('[Progress Check] Processing results:', {
+        totalResults: results.length,
+        fulfilled: results.filter(r => r.status === 'fulfilled').length,
+        rejected: results.filter(r => r.status === 'rejected').length
+      });
+
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
+          console.log(`[Progress Check] Student ${index + 1} result:`, {
+            success: result.value.success,
+            studentId: result.value.studentId,
+            error: result.value.error
+          });
+
           if (result.value.success) {
             worksheets.push({
               studentId: result.value.studentId,
@@ -230,11 +258,17 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
             });
           }
         } else {
+          console.error(`[Progress Check] Student ${index + 1} promise rejected:`, result.reason);
           errors.push({
             studentId: studentsData[index]?.id,
             error: result.reason?.message || 'Unknown error'
           });
         }
+      });
+
+      console.log('[Progress Check] Final results:', {
+        successCount: worksheets.length,
+        errorCount: errors.length
       });
 
       return NextResponse.json({

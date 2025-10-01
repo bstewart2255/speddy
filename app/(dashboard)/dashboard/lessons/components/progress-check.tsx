@@ -122,6 +122,14 @@ export default function ProgressCheck() {
 
       const data = await response.json();
 
+      // Debug logging
+      console.log('[Progress Check] API response:', {
+        success: data.success,
+        worksheetCount: data.worksheets?.length || 0,
+        errorCount: data.errors?.length || 0,
+        errors: data.errors
+      });
+
       if (data.worksheets && data.worksheets.length > 0) {
         setGeneratedWorksheets(data.worksheets);
         setShowWorksheets(true);
@@ -138,7 +146,10 @@ export default function ProgressCheck() {
           showToast(`Successfully generated ${successCount} progress check${successCount > 1 ? 's' : ''}!`, 'success');
         }
       } else {
-        throw new Error('No worksheets were generated');
+        // Show detailed error information
+        const errorDetails = data.errors?.map((e: any) => e.error).join(', ') || 'Unknown error';
+        console.error('[Progress Check] No worksheets generated. Errors:', data.errors);
+        throw new Error(`No worksheets were generated. Errors: ${errorDetails}`);
       }
     } catch (error: any) {
       console.error('Error generating progress checks:', error);
