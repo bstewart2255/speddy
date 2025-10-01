@@ -175,14 +175,43 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
 
             clearTimeout(timeoutId);
 
+            // Log the actual response structure for debugging
+            console.log('[Progress Check] AI Response structure:', {
+              hasLesson: !!response.lesson,
+              hasWorksheet: !!response.worksheet,
+              hasStudentMaterials: !!response.studentMaterials,
+              lessonKeys: response.lesson ? Object.keys(response.lesson) : [],
+              topLevelKeys: Object.keys(response)
+            });
+
             // Parse and validate response
             let parsedWorksheet;
             try {
-              // The response might be wrapped in a lesson structure, extract the actual content
-              const content = response.lesson || response.worksheet || response;
+              // The response is a LessonResponse, try multiple extraction paths
+              let content = response;
+
+              // Try to extract from lesson.content or similar nested paths
+              if (response.lesson) {
+                content = response.lesson;
+              }
+
+              // If it's wrapped in studentMaterials, try to extract
+              if (response.studentMaterials && response.studentMaterials.length > 0) {
+                content = response.studentMaterials[0].worksheet || response.studentMaterials[0];
+              }
+
+              // Log what we're trying to parse
+              console.log('[Progress Check] Attempting to parse content:', {
+                contentType: typeof content,
+                hasStudentInitials: !!content.studentInitials,
+                hasIepGoals: !!content.iepGoals,
+                contentKeys: typeof content === 'object' ? Object.keys(content) : []
+              });
+
               parsedWorksheet = WorksheetSchema.parse(content);
             } catch (parseError) {
-              console.error('Failed to parse AI response:', parseError);
+              console.error('[Progress Check] Failed to parse AI response:', parseError);
+              console.error('[Progress Check] Raw response:', JSON.stringify(response, null, 2).slice(0, 500));
               throw new Error('Invalid AI response format');
             }
 
