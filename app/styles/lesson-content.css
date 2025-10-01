@@ -195,14 +195,22 @@
   }
 
   /* Progress check worksheet page breaks */
-  .worksheet {
+  .print-worksheet {
+    page-break-before: always;
     page-break-after: always;
     page-break-inside: avoid;
     background: white !important;
+    padding: 0;
+    margin: 0;
   }
 
-  /* Avoid breaking last worksheet */
-  .worksheet:last-child {
+  /* First worksheet should not have page break before */
+  .print-worksheet:first-child {
+    page-break-before: auto;
+  }
+
+  /* Avoid breaking last worksheet after */
+  .print-worksheet:last-child {
     page-break-after: auto;
   }
 
