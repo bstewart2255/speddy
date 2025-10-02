@@ -350,7 +350,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
 
             @media print {
               @page {
-                margin: 0;
+                margin: 0.5in;
                 size: letter portrait;
               }
 
@@ -362,7 +362,16 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               .worksheet-page {
                 width: 100%;
                 margin: 0;
-                padding: 0.5in;
+                padding: 0;
+              }
+
+              .goal-section {
+                page-break-inside: avoid;
+              }
+
+              .section-title {
+                page-break-after: avoid;
+                page-break-inside: avoid;
               }
             }
           </style>
