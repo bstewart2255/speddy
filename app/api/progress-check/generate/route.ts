@@ -41,7 +41,12 @@ REQUIREMENTS:
 2. Generate EXACTLY 3 assessment items per goal
 3. Vary formats based on goal type
 4. Keep language grade-appropriate and student-friendly
-5. For reading comprehension goals, ALWAYS include a passage followed by questions
+5. For reading comprehension goals:
+   - Create ONE substantial passage (100-150 words, grade-appropriate)
+   - Place the passage in the FIRST assessment item only
+   - Subsequent items for that same goal should reference that passage with their questions
+   - Questions should explore different aspects of comprehension (understanding details, making inferences, vocabulary in context, main idea, etc.) - vary naturally, don't follow a rigid formula
+   - Only the first item gets the "passage" field; remaining items are just questions about that passage
 6. For writing goals, specify how many sentences or paragraphs to write
 
 ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 4 TYPES:
@@ -55,15 +60,36 @@ MAPPING GOALS TO ASSESSMENT TYPES:
 - Writing goals → Use "short_answer" (specify number of sentences: "Write 5 sentences about...")
 - Math goals → Use "problem" or "multiple_choice"
 - Behavioral/Social goals → Use "observation" (write what student should demonstrate)
+- Phonics/Decoding goals → Use "observation" (read words aloud) or "multiple_choice" (identify sound patterns)
 - Knowledge recall → Use "multiple_choice" or "short_answer"
+
+PHONICS/DECODING GOALS - REALISTIC ASSESSMENT:
+- Decoding is about READING printed words aloud, not writing down sounds
+- For decode/phonics goals → Use "observation" type with prompt like "Read these words aloud to your teacher: cat, bat, hat, mat"
+- For sound identification → Use "multiple_choice" asking which word has a specific sound pattern
+- NEVER ask students to "write the sounds they hear" - that's not how decoding works in practice
 
 CORRECT EXAMPLES:
 
-Reading comprehension (short_answer with passage):
+Reading comprehension (3 items for one goal, sharing one passage):
+
+Item 1 (has passage):
 {
   "type": "short_answer",
-  "passage": "The cat sat on the mat. It was a sunny day. The cat purred happily as it watched birds fly by the window.",
-  "prompt": "Write 3-4 sentences describing what the cat was doing and how it felt."
+  "passage": "The cat sat on the mat watching birds outside. It was a sunny afternoon. The cat's tail swished back and forth as butterflies danced past the window. Soon, the cat fell asleep in the warm sunlight.",
+  "prompt": "Write 2-3 sentences describing what the cat was doing and where."
+}
+
+Item 2 (references same passage, no passage field):
+{
+  "type": "short_answer",
+  "prompt": "Why do you think the cat fell asleep? Use details from the passage to support your answer. Write 2-3 sentences."
+}
+
+Item 3 (references same passage):
+{
+  "type": "short_answer",
+  "prompt": "What does the word 'swished' mean in the passage? Write 1-2 sentences explaining your answer."
 }
 
 Writing goal (short_answer without passage):
@@ -371,6 +397,7 @@ For EACH goal, create exactly 3 assessment items. Mix types appropriately:
             worksheets.push({
               studentId: result.value.studentId,
               studentInitials: result.value.studentInitials,
+              gradeLevel: result.value.gradeLevel,
               iepGoals: result.value.iepGoals
             });
           } else {

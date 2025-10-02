@@ -181,7 +181,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
 
             body {
               font-family: Arial, sans-serif;
-              font-size: 12pt;
+              font-size: 13pt;
               line-height: 1.6;
               color: #000;
               background: white;
@@ -205,7 +205,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
             .worksheet-header {
               border-bottom: 3px solid #333;
               padding-bottom: 12px;
-              margin-bottom: 20px;
+              margin-bottom: 12px;
             }
 
             .worksheet-header h1 {
@@ -233,12 +233,12 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               background: #f5f5f5;
               border-left: 4px solid #666;
               padding: 12px;
-              margin-bottom: 20px;
+              margin-bottom: 12px;
               font-size: 10pt;
             }
 
             .goal-section {
-              margin-bottom: 24px;
+              margin-bottom: 16px;
             }
 
             .section-title {
@@ -248,7 +248,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
             }
 
             .assessment-item {
-              margin-bottom: 20px;
+              margin-bottom: 14px;
               page-break-inside: avoid;
             }
 
@@ -459,8 +459,8 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
       const maxCount = sentenceMatch[2] ? parseInt(sentenceMatch[2]) : minCount;
       const avgCount = (minCount + maxCount) / 2;
 
-      // Students need ~2.5 lines per sentence on average, plus 2 extra for safety
-      const lineCount = Math.ceil(avgCount * 2.5) + 2;
+      // Students need ~2 lines per sentence on average, plus 1 extra for safety
+      const lineCount = Math.ceil(avgCount * 2) + 1;
       return Math.min(lineCount, 20);
     }
 
