@@ -160,19 +160,23 @@
 
 /* Print styles */
 @media print {
+  /* Lesson content print styles (for AI Lesson Builder) */
   .lesson-content {
     @apply text-black;
   }
-  
+
   .lesson-content h2::before,
   .lesson-content ul li::before {
     content: '•';
     @apply text-black;
   }
-  
+
   .lesson-content .activity-block,
   .lesson-content .materials-section,
   .lesson-content .objectives-section {
     @apply border-2 border-black bg-white;
   }
+
+  /* Note: Progress Check and Exit Ticket worksheets use iframe-based printing with embedded CSS */
+  /* They generate complete HTML documents and print from hidden iframes for full isolation */
 }

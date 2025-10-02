@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { BookOpenIcon, FolderOpenIcon, TicketIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 import { ToastProvider } from '@/app/contexts/toast-context';
 import LessonBuilder from './components/lesson-builder';
 import LessonBank from './components/lesson-bank';
 import ExitTicketBuilder from './components/exit-ticket-builder';
+import ProgressCheck from './components/progress-check';
 
 export default function LessonsPage() {
-  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check'>('builder');
 
   return (
     <ToastProvider>
@@ -65,6 +66,20 @@ export default function LessonsPage() {
                 <TicketIcon className="w-5 h-5" />
                 Exit Tickets
               </button>
+              <button
+                onClick={() => setActiveTab('progress-check')}
+                className={`
+                  flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
+                  transition-colors duration-200 flex items-center justify-center gap-2
+                  ${activeTab === 'progress-check'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                Progress Check
+              </button>
             </nav>
           </div>
         </div>
@@ -74,6 +89,7 @@ export default function LessonsPage() {
           {activeTab === 'builder' && <LessonBuilder />}
           {/* {activeTab === 'bank' && <LessonBank />} */}
           {activeTab === 'exit-tickets' && <ExitTicketBuilder />}
+          {activeTab === 'progress-check' && <ProgressCheck />}
         </div>
       </div>
     </div>

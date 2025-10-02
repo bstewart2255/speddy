@@ -54,10 +54,15 @@
       "Bash(gh project field-create:*)",
       "Bash(gh project item-add:*)",
       "Bash(gh project item-create:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(npx eslint:*)",
+      "WebFetch(domain:objects.githubusercontent.com)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["context7", "supabase"]
+  "enabledMcpjsonServers": [
+    "context7",
+    "supabase"
+  ]
 }
