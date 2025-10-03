@@ -365,10 +365,6 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
                 padding: 0;
               }
 
-              .goal-section {
-                page-break-inside: avoid;
-              }
-
               .section-title {
                 page-break-after: avoid;
                 page-break-inside: avoid;
