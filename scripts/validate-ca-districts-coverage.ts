@@ -66,24 +66,25 @@ async function validateCaliforniaDistrictsCoverage() {
     });
 
     // 3. Get districts with schools
+    const { data: schoolDistrictIds } = await supabase
+      .from('schools')
+      .select('district_id');
+
+    const uniqueDistrictIds = [...new Set(schoolDistrictIds?.map(s => s.district_id) || [])];
+
     const { count: districtsWithSchools } = await supabase
       .from('districts')
       .select('id', { count: 'exact', head: true })
       .eq('state_id', 'CA')
-      .in('id', supabase
-        .from('schools')
-        .select('district_id')
-      );
+      .in('id', uniqueDistrictIds);
 
     // 4. Get schools count by type
+    const caDistrictIds = districts?.map(d => d.id) || [];
+
     const { data: schoolCounts } = await supabase
       .from('schools')
       .select('school_type')
-      .eq('district_id', supabase
-        .from('districts')
-        .select('id')
-        .eq('state_id', 'CA')
-      );
+      .in('district_id', caDistrictIds);
 
     const schoolsByType: { [key: string]: number } = {};
     schoolCounts?.forEach(s => {

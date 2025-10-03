@@ -14,7 +14,11 @@ interface JsonLessonRendererProps {
   }>;
 }
 
-type StudentInfo = JsonLessonRendererProps['students'] extends Array<infer S> ? S : never;
+type StudentInfo = {
+  id: string;
+  initials: string;
+  grade_level?: string;
+};
 
 export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRendererProps) {
   // Parse the lesson data if it's a string and memoize the result to avoid repeat work

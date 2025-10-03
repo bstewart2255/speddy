@@ -56,13 +56,15 @@
       "Bash(gh project item-create:*)",
       "Bash(npx tsx:*)",
       "Bash(npx eslint:*)",
-      "WebFetch(domain:objects.githubusercontent.com)"
+      "WebFetch(domain:objects.githubusercontent.com)",
+      "Bash(git log:*)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "context7",
+    "playwright",
     "supabase"
   ]
 }

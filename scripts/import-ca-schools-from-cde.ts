@@ -124,7 +124,7 @@ function determineSchoolType(
 /**
  * Parse tab-delimited file
  */
-function parseTabDelimitedFile(filePath: string): any[] {
+function parseTabDelimitedFile(filePath: string): Record<string, string>[] {
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.split('\n').filter(line => line.trim());
 
@@ -135,10 +135,10 @@ function parseTabDelimitedFile(filePath: string): any[] {
   console.log('📋 Found headers:', headers.slice(0, 10).join(', '), '...');
 
   // Parse data rows
-  const data = [];
+  const data: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split('\t');
-    const row: any = {};
+    const row: Record<string, string> = {};
 
     headers.forEach((header, index) => {
       row[header] = values[index]?.trim() || '';
@@ -202,7 +202,24 @@ async function importCaliforniaSchoolsFromCDE() {
 
     // Filter and prepare elementary schools
     console.log('🔍 Filtering elementary and K-8 schools...');
-    const elementarySchools = [];
+    interface SchoolData {
+      id: string;
+      district_id: string;
+      state_id: string;
+      name: string;
+      school_type: string;
+      city: string | null;
+      zip: string | null;
+      street: string | null;
+      phone: string | null;
+      website: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      charter: boolean;
+      magnet: boolean;
+      is_active: boolean;
+    }
+    const elementarySchools: SchoolData[] = [];
     let skippedCount = 0;
     let noDistrictCount = 0;
 
