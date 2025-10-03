@@ -138,15 +138,14 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           <div class="worksheet-page">
             <!-- Header -->
             <div class="worksheet-header">
-              <h1>Progress Check Assessment</h1>
+              <h1>Progress Check</h1>
               <div class="header-row">
                 <div class="header-left">
                   <div class="student-info">Student: <strong>${escapeHtml(studentInitials)}</strong></div>
                   ${gradeLevel ? `<div class="grade-info">Grade: ${escapeHtml(gradeLevel)}</div>` : ''}
                 </div>
                 <div class="header-right">
-                  <div class="date-line">Date: _________________</div>
-                  <div class="teacher-line">Teacher: _________________</div>
+                  <div class="date-line">Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
                 </div>
               </div>
             </div>
@@ -224,7 +223,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               margin-top: 4px;
             }
 
-            .date-line, .teacher-line {
+            .date-line {
               font-size: 10pt;
               margin-top: 2px;
             }
@@ -556,7 +555,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
       {/* Worksheet Header */}
       <div className="mb-6 pb-4 border-b-2 border-gray-300">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Progress Check Assessment
+          Progress Check
         </h1>
         <div className="flex justify-between items-center">
           <div>
@@ -568,8 +567,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
             )}
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-600">Date: _________________</p>
-            <p className="text-sm text-gray-600 mt-1">Teacher: _________________</p>
+            <p className="text-sm text-gray-600">Date: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
           </div>
         </div>
       </div>
