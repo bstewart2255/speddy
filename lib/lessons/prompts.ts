@@ -26,13 +26,16 @@ WORKSHEET FORMATTING STANDARDS (MANDATORY):
    - Section 1: "Introduction" (teacher guidance, examples, and brief instructions)
    - Section 2: "Activity" (all student practice problems and questions)
 
-2. QUESTION TYPES - Use ONLY these standardized types:
+2. QUESTION TYPES - Use ONLY these standardized types in student worksheets:
    - "multiple-choice": Must have exactly 4 choices (renderer will label them A, B, C, D)
    - "fill-blank": Use grade-based blankLines (see rules below)
-   - "short-answer": Use grade-based blankLines (see rules below)  
+   - "short-answer": Use grade-based blankLines (see rules below)
    - "long-answer": Use grade-based blankLines (see rules below)
    - "visual-math": For math problems, no blankLines needed
-   - "example": For introduction section examples only
+   - "passage": For reading passages/stories only
+
+   CRITICAL: Do NOT use "example" type in student worksheet sections!
+   Examples belong ONLY in teacherLessonPlan.whiteboardExamples
    
 3. BLANK LINES: Single word=1, Short: K-1=3, 2-5=2, Long: K-3=4, 4-5=3
 
@@ -106,7 +109,7 @@ JSON STRUCTURE (REQUIRED - MUST HAVE ALL THREE TOP-LEVEL FIELDS):
         "title": "Introduction",
         "instructions": "string",
         "items": [
-          { "type": "example", "content": "example problem text" }
+          { "type": "passage", "content": "story or passage text (for ELA reading)" }
         ]
       },
       {
@@ -143,11 +146,12 @@ KEY RULES:
 - Generate ONE worksheet for the entire group of students
 - No placeholders - all content must be complete
 - Use 2 sections only: Introduction, Activity
-- Examples must show worked solutions, not tips
-- Include teacherLessonPlan with all fields
+- CRITICAL: Examples belong ONLY in teacherLessonPlan.whiteboardExamples, NEVER in student worksheet sections
+- Include teacherLessonPlan with all fields and complete whiteboard examples
 - CRITICAL: Each section must have "items" array, NOT "content" array
 - Activity section must contain required number of problems in items array
 - For reading comprehension: Include a complete story/passage (200+ words) as type:"passage" BEFORE questions
+- Introduction section may contain passages for reading, but NOT examples
 - REQUIRED: Include generation_explanation field with your reasoning about content decisions`;
 
     // Add role-specific requirements
