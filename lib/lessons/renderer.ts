@@ -451,7 +451,14 @@ export class WorksheetRenderer {
         <h2>${this.escapeHtml(section.title)}</h2>
         ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
 
-        ${(section.items ?? []).map((worksheetContent, contentIndex) => {
+        ${(section.items ?? [])
+          .filter((item: any) => {
+            // Filter out 'example' type items from student worksheets
+            // Examples should only appear in teacher lesson plan
+            if (item.type === 'example') return false;
+            return true;
+          })
+          .map((worksheetContent: any, contentIndex: number) => {
           // If items is an array of WorksheetContent objects with nested items
           if (worksheetContent.items && Array.isArray(worksheetContent.items)) {
             // Flatten the structure - render the nested items directly with simple numbering
@@ -467,8 +474,7 @@ export class WorksheetRenderer {
           // Otherwise it's a direct item
           const shouldNumber = !isReadingSection &&
                              worksheetContent.type !== 'passage' &&
-                             worksheetContent.type !== 'text' &&
-                             worksheetContent.type !== 'example';
+                             worksheetContent.type !== 'text';
           const result = this.renderWorksheetItem(worksheetContent, 0, questionNumber, shouldNumber);
           if (shouldNumber) questionNumber++;
           return result;
@@ -488,9 +494,11 @@ export class WorksheetRenderer {
     if (worksheetContent.sectionType && worksheetContent.items) {
       // This is already a content section with items, render them directly with simple sequential numbering
       let itemNumber = 1;
-      return worksheetContent.items.map((item: any) => {
-        // For story/passage/example items, don't number them
-        if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
+      return worksheetContent.items
+        .filter((item: any) => item.type !== 'example') // Filter out examples from student worksheets
+        .map((item: any) => {
+        // For story/passage items, don't number them
+        if (item.type === 'passage' || item.type === 'text') {
           return this.renderWorksheetItem(item, 0, 0, false);
         }
         // Use simple sequential numbering for all practice questions
@@ -513,9 +521,11 @@ export class WorksheetRenderer {
 
     // Simple sequential numbering for all items
     let itemNumber = 1;
-    return worksheetContent.items.map((item: any) => {
-      // For story/passage/example items, don't number them
-      if (item.type === 'passage' || item.type === 'text' || item.type === 'example') {
+    return worksheetContent.items
+      .filter((item: any) => item.type !== 'example') // Filter out examples from student worksheets
+      .map((item: any) => {
+      // For story/passage items, don't number them
+      if (item.type === 'passage' || item.type === 'text') {
         return this.renderWorksheetItem(item, 0, 0, false);
       }
       return this.renderWorksheetItem(item, 0, itemNumber++, true);

@@ -221,9 +221,9 @@ export default function LessonPreviewModal({
                       <p className="text-sm text-gray-600 italic">{subSection.instructions}</p>
                     )}
                     <div className="space-y-3">
-                      {subSection.items?.map((problem: any, k: number) => {
-                        // Skip examples and passages for numbering
-                        const shouldNumber = problem.type !== 'example' && problem.type !== 'passage';
+                      {subSection.items?.filter((item: any) => item.type !== 'example')?.map((problem: any, k: number) => {
+                        // Skip passages for numbering
+                        const shouldNumber = problem.type !== 'passage';
                         if (shouldNumber) {
                           problemCounter++;
                         }
@@ -234,7 +234,7 @@ export default function LessonPreviewModal({
                               <div className="font-mono text-lg bg-white p-2 rounded border">
                                 {problem.content}
                               </div>
-                            ) : problem.type === 'example' || problem.type === 'passage' ? (
+                            ) : problem.type === 'passage' ? (
                               <div className="text-gray-700">
                                 {problem.content}
                               </div>
@@ -277,7 +277,7 @@ export default function LessonPreviewModal({
               {section.instructions && <p className="text-sm text-gray-600">{section.instructions}</p>}
               {section.items && (
                 <div className="space-y-2">
-                  {section.items.map((item: any, j: number) => (
+                  {section.items?.filter((item: any) => typeof item === 'string' || item.type !== 'example')?.map((item: any, j: number) => (
                     <div key={j} className="ml-4">
                       {typeof item === 'string' ? (
                         <p>{(() => {
