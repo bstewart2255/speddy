@@ -6,14 +6,7 @@ import ProgressCheckWorksheet from './progress-check-worksheet';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
-
-interface Student {
-  id: string;
-  initials: string;
-  grade_level: number;
-  school_id?: string;
-}
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface AssessmentItem {
   type: 'multiple_choice' | 'short_answer' | 'problem' | 'observation';
@@ -38,7 +31,7 @@ export default function ProgressCheck() {
   const { showToast } = useToast();
   const { currentSchool } = useSchool();
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedWorksheets, setGeneratedWorksheets] = useState<Worksheet[]>([]);
   const [showWorksheets, setShowWorksheets] = useState(false);
@@ -74,6 +67,7 @@ export default function ProgressCheck() {
 
       if (!userRole) {
         console.error('[Progress Check] Failed to get user role');
+        showToast('Failed to load user information', 'error');
         return;
       }
 
@@ -85,6 +79,7 @@ export default function ProgressCheck() {
 
       if (error) {
         console.error('[Progress Check] Error loading students:', error);
+        showToast('Failed to load students', 'error');
         return;
       }
 
@@ -100,7 +95,7 @@ export default function ProgressCheck() {
         });
 
         console.log(`[Progress Check] Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
-        setStudents(studentsWithGoals as any);
+        setStudents(studentsWithGoals);
       }
     }
   }

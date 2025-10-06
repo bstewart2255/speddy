@@ -8,20 +8,13 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchLessonGeneration } from '@/lib/utils/fetch-with-retry';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
-import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface FormData {
   studentIds: string[];
   subjectType: 'ela' | 'math' | '';
   topic: string;
   timeDuration: string;
-}
-
-interface Student {
-  id: string;
-  initials: string;
-  grade_level: number;
-  school_id?: string;
 }
 
 interface GeneratedLesson {
@@ -50,7 +43,7 @@ export default function LessonBuilder() {
     topic: '',
     timeDuration: '15 minutes',
   });
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLesson, setGeneratedLesson] = useState<GeneratedLesson | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -85,6 +78,7 @@ export default function LessonBuilder() {
 
       if (!userRole) {
         console.error('Failed to get user role');
+        showToast('Failed to load user information', 'error');
         return;
       }
 
@@ -96,11 +90,12 @@ export default function LessonBuilder() {
 
       if (error) {
         console.error('Error loading students:', error);
+        showToast('Failed to load students', 'error');
         return;
       }
 
       if (data) {
-        setStudents(data as Student[]);
+        setStudents(data);
       }
     }
   }

@@ -6,14 +6,7 @@ import ExitTicketDisplay from './exit-ticket-display';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
-
-interface Student {
-  id: string;
-  initials: string;
-  grade_level: number;
-  school_id?: string;
-}
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface ExitTicket {
   id: string;
@@ -29,7 +22,7 @@ export default function ExitTicketBuilder() {
   const { showToast } = useToast();
   const { currentSchool } = useSchool();
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState('');
   const [generatedTickets, setGeneratedTickets] = useState<ExitTicket[]>([]);
@@ -89,7 +82,7 @@ export default function ExitTicketBuilder() {
           return Array.isArray(iepGoals) && iepGoals.length > 0;
         });
         console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
-        setStudents(studentsWithGoals as Student[]);
+        setStudents(studentsWithGoals);
       }
     }
   }

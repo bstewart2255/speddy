@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase/client';
 export interface StudentData {
   id: string;
   initials: string;
-  grade_level: string | number;
+  grade_level: string | number; // Database returns string, some components use number
   school_id?: string;
   provider_id?: string;
-  student_details?: Array<{ iep_goals?: string[] }> | { iep_goals?: string[] };
-  iep_goals?: string[];
+  iep_goals?: string[]; // Always normalized to array at top level
+  student_details?: { iep_goals?: string[] }; // Optional nested format for compatibility
 }
 
 export interface LoadStudentsOptions {
@@ -31,8 +31,8 @@ export async function loadStudentsForUser(
   try {
     if (userRole === 'sea') {
       // For SEAs, use the RPC function to get only assigned students
-      const { data, error } = await supabase
-        .rpc('get_sea_students', { sea_user_id: userId });
+      // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
+      const { data, error } = await supabase.rpc('get_sea_students');
 
       if (error) {
         console.error('Error loading SEA students:', error);
@@ -48,16 +48,19 @@ export async function loadStudentsForUser(
         return { data: null, error };
       }
 
-      // Transform the data to match the expected format
-      const transformedData = (data || []).map((student: any) => ({
-        id: student.id,
-        initials: student.initials,
-        grade_level: student.grade_level,
-        school_id: student.school_id,
-        provider_id: student.provider_id,
-        iep_goals: student.iep_goals || [],
-        student_details: includeIEPGoals ? { iep_goals: student.iep_goals || [] } : undefined,
-      }));
+      // Transform and normalize the data to match the expected format
+      const transformedData = (data || []).map((student: any) => {
+        const iepGoals = student.iep_goals || [];
+        return {
+          id: student.id,
+          initials: student.initials,
+          grade_level: student.grade_level,
+          school_id: student.school_id,
+          provider_id: student.provider_id,
+          iep_goals: iepGoals, // Always provide at top level
+          student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
+        } as StudentData;
+      });
 
       // Filter by school if specified
       if (currentSchool?.school_id) {
