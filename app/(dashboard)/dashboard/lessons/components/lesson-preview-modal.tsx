@@ -132,7 +132,7 @@ export default function LessonPreviewModal({
                 <div key={idx} className="mb-6 bg-gray-50 p-4 rounded-lg">
                   <div className="flex justify-between items-start mb-2">
                     <h5 className="font-semibold">
-                      Student {idx + 1} (Grade {material.gradeGroup})
+                      Student {idx + 1}
                     </h5>
                     <button
                       onClick={() => handlePrintWorksheet(material.studentId || formData.studentIds[idx], idx)}
