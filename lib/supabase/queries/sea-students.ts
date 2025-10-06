@@ -73,8 +73,8 @@ export async function loadStudentsForUser(
         .from('students')
         .select(
           includeIEPGoals
-            ? 'id, initials, grade_level, school_id, student_details(iep_goals)'
-            : 'id, initials, grade_level, school_id'
+            ? 'id, initials, grade_level, school_id, provider_id, student_details(iep_goals)'
+            : 'id, initials, grade_level, school_id, provider_id'
         )
         .eq('provider_id', userId)
         .order('initials');
@@ -91,7 +91,26 @@ export async function loadStudentsForUser(
         return { data: null, error };
       }
 
-      return { data: data as StudentData[], error: null };
+      // Normalize the data structure to match the SEA path format
+      const normalizedData = (data || []).map((student: any) => {
+        // Extract IEP goals from student_details (handle both array and object formats)
+        const studentDetails = Array.isArray(student.student_details)
+          ? student.student_details[0]
+          : student.student_details;
+        const iepGoals = studentDetails?.iep_goals || [];
+
+        return {
+          id: student.id,
+          initials: student.initials,
+          grade_level: student.grade_level,
+          school_id: student.school_id,
+          provider_id: student.provider_id,
+          iep_goals: iepGoals, // Always provide at top level
+          student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
+        } as StudentData;
+      });
+
+      return { data: normalizedData, error: null };
     }
   } catch (error) {
     console.error('Unexpected error loading students:', error);
