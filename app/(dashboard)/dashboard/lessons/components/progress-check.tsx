@@ -6,6 +6,7 @@ import ProgressCheckWorksheet from './progress-check-worksheet';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
 
 interface Student {
   id: string;
@@ -68,26 +69,34 @@ export default function ProgressCheck() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user && currentSchool) {
-      let query = supabase
-        .from('students')
-        .select('id, initials, grade_level, school_id, student_details(iep_goals)')
-        .eq('provider_id', user.id)
-        .order('initials');
+      // Get user role to determine how to filter students
+      const userRole = await getUserRole(user.id);
 
-      if (currentSchool.school_id) {
-        query = query.eq('school_id', currentSchool.school_id);
+      if (!userRole) {
+        console.error('[Progress Check] Failed to get user role');
+        return;
       }
 
-      const { data } = await query;
+      // Load students based on role (SEAs see only assigned students)
+      const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: true
+      });
+
+      if (error) {
+        console.error('[Progress Check] Error loading students:', error);
+        return;
+      }
 
       if (data) {
         // Filter to only show students with IEP goals
         const studentsWithGoals = data.filter(student => {
+          // Handle both formats: nested student_details or direct iep_goals
           const studentDetails = Array.isArray(student.student_details)
             ? student.student_details[0]
             : student.student_details;
-          const iepGoals = studentDetails?.iep_goals || [];
-          return iepGoals.length > 0;
+          const iepGoals = student.iep_goals || studentDetails?.iep_goals || [];
+          return Array.isArray(iepGoals) && iepGoals.length > 0;
         });
 
         console.log(`[Progress Check] Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);

@@ -66,9 +66,10 @@ export default function Navbar() {
     ];
 
     if (role === 'sea') {
-      // SEAs only see their dashboard
+      // SEAs see their dashboard and lessons
       return [
         { name: 'Dashboard', href: '/dashboard/sea' },
+        { name: 'Lessons', href: '/dashboard/lessons' },
       ];
       
     } else if (role === 'resource') {
