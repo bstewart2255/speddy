@@ -32,7 +32,10 @@ export async function loadStudentsForUser(
     if (userRole === 'sea') {
       // For SEAs, use the RPC function to get only assigned students
       // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
-      const { data, error } = await supabase.rpc('get_sea_students');
+      // Pass school_id for server-side filtering (null returns all schools)
+      const { data, error } = await supabase.rpc('get_sea_students', {
+        p_school_id: currentSchool?.school_id || null
+      });
 
       if (error) {
         console.error('Error loading SEA students:', error);
@@ -49,6 +52,7 @@ export async function loadStudentsForUser(
       }
 
       // Transform and normalize the data to match the expected format
+      // School filtering is handled server-side in the RPC function
       const transformedData = (data || []).map((student: any) => {
         const iepGoals = student.iep_goals || [];
         return {
@@ -61,14 +65,6 @@ export async function loadStudentsForUser(
           student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
         } as StudentData;
       });
-
-      // Filter by school if specified
-      if (currentSchool?.school_id) {
-        const filtered = transformedData.filter(
-          (s: StudentData) => s.school_id === currentSchool.school_id
-        );
-        return { data: filtered, error: null };
-      }
 
       return { data: transformedData, error: null };
     } else {

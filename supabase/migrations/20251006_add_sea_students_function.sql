@@ -2,7 +2,11 @@
 -- This allows SEAs to see only the students they have sessions with
 -- SECURITY: Uses auth.uid() internally to prevent data exfiltration
 
-CREATE OR REPLACE FUNCTION public.get_sea_students()
+-- Drop old function if it exists (needed when changing parameter names)
+DROP FUNCTION IF EXISTS public.get_sea_students();
+DROP FUNCTION IF EXISTS public.get_sea_students(UUID);
+
+CREATE OR REPLACE FUNCTION public.get_sea_students(p_school_id UUID DEFAULT NULL)
 RETURNS TABLE(
   id UUID,
   initials TEXT,
@@ -19,6 +23,7 @@ BEGIN
   -- Return unique students that have sessions assigned to the CURRENT authenticated SEA
   -- Uses auth.uid() to prevent passing arbitrary user IDs from client (security)
   -- Joins with student_details to include IEP goals for Exit Tickets and Progress Checks
+  -- Optionally filters by school_id when provided
   RETURN QUERY
   SELECT DISTINCT
     s.id,
@@ -32,13 +37,14 @@ BEGIN
   LEFT JOIN student_details sd ON sd.student_id = s.id
   WHERE ss.assigned_to_sea_id = auth.uid()  -- Use auth.uid() instead of parameter
     AND ss.delivered_by = 'sea'
+    AND (p_school_id IS NULL OR s.school_id = p_school_id)  -- Optional school filter
   ORDER BY s.initials;
 END;
 $$;
 
 -- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION public.get_sea_students() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_sea_students(UUID) TO authenticated;
 
 -- Add comment for documentation
-COMMENT ON FUNCTION public.get_sea_students() IS
-  'Returns all unique students that have sessions assigned to the currently authenticated SEA user. Uses auth.uid() internally for security. Used in Lessons page to filter student dropdowns for SEAs.';
+COMMENT ON FUNCTION public.get_sea_students(UUID) IS
+  'Returns all unique students that have sessions assigned to the currently authenticated SEA user. Uses auth.uid() internally for security. Optionally filters by school_id when provided. Used in Lessons page to filter student dropdowns for SEAs.';
