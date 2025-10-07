@@ -163,10 +163,15 @@ export default function CalendarPage() {
         const schoolId = currentSchool.school_id ?? null;
         const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
         const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
-        
-        if (schoolId) {
-          sessionQuery = sessionQuery.eq('students.school_id', schoolId);
+
+        if (schoolId && schoolSite && schoolDistrict) {
+          // Include both students with matching school_id AND legacy students with NULL school_id
+          // This ensures all sessions for the school are shown regardless of migration status
+          sessionQuery = sessionQuery.or(
+            `students.school_id.eq.${schoolId},and(students.school_id.is.null,students.school_site.eq."${schoolSite}",students.school_district.eq."${schoolDistrict}")`
+          );
         } else if (schoolSite && schoolDistrict) {
+          // Fallback for legacy school context without school_id
           sessionQuery = sessionQuery
             .eq('students.school_site', schoolSite)
             .eq('students.school_district', schoolDistrict);
