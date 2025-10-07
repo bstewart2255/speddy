@@ -63,13 +63,9 @@ export default function CalendarPage() {
       const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
       const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
 
-      if (schoolId && schoolSite && schoolDistrict) {
-        // Include both events with matching school_id AND legacy events with NULL school_id
-        eventsQuery = eventsQuery
-          .or(`school_id.eq.${schoolId},school_id.is.null`)
-          .eq('school_site', schoolSite)
-          .eq('school_district', schoolDistrict);
-      } else if (schoolSite && schoolDistrict) {
+      if (schoolSite && schoolDistrict) {
+        // Filter by school_site and school_district which includes all events at this school
+        // This works for both legacy (NULL school_id) and migrated (populated school_id) events
         eventsQuery = eventsQuery
           .eq('school_site', schoolSite)
           .eq('school_district', schoolDistrict);
@@ -168,15 +164,10 @@ export default function CalendarPage() {
         const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
         const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
 
-        if (schoolId && schoolSite && schoolDistrict) {
-          // Include both students with matching school_id AND legacy students with NULL school_id
-          // This ensures all sessions for the school are shown regardless of migration status
-          sessionQuery = sessionQuery
-            .or(`students.school_id.eq.${schoolId},students.school_id.is.null`)
-            .eq('students.school_site', schoolSite)
-            .eq('students.school_district', schoolDistrict);
-        } else if (schoolSite && schoolDistrict) {
-          // Fallback for legacy school context without school_id
+        if (schoolSite && schoolDistrict) {
+          // Filter by school_site and school_district which includes all students at this school
+          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
+          // since all students at the same school share these text field values
           sessionQuery = sessionQuery
             .eq('students.school_site', schoolSite)
             .eq('students.school_district', schoolDistrict);
@@ -214,15 +205,10 @@ export default function CalendarPage() {
           schoolDistrict
         });
 
-        if (schoolId && schoolSite && schoolDistrict) {
-          console.log('[DEBUG] Filtering students by school_id (inclusive of legacy NULL):', schoolId);
-          // Include both students with matching school_id AND legacy students with NULL school_id
-          studentQuery = studentQuery
-            .or(`school_id.eq.${schoolId},school_id.is.null`)
-            .eq('school_site', schoolSite)
-            .eq('school_district', schoolDistrict);
-        } else if (schoolSite && schoolDistrict) {
+        if (schoolSite && schoolDistrict) {
           console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
+          // Filter by school_site and school_district which includes all students at this school
+          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
           studentQuery = studentQuery
             .eq('school_site', schoolSite)
             .eq('school_district', schoolDistrict);
