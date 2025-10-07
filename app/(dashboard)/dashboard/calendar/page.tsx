@@ -62,9 +62,13 @@ export default function CalendarPage() {
       const schoolId = currentSchool.school_id ?? null;
       const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
       const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
-      
-      if (schoolId) {
-        eventsQuery = eventsQuery.eq('school_id', schoolId);
+
+      if (schoolId && schoolSite && schoolDistrict) {
+        // Include both events with matching school_id AND legacy events with NULL school_id
+        eventsQuery = eventsQuery
+          .or(`school_id.eq.${schoolId},school_id.is.null`)
+          .eq('school_site', schoolSite)
+          .eq('school_district', schoolDistrict);
       } else if (schoolSite && schoolDistrict) {
         eventsQuery = eventsQuery
           .eq('school_site', schoolSite)
