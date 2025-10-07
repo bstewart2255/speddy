@@ -8,19 +8,13 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchLessonGeneration } from '@/lib/utils/fetch-with-retry';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface FormData {
   studentIds: string[];
   subjectType: 'ela' | 'math' | '';
   topic: string;
   timeDuration: string;
-}
-
-interface Student {
-  id: string;
-  initials: string;
-  grade_level: number;
-  school_id?: string;
 }
 
 interface GeneratedLesson {
@@ -49,7 +43,7 @@ export default function LessonBuilder() {
     topic: '',
     timeDuration: '15 minutes',
   });
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLesson, setGeneratedLesson] = useState<GeneratedLesson | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -77,22 +71,29 @@ export default function LessonBuilder() {
   async function loadStudents() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (user && currentSchool) {
-      // Build query to fetch students
-      let query = supabase
-        .from('students')
-        .select('id, initials, grade_level, school_id')
-        .eq('provider_id', user.id)
-        .order('initials');
-      
-      // Filter by current school if available
-      if (currentSchool.school_id) {
-        query = query.eq('school_id', currentSchool.school_id);
+      // Get user role to determine how to filter students
+      const userRole = await getUserRole(user.id);
+
+      if (!userRole) {
+        console.error('Failed to get user role');
+        showToast('Failed to load user information', 'error');
+        return;
       }
-      
-      const { data } = await query;
-      
+
+      // Load students based on role (SEAs see only assigned students)
+      const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: false
+      });
+
+      if (error) {
+        console.error('Error loading students:', error);
+        showToast('Failed to load students', 'error');
+        return;
+      }
+
       if (data) {
         setStudents(data);
       }

@@ -6,13 +6,7 @@ import ExitTicketDisplay from './exit-ticket-display';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
-interface Student {
-  id: string;
-  initials: string;
-  grade_level: number;
-  school_id?: string;
-}
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface ExitTicket {
   id: string;
@@ -28,7 +22,7 @@ export default function ExitTicketBuilder() {
   const { showToast } = useToast();
   const { currentSchool } = useSchool();
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState('');
   const [generatedTickets, setGeneratedTickets] = useState<ExitTicket[]>([]);
@@ -57,23 +51,20 @@ export default function ExitTicketBuilder() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user && currentSchool) {
-      let query = supabase
-        .from('students')
-        .select(`
-          id,
-          initials,
-          grade_level,
-          school_id,
-          student_details(iep_goals)
-        `)
-        .eq('provider_id', user.id)
-        .order('initials');
+      // Get user role to determine how to filter students
+      const userRole = await getUserRole(user.id);
 
-      if (currentSchool.school_id) {
-        query = query.eq('school_id', currentSchool.school_id);
+      if (!userRole) {
+        console.error('Failed to get user role');
+        showToast('Failed to load students', 'error');
+        return;
       }
 
-      const { data, error } = await query;
+      // Load students based on role (SEAs see only assigned students)
+      const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: true
+      });
 
       if (error) {
         console.error('Error loading students:', error);
@@ -84,11 +75,11 @@ export default function ExitTicketBuilder() {
       if (data) {
         // Filter to only show students with IEP goals
         const studentsWithGoals = data.filter(s => {
-          const details = s.student_details as any;
-          return details &&
-            details.iep_goals &&
-            Array.isArray(details.iep_goals) &&
-            details.iep_goals.length > 0;
+          // Handle both formats: nested student_details or direct iep_goals
+          const iepGoals = s.iep_goals ||
+                          (Array.isArray(s.student_details) ? s.student_details[0]?.iep_goals : s.student_details?.iep_goals) ||
+                          [];
+          return Array.isArray(iepGoals) && iepGoals.length > 0;
         });
         console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
