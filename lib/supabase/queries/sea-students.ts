@@ -80,8 +80,11 @@ export async function loadStudentsForUser(
         .order('initials');
 
       // Filter by current school if available
+      // Use OR filter to include both:
+      // 1. Students with matching school_id (migrated students)
+      // 2. Students with NULL school_id (unmigrated students - fallback)
       if (currentSchool?.school_id) {
-        query = query.eq('school_id', currentSchool.school_id);
+        query = query.or(`school_id.eq.${currentSchool.school_id},school_id.is.null`);
       }
 
       const { data, error } = await query;
