@@ -210,9 +210,13 @@ export default function CalendarPage() {
           schoolDistrict
         });
 
-        if (schoolId) {
-          console.log('[DEBUG] Filtering students by school_id:', schoolId);
-          studentQuery = studentQuery.eq('school_id', schoolId);
+        if (schoolId && schoolSite && schoolDistrict) {
+          console.log('[DEBUG] Filtering students by school_id (inclusive of legacy NULL):', schoolId);
+          // Include both students with matching school_id AND legacy students with NULL school_id
+          studentQuery = studentQuery
+            .or(`school_id.eq.${schoolId},school_id.is.null`)
+            .eq('school_site', schoolSite)
+            .eq('school_district', schoolDistrict);
         } else if (schoolSite && schoolDistrict) {
           console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
           studentQuery = studentQuery
