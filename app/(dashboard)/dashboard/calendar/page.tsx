@@ -167,9 +167,10 @@ export default function CalendarPage() {
         if (schoolId && schoolSite && schoolDistrict) {
           // Include both students with matching school_id AND legacy students with NULL school_id
           // This ensures all sessions for the school are shown regardless of migration status
-          sessionQuery = sessionQuery.or(
-            `students.school_id.eq.${schoolId},and(students.school_id.is.null,students.school_site.eq."${schoolSite}",students.school_district.eq."${schoolDistrict}")`
-          );
+          sessionQuery = sessionQuery
+            .or(`students.school_id.eq.${schoolId},students.school_id.is.null`)
+            .eq('students.school_site', schoolSite)
+            .eq('students.school_district', schoolDistrict);
         } else if (schoolSite && schoolDistrict) {
           // Fallback for legacy school context without school_id
           sessionQuery = sessionQuery
