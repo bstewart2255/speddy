@@ -123,6 +123,13 @@ export async function createStudent(studentData: {
   insertPerf.end({ success: !insertResult.error });
 
   if (insertResult.error) {
+    // Check for duplicate student error
+    if (insertResult.error.message?.includes('duplicate key') &&
+        insertResult.error.message?.includes('students_provider_id_initials_grade_level_teacher_name_key')) {
+      throw new Error(
+        `A student with the initials "${studentData.initials}" and teacher "${studentData.teacher_name}" in grade ${studentData.grade_level} already exists. Please use different initials or update the existing student.`
+      );
+    }
     throw new Error(insertResult.error.message || 'Failed to add student');
   }
 

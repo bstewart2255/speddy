@@ -20,8 +20,6 @@ export async function safeQuery<T>(
     const data = await queryFn();
     return { data, error: null };
   } catch (error) {
-    log.error(`Database operation failed: ${context.operation}`, error, context);
-    
     // Ensure we always return a proper Error object
     let errorObj: Error;
     if (error instanceof Error) {
@@ -35,9 +33,21 @@ export async function safeQuery<T>(
     } else {
       errorObj = new Error('Unknown database error');
     }
-    
-    return { 
-      data: null, 
+
+    // Check if this is a user validation error (duplicate key, foreign key violations)
+    // These are expected errors that don't need error-level logging
+    const isUserValidationError =
+      errorObj.message?.includes('duplicate key') ||
+      errorObj.message?.includes('violates foreign key constraint') ||
+      errorObj.message?.includes('violates check constraint');
+
+    // Only log system/unexpected errors, not user validation errors
+    if (!isUserValidationError) {
+      log.error(`Database operation failed: ${context.operation}`, error, context);
+    }
+
+    return {
+      data: null,
       error: errorObj
     };
   }
