@@ -146,6 +146,9 @@ export default function StudentsPage() {
         minutes_per_session: parseInt(formData.minutes_per_session),
         school_site: currentSchool?.school_site || '',
         school_district: currentSchool?.school_district || '',
+        school_id: currentSchool?.school_id,
+        district_id: currentSchool?.district_id,
+        state_id: currentSchool?.state_id,
       });
 
       // Reset form

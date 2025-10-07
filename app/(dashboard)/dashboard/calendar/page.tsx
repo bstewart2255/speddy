@@ -62,10 +62,10 @@ export default function CalendarPage() {
       const schoolId = currentSchool.school_id ?? null;
       const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
       const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
-      
-      if (schoolId) {
-        eventsQuery = eventsQuery.eq('school_id', schoolId);
-      } else if (schoolSite && schoolDistrict) {
+
+      if (schoolSite && schoolDistrict) {
+        // Filter by school_site and school_district which includes all events at this school
+        // This works for both legacy (NULL school_id) and migrated (populated school_id) events
         eventsQuery = eventsQuery
           .eq('school_site', schoolSite)
           .eq('school_district', schoolDistrict);
@@ -163,10 +163,11 @@ export default function CalendarPage() {
         const schoolId = currentSchool.school_id ?? null;
         const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
         const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
-        
-        if (schoolId) {
-          sessionQuery = sessionQuery.eq('students.school_id', schoolId);
-        } else if (schoolSite && schoolDistrict) {
+
+        if (schoolSite && schoolDistrict) {
+          // Filter by school_site and school_district which includes all students at this school
+          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
+          // since all students at the same school share these text field values
           sessionQuery = sessionQuery
             .eq('students.school_site', schoolSite)
             .eq('students.school_district', schoolDistrict);
@@ -204,11 +205,10 @@ export default function CalendarPage() {
           schoolDistrict
         });
 
-        if (schoolId) {
-          console.log('[DEBUG] Filtering students by school_id:', schoolId);
-          studentQuery = studentQuery.eq('school_id', schoolId);
-        } else if (schoolSite && schoolDistrict) {
+        if (schoolSite && schoolDistrict) {
           console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
+          // Filter by school_site and school_district which includes all students at this school
+          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
           studentQuery = studentQuery
             .eq('school_site', schoolSite)
             .eq('school_district', schoolDistrict);
