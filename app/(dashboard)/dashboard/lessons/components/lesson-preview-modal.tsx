@@ -13,7 +13,7 @@ import {
 interface Student {
   id: string;
   initials: string;
-  grade_level: number;
+  grade_level: string | number;
   name?: string;
 }
 

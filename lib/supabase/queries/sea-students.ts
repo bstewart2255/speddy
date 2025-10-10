@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import type { SchoolInfo } from '@/app/components/providers/school-context';
 
 export interface StudentData {
   id: string;
@@ -12,7 +13,7 @@ export interface StudentData {
 
 export interface LoadStudentsOptions {
   includeIEPGoals?: boolean;
-  currentSchool?: { school_id?: string } | null;
+  currentSchool?: SchoolInfo | null;
 }
 
 /**
