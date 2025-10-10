@@ -5,7 +5,7 @@ import { log } from '@/lib/monitoring/logger';
 // GET: Download worksheet file
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   let userId: string | undefined;
 
@@ -22,7 +22,7 @@ export async function GET(
     }
 
     userId = user.id;
-    const { id: worksheetId } = await params;
+    const { id: worksheetId } = params;
 
     log.info('Fetching worksheet for download', { userId, worksheetId });
 
@@ -83,7 +83,7 @@ export async function GET(
 // DELETE: Delete worksheet and file
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   let userId: string | undefined;
 
@@ -100,7 +100,7 @@ export async function DELETE(
     }
 
     userId = user.id;
-    const { id: worksheetId } = await params;
+    const { id: worksheetId } = params;
 
     log.info('Deleting worksheet', { userId, worksheetId });
 
@@ -123,7 +123,7 @@ export async function DELETE(
       );
     }
 
-    // Delete file from storage
+    // Delete file from storage first
     const { error: storageError } = await supabase.storage
       .from('saved-worksheets')
       .remove([worksheet.file_path]);
@@ -134,7 +134,10 @@ export async function DELETE(
         worksheetId,
         filePath: worksheet.file_path
       });
-      // Continue with database deletion even if storage deletion fails
+      return NextResponse.json(
+        { error: 'Failed to delete worksheet file' },
+        { status: 500 }
+      );
     }
 
     // Delete worksheet metadata from database

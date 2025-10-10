@@ -22,7 +22,7 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
         errorMessage: error.message
       });
       return NextResponse.json(
-        { error: 'Failed to fetch saved worksheets', details: error.message },
+        { error: 'Failed to fetch saved worksheets' },
         { status: 500 }
       );
     }
@@ -90,14 +90,32 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       fileType = 'docx';
     }
 
+    // Sanitize filename to prevent path traversal: separate base name and extension
+    const originalName = file.name;
+    const lastDotIndex = originalName.lastIndexOf('.');
+    let baseName = lastDotIndex !== -1 ? originalName.substring(0, lastDotIndex) : originalName;
+    let extension = lastDotIndex !== -1 ? originalName.substring(lastDotIndex) : '';
+
+    // Only allow alphanumeric, hyphens, and underscores in base name
+    baseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    // Validate and restrict extension to known safe values
+    const lowerExtension = extension.toLowerCase();
+    if (!['.pdf', '.doc', '.docx'].includes(lowerExtension)) {
+      extension = '.pdf'; // Default to .pdf if invalid
+    } else {
+      extension = lowerExtension;
+    }
+
+    const sanitizedFileName = baseName + extension;
+
     // Create unique file path: userId/timestamp-filename
     const timestamp = Date.now();
-    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `${userId}/${timestamp}-${sanitizedFileName}`;
 
     // Upload file to Supabase Storage
     const fileBuffer = await file.arrayBuffer();
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('saved-worksheets')
       .upload(filePath, fileBuffer, {
         contentType: file.type,

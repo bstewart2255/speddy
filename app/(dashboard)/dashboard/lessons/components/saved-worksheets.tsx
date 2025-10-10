@@ -131,8 +131,21 @@ export default function SavedWorksheets() {
 
       const data = await response.json();
 
-      // Open the signed URL in a new tab to download the file
-      window.open(data.signedUrl, '_blank');
+      // Validate that the URL is from Supabase storage
+      const url = new URL(data.signedUrl);
+      if (!url.hostname.includes('supabase.co')) {
+        throw new Error('Invalid download URL');
+      }
+
+      // Use anchor element for safer download
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = worksheet.title || 'worksheet';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
       showToast('Failed to download worksheet', 'error');
       console.error('Error downloading worksheet:', error);
