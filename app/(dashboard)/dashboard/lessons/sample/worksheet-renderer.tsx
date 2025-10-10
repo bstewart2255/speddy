@@ -62,28 +62,15 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
               <p className="text-sm text-gray-700 italic">{section.instructions}</p>
             )}
 
-            {/* Section Items */}
+            {/* Section Items - Filter out examples (teacher only) */}
             <div className="space-y-4">
-              {section.items.map((item, itemIdx) => (
+              {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
                 <div key={itemIdx} className="pl-2">
                   {item.type === 'passage' && (
                     <div className="prose max-w-none">
                       <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
                         {item.content}
                       </p>
-                    </div>
-                  )}
-
-                  {item.type === 'example' && (
-                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      {item.solution && item.solution.length > 0 && (
-                        <div className="mt-2 text-sm text-gray-700 space-y-1">
-                          {item.solution.map((step, stepIdx) => (
-                            <p key={stepIdx}>• {step}</p>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   )}
 

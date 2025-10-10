@@ -246,26 +246,11 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
             ` : ''}
 
             <div class="section-items">
-              ${section.items.map(item => {
+              ${section.items.filter(item => item.type !== 'example').map(item => {
                 if (item.type === 'passage') {
                   return `
                     <div class="worksheet-item">
                       <p class="item-passage">${item.content}</p>
-                    </div>
-                  `;
-                }
-
-                if (item.type === 'example') {
-                  return `
-                    <div class="worksheet-item">
-                      <div class="item-example">
-                        <p class="item-example-content">${item.content}</p>
-                        ${item.solution && item.solution.length > 0 ? `
-                          <div class="item-example-solution">
-                            ${item.solution.map(step => `<p>• ${step}</p>`).join('')}
-                          </div>
-                        ` : ''}
-                      </div>
                     </div>
                   `;
                 }
