@@ -1,0 +1,179 @@
+'use client';
+
+import { useState } from 'react';
+import { getTopicOptionsForSubject } from '@/lib/templates/template-registry';
+import type { SubjectType, TemplateTopic } from '@/lib/templates/types';
+
+interface SampleLessonFormProps {
+  onGenerate: (result: any) => void;
+}
+
+export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) {
+  const [subjectType, setSubjectType] = useState<SubjectType>('ela');
+  const [topic, setTopic] = useState<TemplateTopic>('reading-comprehension');
+  const [grade, setGrade] = useState('3');
+  const [duration, setDuration] = useState<15 | 30 | 45 | 60>(30);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get topic options based on selected subject
+  const topicOptions = getTopicOptionsForSubject(subjectType);
+
+  // Handle subject change - reset topic to first option of new subject
+  const handleSubjectChange = (newSubject: SubjectType) => {
+    setSubjectType(newSubject);
+    const options = getTopicOptionsForSubject(newSubject);
+    if (options.length > 0) {
+      setTopic(options[0].id);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/lessons/v2/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic,
+          subjectType,
+          grade,
+          duration,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Generation failed');
+      }
+
+      const result = await response.json();
+      onGenerate(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Subject Type */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Subject
+        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center">
+            <input
+              type="radio"
+              value="ela"
+              checked={subjectType === 'ela'}
+              onChange={(e) => handleSubjectChange(e.target.value as SubjectType)}
+              className="mr-2"
+            />
+            <span className="text-sm">ELA</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="radio"
+              value="math"
+              checked={subjectType === 'math'}
+              onChange={(e) => handleSubjectChange(e.target.value as SubjectType)}
+              className="mr-2"
+            />
+            <span className="text-sm">Math</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Topic Dropdown */}
+      <div>
+        <label htmlFor="topic" className="block text-sm font-medium text-gray-700 mb-2">
+          Topic
+        </label>
+        <select
+          id="topic"
+          value={topic}
+          onChange={(e) => setTopic(e.target.value as TemplateTopic)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+        >
+          {topicOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {topicOptions.find((opt) => opt.id === topic)?.description && (
+          <p className="mt-1 text-xs text-gray-500">
+            {topicOptions.find((opt) => opt.id === topic)?.description}
+          </p>
+        )}
+      </div>
+
+      {/* Grade */}
+      <div>
+        <label htmlFor="grade" className="block text-sm font-medium text-gray-700 mb-2">
+          Grade Level
+        </label>
+        <select
+          id="grade"
+          value={grade}
+          onChange={(e) => setGrade(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="K">Kindergarten</option>
+          <option value="1">1st Grade</option>
+          <option value="2">2nd Grade</option>
+          <option value="3">3rd Grade</option>
+          <option value="4">4th Grade</option>
+          <option value="5">5th Grade</option>
+        </select>
+      </div>
+
+      {/* Duration */}
+      <div>
+        <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+          Duration
+        </label>
+        <select
+          id="duration"
+          value={duration}
+          onChange={(e) => setDuration(Number(e.target.value) as 15 | 30 | 45 | 60)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-3">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+      >
+        {loading ? 'Generating...' : 'Generate Sample Lesson'}
+      </button>
+
+      {/* Info Text */}
+      <p className="text-xs text-gray-500">
+        This will use the v2 template-based generation system with simplified prompts.
+      </p>
+    </form>
+  );
+}
