@@ -24,6 +24,7 @@ export interface V2GenerationResult {
   success: boolean;
   content?: V2ContentResponse;
   template?: TemplateSelection;
+  worksheet?: any; // Populated worksheet in LessonResponse format
   error?: string;
   metadata: {
     promptTokens: number;
@@ -159,11 +160,16 @@ export async function generateV2Worksheet(
       };
     }
 
-    // Success! Content is ready to be populated into template
+    // Step 5: Populate template with content
+    const studentIds = request.studentIds || ['student-1'];
+    const populatedWorksheet = populateTemplate(content, templateSelection, studentIds);
+
+    // Success! Return populated worksheet
     return {
       success: true,
       content,
       template: templateSelection,
+      worksheet: populatedWorksheet,
       metadata: {
         promptTokens: response.usage.input_tokens,
         completionTokens: response.usage.output_tokens,
@@ -191,60 +197,69 @@ export async function generateV2Worksheet(
 
 /**
  * Populate template with generated content
- * This converts V2ContentResponse into the old lesson format for compatibility
+ * This converts V2ContentResponse into worksheet sections based on template structure
  */
 export function populateTemplate(
   content: V2ContentResponse,
   template: TemplateSelection,
   studentIds: string[]
 ): any {
-  // TODO: Implement template population logic
-  // This will map content into the existing LessonResponse format
-  // For now, return a placeholder
+  const topicName = template.template.name;
 
+  // Build worksheet sections based on template structure
+  const sections = template.template.sections.map((templateSection) => {
+    const items: any[] = [];
+
+    // Map content to template slots
+    for (const slot of templateSection.slots) {
+      if (slot.type === 'passage' && content.passage) {
+        // Add passage
+        items.push({
+          type: 'passage',
+          content: content.passage,
+        });
+      } else if (slot.type === 'writing-prompt' && content.prompt) {
+        // Add writing prompt
+        items.push({
+          type: 'text',
+          content: content.prompt,
+        });
+      } else if (slot.type === 'examples' && content.examples) {
+        // Add example problems
+        content.examples.forEach((example, idx) => {
+          items.push({
+            type: 'example',
+            content: `Example ${idx + 1}: ${example.problem}`,
+            solution: example.solution,
+          });
+        });
+      } else if (slot.type === 'questions' || slot.type === 'problems' || slot.type === 'practice') {
+        // Add questions/problems
+        content.questions.forEach((question, idx) => {
+          items.push({
+            type: question.type,
+            content: `${idx + 1}. ${question.text}`,
+            choices: question.choices,
+            blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : undefined,
+          });
+        });
+      }
+    }
+
+    return {
+      title: templateSection.title,
+      instructions: templateSection.instructions,
+      items,
+    };
+  });
+
+  // Return formatted worksheet
   return {
-    lesson: {
-      title: `${template.metadata.topic} - Grade ${template.metadata.grade}`,
-      duration: template.metadata.duration,
-      objectives: ['Generated from template'],
-      materials: 'Worksheets, pencils, whiteboard and markers only',
-      overview: 'Template-based lesson',
-      introduction: {
-        description: 'Introduction',
-        duration: 5,
-        instructions: [],
-        materials: [],
-      },
-      activity: {
-        description: 'Practice activity',
-        duration: template.metadata.duration - 5,
-        instructions: [],
-        materials: [],
-      },
-    },
-    studentMaterials: studentIds.map((id) => ({
-      studentId: id,
-      gradeGroup: 1,
-      worksheet: {
-        title: `${template.metadata.topic} Practice`,
-        instructions: 'Complete the following exercises.',
-        sections: template.template.sections.map((section) => ({
-          title: section.title,
-          instructions: section.instructions,
-          items: content.questions.map((q) => ({
-            type: q.type,
-            content: q.text,
-            choices: q.choices,
-          })),
-        })),
-      },
-    })),
-    metadata: {
-      generatedAt: new Date().toISOString(),
-      modelUsed: 'claude-3-5-sonnet-20241022',
-      generationTime: 0,
-      gradeGroups: [],
-      validationStatus: 'passed' as const,
-    },
+    title: `${topicName} - Grade ${template.metadata.grade}`,
+    grade: template.metadata.grade,
+    topic: template.metadata.topic,
+    duration: template.metadata.duration,
+    sections,
+    formatting: template.formatting,
   };
 }

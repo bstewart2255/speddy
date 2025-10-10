@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { BeakerIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { BeakerIcon, ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import SampleLessonForm from './sample-lesson-form';
+import WorksheetRenderer from './worksheet-renderer';
 
 /**
  * Sample Lessons - Template-Based Generation (DEV ONLY)
@@ -97,34 +98,72 @@ export default function SampleLessonsPage() {
 
           {/* Preview/Results */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Generation Results
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Generated Worksheet
+              </h2>
+              {generatedContent && (
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                >
+                  <PrinterIcon className="w-4 h-4" />
+                  Print
+                </button>
+              )}
+            </div>
 
             {generatedContent ? (
-              <div className="space-y-4">
-                <div className="border-l-4 border-green-500 bg-green-50 p-4">
-                  <h3 className="text-sm font-medium text-green-800">Generation Successful</h3>
-                  <div className="mt-2 text-sm text-green-700">
-                    <p>Prompt tokens: {generatedContent.metadata?.promptTokens || 'N/A'}</p>
-                    <p>Completion tokens: {generatedContent.metadata?.completionTokens || 'N/A'}</p>
-                    <p>Total tokens: {generatedContent.metadata?.totalTokens || 'N/A'}</p>
-                    <p>Generation time: {generatedContent.metadata?.generationTime || 'N/A'}ms</p>
+              <div className="space-y-6">
+                {/* Metrics Banner */}
+                <div className="border-l-4 border-green-500 bg-green-50 p-4 rounded">
+                  <h3 className="text-sm font-medium text-green-800 mb-2">
+                    Generation Successful ✓
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-green-700">
+                    <div>
+                      <span className="font-medium">Tokens:</span>{' '}
+                      {generatedContent.metadata?.totalTokens || 'N/A'} total
+                      <span className="text-green-600 ml-1">
+                        ({generatedContent.metadata?.promptTokens || 0} prompt + {generatedContent.metadata?.completionTokens || 0} completion)
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium">Time:</span>{' '}
+                      {((generatedContent.metadata?.generationTime || 0) / 1000).toFixed(1)}s
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 p-4 rounded">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Generated Content</h4>
-                  <pre className="text-xs text-gray-600 overflow-auto max-h-96">
+                {/* Worksheet Display */}
+                {generatedContent.worksheet ? (
+                  <WorksheetRenderer worksheet={generatedContent.worksheet} />
+                ) : (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                    <p className="text-sm text-yellow-800">
+                      Worksheet data is missing. Showing raw content instead.
+                    </p>
+                    <pre className="text-xs text-gray-600 overflow-auto max-h-96 mt-2">
+                      {JSON.stringify(generatedContent, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Debug Toggle */}
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
+                    Show raw JSON (debug)
+                  </summary>
+                  <pre className="text-xs text-gray-600 overflow-auto max-h-96 mt-2 bg-gray-50 p-4 rounded">
                     {JSON.stringify(generatedContent, null, 2)}
                   </pre>
-                </div>
+                </details>
               </div>
             ) : (
               <div className="text-center text-gray-500 py-12">
                 <BeakerIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                <p>No content generated yet.</p>
-                <p className="text-sm mt-1">Fill out the form and click "Generate" to test the system.</p>
+                <p>No worksheet generated yet.</p>
+                <p className="text-sm mt-1">Fill out the form and click "Generate" to create a worksheet.</p>
               </div>
             )}
           </div>
