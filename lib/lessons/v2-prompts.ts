@@ -42,10 +42,11 @@ RESPONSE FORMAT (JSON):
 }
 
 IMPORTANT RULES:
-1. Multiple choice: Exactly 4 choices, NO letter prefixes (A, B, C, D)
-2. Content only - we handle all formatting and structure
-3. Focus on educational quality and grade-appropriate language
-4. Make content engaging and relevant to students' lives
+1. Question types: ONLY use these exact types: "multiple-choice", "short-answer", "long-answer", "fill-blank", "true-false", "visual-math"
+2. Multiple choice: Exactly 4 choices, NO letter prefixes (A, B, C, D)
+3. Content only - we handle all formatting and structure
+4. Focus on educational quality and grade-appropriate language
+5. Make content engaging and relevant to students' lives
 
 Generate the content now.`;
 }
@@ -115,10 +116,12 @@ Create computation practice for grade ${grade}.
 
 Include:
 - 3 example problems with step-by-step solutions
-- ${problemCount} practice problems
+- ${problemCount} practice problems (ALL must use type "visual-math")
 
 Operations: ${mathInfo.operations.join(', ')}
 Number range: ${mathInfo.numberRange}
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building computational fluency.`;
 
@@ -144,12 +147,14 @@ Make problems relatable to grade ${grade} students' experiences.`;
 Create a variety of math problems for grade ${grade}.
 
 Include:
-- 3 warm-up computation problems
-- ${Math.floor(problemCount * 0.6)} computation problems
-- ${Math.ceil(problemCount * 0.4)} word problems
+- 3 warm-up computation problems (type: "visual-math")
+- ${Math.floor(problemCount * 0.6)} computation problems (type: "visual-math")
+- ${Math.ceil(problemCount * 0.4)} word problems (type: "short-answer")
 
 Operations: ${mathInfoMP.operations.join(', ')}
 Number range: ${mathInfoMP.numberRange}
+
+IMPORTANT: Use "visual-math" for computation, "short-answer" for word problems.
 
 Mix different problem types for comprehensive practice.`;
 
