@@ -5,6 +5,7 @@ import { BeakerIcon, ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outl
 import Link from 'next/link';
 import SampleLessonForm from './sample-lesson-form';
 import WorksheetRenderer from './worksheet-renderer';
+import { printV2Worksheet } from './print-utils';
 
 /**
  * Sample Lessons - Template-Based Generation (DEV ONLY)
@@ -104,7 +105,7 @@ export default function SampleLessonsPage() {
               </h2>
               {generatedContent && (
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => printV2Worksheet(generatedContent.worksheet)}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                 >
                   <PrinterIcon className="w-4 h-4" />
