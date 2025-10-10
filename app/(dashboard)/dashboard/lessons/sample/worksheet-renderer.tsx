@@ -123,6 +123,13 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
                     </div>
                   )}
 
+                  {item.type === 'visual-math' && (
+                    <div className="inline-block w-1/3 pr-4 mb-6 align-top">
+                      <p className="font-medium text-gray-900">{item.content}</p>
+                      <div className="h-16" /> {/* Space to work */}
+                    </div>
+                  )}
+
                   {item.type === 'text' && (
                     <p className="text-gray-800">{item.content}</p>
                   )}

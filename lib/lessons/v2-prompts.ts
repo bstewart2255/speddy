@@ -185,13 +185,28 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],`;
 
     case 'computation':
+      return `"examples": [
+    { "problem": "2 + 2", "solution": ["Step 1: ...", "Answer: 4"], "teachingPoint": "..." }
+  ],
+  "questions": [
+    { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" }
+  ],`;
+
     case 'word-problems':
+      return `"examples": [
+    { "problem": "Word problem...", "solution": ["Step 1: ...", "Answer: ..."], "teachingPoint": "..." }
+  ],
+  "questions": [
+    { "text": "Problem text", "type": "short-answer", "answer": "..." }
+  ],`;
+
     case 'mixed-practice':
       return `"examples": [
     { "problem": "2 + 2", "solution": ["Step 1: ...", "Answer: 4"], "teachingPoint": "..." }
   ],
   "questions": [
-    { "text": "Problem text", "type": "short-answer", "answer": "..." }
+    { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" },
+    { "text": "Word problem...", "type": "short-answer", "answer": "..." }
   ],`;
 
     default:

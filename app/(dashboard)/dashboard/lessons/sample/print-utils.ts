@@ -190,6 +190,23 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
             color: #1f2937;
           }
 
+          .item-visual-math {
+            display: inline-block;
+            width: 33%;
+            vertical-align: top;
+            padding-right: 16px;
+            margin-bottom: 24px;
+          }
+
+          .item-visual-math .math-content {
+            font-weight: 500;
+            margin-bottom: 8px;
+          }
+
+          .item-visual-math .work-space {
+            height: 64px;
+          }
+
           .worksheet-footer {
             margin-top: 32px;
             padding-top: 16px;
@@ -290,6 +307,15 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                     <div class="worksheet-item">
                       <p class="item-question">${item.content}</p>
                       <div class="item-fill-blank-line"></div>
+                    </div>
+                  `;
+                }
+
+                if (item.type === 'visual-math') {
+                  return `
+                    <div class="item-visual-math">
+                      <p class="math-content">${item.content}</p>
+                      <div class="work-space"></div>
                     </div>
                   `;
                 }
