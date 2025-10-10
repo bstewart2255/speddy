@@ -102,10 +102,12 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Validate and restrict extension to known safe values
     const lowerExtension = extension.toLowerCase();
     if (!['.pdf', '.doc', '.docx'].includes(lowerExtension)) {
-      extension = '.pdf'; // Default to .pdf if invalid
-    } else {
-      extension = lowerExtension;
+      return NextResponse.json(
+        { error: 'Invalid file extension. Only .pdf, .doc, and .docx are allowed.' },
+        { status: 400 }
+      );
     }
+    extension = lowerExtension;
 
     const sanitizedFileName = baseName + extension;
 

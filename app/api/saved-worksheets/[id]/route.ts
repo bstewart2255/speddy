@@ -123,24 +123,7 @@ export async function DELETE(
       );
     }
 
-    // Delete file from storage first
-    const { error: storageError } = await supabase.storage
-      .from('saved-worksheets')
-      .remove([worksheet.file_path]);
-
-    if (storageError) {
-      log.error('Failed to delete file from storage', storageError, {
-        userId,
-        worksheetId,
-        filePath: worksheet.file_path
-      });
-      return NextResponse.json(
-        { error: 'Failed to delete worksheet file' },
-        { status: 500 }
-      );
-    }
-
-    // Delete worksheet metadata from database
+    // Delete worksheet metadata from database first
     const { error: dbError } = await supabase
       .from('saved_worksheets')
       .delete()
@@ -156,6 +139,20 @@ export async function DELETE(
         { error: 'Failed to delete worksheet' },
         { status: 500 }
       );
+    }
+
+    // Delete file from storage
+    const { error: storageError } = await supabase.storage
+      .from('saved-worksheets')
+      .remove([worksheet.file_path]);
+
+    if (storageError) {
+      log.error('Failed to delete file from storage', storageError, {
+        userId,
+        worksheetId,
+        filePath: worksheet.file_path
+      });
+      // Log but don't fail - orphaned files can be cleaned up by a background job
     }
 
     log.info('Worksheet deleted successfully', { userId, worksheetId });
