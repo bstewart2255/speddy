@@ -190,20 +190,23 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
             color: #1f2937;
           }
 
-          .item-visual-math {
-            display: inline-block;
-            width: 33%;
-            vertical-align: top;
-            padding-right: 16px;
+          .visual-math-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
             margin-bottom: 24px;
           }
 
-          .item-visual-math .math-content {
+          .visual-math-item {
+            margin-bottom: 16px;
+          }
+
+          .visual-math-item .math-content {
             font-weight: 500;
             margin-bottom: 8px;
           }
 
-          .item-visual-math .work-space {
+          .visual-math-item .work-space {
             height: 64px;
           }
 
@@ -237,7 +240,11 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
         </div>
 
         <!-- Sections -->
-        ${worksheet.sections.map(section => `
+        ${worksheet.sections.map(section => {
+          const hasVisualMath = section.items.some(item => item.type === 'visual-math');
+          const filteredItems = section.items.filter(item => item.type !== 'example');
+
+          return `
           <div class="worksheet-section">
             <h2 class="section-title">${section.title}</h2>
 
@@ -245,8 +252,23 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
               <p class="section-instructions">${section.instructions}</p>
             ` : ''}
 
-            <div class="section-items">
-              ${section.items.filter(item => item.type !== 'example').map(item => {
+            ${hasVisualMath ? `
+              <div class="visual-math-grid">
+                ${filteredItems.map(item => {
+                  if (item.type === 'visual-math') {
+                    return `
+                      <div class="visual-math-item">
+                        <p class="math-content">${item.content}</p>
+                        <div class="work-space"></div>
+                      </div>
+                    `;
+                  }
+                  return '';
+                }).join('')}
+              </div>
+            ` : `
+              <div class="section-items">
+                ${filteredItems.map(item => {
                 if (item.type === 'passage') {
                   return `
                     <div class="worksheet-item">
@@ -296,15 +318,6 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                   `;
                 }
 
-                if (item.type === 'visual-math') {
-                  return `
-                    <div class="item-visual-math">
-                      <p class="math-content">${item.content}</p>
-                      <div class="work-space"></div>
-                    </div>
-                  `;
-                }
-
                 if (item.type === 'text') {
                   return `
                     <div class="worksheet-item">
@@ -316,8 +329,10 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                 return '';
               }).join('')}
             </div>
+            `}
           </div>
-        `).join('')}
+          `;
+        }).join('')}
 
         <!-- Footer -->
         <div class="worksheet-footer">

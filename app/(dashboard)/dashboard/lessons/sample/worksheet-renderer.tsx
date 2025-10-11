@@ -63,9 +63,24 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
             )}
 
             {/* Section Items - Filter out examples (teacher only) */}
-            <div className="space-y-4">
-              {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
-                <div key={itemIdx} className="pl-2">
+            {/* Check if section has visual-math problems for grid layout */}
+            {section.items.some(item => item.type === 'visual-math') ? (
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
+                  <div key={itemIdx}>
+                    {item.type === 'visual-math' && (
+                      <div>
+                        <p className="font-medium text-gray-900">{item.content}</p>
+                        <div className="h-16" /> {/* Space to work */}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
+                  <div key={itemIdx} className="pl-2">
                   {item.type === 'passage' && (
                     <div className="prose max-w-none">
                       <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
@@ -110,19 +125,13 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
                     </div>
                   )}
 
-                  {item.type === 'visual-math' && (
-                    <div className="inline-block w-1/3 pr-4 mb-6 align-top">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      <div className="h-16" /> {/* Space to work */}
-                    </div>
-                  )}
-
                   {item.type === 'text' && (
                     <p className="text-gray-800">{item.content}</p>
                   )}
                 </div>
               ))}
             </div>
+            )}
           </div>
         ))}
       </div>
