@@ -34,6 +34,13 @@ interface WorksheetRendererProps {
   worksheet: Worksheet;
 }
 
+/**
+ * Strip numbering from AI-generated content (e.g., "1. What is..." -> "What is...")
+ */
+function stripQuestionNumber(content: string): string {
+  return content.replace(/^\d+\.\s*/, '');
+}
+
 export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps) {
   return (
     <div className="bg-white border-2 border-gray-300 rounded-lg p-8 max-w-4xl mx-auto">
@@ -72,7 +79,10 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
                   {studentFacingItems.map((item, itemIdx) => (
                     <QuestionRenderer
                       key={itemIdx}
-                      question={item as QuestionData}
+                      question={{
+                        ...item,
+                        content: stripQuestionNumber(item.content),
+                      } as QuestionData}
                       questionNumber={itemIdx + 1}
                       showNumber={false}
                     />
@@ -80,14 +90,31 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {studentFacingItems.map((item, itemIdx) => (
-                    <QuestionRenderer
-                      key={itemIdx}
-                      question={item as QuestionData}
-                      questionNumber={itemIdx + 1}
-                      showNumber={item.type !== 'passage'}
-                    />
-                  ))}
+                  {studentFacingItems.map((item, itemIdx) => {
+                    // Render passages directly without the blue box styling
+                    if (item.type === 'passage') {
+                      return (
+                        <div key={itemIdx} className="prose max-w-none">
+                          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                            {item.content}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // For all other question types, use QuestionRenderer
+                    return (
+                      <QuestionRenderer
+                        key={itemIdx}
+                        question={{
+                          ...item,
+                          content: stripQuestionNumber(item.content),
+                        } as QuestionData}
+                        questionNumber={itemIdx + 1}
+                        showNumber={true}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -39,6 +39,25 @@ interface Worksheet {
 }
 
 /**
+ * Strip numbering from AI-generated content (e.g., "1. What is..." -> "What is...")
+ */
+function stripQuestionNumber(content: string): string {
+  return content.replace(/^\d+\.\s*/, '');
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * Generates HTML for a v2 worksheet using shared components
  */
 function generateWorksheetHtml(worksheet: Worksheet): string {
@@ -70,16 +89,34 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
       if (useGridLayout) {
         questionsHtml = `<div class="visual-math-grid">`;
         questionsHtml += studentFacingItems
-          .map((item, idx) =>
-            generateQuestionHTML(item as QuestionData, idx + 1, false)
-          )
+          .map((item, idx) => {
+            const cleanedItem = {
+              ...item,
+              content: stripQuestionNumber(item.content),
+            };
+            return generateQuestionHTML(cleanedItem as QuestionData, idx + 1, false);
+          })
           .join('');
         questionsHtml += `</div>`;
       } else {
         questionsHtml = studentFacingItems
-          .map((item, idx) =>
-            generateQuestionHTML(item as QuestionData, idx + 1, item.type !== 'passage')
-          )
+          .map((item, idx) => {
+            // Render passages as plain text without the blue box
+            if (item.type === 'passage') {
+              return `
+                <div class="passage-plain">
+                  <p class="text-gray-800 leading-relaxed whitespace-pre-wrap">${escapeHtml(item.content)}</p>
+                </div>
+              `;
+            }
+
+            // For other question types, strip numbering and use shared renderer
+            const cleanedItem = {
+              ...item,
+              content: stripQuestionNumber(item.content),
+            };
+            return generateQuestionHTML(cleanedItem as QuestionData, idx + 1, true);
+          })
           .join('');
       }
 
