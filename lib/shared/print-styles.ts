@@ -215,6 +215,20 @@ export function generatePrintStyles(): string {
         white-space: pre-wrap;
       }
 
+      /* Plain passage (for dedicated passage sections) */
+      .passage-plain {
+        margin-bottom: 16pt;
+        page-break-inside: avoid;
+      }
+
+      .passage-plain p {
+        font-size: 11pt;
+        line-height: 1.8;
+        color: #1a1a1a;
+        white-space: pre-wrap;
+        margin: 0;
+      }
+
       /* Spacing adjustments */
       .spacing-compact .question-item {
         margin-bottom: 14pt;

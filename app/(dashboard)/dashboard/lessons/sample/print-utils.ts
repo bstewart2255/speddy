@@ -105,7 +105,7 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
             if (item.type === 'passage') {
               return `
                 <div class="passage-plain">
-                  <p class="text-gray-800 leading-relaxed whitespace-pre-wrap">${escapeHtml(item.content)}</p>
+                  <p>${escapeHtml(item.content)}</p>
                 </div>
               `;
             }
