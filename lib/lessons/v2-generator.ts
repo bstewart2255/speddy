@@ -206,6 +206,9 @@ export function populateTemplate(
 ): any {
   const topicName = template.template.name;
 
+  // Track which questions have been used to avoid duplication
+  const usedQuestionIndices = new Set<number>();
+
   // Build worksheet sections based on template structure
   const sections = template.template.sections.map((templateSection) => {
     const items: any[] = [];
@@ -234,15 +237,30 @@ export function populateTemplate(
           });
         });
       } else if (slot.type === 'questions' || slot.type === 'problems' || slot.type === 'practice') {
-        // Add questions/problems
+        // Add questions/problems, filtering by allowed types and avoiding duplicates
+        const allowedTypes = slot.allowedTypes || [];
+        let questionNumber = 1;
+
         content.questions.forEach((question, idx) => {
-          items.push({
-            type: question.type,
-            content: `${idx + 1}. ${question.text}`,
-            choices: question.choices,
-            // Only add blank lines for written responses, not computation (visual-math)
-            blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : question.type === 'math-work' ? 5 : undefined,
-          });
+          // Skip if already used
+          if (usedQuestionIndices.has(idx)) {
+            return;
+          }
+
+          // Check if question type is allowed for this slot
+          const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as any);
+
+          if (isAllowed) {
+            items.push({
+              type: question.type,
+              content: `${questionNumber}. ${question.text}`,
+              choices: question.choices,
+              // Only add blank lines for written responses, not computation (visual-math)
+              blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : question.type === 'math-work' ? 5 : undefined,
+            });
+            usedQuestionIndices.add(idx);
+            questionNumber++;
+          }
         });
       }
     }

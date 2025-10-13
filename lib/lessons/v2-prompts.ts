@@ -150,12 +150,12 @@ Create a variety of math problems for grade ${grade}.
 Include:
 - 3 warm-up computation problems (type: "visual-math")
 - ${Math.floor(problemCount * 0.6)} computation problems (type: "visual-math")
-- ${Math.ceil(problemCount * 0.4)} word problems (type: "short-answer")
+- ${Math.ceil(problemCount * 0.4)} word problems (type: "math-work")
 
 Operations: ${mathInfoMP.operations.join(', ')}
 Number range: ${mathInfoMP.numberRange}
 
-IMPORTANT: Use "visual-math" for computation, "short-answer" for word problems.
+IMPORTANT: Use "visual-math" for computation, "math-work" for word problems.
 
 Mix different problem types for comprehensive practice.`;
 
@@ -209,7 +209,7 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],
   "questions": [
     { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" },
-    { "text": "Word problem...", "type": "short-answer", "answer": "..." }
+    { "text": "Word problem...", "type": "math-work", "answer": "..." }
   ],`;
 
     default:
