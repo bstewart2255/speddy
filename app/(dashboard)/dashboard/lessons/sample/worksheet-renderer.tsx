@@ -118,6 +118,17 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
                     </div>
                   )}
 
+                  {item.type === 'math-work' && (
+                    <div className="space-y-2">
+                      <p className="font-medium text-gray-900">{item.content}</p>
+                      <div className="ml-6">
+                        {Array.from({ length: item.blankLines || 5 }).map((_, lineIdx) => (
+                          <div key={lineIdx} className="h-8" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {item.type === 'fill-blank' && (
                     <div className="space-y-2">
                       <p className="font-medium text-gray-900">{item.content}</p>

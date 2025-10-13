@@ -241,7 +241,7 @@ export function populateTemplate(
             content: `${idx + 1}. ${question.text}`,
             choices: question.choices,
             // Only add blank lines for written responses, not computation (visual-math)
-            blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : undefined,
+            blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : question.type === 'math-work' ? 5 : undefined,
           });
         });
       }

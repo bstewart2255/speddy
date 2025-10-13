@@ -42,7 +42,7 @@ RESPONSE FORMAT (JSON):
 }
 
 IMPORTANT RULES:
-1. Question types: ONLY use these exact types: "multiple-choice", "short-answer", "long-answer", "fill-blank", "true-false", "visual-math"
+1. Question types: ONLY use these exact types: "multiple-choice", "short-answer", "long-answer", "fill-blank", "true-false", "visual-math", "math-work"
 2. Multiple choice: Exactly 4 choices, NO letter prefixes (A, B, C, D)
 3. Content only - we handle all formatting and structure
 4. Focus on educational quality and grade-appropriate language
@@ -132,11 +132,12 @@ Focus on building computational fluency.`;
 Create story-based math problems for grade ${grade}.
 
 Include:
-- 2 example problems with solutions
-- ${problemCount} practice word problems
+- ${problemCount} practice word problems (ALL must use type "math-work")
 
 Operations: ${mathInfoWP.operations.join(', ')}
 Number range: ${mathInfoWP.numberRange}
+
+IMPORTANT: All problems MUST use "type": "math-work" (not short-answer, not long-answer, not any other type).
 
 Make problems relatable to grade ${grade} students' experiences.`;
 
@@ -198,11 +199,8 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],`;
 
     case 'word-problems':
-      return `"examples": [
-    { "problem": "Word problem...", "solution": ["Step 1: ...", "Answer: ..."], "teachingPoint": "..." }
-  ],
-  "questions": [
-    { "text": "Problem text", "type": "short-answer", "answer": "..." }
+      return `"questions": [
+    { "text": "Problem text", "type": "math-work", "answer": "..." }
   ],`;
 
     case 'mixed-practice':

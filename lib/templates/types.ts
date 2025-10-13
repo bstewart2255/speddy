@@ -26,7 +26,8 @@ export type QuestionType =
   | 'fill-blank'
   | 'true-false'
   | 'matching'
-  | 'visual-math';
+  | 'visual-math'
+  | 'math-work'; // Math workspace without ruler lines
 
 // Template slot types define what kind of content goes in each section
 export type SlotType =
