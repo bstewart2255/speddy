@@ -280,12 +280,26 @@ export function populateTemplate(
           const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as any);
 
           if (isAllowed) {
+            // Check if the question has embedded blanks (like "fl___t") - don't add lines for these
+            const hasEmbeddedBlank = question.text.includes('___');
+
+            // Determine blank lines based on question type
+            let blankLines: number | undefined;
+            if (question.type === 'short-answer' && !hasEmbeddedBlank) {
+              blankLines = 3;
+            } else if (question.type === 'long-answer') {
+              blankLines = 5;
+            } else if (question.type === 'math-work') {
+              blankLines = 5;
+            } else {
+              blankLines = undefined;
+            }
+
             items.push({
               type: question.type,
               content: `${questionNumber}. ${question.text}`,
               choices: question.choices,
-              // Only add blank lines for written responses, not computation (visual-math)
-              blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : question.type === 'math-work' ? 5 : undefined,
+              blankLines,
             });
             usedQuestionIndices.add(idx);
             questionNumber++;

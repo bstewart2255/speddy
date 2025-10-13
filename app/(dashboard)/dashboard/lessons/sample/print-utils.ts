@@ -280,15 +280,17 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                 }
 
                 if (item.type === 'short-answer' || item.type === 'long-answer') {
-                  const lines = item.blankLines || 3;
+                  const lines = item.blankLines || 0;
                   return `
                     <div class="worksheet-item">
                       ${item.content ? `<p class="item-question">${item.content}</p>` : ''}
-                      <div class="${item.content ? 'item-answer-lines' : ''}">
-                        ${Array.from({ length: lines }).map(() => `
-                          <div class="answer-line"></div>
-                        `).join('')}
-                      </div>
+                      ${lines > 0 ? `
+                        <div class="${item.content ? 'item-answer-lines' : ''}">
+                          ${Array.from({ length: lines }).map(() => `
+                            <div class="answer-line"></div>
+                          `).join('')}
+                        </div>
+                      ` : ''}
                     </div>
                   `;
                 }
