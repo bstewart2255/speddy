@@ -61,32 +61,6 @@ export default function SampleLessonsPage() {
           </div>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <BeakerIcon className="h-5 w-5 text-blue-400" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                About Sample Lessons
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p>This is a new template-based generation system designed to:</p>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Reduce AI prompt size by ~67% (250 lines → ~80 lines)</li>
-                  <li>Improve generation speed and reduce token usage</li>
-                  <li>Guarantee 100% structural consistency</li>
-                  <li>Lower validation failure rate from 5-10% to &lt;1%</li>
-                </ul>
-                <p className="mt-2">
-                  This exists alongside the production AI Lesson Builder for comparison and validation.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Form */}
