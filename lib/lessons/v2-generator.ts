@@ -91,7 +91,7 @@ export async function generateV2Worksheet(
 
     const response = await client.chat.completions.create({
       model: 'gpt-5-mini',
-      max_tokens: 4000,
+      max_completion_tokens: 4000,
       response_format: { type: 'json_object' },
       messages: [
         {
