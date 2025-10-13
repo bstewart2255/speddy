@@ -45,7 +45,7 @@ export const wordProblemsTemplate: WorksheetTemplate = {
     const multiplier = duration / 30;
 
     // Younger students = fewer word problems (reading complexity)
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeAdjustment = gradeNum <= 1 ? 0.75 : 1;
 
     return {

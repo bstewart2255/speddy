@@ -46,7 +46,7 @@ export const readingComprehensionTemplate: WorksheetTemplate = {
     const multiplier = duration / 30; // 15min = 0.5x, 30min = 1x, 45min = 1.5x, 60min = 2x
 
     // Grade adjustment (younger students = fewer questions)
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeAdjustment = gradeNum <= 2 ? 0.8 : 1;
 
     return {

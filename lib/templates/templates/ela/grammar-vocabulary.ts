@@ -42,7 +42,7 @@ export const grammarVocabularyTemplate: WorksheetTemplate = {
     const multiplier = duration / 30;
 
     // Grammar practice can be quicker for older students
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeAdjustment = gradeNum >= 4 ? 1.2 : 1;
 
     return {

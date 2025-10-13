@@ -46,7 +46,7 @@ export const computationTemplate: WorksheetTemplate = {
     const multiplier = duration / 30;
 
     // Grade adjustment (younger = fewer problems due to fine motor)
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeAdjustment = gradeNum <= 1 ? 0.6 : gradeNum <= 2 ? 0.8 : 1;
 
     return {

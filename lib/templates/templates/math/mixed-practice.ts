@@ -56,7 +56,7 @@ export const mixedPracticeTemplate: WorksheetTemplate = {
 
     const multiplier = duration / 30;
 
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeAdjustment = gradeNum <= 1 ? 0.7 : 1;
 
     return {

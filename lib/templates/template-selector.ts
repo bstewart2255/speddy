@@ -123,7 +123,7 @@ export function getRecommendedDuration(
   // 2-3 students: 15-45 minutes
   // 4-5 students: 30-60 minutes
 
-  const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+  const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
 
   if (gradeNum <= 1) {
     return { min: 15, max: 30, recommended: 15 };

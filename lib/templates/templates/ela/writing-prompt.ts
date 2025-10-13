@@ -57,7 +57,7 @@ export const writingPromptTemplate: WorksheetTemplate = {
     const multiplier = duration / 30;
 
     // Older students write more
-    const gradeNum = grade === 'K' ? 0 : parseInt(grade);
+    const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
     const gradeMultiplier = 1 + (gradeNum * 0.2);
 
     return {
