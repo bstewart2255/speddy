@@ -52,11 +52,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get API key from environment
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      console.error('ANTHROPIC_API_KEY not configured in environment');
+      console.error('OPENAI_API_KEY not configured in environment');
       return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY not configured' },
+        { error: 'OPENAI_API_KEY not configured' },
         { status: 500 }
       );
     }

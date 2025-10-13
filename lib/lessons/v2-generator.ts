@@ -1,7 +1,7 @@
 // V2 Generator - Template-based worksheet generation
 // Flow: Template Selection → AI (content only) → Template Population → Rendering
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { TemplateTopic } from '@/lib/templates/types';
 import { selectTemplate, type TemplateSelection } from '@/lib/templates/template-selector';
 import { buildV2Prompt } from './v2-prompts';
@@ -87,12 +87,17 @@ export async function generateV2Worksheet(
     const prompt = buildV2Prompt(contentRequest);
 
     // Step 3: Call AI for content generation
-    const client = new Anthropic({ apiKey });
+    const client = new OpenAI({ apiKey });
 
-    const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+    const response = await client.chat.completions.create({
+      model: 'gpt-5-mini',
       max_tokens: 4000,
+      response_format: { type: 'json_object' },
       messages: [
+        {
+          role: 'system',
+          content: 'You are an expert special education teacher. Respond only with valid JSON.',
+        },
         {
           role: 'user',
           content: prompt,
@@ -101,15 +106,15 @@ export async function generateV2Worksheet(
     });
 
     // Extract JSON from response
-    const textContent = response.content.find((block) => block.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    const textContent = response.choices[0]?.message?.content;
+    if (!textContent) {
       return {
         success: false,
         error: 'No text content in AI response',
         metadata: {
-          promptTokens: response.usage.input_tokens,
-          completionTokens: response.usage.output_tokens,
-          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0,
+          totalTokens: response.usage?.total_tokens || 0,
           generationTime: Date.now() - startTime,
           model: response.model,
           generationVersion: 'v2',
@@ -120,7 +125,7 @@ export async function generateV2Worksheet(
     // Parse JSON
     let content: V2ContentResponse;
     try {
-      let jsonText = textContent.text;
+      let jsonText = textContent;
 
       // Try to extract JSON from markdown code blocks first
       const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -151,9 +156,9 @@ export async function generateV2Worksheet(
         success: false,
         error: `Failed to parse AI response as JSON: ${e instanceof Error ? e.message : 'Unknown error'}`,
         metadata: {
-          promptTokens: response.usage.input_tokens,
-          completionTokens: response.usage.output_tokens,
-          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0,
+          totalTokens: response.usage?.total_tokens || 0,
           generationTime: Date.now() - startTime,
           model: response.model,
           generationVersion: 'v2',
@@ -168,9 +173,9 @@ export async function generateV2Worksheet(
         success: false,
         error: `Content validation failed: ${validation.errors.join(', ')}`,
         metadata: {
-          promptTokens: response.usage.input_tokens,
-          completionTokens: response.usage.output_tokens,
-          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0,
+          totalTokens: response.usage?.total_tokens || 0,
           generationTime: Date.now() - startTime,
           model: response.model,
           generationVersion: 'v2',
@@ -189,9 +194,9 @@ export async function generateV2Worksheet(
       template: templateSelection,
       worksheet: populatedWorksheet,
       metadata: {
-        promptTokens: response.usage.input_tokens,
-        completionTokens: response.usage.output_tokens,
-        totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
         generationTime: Date.now() - startTime,
         model: response.model,
         generationVersion: 'v2',
