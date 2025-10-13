@@ -26,7 +26,8 @@ export type QuestionType =
   | 'fill-blank'
   | 'true-false'
   | 'matching'
-  | 'visual-math';
+  | 'visual-math'
+  | 'math-work'; // Math workspace without ruler lines
 
 // Template slot types define what kind of content goes in each section
 export type SlotType =
@@ -35,7 +36,8 @@ export type SlotType =
   | 'problems'          // Math problems
   | 'writing-prompt'    // Writing prompt
   | 'examples'          // Example problems
-  | 'practice';         // Practice problems
+  | 'practice'          // Practice problems
+  | 'writing-space';    // Writing space with lines
 
 // Problem count can be fixed or duration-based
 export type ProblemCount = number | 'duration-based';

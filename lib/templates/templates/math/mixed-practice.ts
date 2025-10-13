@@ -41,7 +41,7 @@ export const mixedPracticeTemplate: WorksheetTemplate = {
         {
           type: 'problems',
           count: 'duration-based',
-          allowedTypes: ['long-answer'],
+          allowedTypes: ['math-work'],
         },
       ],
     },

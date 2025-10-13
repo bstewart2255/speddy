@@ -68,20 +68,8 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
           }
 
           .worksheet-meta {
-            display: flex;
-            justify-content: space-between;
             font-size: 14px;
             color: #4b5563;
-            margin-bottom: 8px;
-          }
-
-          .worksheet-topic {
-            display: inline-block;
-            padding: 4px 12px;
-            background-color: #dbeafe;
-            color: #1e40af;
-            border-radius: 9999px;
-            font-size: 12px;
             margin-top: 8px;
           }
 
@@ -231,11 +219,7 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
         <div class="worksheet-header">
           <h1>${worksheet.title}</h1>
           <div class="worksheet-meta">
-            <span>Grade: ${worksheet.grade}</span>
             <span>Duration: ${worksheet.duration} minutes</span>
-          </div>
-          <div>
-            <span class="worksheet-topic">${worksheet.topic}</span>
           </div>
         </div>
 
@@ -296,13 +280,29 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                 }
 
                 if (item.type === 'short-answer' || item.type === 'long-answer') {
-                  const lines = item.blankLines || 3;
+                  const lines = item.blankLines || 0;
+                  return `
+                    <div class="worksheet-item">
+                      ${item.content ? `<p class="item-question">${item.content}</p>` : ''}
+                      ${lines > 0 ? `
+                        <div class="${item.content ? 'item-answer-lines' : ''}">
+                          ${Array.from({ length: lines }).map(() => `
+                            <div class="answer-line"></div>
+                          `).join('')}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }
+
+                if (item.type === 'math-work') {
+                  const lines = item.blankLines || 5;
                   return `
                     <div class="worksheet-item">
                       <p class="item-question">${item.content}</p>
                       <div class="item-answer-lines">
                         ${Array.from({ length: lines }).map(() => `
-                          <div class="answer-line"></div>
+                          <div style="height: 32px;"></div>
                         `).join('')}
                       </div>
                     </div>

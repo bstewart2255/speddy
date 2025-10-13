@@ -120,14 +120,32 @@ export async function generateV2Worksheet(
     // Parse JSON
     let content: V2ContentResponse;
     try {
-      // Extract JSON from markdown code blocks if present
       let jsonText = textContent.text;
-      const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[1];
+
+      // Try to extract JSON from markdown code blocks first
+      const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1];
       }
 
-      content = JSON.parse(jsonText);
+      // Remove single-line comments (// ...) which are not valid JSON
+      jsonText = jsonText.replace(/\/\/[^\n]*/g, '');
+
+      // If parsing fails or there's extra content, try to extract just the JSON object
+      try {
+        content = JSON.parse(jsonText);
+      } catch (firstError) {
+        // Try to find JSON object boundaries
+        const firstBrace = jsonText.indexOf('{');
+        const lastBrace = jsonText.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const extractedJson = jsonText.substring(firstBrace, lastBrace + 1);
+          content = JSON.parse(extractedJson);
+        } else {
+          throw firstError; // Re-throw original error if extraction doesn't help
+        }
+      }
     } catch (e) {
       return {
         success: false,
@@ -206,6 +224,9 @@ export function populateTemplate(
 ): any {
   const topicName = template.template.name;
 
+  // Track which questions have been used to avoid duplication
+  const usedQuestionIndices = new Set<number>();
+
   // Build worksheet sections based on template structure
   const sections = template.template.sections.map((templateSection) => {
     const items: any[] = [];
@@ -224,6 +245,17 @@ export function populateTemplate(
           type: 'text',
           content: content.prompt,
         });
+      } else if (slot.type === 'writing-space') {
+        // Add writing space with lines
+        // Use the problemCount as line count (represents expected sentences)
+        const lineCount = Math.round(
+          (template.problemCount.min + template.problemCount.max) / 2
+        );
+        items.push({
+          type: 'long-answer',
+          content: '',  // Empty content, just lines
+          blankLines: lineCount,
+        });
       } else if (slot.type === 'examples' && content.examples) {
         // Add example problems
         content.examples.forEach((example, idx) => {
@@ -234,15 +266,44 @@ export function populateTemplate(
           });
         });
       } else if (slot.type === 'questions' || slot.type === 'problems' || slot.type === 'practice') {
-        // Add questions/problems
+        // Add questions/problems, filtering by allowed types and avoiding duplicates
+        const allowedTypes = slot.allowedTypes || [];
+        let questionNumber = 1;
+
         content.questions.forEach((question, idx) => {
-          items.push({
-            type: question.type,
-            content: `${idx + 1}. ${question.text}`,
-            choices: question.choices,
-            // Only add blank lines for written responses, not computation (visual-math)
-            blankLines: question.type === 'short-answer' ? 3 : question.type === 'long-answer' ? 5 : undefined,
-          });
+          // Skip if already used
+          if (usedQuestionIndices.has(idx)) {
+            return;
+          }
+
+          // Check if question type is allowed for this slot
+          const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as any);
+
+          if (isAllowed) {
+            // Check if the question has embedded blanks (like "fl___t") - don't add lines for these
+            const hasEmbeddedBlank = question.text.includes('___');
+
+            // Determine blank lines based on question type
+            let blankLines: number | undefined;
+            if (question.type === 'short-answer' && !hasEmbeddedBlank) {
+              blankLines = 3;
+            } else if (question.type === 'long-answer') {
+              blankLines = 5;
+            } else if (question.type === 'math-work') {
+              blankLines = 5;
+            } else {
+              blankLines = undefined;
+            }
+
+            items.push({
+              type: question.type,
+              content: `${questionNumber}. ${question.text}`,
+              choices: question.choices,
+              blankLines,
+            });
+            usedQuestionIndices.add(idx);
+            questionNumber++;
+          }
         });
       }
     }

@@ -42,7 +42,7 @@ RESPONSE FORMAT (JSON):
 }
 
 IMPORTANT RULES:
-1. Question types: ONLY use these exact types: "multiple-choice", "short-answer", "long-answer", "fill-blank", "true-false", "visual-math"
+1. Question types: ONLY use these exact types: "multiple-choice", "short-answer", "long-answer", "fill-blank", "true-false", "visual-math", "math-work"
 2. Multiple choice: Exactly 4 choices, NO letter prefixes (A, B, C, D)
 3. Content only - we handle all formatting and structure
 4. Focus on educational quality and grade-appropriate language
@@ -78,12 +78,26 @@ Use a variety of question types: multiple-choice, short-answer, and 1-2 long-ans
 
 Create a phonics lesson focusing on a sound pattern appropriate for grade ${grade}.
 
-Include:
-- 5 example words showing the pattern
-- ${problemCount} practice words for students to read
-- ${Math.floor(problemCount / 2)} sentences using these words
+Choose a clear sound pattern like:
+- short vowels (at, et, it, ot, ut)
+- consonant blends (bl, cl, fl, pl, sl, br, cr, dr, fr, gr, tr)
+- digraphs (ch, sh, th, wh, ph)
+- long vowels with silent e
 
-Focus on building decoding skills and phonemic awareness.`;
+Include TWO types of practice:
+
+1. Word Completion (${Math.ceil(problemCount * 0.6)} questions, type: "short-answer"):
+   - Show words with missing letters: "fl___t" with answer "float"
+   - Focus on the sound pattern being taught
+
+2. Sentence Completion (${Math.floor(problemCount * 0.4)} questions, type: "fill-blank"):
+   - Sentences with a blank to fill: "The boat can _____ on the water." with answer "float"
+   - Use words that follow the sound pattern
+
+IMPORTANT:
+- Use "short-answer" type for word completion
+- Use "fill-blank" type for sentence completion
+- Keep all content appropriate for grade ${grade} reading level`;
 
     case 'writing-prompt':
       return `TOPIC: Writing & Composition
@@ -132,11 +146,12 @@ Focus on building computational fluency.`;
 Create story-based math problems for grade ${grade}.
 
 Include:
-- 2 example problems with solutions
-- ${problemCount} practice word problems
+- ${problemCount} practice word problems (ALL must use type "math-work")
 
 Operations: ${mathInfoWP.operations.join(', ')}
 Number range: ${mathInfoWP.numberRange}
+
+IMPORTANT: All problems MUST use "type": "math-work" (not short-answer, not long-answer, not any other type).
 
 Make problems relatable to grade ${grade} students' experiences.`;
 
@@ -149,12 +164,12 @@ Create a variety of math problems for grade ${grade}.
 Include:
 - 3 warm-up computation problems (type: "visual-math")
 - ${Math.floor(problemCount * 0.6)} computation problems (type: "visual-math")
-- ${Math.ceil(problemCount * 0.4)} word problems (type: "short-answer")
+- ${Math.ceil(problemCount * 0.4)} word problems (type: "math-work")
 
 Operations: ${mathInfoMP.operations.join(', ')}
 Number range: ${mathInfoMP.numberRange}
 
-IMPORTANT: Use "visual-math" for computation, "short-answer" for word problems.
+IMPORTANT: Use "visual-math" for computation, "math-work" for word problems.
 
 Mix different problem types for comprehensive practice.`;
 
@@ -176,11 +191,9 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],`;
 
     case 'phonics-decoding':
-      return `"examples": [
-    { "problem": "word", "solution": ["breakdown"] }
-  ],
-  "questions": [
-    { "text": "Read this word: ___", "type": "fill-blank", "answer": "word" }
+      return `"questions": [
+    { "text": "fl___t", "type": "short-answer", "answer": "float" },
+    { "text": "The boat can _____ on the water.", "type": "fill-blank", "answer": "float" }
   ],`;
 
     case 'writing-prompt':
@@ -198,11 +211,8 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],`;
 
     case 'word-problems':
-      return `"examples": [
-    { "problem": "Word problem...", "solution": ["Step 1: ...", "Answer: ..."], "teachingPoint": "..." }
-  ],
-  "questions": [
-    { "text": "Problem text", "type": "short-answer", "answer": "..." }
+      return `"questions": [
+    { "text": "Problem text", "type": "math-work", "answer": "..." }
   ],`;
 
     case 'mixed-practice':
@@ -211,7 +221,7 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],
   "questions": [
     { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" },
-    { "text": "Word problem...", "type": "short-answer", "answer": "..." }
+    { "text": "Word problem...", "type": "math-work", "answer": "..." }
   ],`;
 
     default:

@@ -7,22 +7,11 @@ export const wordProblemsTemplate: WorksheetTemplate = {
   // Metadata
   id: 'word-problems',
   name: 'Word Problems',
-  description: 'Story-based math problems with examples',
+  description: 'Story-based math problems',
   subjectType: 'math',
 
-  // Structure: 2 sections (examples, practice)
+  // Structure: 1 section (practice only, no examples)
   sections: [
-    {
-      title: 'Example Problems',
-      instructions: 'Study how these problems are solved.',
-      slots: [
-        {
-          type: 'examples',
-          count: 2,  // 2 worked examples
-          allowedTypes: ['long-answer'],
-        },
-      ],
-    },
     {
       title: 'Practice Problems',
       instructions: 'Solve each word problem. Show your work.',
@@ -30,7 +19,7 @@ export const wordProblemsTemplate: WorksheetTemplate = {
         {
           type: 'problems',
           count: 'duration-based',
-          allowedTypes: ['long-answer'],
+          allowedTypes: ['math-work'],
         },
       ],
     },

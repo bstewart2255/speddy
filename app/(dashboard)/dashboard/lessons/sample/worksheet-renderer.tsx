@@ -37,14 +37,8 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
       {/* Header */}
       <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
         <h1 className="text-2xl font-bold text-gray-900">{worksheet.title}</h1>
-        <div className="flex justify-between items-center mt-2 text-sm text-gray-600">
-          <span>Grade: {worksheet.grade}</span>
+        <div className="mt-2 text-sm text-gray-600">
           <span>Duration: {worksheet.duration} minutes</span>
-        </div>
-        <div className="mt-2">
-          <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-            {worksheet.topic}
-          </span>
         </div>
       </div>
 
@@ -109,10 +103,23 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
 
                   {(item.type === 'short-answer' || item.type === 'long-answer') && (
                     <div className="space-y-2">
+                      {item.content && <p className="font-medium text-gray-900">{item.content}</p>}
+                      {item.blankLines && item.blankLines > 0 && (
+                        <div className={item.content ? "ml-6" : ""}>
+                          {Array.from({ length: item.blankLines }).map((_, lineIdx) => (
+                            <div key={lineIdx} className="border-b border-gray-300 h-8" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {item.type === 'math-work' && (
+                    <div className="space-y-2">
                       <p className="font-medium text-gray-900">{item.content}</p>
                       <div className="ml-6">
-                        {Array.from({ length: item.blankLines || 3 }).map((_, lineIdx) => (
-                          <div key={lineIdx} className="border-b border-gray-300 h-8" />
+                        {Array.from({ length: item.blankLines || 5 }).map((_, lineIdx) => (
+                          <div key={lineIdx} className="h-8" />
                         ))}
                       </div>
                     </div>

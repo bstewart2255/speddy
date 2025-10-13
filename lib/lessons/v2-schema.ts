@@ -53,7 +53,7 @@ export interface V2Example {
  */
 export interface V2Question {
   text: string;  // The question/problem text
-  type: 'multiple-choice' | 'short-answer' | 'long-answer' | 'fill-blank' | 'true-false' | 'visual-math';
+  type: 'multiple-choice' | 'short-answer' | 'long-answer' | 'fill-blank' | 'true-false' | 'visual-math' | 'math-work';
   answer: string;  // Correct answer
 
   // Optional fields based on question type
@@ -85,7 +85,7 @@ export function isV2ContentResponse(data: any): data is V2ContentResponse {
       return false;
     }
 
-    const validTypes = ['multiple-choice', 'short-answer', 'long-answer', 'fill-blank', 'true-false', 'visual-math'];
+    const validTypes = ['multiple-choice', 'short-answer', 'long-answer', 'fill-blank', 'true-false', 'visual-math', 'math-work'];
     if (!validTypes.includes(q.type)) {
       console.error(`V2 validation failed: questions[${i}].type must be one of ${validTypes.join(', ')}`);
       return false;
