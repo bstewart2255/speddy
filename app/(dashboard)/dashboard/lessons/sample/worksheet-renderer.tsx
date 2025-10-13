@@ -103,8 +103,8 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
 
                   {(item.type === 'short-answer' || item.type === 'long-answer') && (
                     <div className="space-y-2">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      <div className="ml-6">
+                      {item.content && <p className="font-medium text-gray-900">{item.content}</p>}
+                      <div className={item.content ? "ml-6" : ""}>
                         {Array.from({ length: item.blankLines || 3 }).map((_, lineIdx) => (
                           <div key={lineIdx} className="border-b border-gray-300 h-8" />
                         ))}

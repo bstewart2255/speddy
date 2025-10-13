@@ -16,7 +16,7 @@ export const writingPromptTemplate: WorksheetTemplate = {
       title: 'Writing Prompt',
       slots: [
         {
-          type: 'passage',  // The prompt itself
+          type: 'writing-prompt',  // The prompt itself
           count: 1,
           minLength: 50,
           maxLength: 200,
@@ -39,9 +39,8 @@ export const writingPromptTemplate: WorksheetTemplate = {
       instructions: 'Write your final response here.',
       slots: [
         {
-          type: 'practice',  // Writing space
+          type: 'writing-space',  // Writing space with lines
           count: 1,
-          allowedTypes: ['long-answer'],
         },
       ],
     },

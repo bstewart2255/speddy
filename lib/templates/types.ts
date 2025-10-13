@@ -36,7 +36,8 @@ export type SlotType =
   | 'problems'          // Math problems
   | 'writing-prompt'    // Writing prompt
   | 'examples'          // Example problems
-  | 'practice';         // Practice problems
+  | 'practice'          // Practice problems
+  | 'writing-space';    // Writing space with lines
 
 // Problem count can be fixed or duration-based
 export type ProblemCount = number | 'duration-based';

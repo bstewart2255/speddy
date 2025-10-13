@@ -283,8 +283,8 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                   const lines = item.blankLines || 3;
                   return `
                     <div class="worksheet-item">
-                      <p class="item-question">${item.content}</p>
-                      <div class="item-answer-lines">
+                      ${item.content ? `<p class="item-question">${item.content}</p>` : ''}
+                      <div class="${item.content ? 'item-answer-lines' : ''}">
                         ${Array.from({ length: lines }).map(() => `
                           <div class="answer-line"></div>
                         `).join('')}

@@ -227,6 +227,17 @@ export function populateTemplate(
           type: 'text',
           content: content.prompt,
         });
+      } else if (slot.type === 'writing-space') {
+        // Add writing space with lines
+        // Use the problemCount as line count (represents expected sentences)
+        const lineCount = Math.round(
+          (template.problemCount.min + template.problemCount.max) / 2
+        );
+        items.push({
+          type: 'long-answer',
+          content: '',  // Empty content, just lines
+          blankLines: lineCount,
+        });
       } else if (slot.type === 'examples' && content.examples) {
         // Add example problems
         content.examples.forEach((example, idx) => {
