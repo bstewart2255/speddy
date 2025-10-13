@@ -79,11 +79,18 @@ Use a variety of question types: multiple-choice, short-answer, and 1-2 long-ans
 Create a phonics lesson focusing on a sound pattern appropriate for grade ${grade}.
 
 Include:
-- 5 example words showing the pattern
-- ${problemCount} practice words for students to read
-- ${Math.floor(problemCount / 2)} sentences using these words
+- ${Math.ceil(problemCount * 0.6)} practice words (type: "fill-blank") - words that follow the sound pattern
+- ${Math.floor(problemCount * 0.4)} sentences (type: "fill-blank") - sentences with blanks to fill using pattern words
 
-Focus on building decoding skills and phonemic awareness.`;
+IMPORTANT: All questions must use type "fill-blank".
+
+Focus on building decoding skills and phonemic awareness. Choose a clear sound pattern like:
+- short vowels (at, et, it, ot, ut)
+- consonant blends (bl, cl, fl, pl, sl, br, cr, dr, fr, gr, tr)
+- digraphs (ch, sh, th, wh, ph)
+- long vowels with silent e
+
+Each fill-blank should show the word with a blank: "c___t" with answer "cat".`;
 
     case 'writing-prompt':
       return `TOPIC: Writing & Composition
@@ -177,11 +184,9 @@ function getResponseFormat(topic: TemplateTopic): string {
   ],`;
 
     case 'phonics-decoding':
-      return `"examples": [
-    { "problem": "word", "solution": ["breakdown"] }
-  ],
-  "questions": [
-    { "text": "Read this word: ___", "type": "fill-blank", "answer": "word" }
+      return `"questions": [
+    { "text": "c___t", "type": "fill-blank", "answer": "cat" },
+    { "text": "The ___ sat on the mat.", "type": "fill-blank", "answer": "cat" }
   ],`;
 
     case 'writing-prompt':

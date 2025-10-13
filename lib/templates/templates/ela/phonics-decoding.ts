@@ -10,24 +10,14 @@ export const phonicsDecodingTemplate: WorksheetTemplate = {
   description: 'Phonics patterns with decoding and application practice',
   subjectType: 'ela',
 
-  // Structure: 3 sections (examples, practice, application)
+  // Structure: 2 sections (practice reading, sentences)
   sections: [
     {
-      title: 'Sound Pattern',
-      instructions: 'Look at these example words.',
-      slots: [
-        {
-          type: 'examples',
-          count: 5,  // 5 example words showing the pattern
-        },
-      ],
-    },
-    {
       title: 'Practice Reading',
-      instructions: 'Read each word aloud.',
+      instructions: 'Read each word aloud. Listen for the sound pattern.',
       slots: [
         {
-          type: 'practice',
+          type: 'questions',
           count: 'duration-based',
           allowedTypes: ['fill-blank'],
         },
@@ -35,7 +25,7 @@ export const phonicsDecodingTemplate: WorksheetTemplate = {
     },
     {
       title: 'Use the Words',
-      instructions: 'Complete each sentence using a word from above.',
+      instructions: 'Complete each sentence.',
       slots: [
         {
           type: 'questions',
