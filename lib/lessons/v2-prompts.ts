@@ -78,19 +78,26 @@ Use a variety of question types: multiple-choice, short-answer, and 1-2 long-ans
 
 Create a phonics lesson focusing on a sound pattern appropriate for grade ${grade}.
 
-Include:
-- ${Math.ceil(problemCount * 0.6)} practice words (type: "fill-blank") - words that follow the sound pattern
-- ${Math.floor(problemCount * 0.4)} sentences (type: "fill-blank") - sentences with blanks to fill using pattern words
-
-IMPORTANT: All questions must use type "fill-blank".
-
-Focus on building decoding skills and phonemic awareness. Choose a clear sound pattern like:
+Choose a clear sound pattern like:
 - short vowels (at, et, it, ot, ut)
 - consonant blends (bl, cl, fl, pl, sl, br, cr, dr, fr, gr, tr)
 - digraphs (ch, sh, th, wh, ph)
 - long vowels with silent e
 
-Each fill-blank should show the word with a blank: "c___t" with answer "cat".`;
+Include TWO types of practice:
+
+1. Word Completion (${Math.ceil(problemCount * 0.6)} questions, type: "short-answer"):
+   - Show words with missing letters: "fl___t" with answer "float"
+   - Focus on the sound pattern being taught
+
+2. Sentence Completion (${Math.floor(problemCount * 0.4)} questions, type: "fill-blank"):
+   - Sentences with a blank to fill: "The boat can _____ on the water." with answer "float"
+   - Use words that follow the sound pattern
+
+IMPORTANT:
+- Use "short-answer" type for word completion
+- Use "fill-blank" type for sentence completion
+- Keep all content appropriate for grade ${grade} reading level`;
 
     case 'writing-prompt':
       return `TOPIC: Writing & Composition
@@ -185,8 +192,8 @@ function getResponseFormat(topic: TemplateTopic): string {
 
     case 'phonics-decoding':
       return `"questions": [
-    { "text": "c___t", "type": "fill-blank", "answer": "cat" },
-    { "text": "The ___ sat on the mat.", "type": "fill-blank", "answer": "cat" }
+    { "text": "fl___t", "type": "short-answer", "answer": "float" },
+    { "text": "The boat can _____ on the water.", "type": "fill-blank", "answer": "float" }
   ],`;
 
     case 'writing-prompt':
