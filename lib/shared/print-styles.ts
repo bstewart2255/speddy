@@ -71,7 +71,6 @@ export function generatePrintStyles(): string {
       /* Section styling */
       .worksheet-section {
         margin-bottom: 24pt;
-        page-break-inside: avoid;
       }
 
       .section-title {
