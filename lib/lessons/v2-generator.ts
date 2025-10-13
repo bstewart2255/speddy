@@ -120,14 +120,29 @@ export async function generateV2Worksheet(
     // Parse JSON
     let content: V2ContentResponse;
     try {
-      // Extract JSON from markdown code blocks if present
       let jsonText = textContent.text;
-      const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[1];
+
+      // Try to extract JSON from markdown code blocks first
+      const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1];
       }
 
-      content = JSON.parse(jsonText);
+      // If parsing fails or there's extra content, try to extract just the JSON object
+      try {
+        content = JSON.parse(jsonText);
+      } catch (firstError) {
+        // Try to find JSON object boundaries
+        const firstBrace = jsonText.indexOf('{');
+        const lastBrace = jsonText.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const extractedJson = jsonText.substring(firstBrace, lastBrace + 1);
+          content = JSON.parse(extractedJson);
+        } else {
+          throw firstError; // Re-throw original error if extraction doesn't help
+        }
+      }
     } catch (e) {
       return {
         success: false,
