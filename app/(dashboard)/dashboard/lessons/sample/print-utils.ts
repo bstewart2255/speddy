@@ -309,6 +309,20 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
                   `;
                 }
 
+                if (item.type === 'math-work') {
+                  const lines = item.blankLines || 5;
+                  return `
+                    <div class="worksheet-item">
+                      <p class="item-question">${item.content}</p>
+                      <div class="item-answer-lines">
+                        ${Array.from({ length: lines }).map(() => `
+                          <div style="height: 32px;"></div>
+                        `).join('')}
+                      </div>
+                    </div>
+                  `;
+                }
+
                 if (item.type === 'fill-blank') {
                   return `
                     <div class="worksheet-item">
