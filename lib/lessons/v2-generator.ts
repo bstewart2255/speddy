@@ -128,6 +128,9 @@ export async function generateV2Worksheet(
         jsonText = codeBlockMatch[1];
       }
 
+      // Remove single-line comments (// ...) which are not valid JSON
+      jsonText = jsonText.replace(/\/\/[^\n]*/g, '');
+
       // If parsing fails or there's extra content, try to extract just the JSON object
       try {
         content = JSON.parse(jsonText);
