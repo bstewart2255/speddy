@@ -66,8 +66,6 @@ export function generatePrintStyles(): string {
 
       .info-field {
         flex: 1;
-        border-bottom: 1pt solid #000;
-        padding-bottom: 2pt;
       }
 
       /* Section styling */
