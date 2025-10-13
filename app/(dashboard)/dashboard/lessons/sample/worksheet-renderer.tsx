@@ -37,14 +37,8 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
       {/* Header */}
       <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
         <h1 className="text-2xl font-bold text-gray-900">{worksheet.title}</h1>
-        <div className="flex justify-between items-center mt-2 text-sm text-gray-600">
-          <span>Grade: {worksheet.grade}</span>
+        <div className="mt-2 text-sm text-gray-600">
           <span>Duration: {worksheet.duration} minutes</span>
-        </div>
-        <div className="mt-2">
-          <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-            {worksheet.topic}
-          </span>
         </div>
       </div>
 

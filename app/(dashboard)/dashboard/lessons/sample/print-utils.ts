@@ -68,20 +68,8 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
           }
 
           .worksheet-meta {
-            display: flex;
-            justify-content: space-between;
             font-size: 14px;
             color: #4b5563;
-            margin-bottom: 8px;
-          }
-
-          .worksheet-topic {
-            display: inline-block;
-            padding: 4px 12px;
-            background-color: #dbeafe;
-            color: #1e40af;
-            border-radius: 9999px;
-            font-size: 12px;
             margin-top: 8px;
           }
 
@@ -231,11 +219,7 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
         <div class="worksheet-header">
           <h1>${worksheet.title}</h1>
           <div class="worksheet-meta">
-            <span>Grade: ${worksheet.grade}</span>
             <span>Duration: ${worksheet.duration} minutes</span>
-          </div>
-          <div>
-            <span class="worksheet-topic">${worksheet.topic}</span>
           </div>
         </div>
 
