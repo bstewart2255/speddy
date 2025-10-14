@@ -224,7 +224,7 @@ export const QUESTION_FORMATS: Record<QuestionType, QuestionFormatSpec> = {
     useGridLayout: false,
     showNumber: false,
     studentFacing: true,
-    cssClass: 'writing-prompt-text',
+    cssClass: 'question-writing-prompt',
     label: 'Writing Prompt',
   },
 };

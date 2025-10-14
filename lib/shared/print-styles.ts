@@ -216,12 +216,12 @@ export function generatePrintStyles(): string {
       }
 
       /* Writing prompt (plain text, no special formatting) */
-      .writing-prompt-display {
-        margin-bottom: 16pt;
+      .question-writing-prompt .writing-prompt-display {
+        margin: 0;
         page-break-inside: avoid;
       }
 
-      .writing-prompt-text {
+      .question-writing-prompt .writing-prompt-text {
         font-size: 11pt;
         line-height: 1.8;
         color: #1a1a1a;
