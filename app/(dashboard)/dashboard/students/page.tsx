@@ -117,17 +117,20 @@ export default function StudentsPage() {
       }
 
       // Get user role if not already set
-      if (!userRole) {
+      let currentRole = userRole;
+      if (!currentRole) {
         const role = await getUserRole(user.id);
         setUserRole(role);
+        currentRole = role; // Use the fresh role immediately
       }
 
       console.log('Fetching students for school:', currentSchool.display_name || currentSchool.school_site);
+      console.log('Using role:', currentRole);
 
       // Use role-aware query for SEAs, standard query for others
-      if (userRole === 'sea') {
+      if (currentRole === 'sea') {
         console.log('Loading students for SEA user:', user.id);
-        const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        const { data, error } = await loadStudentsForUser(user.id, currentRole, {
           currentSchool
         });
 
