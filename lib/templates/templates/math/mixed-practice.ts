@@ -10,19 +10,8 @@ export const mixedPracticeTemplate: WorksheetTemplate = {
   description: 'Mix of computation and word problems for comprehensive review',
   subjectType: 'math',
 
-  // Structure: 3 sections (review, computation, word problems)
+  // Structure: 2 sections (computation, word problems)
   sections: [
-    {
-      title: 'Warm-Up',
-      instructions: 'Solve these quick problems.',
-      slots: [
-        {
-          type: 'problems',
-          count: 3,  // 3 warm-up problems
-          allowedTypes: ['visual-math'],
-        },
-      ],
-    },
     {
       title: 'Computation',
       instructions: 'Solve each problem.',
