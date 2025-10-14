@@ -100,6 +100,12 @@ export function QuestionRenderer({
       {type === QuestionType.PASSAGE && (
         <PassageDisplay content={question.content} />
       )}
+
+      {type === QuestionType.WRITING_PROMPT && (
+        <div className="writing-prompt-display">
+          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{question.content}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -257,6 +263,12 @@ export function generateQuestionHTML(
       <div class="passage-section">
         <div class="passage-header">Reading Passage:</div>
         <div class="passage-text">${escapeHtml(question.content)}</div>
+      </div>
+    `;
+  } else if (type === QuestionType.WRITING_PROMPT) {
+    html += `
+      <div class="writing-prompt-display">
+        <p class="writing-prompt-text">${escapeHtml(question.content)}</p>
       </div>
     `;
   }

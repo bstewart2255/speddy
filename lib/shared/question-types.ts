@@ -44,6 +44,9 @@ export enum QuestionType {
 
   // Example problem (teacher-facing only)
   EXAMPLE = 'example',
+
+  // Writing prompt (displays as plain text)
+  WRITING_PROMPT = 'writing-prompt',
 }
 
 /**
@@ -214,6 +217,16 @@ export const QUESTION_FORMATS: Record<QuestionType, QuestionFormatSpec> = {
     cssClass: 'content-example',
     label: 'Example (Teacher Only)',
   },
+
+  [QuestionType.WRITING_PROMPT]: {
+    defaultLines: 0,
+    needsWorkSpace: false,
+    useGridLayout: false,
+    showNumber: false,
+    studentFacing: true,
+    cssClass: 'writing-prompt-text',
+    label: 'Writing Prompt',
+  },
 };
 
 /**
@@ -320,7 +333,8 @@ export type QuestionTypeString =
   | 'math-work'
   | 'observation'
   | 'passage'
-  | 'example';
+  | 'example'
+  | 'writing-prompt';
 
 /**
  * Validate that a string is a valid question type

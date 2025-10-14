@@ -240,9 +240,9 @@ export function populateTemplate(
           content: content.passage,
         });
       } else if (slot.type === 'writing-prompt' && content.prompt) {
-        // Add writing prompt
+        // Add writing prompt as plain text (no passage styling)
         items.push({
-          type: 'text',
+          type: 'writing-prompt',
           content: content.prompt,
         });
       } else if (slot.type === 'writing-space') {
