@@ -12,6 +12,7 @@ import {
   normalizeQuestionType,
   isNumberSequenceTask,
 } from './question-types';
+import { escapeHtml } from './print-styles';
 
 /**
  * Regex pattern to remove letter prefixes from multiple choice options (e.g., "A.", "A)", "B.")
@@ -202,15 +203,6 @@ export function generateQuestionHTML(
 
   const shouldShowNumber = showNumber && format.showNumber && questionNumber !== undefined;
   const lineCount = calculateLineCount(type, question.content, question.blankLines);
-
-  // Escape HTML
-  const escapeHtml = (str: string) =>
-    String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
 
   let html = `<div class="question-item ${format.cssClass}">`;
 
