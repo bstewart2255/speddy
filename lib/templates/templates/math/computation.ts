@@ -1,5 +1,5 @@
 // Computation Practice Template
-// Structure: Examples + Practice Problems
+// Structure: Practice Problems only (no examples for students)
 
 import type { WorksheetTemplate, Duration, ProblemCountRange } from '../../types';
 
@@ -7,22 +7,11 @@ export const computationTemplate: WorksheetTemplate = {
   // Metadata
   id: 'computation',
   name: 'Computation Practice',
-  description: 'Examples followed by computation practice problems',
+  description: 'Computation practice problems for students',
   subjectType: 'math',
 
-  // Structure: 2 sections (examples, then practice)
+  // Structure: 1 section (practice only)
   sections: [
-    {
-      title: 'Examples',
-      instructions: 'Study these examples carefully.',
-      slots: [
-        {
-          type: 'examples',
-          count: 3,  // Always 3 example problems
-          allowedTypes: ['visual-math'],
-        },
-      ],
-    },
     {
       title: 'Practice Problems',
       instructions: 'Solve each problem. Show your work.',

@@ -1,5 +1,8 @@
 // Worksheet Renderer - Display formatted worksheets from v2 generation
 
+import { QuestionRenderer, QuestionData } from '@/lib/shared/question-renderer';
+import { QUESTION_FORMATS, stripQuestionNumber } from '@/lib/shared/question-types';
+
 interface WorksheetSection {
   title: string;
   instructions?: string;
@@ -44,103 +47,72 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
 
       {/* Sections */}
       <div className="space-y-8">
-        {worksheet.sections.map((section, sectionIdx) => (
-          <div key={sectionIdx} className="space-y-4">
-            {/* Section Title */}
-            <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-200 pb-2">
-              {section.title}
-            </h2>
+        {worksheet.sections.map((section, sectionIdx) => {
+          // Filter out teacher-only content (examples)
+          const studentFacingItems = section.items.filter(item => item.type !== 'example');
 
-            {/* Section Instructions */}
-            {section.instructions && (
-              <p className="text-sm text-gray-700 italic">{section.instructions}</p>
-            )}
+          // Check if section uses grid layout (for visual math)
+          const useGridLayout = studentFacingItems.some(item => item.type === 'visual-math');
 
-            {/* Section Items - Filter out examples (teacher only) */}
-            {/* Check if section has visual-math problems for grid layout */}
-            {section.items.some(item => item.type === 'visual-math') ? (
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
-                  <div key={itemIdx}>
-                    {item.type === 'visual-math' && (
-                      <div>
-                        <p className="font-medium text-gray-900">{item.content}</p>
-                        <div className="h-16" /> {/* Space to work */}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {section.items.filter(item => item.type !== 'example').map((item, itemIdx) => (
-                  <div key={itemIdx} className="pl-2">
-                  {item.type === 'passage' && (
-                    <div className="prose max-w-none">
-                      <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
-                        {item.content}
-                      </p>
-                    </div>
-                  )}
+          return (
+            <div key={sectionIdx} className="space-y-4">
+              {/* Section Title */}
+              <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                {section.title}
+              </h2>
 
-                  {item.type === 'multiple-choice' && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      {item.choices && (
-                        <div className="ml-6 space-y-1">
-                          {item.choices.map((choice, choiceIdx) => (
-                            <div key={choiceIdx} className="flex items-start gap-2">
-                              <span className="text-gray-600 font-medium">
-                                {String.fromCharCode(65 + choiceIdx)}.
-                              </span>
-                              <span className="text-gray-800">{choice}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+              {/* Section Instructions */}
+              {section.instructions && (
+                <p className="text-sm text-gray-700 italic">{section.instructions}</p>
+              )}
 
-                  {(item.type === 'short-answer' || item.type === 'long-answer') && (
-                    <div className="space-y-2">
-                      {item.content && <p className="font-medium text-gray-900">{item.content}</p>}
-                      {item.blankLines && item.blankLines > 0 && (
-                        <div className={item.content ? "ml-6" : ""}>
-                          {Array.from({ length: item.blankLines }).map((_, lineIdx) => (
-                            <div key={lineIdx} className="border-b border-gray-300 h-8" />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {item.type === 'math-work' && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      <div className="ml-6">
-                        {Array.from({ length: item.blankLines || 5 }).map((_, lineIdx) => (
-                          <div key={lineIdx} className="h-8" />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {item.type === 'fill-blank' && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-gray-900">{item.content}</p>
-                      <div className="ml-6 border-b border-gray-300 w-64 h-8" />
-                    </div>
-                  )}
-
-                  {item.type === 'text' && (
-                    <p className="text-gray-800">{item.content}</p>
-                  )}
+              {/* Section Items */}
+              {useGridLayout ? (
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  {studentFacingItems.map((item, itemIdx) => (
+                    <QuestionRenderer
+                      key={itemIdx}
+                      question={{
+                        ...item,
+                        content: stripQuestionNumber(item.content),
+                      } as QuestionData}
+                      questionNumber={itemIdx + 1}
+                      showNumber={false}
+                    />
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-4">
+                  {studentFacingItems.map((item, itemIdx) => {
+                    // Render passages directly without the blue box styling
+                    if (item.type === 'passage') {
+                      return (
+                        <div key={itemIdx} className="prose max-w-none">
+                          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                            {item.content}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // For all other question types, use QuestionRenderer
+                    return (
+                      <QuestionRenderer
+                        key={itemIdx}
+                        question={{
+                          ...item,
+                          content: stripQuestionNumber(item.content),
+                        } as QuestionData}
+                        questionNumber={itemIdx + 1}
+                        showNumber={true}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer */}

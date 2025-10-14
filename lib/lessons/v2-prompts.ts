@@ -86,17 +86,19 @@ Choose a clear sound pattern like:
 
 Include TWO types of practice:
 
-1. Word Completion (${Math.ceil(problemCount * 0.6)} questions, type: "short-answer"):
+1. Word Completion (${Math.ceil(problemCount * 0.6)} questions, type: "fill-blank"):
    - Show words with missing letters: "fl___t" with answer "float"
    - Focus on the sound pattern being taught
+   - Format: just the word with blanks, NOT a sentence
 
 2. Sentence Completion (${Math.floor(problemCount * 0.4)} questions, type: "fill-blank"):
    - Sentences with a blank to fill: "The boat can _____ on the water." with answer "float"
    - Use words that follow the sound pattern
 
 IMPORTANT:
-- Use "short-answer" type for word completion
-- Use "fill-blank" type for sentence completion
+- Use "fill-blank" type for BOTH word completion and sentence completion
+- Word completion: just the incomplete word (e.g., "fl___t"), NOT in a sentence
+- Sentence completion: full sentence with blank (e.g., "The boat can _____ on the water.")
 - Keep all content appropriate for grade ${grade} reading level`;
 
     case 'writing-prompt':
@@ -192,7 +194,7 @@ function getResponseFormat(topic: TemplateTopic): string {
 
     case 'phonics-decoding':
       return `"questions": [
-    { "text": "fl___t", "type": "short-answer", "answer": "float" },
+    { "text": "fl___t", "type": "fill-blank", "answer": "float" },
     { "text": "The boat can _____ on the water.", "type": "fill-blank", "answer": "float" }
   ],`;
 

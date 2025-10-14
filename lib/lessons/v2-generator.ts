@@ -240,9 +240,9 @@ export function populateTemplate(
           content: content.passage,
         });
       } else if (slot.type === 'writing-prompt' && content.prompt) {
-        // Add writing prompt
+        // Add writing prompt as plain text (no passage styling)
         items.push({
-          type: 'text',
+          type: 'writing-prompt',
           content: content.prompt,
         });
       } else if (slot.type === 'writing-space') {
@@ -280,6 +280,20 @@ export function populateTemplate(
           const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as any);
 
           if (isAllowed) {
+            // Special handling for phonics: distinguish word completion from sentence completion
+            // Word completion: just a word with blanks (e.g., "fl___t")
+            // Sentence completion: full sentence (e.g., "The cat will _____ in the sun.")
+            if (question.type === 'fill-blank') {
+              const isWordOnly = !question.text.trim().match(/\s+[a-zA-Z]/); // No spaces followed by letters (indicating multiple words)
+              const sectionIsWordCompletion = templateSection.title.toLowerCase().includes('word');
+              const sectionIsSentenceCompletion = templateSection.title.toLowerCase().includes('sentence');
+
+              // Skip if this is word-only but section wants sentences, or vice versa
+              if ((isWordOnly && sectionIsSentenceCompletion) || (!isWordOnly && sectionIsWordCompletion)) {
+                return;
+              }
+            }
+
             // Check if the question has embedded blanks (like "fl___t") - don't add lines for these
             const hasEmbeddedBlank = question.text.includes('___');
 

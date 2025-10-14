@@ -1,5 +1,5 @@
 // Phonics & Decoding Template
-// Structure: Examples + Decoding Practice + Application
+// Structure: Decoding Practice + Application
 
 import type { WorksheetTemplate, Duration, ProblemCountRange } from '../../types';
 
@@ -19,7 +19,7 @@ export const phonicsDecodingTemplate: WorksheetTemplate = {
         {
           type: 'questions',
           count: 'duration-based',
-          allowedTypes: ['short-answer'],
+          allowedTypes: ['fill-blank'],
         },
       ],
     },
