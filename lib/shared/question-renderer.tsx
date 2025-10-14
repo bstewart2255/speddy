@@ -147,18 +147,11 @@ export function AnswerBlank() {
 }
 
 /**
- * Math work space component
+ * Math work space component - just empty space without label or box
  */
 export function MathWorkSpace({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="ml-6 mt-3">
-      <div className="text-xs text-gray-500 mb-1 font-semibold">Work space:</div>
-      <div
-        className={`border-2 border-gray-400 bg-gray-50 ${
-          compact ? 'min-h-[80px]' : 'min-h-[120px]'
-        }`}
-      />
-    </div>
+    <div className={`ml-6 mt-3 ${compact ? 'min-h-[80px]' : 'min-h-[120px]'}`} />
   );
 }
 
@@ -252,24 +245,14 @@ export function generateQuestionHTML(
   } else if (type === QuestionType.FILL_BLANK) {
     html += '<div class="answer-blank"></div>';
   } else if (type === QuestionType.VISUAL_MATH) {
-    html += `
-      <div class="work-space compact">
-        <div class="work-space-label">Work space:</div>
-        <div class="work-space-area"></div>
-      </div>
-    `;
+    html += '<div class="work-space compact"></div>';
   } else if (type === QuestionType.MATH_WORK) {
     if (isNumberSequenceTask(question.content)) {
       for (let i = 0; i < Math.min(lineCount, 8); i++) {
         html += '<div class="answer-line"></div>';
       }
     } else {
-      html += `
-        <div class="work-space">
-          <div class="work-space-label">Work space:</div>
-          <div class="work-space-area"></div>
-        </div>
-      `;
+      html += '<div class="work-space"></div>';
     }
   } else if (type === QuestionType.OBSERVATION) {
     html += `

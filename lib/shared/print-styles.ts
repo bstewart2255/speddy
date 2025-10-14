@@ -153,27 +153,14 @@ export function generatePrintStyles(): string {
         height: 20pt;
       }
 
-      /* Math work space */
+      /* Math work space - just empty space */
       .work-space {
         margin-left: 18pt;
         margin-top: 10pt;
-      }
-
-      .work-space-label {
-        font-size: 9pt;
-        font-weight: bold;
-        color: #555;
-        margin-bottom: 4pt;
-      }
-
-      .work-space-area {
-        border: 1.5pt solid #555;
-        background-color: #f9f9f9;
         min-height: 100pt;
-        padding: 6pt;
       }
 
-      .work-space.compact .work-space-area {
+      .work-space.compact {
         min-height: 60pt;
       }
 
@@ -233,7 +220,7 @@ export function generatePrintStyles(): string {
         margin-bottom: 14pt;
       }
 
-      .spacing-compact .work-space-area {
+      .spacing-compact .work-space {
         min-height: 70pt;
       }
 
@@ -241,7 +228,7 @@ export function generatePrintStyles(): string {
         margin-bottom: 28pt;
       }
 
-      .spacing-generous .work-space-area {
+      .spacing-generous .work-space {
         min-height: 130pt;
       }
 
@@ -285,14 +272,6 @@ export function generatePrintStyles(): string {
         .worksheet-section {
           orphans: 2;
           widows: 2;
-        }
-
-        /* Ensure work spaces are visible in print */
-        .work-space-area {
-          border: 1.5pt solid #555 !important;
-          background-color: transparent !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
         }
 
         /* Ensure passages are visible in print */

@@ -17,7 +17,7 @@ export const mixedPracticeTemplate: WorksheetTemplate = {
       instructions: 'Solve these quick problems.',
       slots: [
         {
-          type: 'examples',
+          type: 'problems',
           count: 3,  // 3 warm-up problems
           allowedTypes: ['visual-math'],
         },
