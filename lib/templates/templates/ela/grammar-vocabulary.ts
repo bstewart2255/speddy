@@ -1,5 +1,5 @@
 // Grammar & Vocabulary Template
-// Structure: Word Bank/Examples + Practice Exercises
+// Structure: Practice Exercises
 
 import type { WorksheetTemplate, Duration, ProblemCountRange } from '../../types';
 
@@ -10,20 +10,11 @@ export const grammarVocabularyTemplate: WorksheetTemplate = {
   description: 'Grammar rules or vocabulary words with practice exercises',
   subjectType: 'ela',
 
-  // Structure: 2 sections (word bank/rules, practice)
+  // Structure: 1 section (practice only)
   sections: [
     {
-      title: 'Word Bank / Grammar Rules',
-      slots: [
-        {
-          type: 'examples',
-          count: 6,  // 6 vocabulary words or grammar examples
-        },
-      ],
-    },
-    {
       title: 'Practice',
-      instructions: 'Complete each exercise using what you learned above.',
+      instructions: 'Complete each exercise.',
       slots: [
         {
           type: 'questions',

@@ -1,5 +1,5 @@
 // Phonics & Decoding Template
-// Structure: Examples + Decoding Practice + Application
+// Structure: Decoding Practice + Application
 
 import type { WorksheetTemplate, Duration, ProblemCountRange } from '../../types';
 

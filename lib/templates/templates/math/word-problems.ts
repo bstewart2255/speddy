@@ -1,5 +1,5 @@
 // Word Problems Template
-// Structure: Examples + Practice Word Problems
+// Structure: Practice Word Problems
 
 import type { WorksheetTemplate, Duration, ProblemCountRange } from '../../types';
 
