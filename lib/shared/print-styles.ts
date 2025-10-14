@@ -96,6 +96,11 @@ export function generatePrintStyles(): string {
         page-break-inside: avoid;
       }
 
+      /* Allow page breaks inside writing spaces (long answers) */
+      .question-long-answer {
+        page-break-inside: auto;
+      }
+
       .question-prompt {
         font-size: 11pt;
         margin-bottom: 8pt;
