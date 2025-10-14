@@ -72,8 +72,14 @@ export async function loadStudentsForUser(
             id: student.id,
             initials: student.initials,
             grade_level: student.grade_level,
+            teacher_name: student.teacher_name,
+            teacher_id: student.teacher_id,
+            sessions_per_week: student.sessions_per_week,
+            minutes_per_session: student.minutes_per_session,
             school_id: student.school_id,
             provider_id: student.provider_id,
+            created_at: student.created_at,
+            updated_at: student.updated_at,
             iep_goals: iepGoals,
             student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
           } as StudentData;
@@ -96,8 +102,8 @@ export async function loadStudentsForUser(
         .from('students')
         .select(
           includeIEPGoals
-            ? 'id, initials, grade_level, school_id, provider_id, student_details(iep_goals)'
-            : 'id, initials, grade_level, school_id, provider_id'
+            ? 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at, student_details(iep_goals)'
+            : 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at'
         )
         .order('initials');
 
@@ -129,8 +135,14 @@ export async function loadStudentsForUser(
           id: student.id,
           initials: student.initials,
           grade_level: student.grade_level,
+          teacher_name: student.teacher_name,
+          teacher_id: student.teacher_id,
+          sessions_per_week: student.sessions_per_week,
+          minutes_per_session: student.minutes_per_session,
           school_id: student.school_id,
           provider_id: student.provider_id,
+          created_at: student.created_at,
+          updated_at: student.updated_at,
           iep_goals: iepGoals,
           student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
         } as StudentData;

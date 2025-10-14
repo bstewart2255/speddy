@@ -12,8 +12,14 @@ RETURNS TABLE(
   id UUID,
   initials TEXT,
   grade_level TEXT,
+  teacher_name TEXT,
+  teacher_id UUID,
+  sessions_per_week INTEGER,
+  minutes_per_session INTEGER,
   school_id VARCHAR,
   provider_id UUID,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ,
   iep_goals TEXT[]
 )
 LANGUAGE plpgsql
@@ -30,8 +36,14 @@ BEGIN
     s.id,
     s.initials,
     s.grade_level,
+    s.teacher_name,
+    s.teacher_id,
+    s.sessions_per_week,
+    s.minutes_per_session,
     s.school_id,
     s.provider_id,
+    s.created_at,
+    s.updated_at,
     COALESCE(sd.iep_goals, '{}'::TEXT[]) as iep_goals
   FROM students s
   INNER JOIN schedule_sessions ss ON ss.student_id = s.id
