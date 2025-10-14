@@ -79,6 +79,7 @@ export function generatePrintStyles(): string {
         margin-bottom: 8pt;
         padding-bottom: 4pt;
         border-bottom: 1.5pt solid #333;
+        page-break-after: avoid;
       }
 
       .section-instructions {
@@ -86,6 +87,7 @@ export function generatePrintStyles(): string {
         font-style: italic;
         color: #444;
         margin-bottom: 12pt;
+        page-break-after: avoid;
       }
 
       /* Question container */
