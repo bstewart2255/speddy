@@ -64,13 +64,15 @@ export function QuestionRenderer({
 
   return (
     <div className={`question-item ${format.cssClass} ${className}`}>
-      {/* Question content with optional numbering */}
-      <div className="question-prompt">
-        {shouldShowNumber && (
-          <span className="question-number font-bold mr-2">{questionNumber}.</span>
-        )}
-        <span className="question-text">{question.content}</span>
-      </div>
+      {/* Question content with optional numbering - skip for types that have custom display */}
+      {type !== QuestionType.PASSAGE && type !== QuestionType.WRITING_PROMPT && (
+        <div className="question-prompt">
+          {shouldShowNumber && (
+            <span className="question-number font-bold mr-2">{questionNumber}.</span>
+          )}
+          <span className="question-text">{question.content}</span>
+        </div>
+      )}
 
       {/* Type-specific rendering */}
       {type === QuestionType.MULTIPLE_CHOICE && question.choices && (
@@ -212,13 +214,15 @@ export function generateQuestionHTML(
 
   let html = `<div class="question-item ${format.cssClass}">`;
 
-  // Question prompt
-  html += '<div class="question-prompt">';
-  if (shouldShowNumber) {
-    html += `<span class="question-number">${questionNumber}.</span> `;
+  // Question prompt - skip for types that have custom display
+  if (type !== QuestionType.PASSAGE && type !== QuestionType.WRITING_PROMPT) {
+    html += '<div class="question-prompt">';
+    if (shouldShowNumber) {
+      html += `<span class="question-number">${questionNumber}.</span> `;
+    }
+    html += `<span class="question-text">${escapeHtml(question.content)}</span>`;
+    html += '</div>';
   }
-  html += `<span class="question-text">${escapeHtml(question.content)}</span>`;
-  html += '</div>';
 
   // Type-specific HTML
   if (type === QuestionType.MULTIPLE_CHOICE && question.choices) {
