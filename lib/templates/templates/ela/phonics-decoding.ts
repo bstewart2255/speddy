@@ -19,7 +19,7 @@ export const phonicsDecodingTemplate: WorksheetTemplate = {
         {
           type: 'questions',
           count: 'duration-based',
-          allowedTypes: ['short-answer'],
+          allowedTypes: ['fill-blank'],
         },
       ],
     },
