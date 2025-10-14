@@ -5,8 +5,9 @@
 -- Drop old function if it exists (needed when changing parameter names)
 DROP FUNCTION IF EXISTS public.get_sea_students();
 DROP FUNCTION IF EXISTS public.get_sea_students(UUID);
+DROP FUNCTION IF EXISTS public.get_sea_students(VARCHAR);
 
-CREATE OR REPLACE FUNCTION public.get_sea_students(p_school_id UUID DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.get_sea_students(p_school_id VARCHAR DEFAULT NULL)
 RETURNS TABLE(
   id UUID,
   initials TEXT,
@@ -43,8 +44,8 @@ END;
 $$;
 
 -- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION public.get_sea_students(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_sea_students(VARCHAR) TO authenticated;
 
 -- Add comment for documentation
-COMMENT ON FUNCTION public.get_sea_students(UUID) IS
+COMMENT ON FUNCTION public.get_sea_students(VARCHAR) IS
   'Returns all unique students that have sessions assigned to the currently authenticated SEA user. Uses auth.uid() internally for security. Optionally filters by school_id when provided. Used in Lessons page to filter student dropdowns for SEAs.';
