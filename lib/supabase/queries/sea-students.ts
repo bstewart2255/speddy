@@ -34,18 +34,38 @@ export async function loadStudentsForUser(
       // For SEAs, use the RPC function to get only assigned students
       // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
       // Pass school_id for server-side filtering (null returns all schools)
+      console.log('[loadStudentsForUser] Calling get_sea_students RPC with:', {
+        p_school_id: currentSchool?.school_id || null,
+        school_site: currentSchool?.school_site
+      });
+
       const { data, error } = await supabase.rpc('get_sea_students', {
         p_school_id: currentSchool?.school_id || null
       });
 
+      console.log('[loadStudentsForUser] RPC response:', {
+        hasData: !!data,
+        dataCount: Array.isArray(data) ? data.length : 'not-array',
+        hasError: !!error,
+        errorType: error ? typeof error : 'none',
+        errorKeys: error ? Object.keys(error) : []
+      });
+
       if (error) {
-        console.error('Error loading SEA students:', error);
+        console.error('Error loading SEA students:', {
+          error,
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          stringified: JSON.stringify(error)
+        });
 
         // Provide helpful error message if function doesn't exist
         if (error.message?.includes('function') || error.code === '42883') {
           console.error(
             'Database function "get_sea_students" not found. ' +
-            'Please run the migration: supabase/migrations/20251006_add_sea_students_function.sql'
+            'Please run the migration: supabase/migrations/20251016_add_sea_students_function.sql'
           );
         }
 
