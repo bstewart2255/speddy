@@ -14,6 +14,11 @@ import {
 } from './question-types';
 
 /**
+ * Regex pattern to remove letter prefixes from multiple choice options (e.g., "A.", "A)", "B.")
+ */
+const CHOICE_PREFIX_PATTERN = /^[A-D][\)\.]\s*/i;
+
+/**
  * Question data structure
  */
 export interface QuestionData {
@@ -106,7 +111,7 @@ export function MultipleChoiceOptions({ choices }: { choices: string[] }) {
     <div className="ml-6 space-y-2 mt-3">
       {choices.map((choice, idx) => {
         // Remove any letter prefixes (A., A), etc.)
-        const cleanChoice = choice.replace(/^[A-D][\)\.]\s*/i, '');
+        const cleanChoice = choice.replace(CHOICE_PREFIX_PATTERN, '');
 
         return (
           <div key={idx} className="flex items-center gap-2">
@@ -228,7 +233,7 @@ export function generateQuestionHTML(
   if (type === QuestionType.MULTIPLE_CHOICE && question.choices) {
     html += '<div class="multiple-choice-options">';
     question.choices.forEach((choice, idx) => {
-      const cleanChoice = choice.replace(/^[A-D][\)\.]\s*/i, '');
+      const cleanChoice = choice.replace(CHOICE_PREFIX_PATTERN, '');
       html += `
         <div class="option-row">
           <span class="option-box"></span>

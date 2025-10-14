@@ -9,7 +9,9 @@ import {
   generateWorksheetHeader,
   generateSectionHeader,
   getSpacingClass,
+  escapeHtml,
 } from '@/lib/shared/print-styles';
+import { stripQuestionNumber } from '@/lib/shared/question-types';
 
 interface WorksheetSection {
   title: string;
@@ -36,25 +38,6 @@ interface Worksheet {
     spacing: string;
     showInstructions: boolean;
   };
-}
-
-/**
- * Strip numbering from AI-generated content (e.g., "1. What is..." -> "What is...")
- */
-function stripQuestionNumber(content: string): string {
-  return content.replace(/^\d+\.\s*/, '');
-}
-
-/**
- * Escape HTML to prevent XSS
- */
-function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /**

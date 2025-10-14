@@ -6,6 +6,12 @@
  */
 
 /**
+ * Regex pattern to detect phonics questions asking for single sound/letter
+ * Matches patterns like "write down the first sound", "write the ending letter", etc.
+ */
+const PHONICS_SINGLE_SOUND_PATTERN = /write\s+(down\s+)?(the\s+)?(first|last|beginning|ending)\s+(sound|letter)/i;
+
+/**
  * Standardized question types - use these across all modules
  */
 export enum QuestionType {
@@ -223,8 +229,15 @@ export function calculateLineCount(
     return Math.min(explicitLines, 20); // Cap at 20 lines
   }
 
-  // For types that don't use lines, return 0
   const format = QUESTION_FORMATS[type];
+
+  // Check if this is a number sequence task before applying workspace rules
+  // Number sequence tasks need answer lines, not work space
+  if (type === QuestionType.MATH_WORK && isNumberSequenceTask(content)) {
+    return 5; // Provide answer lines for sequence writing
+  }
+
+  // For types that don't use lines, return 0
   if (!format.studentFacing || format.needsWorkSpace || type === QuestionType.MULTIPLE_CHOICE) {
     return 0;
   }
@@ -233,7 +246,7 @@ export function calculateLineCount(
   const contentLower = content.toLowerCase();
 
   // Single letter/sound (phonics)
-  if (/write\s+(down\s+)?the\s+(first|last|beginning|ending)\s+(sound|letter)/i.test(content)) {
+  if (PHONICS_SINGLE_SOUND_PATTERN.test(content)) {
     return 2;
   }
 
@@ -285,6 +298,13 @@ export function isNumberSequenceTask(content: string): boolean {
   ];
 
   return patterns.some(pattern => pattern.test(content));
+}
+
+/**
+ * Strip numbering from AI-generated content (e.g., "1. What is..." -> "What is...")
+ */
+export function stripQuestionNumber(content: string): string {
+  return content.replace(/^\d+\.\s*/, '');
 }
 
 /**

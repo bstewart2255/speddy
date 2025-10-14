@@ -1,7 +1,7 @@
 // Worksheet Renderer - Display formatted worksheets from v2 generation
 
 import { QuestionRenderer, QuestionData } from '@/lib/shared/question-renderer';
-import { QUESTION_FORMATS } from '@/lib/shared/question-types';
+import { QUESTION_FORMATS, stripQuestionNumber } from '@/lib/shared/question-types';
 
 interface WorksheetSection {
   title: string;
@@ -32,13 +32,6 @@ interface Worksheet {
 
 interface WorksheetRendererProps {
   worksheet: Worksheet;
-}
-
-/**
- * Strip numbering from AI-generated content (e.g., "1. What is..." -> "What is...")
- */
-function stripQuestionNumber(content: string): string {
-  return content.replace(/^\d+\.\s*/, '');
 }
 
 export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps) {

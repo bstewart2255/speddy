@@ -251,11 +251,11 @@ export function generatePrintStyles(): string {
       }
 
       /* Grid layout for visual math */
-      .question-visual-math.use-grid {
-        display: inline-block;
-        width: 48%;
-        margin-right: 2%;
-        vertical-align: top;
+      .visual-math-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16pt;
+        margin-bottom: 24pt;
       }
 
       /* Page break helpers */
@@ -413,7 +413,7 @@ export function generatePrintDocument(config: {
 /**
  * Escape HTML to prevent XSS
  */
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
