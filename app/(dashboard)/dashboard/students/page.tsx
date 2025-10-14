@@ -126,12 +126,22 @@ export default function StudentsPage() {
 
       // Use role-aware query for SEAs, standard query for others
       if (userRole === 'sea') {
+        console.log('Loading students for SEA user:', user.id);
         const { data, error } = await loadStudentsForUser(user.id, userRole, {
           currentSchool
         });
 
+        console.log('loadStudentsForUser response:', { data, error, hasData: !!data, hasError: !!error });
+
         if (error) {
-          console.error('Error fetching SEA students:', error);
+          console.error('Error fetching SEA students:', {
+            error,
+            errorMessage: error?.message,
+            errorCode: error?.code,
+            errorDetails: error?.details,
+            errorHint: error?.hint,
+            fullError: JSON.stringify(error, null, 2)
+          });
           setStudents([]);
         } else if (!Array.isArray(data)) {
           console.error('Data fetched is not an array!', data);
