@@ -13,12 +13,14 @@ interface AreasOfNeedDropdownProps {
   gradeLevel: string;
   selectedSkills: string[];
   onSkillsChange: (skills: string[]) => void;
+  readOnly?: boolean;
 }
 
 export function AreasOfNeedDropdown({
   gradeLevel,
   selectedSkills,
-  onSkillsChange
+  onSkillsChange,
+  readOnly = false
 }: AreasOfNeedDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -86,31 +88,36 @@ export function AreasOfNeedDropdown({
                 className="inline-flex items-center px-2 py-1 rounded-md text-sm bg-blue-100 text-blue-800"
               >
                 {skill.displayLabel}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveSkill(skill.id)}
-                  className="ml-1 hover:text-blue-600"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSkill(skill.id)}
+                    className="ml-1 hover:text-blue-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </span>
             ))}
           </div>
         )}
       </div>
-      
+
       {/* Dropdown Trigger */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        onClick={() => !readOnly && setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-left flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        disabled={readOnly}
       >
         <span className="text-gray-700">
           {selectedSkills.length === 0
             ? 'Select areas of need...'
             : `${selectedSkills.length} area${selectedSkills.length !== 1 ? 's' : ''} selected`}
         </span>
-        <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        {!readOnly && (
+          <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        )}
       </button>
       
       {/* Dropdown Panel */}

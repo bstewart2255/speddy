@@ -66,9 +66,10 @@ export default function Navbar() {
     ];
 
     if (role === 'sea') {
-      // SEAs see their dashboard and lessons
+      // SEAs see their dashboard, students (view-only), and lessons
       return [
         { name: 'Dashboard', href: '/dashboard/sea' },
+        { name: 'Students', href: '/dashboard/students' },
         { name: 'Lessons', href: '/dashboard/lessons' },
       ];
       

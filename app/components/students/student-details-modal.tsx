@@ -20,6 +20,7 @@ interface StudentDetailsModalProps {
     sessions_per_week: number;
     minutes_per_session: number;
   };
+  readOnly?: boolean;
   onSave?: (studentId: string, details: StudentDetails) => void;
   onUpdateStudent?: (studentId: string, updates: {
     initials?: string;
@@ -30,10 +31,11 @@ interface StudentDetailsModalProps {
   }) => void;
 }
 
-export function StudentDetailsModal({ 
-  isOpen, 
-  onClose, 
+export function StudentDetailsModal({
+  isOpen,
+  onClose,
   student,
+  readOnly = false,
   onSave,
   onUpdateStudent
 }: StudentDetailsModalProps) {
@@ -191,6 +193,7 @@ export function StudentDetailsModal({
                     onChange={(e) => setStudentInfo({...studentInfo, initials: e.target.value})}
                     placeholder="Enter student initials"
                     maxLength={10}
+                    disabled={readOnly}
                   />
                 </FormGroup>
 
@@ -200,7 +203,8 @@ export function StudentDetailsModal({
                     id="grade_level"
                     value={studentInfo.grade_level}
                     onChange={(e) => setStudentInfo({...studentInfo, grade_level: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled={readOnly}
                   >
                     <option value="K">Kindergarten</option>
                     <option value="1">1st Grade</option>
@@ -222,6 +226,7 @@ export function StudentDetailsModal({
                     value={studentInfo.teacher_name}
                     onChange={(e) => setStudentInfo({...studentInfo, teacher_name: e.target.value})}
                     placeholder="Enter teacher name"
+                    disabled={readOnly}
                   />
                 </FormGroup>
               </div>
@@ -233,7 +238,8 @@ export function StudentDetailsModal({
                     id="sessions_per_week"
                     value={studentInfo.sessions_per_week}
                     onChange={(e) => setStudentInfo({...studentInfo, sessions_per_week: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled={readOnly}
                   >
                     <option value="1">1</option>
                     <option value="2">2</option>
@@ -254,7 +260,8 @@ export function StudentDetailsModal({
                     id="minutes_per_session"
                     value={studentInfo.minutes_per_session}
                     onChange={(e) => setStudentInfo({...studentInfo, minutes_per_session: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled={readOnly}
                   >
                     <option value="15">15</option>
                     <option value="20">20</option>
@@ -279,6 +286,7 @@ export function StudentDetailsModal({
                     value={details.first_name}
                     onChange={(e) => setDetails({...details, first_name: e.target.value})}
                     placeholder="Enter first name"
+                    disabled={readOnly}
                   />
                 </FormGroup>
 
@@ -290,6 +298,7 @@ export function StudentDetailsModal({
                     value={details.last_name}
                     onChange={(e) => setDetails({...details, last_name: e.target.value})}
                     placeholder="Enter last name"
+                    disabled={readOnly}
                   />
                 </FormGroup>
               </div>
@@ -302,6 +311,7 @@ export function StudentDetailsModal({
                     type="date"
                     value={details.date_of_birth}
                     onChange={(e) => setDetails({...details, date_of_birth: e.target.value})}
+                    disabled={readOnly}
                   />
                 </FormGroup>
 
@@ -313,6 +323,7 @@ export function StudentDetailsModal({
                     value={details.district_id}
                     onChange={(e) => setDetails({...details, district_id: e.target.value})}
                     placeholder="Enter district ID"
+                    disabled={readOnly}
                   />
                 </FormGroup>
               </div>
@@ -326,6 +337,7 @@ export function StudentDetailsModal({
                     type="date"
                     value={details.upcoming_iep_date}
                     onChange={(e) => setDetails({...details, upcoming_iep_date: e.target.value})}
+                    disabled={readOnly}
                   />
                 </FormGroup>
 
@@ -336,6 +348,7 @@ export function StudentDetailsModal({
                     type="date"
                     value={details.upcoming_triennial_date}
                     onChange={(e) => setDetails({...details, upcoming_triennial_date: e.target.value})}
+                    disabled={readOnly}
                   />
                 </FormGroup>
               </div>
@@ -367,19 +380,21 @@ export function StudentDetailsModal({
               </div>
 
               <div className="space-y-2">
-                <div className="flex justify-end">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setDetails({
-                      ...details,
-                      iep_goals: [...details.iep_goals, '']
-                    })}
-                    type="button"
-                  >
-                    + Add Goal
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setDetails({
+                        ...details,
+                        iep_goals: [...details.iep_goals, '']
+                      })}
+                      type="button"
+                    >
+                      + Add Goal
+                    </Button>
+                  </div>
+                )}
 
                 {details.iep_goals.length === 0 ? (
                   <p className="text-sm text-gray-500 italic py-4 text-center bg-gray-50 rounded-md">
@@ -397,20 +412,23 @@ export function StudentDetailsModal({
                             setDetails({...details, iep_goals: newGoals});
                           }}
                           placeholder="Enter IEP goal (no names or specific dates)..."
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y disabled:bg-gray-100 disabled:cursor-not-allowed"
+                          disabled={readOnly}
                         />
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            const newGoals = details.iep_goals.filter((_, i) => i !== index);
-                            setDetails({...details, iep_goals: newGoals});
-                          }}
-                          type="button"
-                          className="self-start"
-                        >
-                          Remove
-                        </Button>
+                        {!readOnly && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              const newGoals = details.iep_goals.filter((_, i) => i !== index);
+                              setDetails({...details, iep_goals: newGoals});
+                            }}
+                            type="button"
+                            className="self-start"
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -431,6 +449,7 @@ export function StudentDetailsModal({
                 gradeLevel={studentInfo.grade_level}
                 selectedSkills={details.working_skills}
                 onSkillsChange={(skills) => setDetails({...details, working_skills: skills})}
+                readOnly={readOnly}
               />
             </div>
 
@@ -446,6 +465,7 @@ export function StudentDetailsModal({
               <AssessmentInputs
                 assessment={assessment}
                 onChange={setAssessment}
+                readOnly={readOnly}
               />
             </div>
           </div>
@@ -453,15 +473,17 @@ export function StudentDetailsModal({
           {/* Footer */}
           <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
             <Button variant="secondary" onClick={onClose}>
-              Cancel
+              {readOnly ? 'Close' : 'Cancel'}
             </Button>
-            <Button 
-              variant="primary" 
-              onClick={handleSave}
-              disabled={loading}
-            >
-              {loading ? 'Saving...' : 'Save Details'}
-            </Button>
+            {!readOnly && (
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                disabled={loading}
+              >
+                {loading ? 'Saving...' : 'Save Details'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

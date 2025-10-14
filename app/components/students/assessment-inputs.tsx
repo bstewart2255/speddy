@@ -8,9 +8,10 @@ import { GradeMonthReadingLevelInput } from './grade-month-reading-level-input';
 interface AssessmentInputsProps {
   assessment: StudentAssessment;
   onChange: (assessment: StudentAssessment) => void;
+  readOnly?: boolean;
 }
 
-export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps) {
+export function AssessmentInputs({ assessment, onChange, readOnly = false }: AssessmentInputsProps) {
   const updateField = (field: keyof StudentAssessment, value: any) => {
     onChange({
       ...assessment,
@@ -35,6 +36,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
               <GradeMonthReadingLevelInput
                 value={assessment.grade_month_reading_level}
                 onChange={(value) => updateField('grade_month_reading_level', value)}
+                readOnly={readOnly}
               />
               <div className="grid grid-cols-2 gap-3">
                 <FormGroup>
@@ -48,6 +50,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                     value={assessment.dibels_wpm_accuracy ?? ''}
                     onChange={(e) => updateField('dibels_wpm_accuracy', parseNumberInput(e.target.value))}
                     placeholder="0-100"
+                    disabled={readOnly}
                   />
                 </FormGroup>
                 <FormGroup>
@@ -60,6 +63,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                     value={assessment.dibels_nonsense_word_fluency ?? ''}
                     onChange={(e) => updateField('dibels_nonsense_word_fluency', parseNumberInput(e.target.value))}
                     placeholder="Score"
+                    disabled={readOnly}
                   />
                 </FormGroup>
               </div>
@@ -80,6 +84,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                   value={assessment.reading_comprehension_accuracy ?? ''}
                   onChange={(e) => updateField('reading_comprehension_accuracy', parseNumberInput(e.target.value))}
                   placeholder="0-100"
+                  disabled={readOnly}
                 />
               </FormGroup>
               <FormGroup>
@@ -90,6 +95,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                   value={assessment.lexile_level ?? ''}
                   onChange={(e) => updateField('lexile_level', e.target.value)}
                   placeholder="e.g., 450L"
+                  disabled={readOnly}
                 />
               </FormGroup>
               <FormGroup>
@@ -100,6 +106,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                   value={assessment.fp_dra_level ?? ''}
                   onChange={(e) => updateField('fp_dra_level', e.target.value)}
                   placeholder="Level"
+                  disabled={readOnly}
                 />
               </FormGroup>
             </div>
@@ -142,7 +149,8 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
                   id="sight_words_level"
                   value={assessment.sight_words_list_level ?? ''}
                   onChange={(e) => updateField('sight_words_list_level', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={readOnly}
                 >
                   <option value="">Select level</option>
                   <option value="Dolch Pre-K">Dolch Pre-K</option>
@@ -583,6 +591,7 @@ export function AssessmentInputs({ assessment, onChange }: AssessmentInputsProps
           type="date"
           value={assessment.assessment_date ?? ''}
           onChange={(e) => updateField('assessment_date', e.target.value)}
+          disabled={readOnly}
         />
       </FormGroup>
     </div>
