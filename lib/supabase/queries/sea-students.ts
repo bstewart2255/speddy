@@ -30,6 +30,19 @@ export async function loadStudentsForUser(
   const { includeIEPGoals = false, currentSchool = null } = options;
 
   try {
+    // Verify authentication before proceeding
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      console.error('[loadStudentsForUser] No valid session:', sessionError);
+      return {
+        data: null,
+        error: sessionError || new Error('No active session. Please log in again.')
+      };
+    }
+
+    console.log('[loadStudentsForUser] Valid session found for user:', session.user.id);
+
     if (userRole === 'sea') {
       // For SEAs, use the RPC function to get only assigned students
       // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
