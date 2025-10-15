@@ -36,7 +36,7 @@ export function AssessmentInputs({ assessment, onChange, readOnly = false }: Ass
               <GradeMonthReadingLevelInput
                 value={assessment.grade_month_reading_level}
                 onChange={(value) => updateField('grade_month_reading_level', value)}
-                readOnly={readOnly}
+                disabled={readOnly}
               />
               <div className="grid grid-cols-2 gap-3">
                 <FormGroup>
@@ -124,6 +124,7 @@ export function AssessmentInputs({ assessment, onChange, readOnly = false }: Ass
                 value={assessment.phoneme_segmentation_fluency ?? ''}
                 onChange={(e) => updateField('phoneme_segmentation_fluency', parseNumberInput(e.target.value))}
                 placeholder="Score"
+                disabled={readOnly}
               />
             </FormGroup>
           </div>
@@ -141,6 +142,7 @@ export function AssessmentInputs({ assessment, onChange, readOnly = false }: Ass
                   value={assessment.sight_words_known ?? ''}
                   onChange={(e) => updateField('sight_words_known', parseNumberInput(e.target.value))}
                   placeholder="Number"
+                  disabled={readOnly}
                 />
               </FormGroup>
               <FormGroup>

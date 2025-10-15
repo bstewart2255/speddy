@@ -412,8 +412,8 @@ export function StudentDetailsModal({
                             setDetails({...details, iep_goals: newGoals});
                           }}
                           placeholder="Enter IEP goal (no names or specific dates)..."
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y disabled:bg-gray-100 disabled:cursor-not-allowed"
-                          disabled={readOnly}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y read-only:bg-gray-50 read-only:cursor-default"
+                          readOnly={readOnly}
                         />
                         {!readOnly && (
                           <Button

@@ -59,7 +59,9 @@ export default function StudentsPage() {
   const router = useRouter();
 
   // Check if user has view-only access (SEA role)
-  const isViewOnly = userRole === 'sea';
+  // Default to view-only until role is resolved to prevent privilege escalation
+  const roleResolved = userRole !== null;
+  const isViewOnly = !roleResolved || userRole === 'sea';
 
   // Check if user works at multiple schools
   useEffect(() => {
