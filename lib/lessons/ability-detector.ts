@@ -14,7 +14,7 @@ export interface Student {
 }
 
 // Common skill benchmarks mapped to grade levels
-const ELA_BENCHMARKS: Record<string, string> = {
+const ELA_BENCHMARKS: Record<string, string | null> = {
   // Phonics patterns
   'cvc': '1',
   'cvce': '2',

@@ -17,8 +17,8 @@ import {
 export function buildV2Prompt(request: V2ContentRequest): string {
   const { topic, grade, problemCount, subjectType, abilityProfile } = request;
 
-  // Use ability level if available, otherwise use grade
-  const contentLevel = abilityProfile?.abilityLevel || grade;
+  // Use ability level if available, otherwise use grade, fallback to '3' if neither
+  const contentLevel = abilityProfile?.abilityLevel || grade || '3';
   const focusAreas = abilityProfile?.focusAreas || [];
 
   // Get topic-specific prompt
@@ -35,7 +35,7 @@ export function buildV2Prompt(request: V2ContentRequest): string {
 ${topicPrompt}
 
 CONTENT REQUIREMENTS:
-- Ability level: Grade ${contentLevel}${abilityProfile && abilityProfile.abilityLevel !== grade ? ` (student is in grade ${grade})` : ''}
+- Ability level: Grade ${contentLevel}${abilityProfile && abilityProfile.abilityLevel !== grade && grade != null ? ` (student is in grade ${grade})` : ''}
 ${focusGuidance}- Number of questions: ${problemCount}
 - Sentence complexity: ${getSentenceComplexity(contentLevel)}
 - Educational quality: Engaging, clear, age-appropriate
