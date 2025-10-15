@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateV2Worksheet } from '@/lib/lessons/v2-generator';
 import type { V2GenerationRequest } from '@/lib/lessons/v2-generator';
+import { generateLessonPlan } from '@/lib/lessons/lesson-plan-generator';
+import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
+import { determineContentLevel } from '@/lib/lessons/ability-detector';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,8 +160,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Return successful result
-    return NextResponse.json(result);
+    // Conditionally generate lesson plan
+    let lessonPlan;
+    let lessonPlanMetadata;
+    if (body.generateLessonPlan) {
+      try {
+        // Reuse ability detection for consistency with worksheet generation
+        const abilityProfile = determineContentLevel(
+          students,
+          body.grade,
+          body.subjectType
+        );
+
+        const lessonPlanRequest: LessonPlanRequest = {
+          topic: body.topic,
+          subjectType: body.subjectType,
+          grade: body.grade,
+          duration: body.duration,
+          students,
+          abilityLevel: abilityProfile.abilityLevel,  // Use detected ability level
+        };
+
+        const lessonPlanResult = await generateLessonPlan(lessonPlanRequest, apiKey);
+        lessonPlan = lessonPlanResult.lessonPlan;
+        lessonPlanMetadata = lessonPlanResult.metadata;
+        console.log('[V2 API] Lesson plan generated successfully');
+      } catch (error) {
+        console.error('[V2 API] Lesson plan generation failed:', error);
+        // Don't fail the entire request if lesson plan fails
+        // Just log the error and return worksheet without lesson plan
+      }
+    }
+
+    // Combine metadata if lesson plan was generated
+    const combinedMetadata = lessonPlanMetadata ? {
+      promptTokens: result.metadata.promptTokens + lessonPlanMetadata.promptTokens,
+      completionTokens: result.metadata.completionTokens + lessonPlanMetadata.completionTokens,
+      totalTokens: result.metadata.totalTokens + lessonPlanMetadata.totalTokens,
+      generationTime: result.metadata.generationTime + lessonPlanMetadata.generationTime,
+      model: result.metadata.model,
+      generationVersion: result.metadata.generationVersion,
+      worksheetTokens: result.metadata.totalTokens,
+      lessonPlanTokens: lessonPlanMetadata.totalTokens,
+    } : result.metadata;
+
+    // Return successful result with optional lesson plan and combined metadata
+    return NextResponse.json({
+      ...result,
+      lessonPlan,
+      metadata: combinedMetadata,
+    });
   } catch (error) {
     console.error('V2 generation error:', error);
     return NextResponse.json(

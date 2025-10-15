@@ -5,7 +5,7 @@ import { BeakerIcon, ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outl
 import Link from 'next/link';
 import SampleLessonForm from './sample-lesson-form';
 import WorksheetRenderer from './worksheet-renderer';
-import { printV2Worksheet } from './print-utils';
+import { printV2Worksheet, printLessonPlan } from './print-utils';
 
 /**
  * Sample Lessons - Template-Based Generation (DEV ONLY)
@@ -16,6 +16,13 @@ import { printV2Worksheet } from './print-utils';
  */
 export default function SampleLessonsPage() {
   const [generatedContent, setGeneratedContent] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
+
+  // Handler to reset tab when new content is generated
+  const handleGenerate = (result: any) => {
+    setGeneratedContent(result);
+    setActiveTab('worksheet'); // Always reset to worksheet tab
+  };
 
   // Only show in development
   if (process.env.NODE_ENV !== 'development') {
@@ -68,25 +75,63 @@ export default function SampleLessonsPage() {
             <h2 className="text-xl font-semibold text-gray-900 mb-4">
               Generate Sample Lesson
             </h2>
-            <SampleLessonForm onGenerate={setGeneratedContent} />
+            <SampleLessonForm onGenerate={handleGenerate} />
           </div>
 
           {/* Preview/Results */}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">
-                Generated Worksheet
+                Generated Content
               </h2>
               {generatedContent && (
                 <button
-                  onClick={() => printV2Worksheet(generatedContent.worksheet)}
+                  onClick={() => {
+                    if (activeTab === 'worksheet') {
+                      printV2Worksheet(generatedContent.worksheet);
+                    } else {
+                      printLessonPlan(generatedContent.lessonPlan);
+                    }
+                  }}
                   className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
                 >
                   <PrinterIcon className="w-4 h-4" />
-                  Print
+                  Print {activeTab === 'worksheet' ? 'Worksheet' : 'Lesson Plan'}
                 </button>
               )}
             </div>
+
+            {/* Tabs (when lesson plan is available) */}
+            {generatedContent && generatedContent.lessonPlan && (
+              <div className="border-b border-gray-200 mb-4">
+                <nav className="-mb-px flex space-x-8">
+                  <button
+                    onClick={() => setActiveTab('worksheet')}
+                    className={`
+                      ${activeTab === 'worksheet'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                      whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm
+                    `}
+                  >
+                    Worksheet
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('lessonPlan')}
+                    className={`
+                      ${activeTab === 'lessonPlan'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                      whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm
+                    `}
+                  >
+                    Lesson Plan
+                  </button>
+                </nav>
+              </div>
+            )}
 
             {generatedContent ? (
               <div className="space-y-6">
@@ -102,6 +147,11 @@ export default function SampleLessonsPage() {
                       <span className="text-green-600 ml-1">
                         ({generatedContent.metadata?.promptTokens || 0} prompt + {generatedContent.metadata?.completionTokens || 0} completion)
                       </span>
+                      {generatedContent.metadata?.worksheetTokens && generatedContent.metadata?.lessonPlanTokens && (
+                        <div className="text-green-600 ml-1 mt-1">
+                          Breakdown: {generatedContent.metadata.worksheetTokens} worksheet + {generatedContent.metadata.lessonPlanTokens} lesson plan
+                        </div>
+                      )}
                     </div>
                     <div>
                       <span className="font-medium">Time:</span>{' '}
@@ -110,18 +160,76 @@ export default function SampleLessonsPage() {
                   </div>
                 </div>
 
-                {/* Worksheet Display */}
-                {generatedContent.worksheet ? (
-                  <WorksheetRenderer worksheet={generatedContent.worksheet} />
+                {/* Content Display - Worksheet or Lesson Plan */}
+                {activeTab === 'worksheet' ? (
+                  generatedContent.worksheet ? (
+                    <WorksheetRenderer worksheet={generatedContent.worksheet} />
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                      <p className="text-sm text-yellow-800">
+                        Worksheet data is missing. Showing raw content instead.
+                      </p>
+                      <pre className="text-xs text-gray-600 overflow-auto max-h-96 mt-2">
+                        {JSON.stringify(generatedContent, null, 2)}
+                      </pre>
+                    </div>
+                  )
                 ) : (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
-                    <p className="text-sm text-yellow-800">
-                      Worksheet data is missing. Showing raw content instead.
-                    </p>
-                    <pre className="text-xs text-gray-600 overflow-auto max-h-96 mt-2">
-                      {JSON.stringify(generatedContent, null, 2)}
-                    </pre>
-                  </div>
+                  /* Lesson Plan Display */
+                  generatedContent.lessonPlan ? (
+                    <div className="space-y-6 text-sm">
+                      {/* Lesson Header */}
+                      <div className="border-b pb-4">
+                        <h3 className="text-lg font-bold text-gray-900">{generatedContent.lessonPlan.title}</h3>
+                        <div className="mt-2 flex gap-4 text-xs text-gray-600">
+                          <span>Grade: {generatedContent.lessonPlan.gradeLevel}</span>
+                          <span>Duration: {generatedContent.lessonPlan.duration} minutes</span>
+                          <span>Topic: {generatedContent.lessonPlan.topic}</span>
+                        </div>
+                      </div>
+
+                      {/* Learning Objectives */}
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Learning Objectives</h4>
+                        <ul className="list-disc list-inside space-y-1 text-gray-700">
+                          {generatedContent.lessonPlan.objectives.map((obj: string, i: number) => (
+                            <li key={i}>{obj}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Teaching Steps */}
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Teaching Steps</h4>
+                        <div className="space-y-3">
+                          {generatedContent.lessonPlan.teachingSteps.map((step: any, i: number) => (
+                            <div key={i} className="flex gap-3">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-medium">
+                                {step.step}
+                              </span>
+                              <span className="text-gray-700 flex-1">{step.instruction}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Guided Practice */}
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Guided Practice</h4>
+                        <ul className="list-disc list-inside space-y-1 text-gray-700">
+                          {generatedContent.lessonPlan.guidedPractice.map((practice: string, i: number) => (
+                            <li key={i}>{practice}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                      <p className="text-sm text-yellow-800">
+                        Lesson plan data is missing.
+                      </p>
+                    </div>
+                  )
                 )}
 
                 {/* Debug Toggle */}
