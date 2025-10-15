@@ -15,20 +15,29 @@ import {
  * NO formatting rules, NO structure requirements, ONLY content guidelines
  */
 export function buildV2Prompt(request: V2ContentRequest): string {
-  const { topic, grade, problemCount, subjectType } = request;
+  const { topic, grade, problemCount, subjectType, abilityProfile } = request;
+
+  // Use ability level if available, otherwise use grade, fallback to '3' if neither
+  const contentLevel = abilityProfile?.abilityLevel || grade || '3';
+  const focusAreas = abilityProfile?.focusAreas || [];
 
   // Get topic-specific prompt
-  const topicPrompt = getTopicPrompt(topic, grade, problemCount);
+  const topicPrompt = getTopicPrompt(topic, contentLevel, problemCount);
+
+  // Build focus area guidance
+  const focusGuidance = focusAreas.length > 0
+    ? `- Focus areas: ${focusAreas.join(', ')}\n`
+    : '';
 
   // Build the complete prompt
-  return `You are an expert special education teacher creating educational content for grade ${grade} students.
+  return `You are an expert special education teacher creating educational content for students.
 
 ${topicPrompt}
 
 CONTENT REQUIREMENTS:
-- Grade level: ${grade}
-- Number of questions: ${problemCount}
-- Sentence complexity: ${getSentenceComplexity(grade)}
+- Ability level: Grade ${contentLevel}${abilityProfile && abilityProfile.abilityLevel !== grade && grade != null ? ` (student is in grade ${grade})` : ''}
+${focusGuidance}- Number of questions: ${problemCount}
+- Sentence complexity: ${getSentenceComplexity(contentLevel)}
 - Educational quality: Engaging, clear, age-appropriate
 
 RESPONSE FORMAT (JSON):

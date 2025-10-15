@@ -2,6 +2,7 @@
 // AI generates ONLY content, not structure or formatting
 
 import type { TemplateTopic } from '@/lib/templates/types';
+import type { AbilityProfile } from './ability-detector';
 
 /**
  * V2 Content Request - What we send to AI
@@ -9,10 +10,11 @@ import type { TemplateTopic } from '@/lib/templates/types';
 export interface V2ContentRequest {
   topic: TemplateTopic;
   subjectType: 'ela' | 'math';
-  grade: string;
+  grade?: string;  // Optional when students with IEP goals are provided
   duration: number;
   problemCount: number;  // Already calculated by template
   studentInitials?: string[];
+  abilityProfile?: AbilityProfile;  // Optional: IEP-derived ability profile
 }
 
 /**

@@ -40,9 +40,6 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
       {/* Header */}
       <div className="text-center mb-6 border-b-2 border-gray-300 pb-4">
         <h1 className="text-2xl font-bold text-gray-900">{worksheet.title}</h1>
-        <div className="mt-2 text-sm text-gray-600">
-          <span>Duration: {worksheet.duration} minutes</span>
-        </div>
       </div>
 
       {/* Sections */}
@@ -113,11 +110,6 @@ export default function WorksheetRenderer({ worksheet }: WorksheetRendererProps)
             </div>
           );
         })}
-      </div>
-
-      {/* Footer */}
-      <div className="mt-8 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
-        Generated with Template-Based System (v2)
       </div>
     </div>
   );

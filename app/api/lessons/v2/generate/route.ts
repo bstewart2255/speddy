@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateV2Worksheet } from '@/lib/lessons/v2-generator';
 import type { V2GenerationRequest } from '@/lib/lessons/v2-generator';
+import { createClient } from '@/lib/supabase/server';
+import type { Student } from '@/lib/lessons/ability-detector';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,9 +13,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate required fields
-    if (!body.topic || !body.subjectType || !body.grade || !body.duration) {
+    if (!body.topic || !body.subjectType || !body.duration) {
       return NextResponse.json(
-        { error: 'Missing required fields: topic, subjectType, grade, duration' },
+        { error: 'Missing required fields: topic, subjectType, duration' },
+        { status: 400 }
+      );
+    }
+
+    // Validate that either grade or studentIds are provided
+    if (!body.grade && (!body.studentIds || body.studentIds.length === 0)) {
+      return NextResponse.json(
+        { error: 'Must provide either a grade level or select students with IEP goals' },
         { status: 400 }
       );
     }
@@ -26,9 +36,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['K', '1', '2', '3', '4', '5'].includes(body.grade)) {
+    // Validate grade if provided
+    if (body.grade && !['K', '1', '2', '3', '4', '5'].includes(body.grade)) {
       return NextResponse.json(
-        { error: 'Invalid grade. Must be K-5' },
+        { error: 'Invalid grade. Must be K-5 or empty' },
         { status: 400 }
       );
     }
@@ -61,6 +72,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Fetch student data if studentIds provided
+    let students: Student[] | undefined;
+    if (body.studentIds && Array.isArray(body.studentIds) && body.studentIds.length > 0) {
+      const supabase = await createClient();
+      const { data: studentsData, error: studentsError } = await supabase
+        .from('students')
+        .select('id, grade_level, student_details(iep_goals)')
+        .in('id', body.studentIds);
+
+      if (studentsError) {
+        console.error('Error fetching students:', studentsError);
+      } else if (studentsData) {
+        // Transform to Student type
+        students = studentsData.map((s: any) => {
+          // Parse grade level
+          let grade: number;
+          if (typeof s.grade_level === 'string') {
+            const gradeStr = s.grade_level.toUpperCase();
+            if (gradeStr === 'K' || gradeStr === 'KINDERGARTEN') {
+              grade = 0;
+            } else {
+              grade = parseInt(gradeStr, 10) || 3;
+            }
+          } else {
+            grade = s.grade_level || 3;
+          }
+
+          // Extract IEP goals
+          let iepGoals: string[] = [];
+          if (s.student_details) {
+            const details = Array.isArray(s.student_details) ? s.student_details : [s.student_details];
+            for (const detail of details) {
+              if (detail?.iep_goals) {
+                if (Array.isArray(detail.iep_goals)) {
+                  iepGoals.push(...detail.iep_goals.filter((g: any) => typeof g === 'string' && g.trim()));
+                } else if (typeof detail.iep_goals === 'string' && detail.iep_goals.trim()) {
+                  if (detail.iep_goals.includes(';')) {
+                    iepGoals.push(...detail.iep_goals.split(';').map((g: string) => g.trim()).filter(Boolean));
+                  } else {
+                    iepGoals.push(detail.iep_goals);
+                  }
+                }
+              }
+            }
+          }
+
+          return {
+            id: s.id,
+            grade,
+            iepGoals: iepGoals.length > 0 ? iepGoals : undefined,
+          };
+        });
+
+        console.log(`[V2 API] Fetched ${students.length} students with IEP data`);
+      }
+    }
+
     // Build generation request
     const generationRequest: V2GenerationRequest = {
       topic: body.topic,
@@ -69,6 +137,7 @@ export async function POST(request: NextRequest) {
       duration: body.duration,
       studentIds: body.studentIds,
       studentInitials: body.studentInitials,
+      students,  // Pass student data for IEP-aware generation
     };
 
     // Generate worksheet
