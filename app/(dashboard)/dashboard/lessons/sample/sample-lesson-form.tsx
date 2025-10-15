@@ -313,11 +313,6 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
       >
         {loading ? 'Generating...' : 'Generate Sample Lesson'}
       </button>
-
-      {/* Info Text */}
-      <p className="text-xs text-gray-500">
-        This will use the v2 template-based generation system with simplified prompts.
-      </p>
     </form>
   );
 }
