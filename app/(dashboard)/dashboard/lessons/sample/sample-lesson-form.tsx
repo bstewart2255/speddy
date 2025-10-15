@@ -33,6 +33,10 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   useEffect(() => {
     if (currentSchool) {
       loadStudents();
+    } else {
+      // No school in context; stop spinner and clear list
+      setLoadingStudents(false);
+      setStudents([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);
@@ -311,13 +315,8 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
         disabled={loading}
         className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
       >
-        {loading ? 'Generating...' : 'Generate Sample Lesson'}
+        {loading ? 'Generating...' : 'Generate Materials'}
       </button>
-
-      {/* Info Text */}
-      <p className="text-xs text-gray-500">
-        This will use the v2 template-based generation system with simplified prompts.
-      </p>
     </form>
   );
 }
