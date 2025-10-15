@@ -37,12 +37,40 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
     async function fetchStudents() {
       try {
         const supabase = createClient();
+
+        // First get the current user's profile to get school context
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('No authenticated user');
+          setLoadingStudents(false);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('school_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!profile?.school_id) {
+          console.error('No school_id found for user');
+          setLoadingStudents(false);
+          return;
+        }
+
+        // Now fetch students for this school
         const { data, error } = await supabase
           .from('students')
           .select('id, first_name, last_name, grade_level')
+          .eq('school_id', profile.school_id)
           .order('last_name', { ascending: true });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching students:', error);
+          throw error;
+        }
+
+        console.log(`[Sample Lessons] Fetched ${data?.length || 0} students`);
         setStudents(data || []);
       } catch (err) {
         console.error('Error fetching students:', err);
