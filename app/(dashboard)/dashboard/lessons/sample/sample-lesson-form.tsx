@@ -17,7 +17,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const [topic, setTopic] = useState<TemplateTopic>('reading-comprehension');
   const [grade, setGrade] = useState('');  // Start empty so user can choose students-only mode
   const [duration, setDuration] = useState<15 | 30 | 45 | 60>(30);
-  const [generateLessonPlan, setGenerateLessonPlan] = useState(true);  // Default to checked
+  const [generateLessonPlan, setGenerateLessonPlan] = useState(false);  // Default to unchecked
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
