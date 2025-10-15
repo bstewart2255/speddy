@@ -1,6 +1,12 @@
 'use client';
 
 import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
+import { QuestionRenderer, type QuestionData } from '@/lib/shared/question-renderer';
+import {
+  generatePrintDocument,
+  escapeHtml,
+} from '@/lib/shared/print-styles';
+import { generateQuestionHTML } from '@/lib/shared/question-renderer';
 
 interface ExitTicket {
   id: string;
@@ -8,8 +14,29 @@ interface ExitTicket {
   student_initials: string;
   student_grade: number;
   iep_goal_text: string;
-  content: any;
+  content: ExitTicketContent;
   created_at: string;
+}
+
+interface ExitTicketContent {
+  passage?: string;
+  problems?: ExitTicketProblem[];
+  items?: ExitTicketProblem[];
+}
+
+interface ExitTicketProblem {
+  type: string;
+  question?: string;
+  prompt?: string;
+  problem?: string;
+  text?: string;
+  options?: string[];
+  choices?: string[];
+  answer?: string;
+  answer_format?: {
+    drawing_space?: boolean;
+    lines?: number;
+  };
 }
 
 interface ExitTicketDisplayProps {
@@ -18,332 +45,80 @@ interface ExitTicketDisplayProps {
 }
 
 export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplayProps) {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   const handlePrint = () => {
-    // Create complete HTML document for printing
+    // Generate print HTML using shared utilities
     const generatePrintHTML = () => {
-      // Escape HTML to prevent XSS
-      const escapeHtml = (value: unknown) => {
-        if (value === null || value === undefined) return '';
-        return String(value)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-      };
+      const ticketsHTML = tickets.map((ticket) => {
+        const problems = ticket.content.problems || ticket.content.items || [];
 
-      const ticketsHTML = tickets.map((ticket, index) => `
-        <div class="exit-ticket-page">
-          <div class="header">
-            <div class="header-left">
-              <h1>Exit Ticket</h1>
-              <div class="student-info">
-                Student: ${escapeHtml(ticket.student_initials)} (Grade ${escapeHtml(ticket.student_grade)})
-              </div>
-            </div>
-            <div class="header-right">
-              <div class="date">Date: ${escapeHtml(formatDate(ticket.created_at))}</div>
+        // Convert exit ticket header to shared format
+        const headerHTML = `
+          <div class="worksheet-header">
+            <div class="worksheet-title">Exit Ticket</div>
+            <div class="student-info">
+              <div class="info-field">Student: ${escapeHtml(ticket.student_initials)} (Grade ${ticket.student_grade})</div>
+              <div class="info-field">Date: ${escapeHtml(formatDate(ticket.created_at))}</div>
             </div>
           </div>
+        `;
 
-          <div class="content">
-            ${ticket.content.passage ? `
-              <div class="passage-section">
-                <div class="passage-header">Read the following passage:</div>
-                <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
-                <div class="passage-divider"></div>
-              </div>
-            ` : ''}
-            ${ticket.content.problems ?
-              ticket.content.problems.map((problem: any, pIndex: number) => {
-                let problemHTML = `<div class="problem">
-                  <div class="problem-number">${pIndex + 1}.</div>
-                  <div class="problem-content">`;
+        // Convert problems to QuestionData format and generate HTML
+        const problemsHTML = problems.map((problem, pIndex: number) => {
+          // Normalize problem to QuestionData format
+          const questionData: QuestionData = {
+            type: problem.type || 'short-answer',
+            content: problem.question || problem.prompt || problem.problem || problem.text || String(problem),
+            choices: problem.options || problem.choices,
+            blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' ? 2 : undefined),
+          };
 
-                if (typeof problem === 'string') {
-                  problemHTML += `<div class="problem-text">${escapeHtml(problem)}</div>`;
-                } else if (problem.type === 'multiple_choice') {
-                  problemHTML += `
-                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || 'Question text missing')}</div>
-                    ${problem.options ? `
-                      <div class="options">
-                        ${problem.options.map((option: string, i: number) => {
-                          const cleanOption = option.replace(/^[A-D][\)\.]\s*/i, '');
-                          return `
-                            <div class="option">
-                              <span class="option-letter">${String.fromCharCode(65 + i)}.</span>
-                              <span>${escapeHtml(cleanOption)}</span>
-                            </div>
-                          `;
-                        }).join('')}
-                      </div>
-                    ` : ''}
-                  `;
-                } else if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
-                  const answerFormat = problem.answer_format || {};
-                  const lineCount = answerFormat.lines || 2;
+          return generateQuestionHTML(questionData, pIndex + 1, true);
+        }).join('');
 
-                  problemHTML += `<div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || problem.text || 'Question text missing')}</div>`;
-
-                  // Add drawing space if requested
-                  if (answerFormat.drawing_space) {
-                    problemHTML += `
-                      <div class="drawing-box">
-                        <div class="drawing-label">Drawing Space</div>
-                      </div>
-                    `;
-                  }
-
-                  // Add answer lines
-                  for (let i = 0; i < lineCount; i++) {
-                    problemHTML += `<div class="answer-line"></div>`;
-                  }
-                  problemHTML += ``;
-                } else if (problem.type === 'word_problem' || problem.type === 'problem') {
-                  problemHTML += `
-                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.problem || 'Problem text missing')}</div>
-                    <div class="work-space">
-                      <div class="answer-line"></div>
-                      <div class="answer-line"></div>
-                    </div>
-                  `;
-                } else {
-                  problemHTML += `
-                    <div class="problem-text">${escapeHtml(problem.question || problem.prompt || problem.text || 'Problem content not available')}</div>
-                    <div class="answer-line"></div>
-                  `;
-                }
-
-                problemHTML += `</div></div>`;
-                return problemHTML;
-              }).join('')
-              : ticket.content.items ?
-                ticket.content.items.map((item: any, iIndex: number) => {
-                  // Similar rendering logic for items
-                  return `<div class="problem">
-                    <div class="problem-number">${iIndex + 1}.</div>
-                    <div class="problem-content">
-                      <div class="problem-text">${escapeHtml(item.question || item.prompt || item.text || 'Item content not available')}</div>
-                      <div class="answer-line"></div>
-                    </div>
-                  </div>`;
-                }).join('')
-              : '<div>No problems generated</div>'
-            }
+        // Add passage if present
+        const passageHTML = ticket.content.passage ? `
+          <div class="passage-section">
+            <div class="passage-header">Read the following passage:</div>
+            <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
           </div>
+        ` : '';
 
-          <div class="footer">
-            <div class="footer-line"></div>
-            <div class="footer-text">Complete all problems. Show your work.</div>
+        // Add footer
+        const footerHTML = `
+          <div class="worksheet-footer">
+            Complete all problems. Show your work.
           </div>
-        </div>
-      `).join('');
+        `;
 
-      return `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Exit Tickets - ${formatDate(tickets[0]?.created_at || new Date().toISOString())}</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
+        return `
+          <div class="page-break-after">
+            ${headerHTML}
+            ${passageHTML}
+            <div class="worksheet-section">
+              ${problemsHTML}
+            </div>
+            ${footerHTML}
+          </div>
+        `;
+      }).join('');
 
-            body {
-              font-family: Arial, sans-serif;
-              font-size: 13pt;
-              line-height: 1.5;
-              color: #000;
-              background: white;
-            }
-
-            .exit-ticket-page {
-              width: 8.5in;
-              min-height: 11in;
-              padding: 0.5in;
-              margin: 0 auto;
-              background: white;
-              page-break-after: always;
-              page-break-inside: avoid;
-              display: flex;
-              flex-direction: column;
-              overflow: visible;
-              position: relative;
-            }
-
-            .exit-ticket-page:last-child {
-              page-break-after: auto;
-            }
-
-            .header {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-              border-bottom: 3px solid #333;
-            }
-
-            .header h1 {
-              font-size: 24pt;
-              margin: 0 0 5px 0;
-            }
-
-            .student-info {
-              font-size: 12pt;
-              color: #333;
-            }
-
-            .date {
-              font-size: 12pt;
-              color: #333;
-              text-align: right;
-            }
-
-            .content {
-              flex: 1;
-              padding: 10px 0;
-            }
-
-            .passage-section {
-              margin-bottom: 25px;
-              padding: 15px;
-              background: #f8f9fa;
-              border: 1px solid #dee2e6;
-              border-radius: 4px;
-            }
-
-            .passage-header {
-              font-weight: bold;
-              margin-bottom: 10px;
-              font-size: 12pt;
-            }
-
-            .passage-text {
-              line-height: 1.8;
-              font-size: 13pt;
-              padding: 10px 0;
-              white-space: pre-wrap;
-            }
-
-            .passage-divider {
-              border-bottom: 2px solid #dee2e6;
-              margin-top: 15px;
-            }
-
-            .problem {
-              display: flex;
-              margin-bottom: 20px;
-              page-break-inside: avoid;
-            }
-
-            .problem-number {
-              font-weight: bold;
-              margin-right: 10px;
-              min-width: 25px;
-            }
-
-            .problem-content {
-              flex: 1;
-            }
-
-            .problem-text {
-              margin-bottom: 10px;
-              line-height: 1.8;
-            }
-
-            .options {
-              margin-left: 20px;
-              margin-top: 10px;
-            }
-
-            .option {
-              display: flex;
-              margin: 8px 0;
-            }
-
-            .option-letter {
-              font-weight: bold;
-              margin-right: 10px;
-              min-width: 25px;
-            }
-
-            .answer-line {
-              border-bottom: 2px solid #666;
-              height: 30px;
-              margin: 8px 0;
-            }
-
-            .work-space .answer-line {
-              margin: 10px 0;
-            }
-
-            .drawing-box {
-              border: 2px solid #666;
-              height: 3in;
-              margin: 10px 0;
-              position: relative;
-              background: white;
-            }
-
-            .drawing-label {
-              position: absolute;
-              top: 2px;
-              left: 50%;
-              transform: translateX(-50%);
-              font-size: 10pt;
-              color: #999;
-              text-align: center;
-            }
-
-            .footer {
-              margin-top: auto;
-              padding-top: 20px;
-            }
-
-            .footer-line {
-              border-top: 2px solid #ccc;
-              margin-bottom: 10px;
-            }
-
-            .footer-text {
-              text-align: center;
-              font-size: 11pt;
-              color: #666;
-              font-style: italic;
-            }
-
-            @media print {
-              body {
-                margin: 0;
-                padding: 0;
-              }
-
-              .exit-ticket-page {
-                width: 100%;
-                margin: 0;
-                padding: 0.5in;
-              }
-
-              @page {
-                margin: 0;
-                size: letter;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          ${ticketsHTML}
-        </body>
-        </html>
-      `;
+      // Use shared print document generator
+      return generatePrintDocument({
+        title: `Exit Tickets - ${formatDate(tickets[0]?.created_at || new Date().toISOString())}`,
+        content: ticketsHTML,
+      });
     };
 
-    // Create iframe for isolated printing
+    // Create iframe for isolated printing (shared pattern)
     const printHTML = generatePrintHTML();
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
@@ -394,87 +169,22 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'numeric',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  const renderProblem = (problem: any, index: number) => {
+  // Convert problem to screen format
+  const convertProblemToQuestionData = (problem: any): QuestionData => {
     if (typeof problem === 'string') {
-      return <div className="mb-4">{problem}</div>;
+      return {
+        type: 'short-answer',
+        content: problem,
+        blankLines: 2,
+      };
     }
 
-    if (problem.type === 'multiple_choice') {
-      return (
-        <div className="mb-6">
-          <div className="mb-2">{problem.question || problem.prompt}</div>
-          {problem.options && (
-            <div className="ml-4 space-y-1">
-              {problem.options.map((option: string, i: number) => {
-                // Remove any existing letter prefix if it exists (e.g., "A) " or "A. ")
-                const cleanOption = option.replace(/^[A-D][\)\.]\s*/i, '');
-                return (
-                  <div key={i} className="flex items-start">
-                    <span className="mr-2">{String.fromCharCode(65 + i)}.</span>
-                    <span>{cleanOption}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (problem.type === 'short_answer' || problem.type === 'fill_in_blank') {
-      const answerFormat = problem.answer_format || {};
-      const lineCount = answerFormat.lines || 2; // Default to 2 lines
-
-      return (
-        <div className="mb-6">
-          <div className="mb-2">{problem.question || problem.prompt || problem.problem || problem.text}</div>
-
-          {/* Drawing space if requested */}
-          {answerFormat.drawing_space && (
-            <div className="border-2 border-gray-400 h-32 mb-3 bg-white"
-                 style={{ minHeight: '3in' }}>
-              <div className="text-xs text-gray-400 text-center mt-1">Drawing Space</div>
-            </div>
-          )}
-
-          {/* Answer lines */}
-          {Array.from({ length: lineCount }, (_, i) => (
-            <div key={i} className="border-b-2 border-gray-300 h-8 mb-1"></div>
-          ))}
-        </div>
-      );
-    }
-
-    if (problem.type === 'word_problem' || problem.type === 'problem') {
-      return (
-        <div className="mb-6">
-          <div className="mb-2">{problem.question || problem.prompt || problem.problem}</div>
-          <div className="mt-4 space-y-2">
-            <div className="border-b-2 border-gray-300 h-8"></div>
-            <div className="border-b-2 border-gray-300 h-8"></div>
-          </div>
-        </div>
-      );
-    }
-
-    // Default rendering for any unrecognized format
-    return (
-      <div className="mb-6">
-        <div className="mb-2">
-          {problem.question || problem.prompt || problem.text || 'Problem content not available'}
-        </div>
-        <div className="mt-4 border-b-2 border-gray-300 h-8"></div>
-      </div>
-    );
+    return {
+      type: problem.type || 'short-answer',
+      content: problem.question || problem.prompt || problem.problem || problem.text || 'Problem content not available',
+      choices: problem.options || problem.choices,
+      blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' || problem.type === 'fill_in_blank' ? 2 : undefined),
+    };
   };
 
   return (
@@ -499,134 +209,65 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
       </div>
 
       {/* Exit Tickets Display */}
-      <div className="exit-tickets-container">
-        {tickets.map((ticket, ticketIndex) => (
-          <div key={ticket.id} className="exit-ticket-page">
-            {/* Header */}
-            <div className="exit-ticket-header">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h2 className="text-xl font-bold">Exit Ticket</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Student: {ticket.student_initials} (Grade {ticket.student_grade})
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">
-                    Date: {formatDate(ticket.created_at)}
-                  </p>
+      <div className="exit-tickets-container max-w-4xl mx-auto">
+        {tickets.map((ticket) => {
+          const problems = ticket.content.problems || ticket.content.items || [];
+
+          return (
+            <div key={ticket.id} className="bg-white border-2 border-gray-300 rounded-lg p-8 mb-6">
+              {/* Header */}
+              <div className="border-b-2 border-gray-300 pb-4 mb-6">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Exit Ticket</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Student: {ticket.student_initials} (Grade {ticket.student_grade})
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600">
+                      Date: {formatDate(ticket.created_at)}
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="border-b-2 border-gray-400 mb-4"></div>
-            </div>
 
-            {/* Reading Passage (if present) */}
-            {ticket.content.passage && (
-              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
-                <h3 className="font-semibold text-sm mb-2">Read the following passage:</h3>
-                <div className="text-gray-800 leading-relaxed whitespace-pre-line">
-                  {ticket.content.passage}
+              {/* Reading Passage (if present) */}
+              {ticket.content.passage && (
+                <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-2">Read the following passage:</h3>
+                  <div className="text-gray-800 leading-relaxed whitespace-pre-line">
+                    {ticket.content.passage}
+                  </div>
                 </div>
-                <div className="border-b-2 border-gray-300 mt-4"></div>
-              </div>
-            )}
-
-            {/* Problems */}
-            <div className="exit-ticket-content">
-              {ticket.content.problems ? (
-                ticket.content.problems.map((problem: any, index: number) => (
-                  <div key={index} className="problem-item">
-                    <div className="flex items-start">
-                      <span className="font-semibold mr-2">{index + 1}.</span>
-                      <div className="flex-1">
-                        {renderProblem(problem, index)}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : ticket.content.items ? (
-                ticket.content.items.map((item: any, index: number) => (
-                  <div key={index} className="problem-item">
-                    <div className="flex items-start">
-                      <span className="font-semibold mr-2">{index + 1}.</span>
-                      <div className="flex-1">
-                        {renderProblem(item, index)}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div>No problems generated</div>
               )}
-            </div>
 
-            {/* Footer space for work */}
-            <div className="exit-ticket-footer mt-8">
-              <div className="border-t-2 border-gray-200 pt-4">
-                <p className="text-xs text-gray-500 text-center">
+              {/* Problems using shared QuestionRenderer */}
+              <div className="space-y-6">
+                {problems.length > 0 ? (
+                  problems.map((problem, index) => (
+                    <QuestionRenderer
+                      key={index}
+                      question={convertProblemToQuestionData(problem)}
+                      questionNumber={index + 1}
+                      showNumber={true}
+                    />
+                  ))
+                ) : (
+                  <div className="text-gray-500">No problems generated</div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="mt-8 pt-4 border-t-2 border-gray-200">
+                <p className="text-xs text-gray-500 text-center italic">
                   Complete all problems. Show your work.
                 </p>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-
-      {/* Print Styles */}
-      <style jsx>{`
-        @media print {
-          .no-print {
-            display: none !important;
-          }
-
-          .exit-ticket-page {
-            page-break-after: always;
-            page-break-inside: avoid;
-            width: 100%;
-            min-height: 100vh;
-            padding: 0.75in;
-            margin: 0;
-            box-sizing: border-box;
-          }
-
-          .exit-ticket-page:last-child {
-            page-break-after: auto;
-          }
-
-          .exit-ticket-header {
-            margin-bottom: 1rem;
-          }
-
-          .exit-ticket-content {
-            min-height: 70vh;
-          }
-
-          .problem-item {
-            margin-bottom: 1.5rem;
-          }
-
-          body {
-            margin: 0;
-            padding: 0;
-          }
-        }
-
-        @media screen {
-          .exit-ticket-page {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-          }
-
-          .exit-tickets-container {
-            max-width: 850px;
-            margin: 0 auto;
-          }
-        }
-      `}</style>
     </div>
   );
 }
