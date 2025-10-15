@@ -8,6 +8,7 @@ import { buildV2Prompt } from './v2-prompts';
 import { validateV2Content } from './v2-validator';
 import type { V2ContentRequest, V2ContentResponse } from './v2-schema';
 import { isV2ContentResponse } from './v2-schema';
+import { determineContentLevel, type Student } from './ability-detector';
 
 // Simplified generation request (user-facing)
 export interface V2GenerationRequest {
@@ -17,6 +18,7 @@ export interface V2GenerationRequest {
   duration: 15 | 30 | 45 | 60;
   studentIds?: string[];
   studentInitials?: string[];
+  students?: Student[];  // Optional: for IEP-aware generation
 }
 
 // Generation result
@@ -47,12 +49,21 @@ export async function generateV2Worksheet(
   const startTime = Date.now();
 
   try {
-    // Step 1: Select template and calculate problem count
+    // Step 1: Determine ability level from students or grade
+    const abilityProfile = determineContentLevel(
+      request.students,
+      request.grade,
+      request.subjectType
+    );
+
+    console.log('[V2 Generator] Ability profile:', abilityProfile);
+
+    // Step 2: Select template and calculate problem count
     const templateSelection = selectTemplate({
       topic: request.topic,
       subjectType: request.subjectType,
       duration: request.duration,
-      grade: request.grade,
+      grade: abilityProfile.abilityLevel,  // Use detected ability level
     });
 
     if (!templateSelection) {
@@ -70,7 +81,7 @@ export async function generateV2Worksheet(
       };
     }
 
-    // Step 2: Build simplified content-only prompt
+    // Step 3: Build simplified content-only prompt
     const problemCount = Math.round(
       (templateSelection.problemCount.min + templateSelection.problemCount.max) / 2
     );
@@ -82,6 +93,7 @@ export async function generateV2Worksheet(
       duration: request.duration,
       problemCount,
       studentInitials: request.studentInitials,
+      abilityProfile,  // Pass ability profile to prompt builder
     };
 
     const prompt = buildV2Prompt(contentRequest);

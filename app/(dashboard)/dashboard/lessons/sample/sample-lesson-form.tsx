@@ -1,11 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getTopicOptionsForSubject } from '@/lib/templates/template-registry';
 import type { SubjectType, TemplateTopic } from '@/lib/templates/types';
+import { createClient } from '@/lib/supabase/client';
 
 interface SampleLessonFormProps {
   onGenerate: (result: any) => void;
+}
+
+interface Student {
+  id: string;
+  first_name: string;
+  last_name: string;
+  grade_level: string;
 }
 
 export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) {
@@ -16,8 +24,35 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Student selection state
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(true);
+
   // Get topic options based on selected subject
   const topicOptions = getTopicOptionsForSubject(subjectType);
+
+  // Fetch students on mount
+  useEffect(() => {
+    async function fetchStudents() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('students')
+          .select('id, first_name, last_name, grade_level')
+          .order('last_name', { ascending: true });
+
+        if (error) throw error;
+        setStudents(data || []);
+      } catch (err) {
+        console.error('Error fetching students:', err);
+      } finally {
+        setLoadingStudents(false);
+      }
+    }
+
+    fetchStudents();
+  }, []);
 
   // Handle subject change - reset topic to first option of new subject
   const handleSubjectChange = (newSubject: SubjectType) => {
@@ -26,6 +61,15 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
     if (options.length > 0) {
       setTopic(options[0].id);
     }
+  };
+
+  // Handle student selection
+  const handleStudentToggle = (studentId: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +88,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           subjectType,
           grade,
           duration,
+          studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : undefined,
         }),
       });
 
@@ -152,6 +197,42 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           <option value="45">45 minutes</option>
           <option value="60">60 minutes</option>
         </select>
+      </div>
+
+      {/* Student Selection (Optional) */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Students (Optional - for IEP-aware content)
+        </label>
+        {loadingStudents ? (
+          <div className="text-sm text-gray-500">Loading students...</div>
+        ) : students.length === 0 ? (
+          <div className="text-sm text-gray-500">No students found</div>
+        ) : (
+          <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
+            {students.map((student) => (
+              <label key={student.id} className="flex items-center py-1 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedStudentIds.includes(student.id)}
+                  onChange={() => handleStudentToggle(student.id)}
+                  className="mr-2"
+                />
+                <span className="text-sm">
+                  {student.last_name}, {student.first_name} (Grade {student.grade_level})
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        {selectedStudentIds.length > 0 && (
+          <div className="mt-2 text-xs text-gray-600">
+            {selectedStudentIds.length} student{selectedStudentIds.length > 1 ? 's' : ''} selected
+          </div>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Select students to generate content based on their IEP goals. Leave empty to use grade level only.
+        </p>
       </div>
 
       {/* Error Display */}

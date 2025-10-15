@@ -2,6 +2,7 @@
 // AI generates ONLY content, not structure or formatting
 
 import type { TemplateTopic } from '@/lib/templates/types';
+import type { AbilityProfile } from './ability-detector';
 
 /**
  * V2 Content Request - What we send to AI
@@ -13,6 +14,7 @@ export interface V2ContentRequest {
   duration: number;
   problemCount: number;  // Already calculated by template
   studentInitials?: string[];
+  abilityProfile?: AbilityProfile;  // Optional: IEP-derived ability profile
 }
 
 /**
