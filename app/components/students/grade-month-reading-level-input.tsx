@@ -9,12 +9,14 @@ interface GradeMonthReadingLevelInputProps {
   value?: number | null;
   onChange: (value: number | null) => void;
   className?: string;
+  disabled?: boolean;
 }
 
-export function GradeMonthReadingLevelInput({ 
-  value, 
-  onChange, 
-  className 
+export function GradeMonthReadingLevelInput({
+  value,
+  onChange,
+  className,
+  disabled = false
 }: GradeMonthReadingLevelInputProps) {
   const gradeValue = value ? Math.floor(value) : null;
   const monthValue = value ? Math.round((value - Math.floor(value)) * 100) : null;
@@ -52,9 +54,10 @@ export function GradeMonthReadingLevelInput({
     <div className={cn("space-y-2", className)}>
       <Label>Reading Level (Grade.Month)</Label>
       <div className="flex gap-2">
-        <Select 
-          value={gradeValue === 0 ? 'K' : gradeValue?.toString() || ''} 
+        <Select
+          value={gradeValue === 0 ? 'K' : gradeValue?.toString() || ''}
           onValueChange={handleGradeChange}
+          disabled={disabled}
         >
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Select grade" />
@@ -76,10 +79,10 @@ export function GradeMonthReadingLevelInput({
           </SelectContent>
         </Select>
 
-        <Select 
-          value={monthValue?.toString() || ''} 
+        <Select
+          value={monthValue?.toString() || ''}
           onValueChange={handleMonthChange}
-          disabled={gradeValue === null && gradeValue !== 0}
+          disabled={disabled || (gradeValue === null && gradeValue !== 0)}
         >
           <SelectTrigger className="w-[120px]">
             <SelectValue placeholder="Month" />

@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableAct
 import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
 import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
 import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
+import { loadStudentsForUser, getUserRole } from '../../../../lib/supabase/queries/sea-students';
 import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
@@ -32,6 +33,7 @@ export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     initials: '',
     grade_level: '',
@@ -55,6 +57,11 @@ export default function StudentsPage() {
   const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading } = useSchool();
   const router = useRouter();
+
+  // Check if user has view-only access (SEA role)
+  // Default to view-only until role is resolved to prevent privilege escalation
+  const roleResolved = userRole !== null;
+  const isViewOnly = !roleResolved || userRole === 'sea';
 
   // Check if user works at multiple schools
   useEffect(() => {
@@ -93,6 +100,7 @@ export default function StudentsPage() {
   const fetchStudents = useCallback(async () => {
     console.log('fetchStudents called');
     console.log('currentSchool:', currentSchool);
+    console.log('userRole:', userRole);
 
     try {
       if (!currentSchool) {
@@ -102,15 +110,61 @@ export default function StudentsPage() {
         return;
       }
 
-      console.log('Fetching students for school:', currentSchool.display_name || currentSchool.school_site);
-      const data = await getStudents(currentSchool);
-
-      if (!Array.isArray(data)) {
-        console.error('Data fetched is not an array!', data);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No user found');
         setStudents([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get user role if not already set
+      let currentRole = userRole;
+      if (!currentRole) {
+        const role = await getUserRole(user.id);
+        setUserRole(role);
+        currentRole = role; // Use the fresh role immediately
+      }
+
+      console.log('Fetching students for school:', currentSchool.display_name || currentSchool.school_site);
+      console.log('Using role:', currentRole);
+
+      // Use role-aware query for SEAs, standard query for others
+      if (currentRole === 'sea') {
+        console.log('Loading students for SEA user:', user.id);
+        const { data, error } = await loadStudentsForUser(user.id, currentRole, {
+          currentSchool
+        });
+
+        console.log('loadStudentsForUser response:', { data, error, hasData: !!data, hasError: !!error });
+
+        if (error) {
+          console.error('Error fetching SEA students:', {
+            error,
+            errorMessage: error?.message,
+            errorCode: error?.code,
+            errorDetails: error?.details,
+            errorHint: error?.hint,
+            fullError: JSON.stringify(error, null, 2)
+          });
+          setStudents([]);
+        } else if (!Array.isArray(data)) {
+          console.error('Data fetched is not an array!', data);
+          setStudents([]);
+        } else {
+          console.log('SEA students data received:', data);
+          setStudents(data as any);
+        }
       } else {
-        console.log('Students data received:', data);
-        setStudents(data);
+        const data = await getStudents(currentSchool);
+
+        if (!Array.isArray(data)) {
+          console.error('Data fetched is not an array!', data);
+          setStudents([]);
+        } else {
+          console.log('Students data received:', data);
+          setStudents(data);
+        }
       }
     } catch (error) {
       console.error('Error fetching students:', error);
@@ -118,7 +172,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentSchool]);
+  }, [currentSchool, userRole, supabase]);
 
   // Fetch students
   useEffect(() => {
@@ -229,39 +283,41 @@ export default function StudentsPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Students</h1>
-            <p className="text-gray-600">Manage your student caseload</p>
+            <p className="text-gray-600">{isViewOnly ? 'View your assigned students' : 'Manage your student caseload'}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowImportSection(!showImportSection)}
-            >
-              Import CSV
-            </Button>
-            <AIUploadButton 
-              uploadType="students" 
-              onSuccess={fetchStudents} 
-            />
-            <Button 
-              variant="primary" 
-              onClick={() => setShowAddForm(true)}
-            >
-              + Add Student
-            </Button>
-          </div>
+          {!isViewOnly && (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setShowImportSection(!showImportSection)}
+              >
+                Import CSV
+              </Button>
+              <AIUploadButton
+                uploadType="students"
+                onSuccess={fetchStudents}
+              />
+              <Button
+                variant="primary"
+                onClick={() => setShowAddForm(true)}
+              >
+                + Add Student
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Import Section */}
-        {showImportSection && (
+        {!isViewOnly && showImportSection && (
           <div className="mb-6">
             <Card>
               <CardBody className="p-6">
-                <StudentsCSVImport 
+                <StudentsCSVImport
                   onSuccess={() => {
                     fetchStudents();
                     setShowImportSection(false);
-                  }} 
-                  currentSchool={currentSchool} 
+                  }}
+                  currentSchool={currentSchool}
                 />
               </CardBody>
             </Card>
@@ -288,14 +344,14 @@ export default function StudentsPage() {
         )}
 
         {/* Add Student Form (Inline) */}
-        {showAddForm && (
+        {!isViewOnly && showAddForm && (
           <div className="mb-8">
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center gap-4">
                   <CardTitle>Add New Student</CardTitle>
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     onClick={() => setShowAddForm(false)}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -405,6 +461,7 @@ export default function StudentsPage() {
             isOpen={!!selectedStudent}
             onClose={() => setSelectedStudent(null)}
             student={selectedStudent}
+            readOnly={isViewOnly}
             onSave={(studentId, details) => {
             }}
             onUpdateStudent={async (studentId, updates) => {
@@ -508,7 +565,7 @@ export default function StudentsPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      {editingId === student.id ? (
+                      {!isViewOnly && editingId === student.id ? (
                         <div className="flex gap-2 items-center">
                           <input
                             type="number"
@@ -543,39 +600,43 @@ export default function StudentsPage() {
                       </button>
                     </TableCell> */}
                     <TableActionCell>
-                      {editingId === student.id ? (
+                      {!isViewOnly && (
                         <>
-                          <Button 
-                            variant="primary" 
-                            size="sm"
-                            onClick={() => handleUpdate(student.id)}
-                          >
-                            Save
-                          </Button>
-                          <Button 
-                            variant="secondary" 
-                            size="sm"
-                            onClick={handleCancelEdit}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button 
-                            variant="secondary" 
-                            size="sm"
-                            onClick={() => handleEdit(student)}
-                          >
-                            Edit
-                          </Button>
-                          <Button 
-                            variant="danger" 
-                            size="sm"
-                            onClick={() => handleDelete(student.id, student.initials)}
-                          >
-                            Delete
-                          </Button>
+                          {editingId === student.id ? (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleUpdate(student.id)}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handleCancelEdit}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleEdit(student)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDelete(student.id, student.initials)}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
                         </>
                       )}
                     </TableActionCell>

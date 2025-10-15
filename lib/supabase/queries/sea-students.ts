@@ -30,44 +30,126 @@ export async function loadStudentsForUser(
   const { includeIEPGoals = false, currentSchool = null } = options;
 
   try {
+    // Verify authentication before proceeding
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      console.error('[loadStudentsForUser] No valid session:', sessionError);
+      return {
+        data: null,
+        error: sessionError || new Error('No active session. Please log in again.')
+      };
+    }
+
+    console.log('[loadStudentsForUser] Valid session found for user:', session.user.id);
+
     if (userRole === 'sea') {
-      // For SEAs, use the RPC function to get only assigned students
+      // For SEAs, try RPC function first, then fall back to direct query with RLS
       // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
       // Pass school_id for server-side filtering (null returns all schools)
-      const { data, error } = await supabase.rpc('get_sea_students', {
+      console.log('[loadStudentsForUser] Calling get_sea_students RPC with:', {
+        p_school_id: currentSchool?.school_id || null,
+        school_site: currentSchool?.school_site
+      });
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_sea_students', {
         p_school_id: currentSchool?.school_id || null
       });
 
-      if (error) {
-        console.error('Error loading SEA students:', error);
+      console.log('[loadStudentsForUser] RPC response:', {
+        hasData: !!rpcData,
+        dataCount: Array.isArray(rpcData) ? rpcData.length : 'not-array',
+        hasError: !!rpcError,
+        errorType: rpcError ? typeof rpcError : 'none',
+        errorKeys: rpcError ? Object.keys(rpcError) : []
+      });
 
-        // Provide helpful error message if function doesn't exist
-        if (error.message?.includes('function') || error.code === '42883') {
-          console.error(
-            'Database function "get_sea_students" not found. ' +
-            'Please run the migration: supabase/migrations/20251006_add_sea_students_function.sql'
-          );
-        }
-
-        return { data: null, error };
+      // If RPC succeeds, use it
+      if (!rpcError && rpcData) {
+        const transformedData = (rpcData || []).map((student: any) => {
+          const iepGoals = student.iep_goals || [];
+          return {
+            id: student.id,
+            initials: student.initials,
+            grade_level: student.grade_level,
+            teacher_name: student.teacher_name,
+            teacher_id: student.teacher_id,
+            sessions_per_week: student.sessions_per_week,
+            minutes_per_session: student.minutes_per_session,
+            school_id: student.school_id,
+            provider_id: student.provider_id,
+            created_at: student.created_at,
+            updated_at: student.updated_at,
+            iep_goals: iepGoals,
+            student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
+          } as StudentData;
+        });
+        return { data: transformedData, error: null };
       }
 
-      // Transform and normalize the data to match the expected format
-      // School filtering is handled server-side in the RPC function
-      const transformedData = (data || []).map((student: any) => {
-        const iepGoals = student.iep_goals || [];
+      // RPC failed - log and try fallback query using RLS policies
+      console.warn('[loadStudentsForUser] RPC failed, attempting fallback query with RLS:', {
+        error: rpcError,
+        message: rpcError?.message,
+        code: rpcError?.code
+      });
+
+      // Fallback: Direct query that relies on RLS policies
+      // This requires the migration: 20251016_add_sea_students_rls_policy.sql
+      console.log('[loadStudentsForUser] Using fallback query via RLS policies');
+
+      let fallbackQuery = supabase
+        .from('students')
+        .select(
+          includeIEPGoals
+            ? 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at, student_details(iep_goals)'
+            : 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at'
+        )
+        .order('initials');
+
+      // Apply school filter if provided
+      if (currentSchool?.school_id) {
+        fallbackQuery = fallbackQuery.eq('school_id', currentSchool.school_id);
+      }
+
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+
+      if (fallbackError) {
+        console.error('[loadStudentsForUser] Fallback query also failed:', {
+          error: fallbackError,
+          message: fallbackError.message,
+          code: fallbackError.code,
+          hint: 'Make sure migration 20251016_add_sea_students_rls_policy.sql has been applied'
+        });
+        return { data: null, error: fallbackError };
+      }
+
+      // Normalize the fallback data
+      const normalizedData = (fallbackData || []).map((student: any) => {
+        const studentDetails = Array.isArray(student.student_details)
+          ? student.student_details[0]
+          : student.student_details;
+        const iepGoals = studentDetails?.iep_goals || [];
+
         return {
           id: student.id,
           initials: student.initials,
           grade_level: student.grade_level,
+          teacher_name: student.teacher_name,
+          teacher_id: student.teacher_id,
+          sessions_per_week: student.sessions_per_week,
+          minutes_per_session: student.minutes_per_session,
           school_id: student.school_id,
           provider_id: student.provider_id,
-          iep_goals: iepGoals, // Always provide at top level
+          created_at: student.created_at,
+          updated_at: student.updated_at,
+          iep_goals: iepGoals,
           student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
         } as StudentData;
       });
 
-      return { data: transformedData, error: null };
+      console.log('[loadStudentsForUser] Fallback query succeeded, returned', normalizedData.length, 'students');
+      return { data: normalizedData, error: null };
     } else {
       // For non-SEA roles, use the standard query
       let query = supabase
