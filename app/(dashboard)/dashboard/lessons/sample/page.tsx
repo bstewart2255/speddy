@@ -216,38 +216,6 @@ export default function SampleLessonsPage() {
                           ))}
                         </ul>
                       </div>
-
-                      {/* Differentiation */}
-                      <div>
-                        <h4 className="font-semibold text-gray-900 mb-2">Differentiation Strategies</h4>
-                        <ul className="list-disc list-inside space-y-1 text-gray-700">
-                          {generatedContent.lessonPlan.differentiation.map((diff: string, i: number) => (
-                            <li key={i}>{diff}</li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      {/* IEP Accommodations (if present) */}
-                      {generatedContent.lessonPlan.iepAccommodations && generatedContent.lessonPlan.iepAccommodations.length > 0 && (
-                        <div className="bg-blue-50 border border-blue-200 rounded p-4">
-                          <h4 className="font-semibold text-blue-900 mb-2">IEP Accommodations</h4>
-                          <ul className="list-disc list-inside space-y-1 text-blue-800">
-                            {generatedContent.lessonPlan.iepAccommodations.map((acc: string, i: number) => (
-                              <li key={i}>{acc}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Assessment Notes */}
-                      <div>
-                        <h4 className="font-semibold text-gray-900 mb-2">Assessment & Monitoring</h4>
-                        <ul className="list-disc list-inside space-y-1 text-gray-700">
-                          {generatedContent.lessonPlan.assessmentNotes.map((note: string, i: number) => (
-                            <li key={i}>{note}</li>
-                          ))}
-                        </ul>
-                      </div>
                     </div>
                   ) : (
                     <div className="bg-yellow-50 border border-yellow-200 rounded p-4">

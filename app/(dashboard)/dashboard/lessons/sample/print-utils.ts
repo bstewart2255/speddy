@@ -238,37 +238,6 @@ function generateLessonPlanHtml(lessonPlan: LessonPlan): string {
           ${lessonPlan.guidedPractice.map(practice => `<li style="margin-bottom: 8px;">${escapeHtml(practice)}</li>`).join('')}
         </ul>
       </div>
-
-      <!-- Differentiation Strategies -->
-      <div style="margin-bottom: 24px;">
-        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Differentiation Strategies</h2>
-        <ul style="margin: 0; padding-left: 24px;">
-          ${lessonPlan.differentiation.map(diff => `<li style="margin-bottom: 8px;">${escapeHtml(diff)}</li>`).join('')}
-        </ul>
-      </div>
-
-      <!-- IEP Accommodations (if present) -->
-      ${lessonPlan.iepAccommodations && lessonPlan.iepAccommodations.length > 0 ? `
-        <div style="margin-bottom: 24px; background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 16px;">
-          <h2 style="font-size: 16pt; font-weight: bold; color: #1e40af; margin: 0 0 12px 0;">IEP Accommodations</h2>
-          <ul style="margin: 0; padding-left: 24px; color: #1e3a8a;">
-            ${lessonPlan.iepAccommodations.map(acc => `<li style="margin-bottom: 8px;">${escapeHtml(acc)}</li>`).join('')}
-          </ul>
-        </div>
-      ` : ''}
-
-      <!-- Assessment & Monitoring -->
-      <div style="margin-bottom: 24px;">
-        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Assessment & Monitoring</h2>
-        <ul style="margin: 0; padding-left: 24px;">
-          ${lessonPlan.assessmentNotes.map(note => `<li style="margin-bottom: 8px;">${escapeHtml(note)}</li>`).join('')}
-        </ul>
-      </div>
-
-      <!-- Footer -->
-      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10pt; text-align: center;">
-        <p style="margin: 0;">Generated with Sample Lessons - Template-Based Generation System</p>
-      </div>
     </div>
   `;
 

@@ -19,9 +19,6 @@ export interface LessonPlan {
     instruction: string;
   }>;
   guidedPractice: string[];
-  differentiation: string[];
-  iepAccommodations?: string[];  // Only when students with IEP goals selected
-  assessmentNotes: string[];
 }
 
 /**
@@ -137,22 +134,8 @@ export async function generateLessonPlan(
 function buildLessonPlanPrompt(request: LessonPlanRequest, contentLevel: string): string {
   const { topic, subjectType, grade, duration, students } = request;
 
-  // Determine if we have IEP students
-  const hasIEP = students && students.length > 0 && students.some(s => s.iepGoals && s.iepGoals.length > 0);
-  const iepGoals = hasIEP
-    ? students!.flatMap(s => s.iepGoals || []).filter((goal, idx, arr) => arr.indexOf(goal) === idx)
-    : [];
-
   // Get topic-specific teaching guidance
   const topicGuidance = getTopicTeachingGuidance(topic, contentLevel, duration);
-
-  // Build IEP section if applicable
-  const iepSection = hasIEP ? `
-IEP CONSIDERATIONS:
-The following students have IEP goals that should inform your teaching approach:
-${iepGoals.map(goal => `- ${goal}`).join('\n')}
-
-Include specific accommodations and modifications in the "iepAccommodations" field.` : '';
 
   return `You are an expert special education teacher creating a lesson plan for teaching ${topic}.
 
@@ -162,7 +145,6 @@ LESSON DETAILS:
 - Grade level: ${contentLevel}${grade && grade !== contentLevel ? ` (student ability is grade ${contentLevel}, actual grade is ${grade})` : ''}
 - Duration: ${duration} minutes
 - Subject: ${subjectType.toUpperCase()}
-${iepSection}
 
 REQUIRED OUTPUT FORMAT (JSON):
 {
@@ -182,30 +164,15 @@ REQUIRED OUTPUT FORMAT (JSON):
     "How to work through examples together",
     "Questions to ask students",
     "What to model/demonstrate"
-  ],
-  "differentiation": [
-    "For struggling learners: ...",
-    "For advanced learners: ...",
-    "For visual learners: ...",
-    "For kinesthetic learners: ..."
-  ],${hasIEP ? `
-  "iepAccommodations": [
-    "Specific accommodation based on IEP goals",
-    "Another targeted strategy"
-  ],` : ''}
-  "assessmentNotes": [
-    "What to look for in student responses",
-    "Common misconceptions to address",
-    "Exit ticket ideas"
   ]
 }
 
 GUIDELINES:
 1. Be specific and actionable - teachers should be able to follow these steps directly
 2. Include explicit teaching methodology (I do, We do, You do)
-3. Anticipate student challenges and provide solutions
+3. Anticipate student challenges and provide solutions in the teaching steps
 4. Keep language clear and concise (this is a quick reference, not a textbook)
-5. Make it practical for a ${duration}-minute lesson${hasIEP ? '\n6. Align accommodations directly to the provided IEP goals' : ''}
+5. Make it practical for a ${duration}-minute lesson
 
 Generate the lesson plan now.`;
 }
