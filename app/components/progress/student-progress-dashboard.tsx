@@ -44,6 +44,20 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
   const [selectedTimeRange, setSelectedTimeRange] = useState<'week' | 'month' | 'all'>('month');
   const supabase = createClient<Database>();
 
+  const getTimeRangeFilter = useCallback(() => {
+    const now = new Date();
+    switch (selectedTimeRange) {
+      case 'week':
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return weekAgo.toISOString();
+      case 'month':
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return monthAgo.toISOString();
+      default:
+        return null;
+    }
+  }, [selectedTimeRange]);
+
   const loadProgressData = useCallback(async () => {
     try {
       setLoading(true);
@@ -144,7 +158,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [studentId, selectedTimeRange, supabase]);
+  }, [studentId, getTimeRangeFilter, supabase]);
 
   useEffect(() => {
     loadProgressData();
@@ -166,20 +180,6 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
     if (difference > 5) return 'improving';
     if (difference < -5) return 'declining';
     return 'stable';
-  };
-
-  const getTimeRangeFilter = () => {
-    const now = new Date();
-    switch (selectedTimeRange) {
-      case 'week':
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return weekAgo.toISOString();
-      case 'month':
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        return monthAgo.toISOString();
-      default:
-        return null;
-    }
   };
 
   const handleExportReport = () => {
