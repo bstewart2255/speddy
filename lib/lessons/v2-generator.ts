@@ -9,6 +9,7 @@ import { validateV2Content } from './v2-validator';
 import type { V2ContentRequest, V2ContentResponse } from './v2-schema';
 import { isV2ContentResponse } from './v2-schema';
 import { determineContentLevel, type Student } from './ability-detector';
+import type { LessonPlan } from './lesson-plan-generator';
 
 // Simplified generation request (user-facing)
 export interface V2GenerationRequest {
@@ -27,6 +28,7 @@ export interface V2GenerationResult {
   content?: V2ContentResponse;
   template?: TemplateSelection;
   worksheet?: any; // Populated worksheet in LessonResponse format
+  lessonPlan?: LessonPlan; // Optional teacher guidance
   error?: string;
   metadata: {
     promptTokens: number;

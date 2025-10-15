@@ -1,5 +1,5 @@
 /**
- * Print utilities for v2 template-based worksheets
+ * Print utilities for v2 template-based worksheets and lesson plans
  * Generates HTML and prints using iframe to avoid printing entire page
  */
 
@@ -12,6 +12,7 @@ import {
   escapeHtml,
 } from '@/lib/shared/print-styles';
 import { stripQuestionNumber } from '@/lib/shared/question-types';
+import type { LessonPlan } from '@/lib/lessons/lesson-plan-generator';
 
 interface WorksheetSection {
   title: string;
@@ -186,5 +187,161 @@ export function printV2Worksheet(worksheet: Worksheet): void {
       document.body.removeChild(iframe);
     }
     alert('Unable to prepare worksheet for printing. Please try again.');
+  }
+}
+
+/**
+ * Generates HTML for a lesson plan in teacher-friendly format
+ */
+function generateLessonPlanHtml(lessonPlan: LessonPlan): string {
+  const contentHtml = `
+    <div class="lesson-plan-content" style="max-width: 800px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.6;">
+      <!-- Header -->
+      <div style="border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px;">
+        <h1 style="font-size: 24pt; font-weight: bold; color: #1e293b; margin: 0 0 8px 0;">${escapeHtml(lessonPlan.title)}</h1>
+        <div style="color: #64748b; font-size: 11pt;">
+          <span style="margin-right: 16px;"><strong>Grade:</strong> ${escapeHtml(lessonPlan.gradeLevel)}</span>
+          <span style="margin-right: 16px;"><strong>Duration:</strong> ${lessonPlan.duration} minutes</span>
+          <span><strong>Topic:</strong> ${escapeHtml(lessonPlan.topic)}</span>
+        </div>
+      </div>
+
+      <!-- Learning Objectives -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Learning Objectives</h2>
+        <ul style="margin: 0; padding-left: 24px;">
+          ${lessonPlan.objectives.map(obj => `<li style="margin-bottom: 8px;">${escapeHtml(obj)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <!-- Teaching Steps -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Teaching Steps</h2>
+        <ol style="margin: 0; padding-left: 24px;">
+          ${lessonPlan.teachingSteps.map((step, i) => `
+            <li style="margin-bottom: 16px;">
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background-color: #dbeafe; color: #1e40af; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11pt;">
+                  ${step.step}
+                </span>
+                <span style="flex: 1; padding-top: 4px;">${escapeHtml(step.instruction)}</span>
+              </div>
+            </li>
+          `).join('')}
+        </ol>
+      </div>
+
+      <!-- Guided Practice -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Guided Practice</h2>
+        <ul style="margin: 0; padding-left: 24px;">
+          ${lessonPlan.guidedPractice.map(practice => `<li style="margin-bottom: 8px;">${escapeHtml(practice)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <!-- Differentiation Strategies -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Differentiation Strategies</h2>
+        <ul style="margin: 0; padding-left: 24px;">
+          ${lessonPlan.differentiation.map(diff => `<li style="margin-bottom: 8px;">${escapeHtml(diff)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <!-- IEP Accommodations (if present) -->
+      ${lessonPlan.iepAccommodations && lessonPlan.iepAccommodations.length > 0 ? `
+        <div style="margin-bottom: 24px; background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 16px;">
+          <h2 style="font-size: 16pt; font-weight: bold; color: #1e40af; margin: 0 0 12px 0;">IEP Accommodations</h2>
+          <ul style="margin: 0; padding-left: 24px; color: #1e3a8a;">
+            ${lessonPlan.iepAccommodations.map(acc => `<li style="margin-bottom: 8px;">${escapeHtml(acc)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      <!-- Assessment & Monitoring -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Assessment & Monitoring</h2>
+        <ul style="margin: 0; padding-left: 24px;">
+          ${lessonPlan.assessmentNotes.map(note => `<li style="margin-bottom: 8px;">${escapeHtml(note)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <!-- Footer -->
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10pt; text-align: center;">
+        <p style="margin: 0;">Generated with Sample Lessons - Template-Based Generation System</p>
+      </div>
+    </div>
+  `;
+
+  return generatePrintDocument({
+    title: `Lesson Plan: ${lessonPlan.title}`,
+    content: contentHtml,
+  });
+}
+
+/**
+ * Prints a lesson plan using iframe method
+ */
+export function printLessonPlan(lessonPlan: LessonPlan): void {
+  if (!lessonPlan) {
+    console.error('No lesson plan provided to print');
+    alert('Unable to print lesson plan. Please try generating again.');
+    return;
+  }
+
+  const html = generateLessonPlanHtml(lessonPlan);
+
+  // Create a hidden iframe for printing
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  iframe.style.visibility = 'hidden';
+
+  // Add iframe to document
+  document.body.appendChild(iframe);
+
+  try {
+    // Write content to iframe
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Unable to access iframe document');
+    }
+
+    iframeDoc.write(html);
+    iframeDoc.close();
+
+    // Wait for content to load then print
+    const printAndCleanup = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (printError) {
+        console.error('Failed to trigger print dialog:', printError);
+      } finally {
+        // Remove iframe after a delay to ensure print dialog has opened
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }, 1000);
+      }
+    };
+
+    // Check if content is loaded
+    if (iframe.contentWindow?.document.readyState === 'complete') {
+      printAndCleanup();
+    } else {
+      iframe.onload = printAndCleanup;
+      // Fallback timeout
+      setTimeout(printAndCleanup, 1500);
+    }
+  } catch (error) {
+    console.error('Failed to prepare lesson plan for printing:', error);
+    // Clean up iframe on error
+    if (iframe.parentNode) {
+      document.body.removeChild(iframe);
+    }
+    alert('Unable to prepare lesson plan for printing. Please try again.');
   }
 }

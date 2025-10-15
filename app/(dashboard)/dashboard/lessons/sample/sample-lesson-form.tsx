@@ -17,6 +17,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const [topic, setTopic] = useState<TemplateTopic>('reading-comprehension');
   const [grade, setGrade] = useState('');  // Start empty so user can choose students-only mode
   const [duration, setDuration] = useState<15 | 30 | 45 | 60>(30);
+  const [generateLessonPlan, setGenerateLessonPlan] = useState(true);  // Default to checked
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,6 +124,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           grade: grade || undefined,  // Send undefined instead of empty string
           duration,
           studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : undefined,
+          generateLessonPlan,
         }),
       });
 
@@ -273,6 +275,27 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           <option value="45">45 minutes</option>
           <option value="60">60 minutes</option>
         </select>
+      </div>
+
+      {/* Lesson Plan Toggle */}
+      <div className="flex items-start">
+        <div className="flex items-center h-5">
+          <input
+            id="generateLessonPlan"
+            type="checkbox"
+            checked={generateLessonPlan}
+            onChange={(e) => setGenerateLessonPlan(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+        </div>
+        <div className="ml-3">
+          <label htmlFor="generateLessonPlan" className="text-sm font-medium text-gray-700">
+            Generate Lesson Plan for Teacher
+          </label>
+          <p className="text-xs text-gray-500 mt-1">
+            Include teaching steps, guided practice, and differentiation tips alongside the worksheet
+          </p>
+        </div>
       </div>
 
       {/* Error Display */}

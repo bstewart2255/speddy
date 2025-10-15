@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateV2Worksheet } from '@/lib/lessons/v2-generator';
 import type { V2GenerationRequest } from '@/lib/lessons/v2-generator';
+import { generateLessonPlan } from '@/lib/lessons/lesson-plan-generator';
+import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
 
@@ -157,8 +159,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Return successful result
-    return NextResponse.json(result);
+    // Conditionally generate lesson plan
+    let lessonPlan;
+    if (body.generateLessonPlan) {
+      try {
+        const lessonPlanRequest: LessonPlanRequest = {
+          topic: body.topic,
+          subjectType: body.subjectType,
+          grade: body.grade,
+          duration: body.duration,
+          students,
+          abilityLevel: body.grade,  // Could enhance this to use detected ability level
+        };
+
+        lessonPlan = await generateLessonPlan(lessonPlanRequest, apiKey);
+        console.log('[V2 API] Lesson plan generated successfully');
+      } catch (error) {
+        console.error('[V2 API] Lesson plan generation failed:', error);
+        // Don't fail the entire request if lesson plan fails
+        // Just log the error and return worksheet without lesson plan
+      }
+    }
+
+    // Return successful result with optional lesson plan
+    return NextResponse.json({
+      ...result,
+      lessonPlan,
+    });
   } catch (error) {
     console.error('V2 generation error:', error);
     return NextResponse.json(
