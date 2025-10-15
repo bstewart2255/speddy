@@ -59,15 +59,19 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
       // Filtered by current school
       const { data, error } = await loadStudentsForUser(user.id, userRole, {
         currentSchool,
-        includeIEPGoals: false
+        includeIEPGoals: true  // Need IEP goals to filter
       });
 
       if (error) {
         console.error('[Sample Lessons] Error loading students:', error);
         setStudents([]);
       } else if (data) {
-        console.log(`[Sample Lessons] Fetched ${data.length} students for school`);
-        setStudents(data);
+        // Filter to only show students with IEP goals
+        const studentsWithIEP = data.filter(
+          (student) => student.iep_goals && student.iep_goals.length > 0
+        );
+        console.log(`[Sample Lessons] Fetched ${studentsWithIEP.length} students with IEP goals (out of ${data.length} total)`);
+        setStudents(studentsWithIEP);
       }
     } catch (err) {
       console.error('[Sample Lessons] Error fetching students:', err);
@@ -159,7 +163,9 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
         {loadingStudents ? (
           <div className="text-sm text-gray-500">Loading students...</div>
         ) : students.length === 0 ? (
-          <div className="text-sm text-gray-500">No students found</div>
+          <div className="text-sm text-gray-500">
+            No students with IEP goals found
+          </div>
         ) : (
           <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
             {students.map((student) => (
@@ -183,7 +189,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           </div>
         )}
         <p className="mt-1 text-xs text-gray-500">
-          Select students to generate content based on their IEP goals. Leave empty to use grade level only.
+          Select students to generate content based on their IEP goals. Only students with saved IEP goals are shown. Leave empty to use grade level only.
         </p>
       </div>
 
