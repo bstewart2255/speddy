@@ -4,19 +4,15 @@ import { useState, useEffect } from 'react';
 import { getTopicOptionsForSubject } from '@/lib/templates/template-registry';
 import type { SubjectType, TemplateTopic } from '@/lib/templates/types';
 import { createClient } from '@/lib/supabase/client';
+import { useSchool } from '@/app/components/providers/school-context';
+import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface SampleLessonFormProps {
   onGenerate: (result: any) => void;
 }
 
-interface Student {
-  id: string;
-  first_name: string;
-  last_name: string;
-  grade_level: string;
-}
-
 export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) {
+  const { currentSchool } = useSchool();
   const [subjectType, setSubjectType] = useState<SubjectType>('ela');
   const [topic, setTopic] = useState<TemplateTopic>('reading-comprehension');
   const [grade, setGrade] = useState('3');
@@ -25,62 +21,61 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const [error, setError] = useState<string | null>(null);
 
   // Student selection state
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentData[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
 
   // Get topic options based on selected subject
   const topicOptions = getTopicOptionsForSubject(subjectType);
 
-  // Fetch students on mount
+  // Fetch students when school context is ready
   useEffect(() => {
-    async function fetchStudents() {
-      try {
-        const supabase = createClient();
+    if (currentSchool) {
+      loadStudents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSchool]);
 
-        // First get the current user's profile to get school context
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          console.error('No authenticated user');
-          setLoadingStudents(false);
-          return;
-        }
+  async function loadStudents() {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('school_id')
-          .eq('id', user.id)
-          .single();
-
-        if (!profile?.school_id) {
-          console.error('No school_id found for user');
-          setLoadingStudents(false);
-          return;
-        }
-
-        // Now fetch students for this school
-        const { data, error } = await supabase
-          .from('students')
-          .select('id, first_name, last_name, grade_level')
-          .eq('school_id', profile.school_id)
-          .order('last_name', { ascending: true });
-
-        if (error) {
-          console.error('Error fetching students:', error);
-          throw error;
-        }
-
-        console.log(`[Sample Lessons] Fetched ${data?.length || 0} students`);
-        setStudents(data || []);
-      } catch (err) {
-        console.error('Error fetching students:', err);
-      } finally {
-        setLoadingStudents(false);
-      }
+    if (!user || !currentSchool) {
+      setLoadingStudents(false);
+      return;
     }
 
-    fetchStudents();
-  }, []);
+    try {
+      // Get user role to determine how to filter students
+      const userRole = await getUserRole(user.id);
+
+      if (!userRole) {
+        console.error('[Sample Lessons] Failed to get user role');
+        setLoadingStudents(false);
+        return;
+      }
+
+      // Load students based on role (SEAs see only assigned students)
+      // Filtered by current school
+      const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: false
+      });
+
+      if (error) {
+        console.error('[Sample Lessons] Error loading students:', error);
+        setStudents([]);
+      } else if (data) {
+        console.log(`[Sample Lessons] Fetched ${data.length} students for school`);
+        setStudents(data);
+      }
+    } catch (err) {
+      console.error('[Sample Lessons] Error fetching students:', err);
+      setStudents([]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  }
 
   // Handle subject change - reset topic to first option of new subject
   const handleSubjectChange = (newSubject: SubjectType) => {
@@ -247,7 +242,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
                   className="mr-2"
                 />
                 <span className="text-sm">
-                  {student.last_name}, {student.first_name} (Grade {student.grade_level})
+                  {student.initials} (Grade {student.grade_level})
                 </span>
               </label>
             ))}
