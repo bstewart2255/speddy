@@ -421,6 +421,19 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     await forceRefresh();
   }, [forceRefresh]);
 
+  // Helper functions for time conversion (must be defined before use)
+  const timeToMinutes = useCallback((time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  }, []);
+
+  const addMinutesToTime = useCallback((time: string, minutesToAdd: number): string => {
+    const totalMinutes = timeToMinutes(time) + minutesToAdd;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+  }, [timeToMinutes]);
+
   // Check for conflicts after a session is moved
   const checkSessionConflicts = useCallback(async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -451,7 +464,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
   const handleDragOver = useCallback((event: React.DragEvent, slotKey: string) => {
     if (!draggedSession) return;
-    
+
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     setDropTarget(slotKey);
@@ -460,19 +473,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const handleDragLeave = useCallback(() => {
     setDropTarget(null);
   }, []);
-
-  // Helper function for time conversion
-  const timeToMinutes = useCallback((time: string): number => {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-  }, []);
-
-  const addMinutesToTime = useCallback((time: string, minutesToAdd: number): string => {
-    const totalMinutes = timeToMinutes(time) + minutesToAdd;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  }, [timeToMinutes]);
 
   const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
     event.preventDefault();
