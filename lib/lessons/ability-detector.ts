@@ -222,7 +222,7 @@ function detectFromIEPGoals(
   const matches: { grade: string; confidence: number }[] = [];
 
   for (const [keyword, grade] of Object.entries(benchmarks)) {
-    if (grade && combinedText.includes(keyword.toLowerCase())) {
+    if (grade && combinedText.includes(keyword)) {
       // Simple confidence: keyword length (longer = more specific)
       matches.push({ grade, confidence: keyword.length });
     }
@@ -248,7 +248,7 @@ function extractFocusAreas(iepGoals: string[], subject: 'ela' | 'math'): string[
   const found: string[] = [];
 
   for (const [keyword, focusArea] of Object.entries(keywords)) {
-    if (combinedText.includes(keyword.toLowerCase())) {
+    if (combinedText.includes(keyword)) {
       if (!found.includes(focusArea)) {
         found.push(focusArea);
       }
