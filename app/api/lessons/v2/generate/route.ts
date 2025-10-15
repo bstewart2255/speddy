@@ -13,9 +13,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate required fields
-    if (!body.topic || !body.subjectType || !body.grade || !body.duration) {
+    if (!body.topic || !body.subjectType || !body.duration) {
       return NextResponse.json(
-        { error: 'Missing required fields: topic, subjectType, grade, duration' },
+        { error: 'Missing required fields: topic, subjectType, duration' },
+        { status: 400 }
+      );
+    }
+
+    // Validate that either grade or studentIds are provided
+    if (!body.grade && (!body.studentIds || body.studentIds.length === 0)) {
+      return NextResponse.json(
+        { error: 'Must provide either a grade level or select students with IEP goals' },
         { status: 400 }
       );
     }
@@ -28,9 +36,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['K', '1', '2', '3', '4', '5'].includes(body.grade)) {
+    // Validate grade if provided
+    if (body.grade && !['K', '1', '2', '3', '4', '5'].includes(body.grade)) {
       return NextResponse.json(
-        { error: 'Invalid grade. Must be K-5' },
+        { error: 'Invalid grade. Must be K-5 or empty' },
         { status: 400 }
       );
     }

@@ -10,7 +10,7 @@ import type { AbilityProfile } from './ability-detector';
 export interface V2ContentRequest {
   topic: TemplateTopic;
   subjectType: 'ela' | 'math';
-  grade: string;
+  grade?: string;  // Optional when students with IEP goals are provided
   duration: number;
   problemCount: number;  // Already calculated by template
   studentInitials?: string[];

@@ -15,7 +15,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const { currentSchool } = useSchool();
   const [subjectType, setSubjectType] = useState<SubjectType>('ela');
   const [topic, setTopic] = useState<TemplateTopic>('reading-comprehension');
-  const [grade, setGrade] = useState('3');
+  const [grade, setGrade] = useState('');  // Start empty so user can choose students-only mode
   const [duration, setDuration] = useState<15 | 30 | 45 | 60>(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +104,13 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
     setLoading(true);
     setError(null);
 
+    // Client-side validation
+    if (!grade && selectedStudentIds.length === 0) {
+      setError('Please select either a grade level or students with IEP goals');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/lessons/v2/generate', {
         method: 'POST',
@@ -113,7 +120,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
         body: JSON.stringify({
           topic,
           subjectType,
-          grade,
+          grade: grade || undefined,  // Send undefined instead of empty string
           duration,
           studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : undefined,
         }),
@@ -138,7 +145,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
       {/* Grade Level */}
       <div>
         <label htmlFor="grade" className="block text-sm font-medium text-gray-700 mb-2">
-          Grade Level
+          Grade Level (Optional if students selected)
         </label>
         <select
           id="grade"
@@ -146,6 +153,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           onChange={(e) => setGrade(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
         >
+          <option value="">None (use student IEP goals only)</option>
           <option value="K">Kindergarten</option>
           <option value="1">1st Grade</option>
           <option value="2">2nd Grade</option>
@@ -153,6 +161,9 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           <option value="4">4th Grade</option>
           <option value="5">5th Grade</option>
         </select>
+        <p className="mt-1 text-xs text-gray-500">
+          Select a grade level, or choose "None" to generate content based solely on selected students' IEP goals.
+        </p>
       </div>
 
       {/* Student Selection (Optional) */}

@@ -14,7 +14,7 @@ import { determineContentLevel, type Student } from './ability-detector';
 export interface V2GenerationRequest {
   topic: TemplateTopic;
   subjectType: 'ela' | 'math';
-  grade: string;
+  grade?: string;  // Optional when students are provided
   duration: 15 | 30 | 45 | 60;
   studentIds?: string[];
   studentInitials?: string[];
