@@ -33,6 +33,10 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   useEffect(() => {
     if (currentSchool) {
       loadStudents();
+    } else {
+      // No school in context; stop spinner and clear list
+      setLoadingStudents(false);
+      setStudents([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);

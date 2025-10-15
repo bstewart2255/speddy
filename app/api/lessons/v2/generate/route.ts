@@ -15,12 +15,27 @@ export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
   try {
     // Parse request body
-    const body = await request.json();
+    const body = await req.json();
 
-    // Validate required fields
+    // Validate required fields and types
     if (!body.topic || !body.subjectType || !body.duration) {
       return NextResponse.json(
         { error: 'Missing required fields: topic, subjectType, duration' },
+        { status: 400 }
+      );
+    }
+
+    // Validate field types
+    if (typeof body.subjectType !== 'string' || typeof body.topic !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid field types: topic and subjectType must be strings' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof body.duration !== 'number') {
+      return NextResponse.json(
+        { error: 'Invalid field type: duration must be a number' },
         { status: 400 }
       );
     }
@@ -220,6 +235,25 @@ export async function POST(request: NextRequest) {
       const lessonDate = new Date().toISOString().split('T')[0];
       const timeSlot = `on-demand-${Date.now()}`;  // Unique identifier for on-demand lessons
 
+      // Build grade_levels array from either body.grade or students
+      const gradeLevels: string[] = [];
+      if (body.grade) {
+        gradeLevels.push(body.grade);
+      }
+      if (students && students.length > 0) {
+        // Add unique grade levels from students
+        const studentGrades = students.map(s => {
+          if (s.grade === 0) return 'K';
+          return s.grade.toString();
+        });
+        const uniqueGrades = Array.from(new Set(studentGrades));
+        uniqueGrades.forEach(grade => {
+          if (!gradeLevels.includes(grade)) {
+            gradeLevels.push(grade);
+          }
+        });
+      }
+
       const lessonRecord = {
         provider_id: userId,
         lesson_source: 'ai_generated',
@@ -233,8 +267,10 @@ export async function POST(request: NextRequest) {
         title: result.worksheet?.title || body.topic,
         subject: body.subjectType.toUpperCase(),
         topic: body.topic,
+        grade_levels: gradeLevels.length > 0 ? gradeLevels : null,
         duration_minutes: body.duration,
-        student_ids: body.studentIds || [],
+        // SECURITY: Only persist student IDs that were actually fetched through RLS
+        student_ids: students && students.length > 0 ? students.map(s => s.id) : null,
         metadata: {
           generatedAt: new Date().toISOString(),
           abilityLevel: students ? determineContentLevel(students, body.grade, body.subjectType).abilityLevel : body.grade,

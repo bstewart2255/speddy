@@ -12,13 +12,42 @@ import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
 import SavedWorksheets from './components/saved-worksheets';
 
+// Type definition for generated content
+interface GeneratedContent {
+  worksheet?: {
+    title?: string;
+    questions?: unknown[];
+    [key: string]: unknown;
+  };
+  lessonPlan?: {
+    title: string;
+    gradeLevel: string;
+    duration: number;
+    topic: string;
+    objectives: string[];
+    teachingSteps: Array<{ step: number; instruction: string }>;
+    guidedPractice: string[];
+  };
+  metadata?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    generationTime?: number;
+    model?: string;
+    generationVersion?: string;
+    worksheetTokens?: number;
+    lessonPlanTokens?: number;
+  };
+  lessonId?: string;
+}
+
 export default function LessonsPage() {
   const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets'>('builder');
-  const [generatedContent, setGeneratedContent] = useState<any>(null);
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [lessonPlanTab, setLessonPlanTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
   // Handler to reset lesson plan tab when new content is generated
-  const handleGenerate = (result: any) => {
+  const handleGenerate = (result: GeneratedContent) => {
     setGeneratedContent(result);
     setLessonPlanTab('worksheet'); // Always reset to worksheet tab
   };
@@ -134,13 +163,17 @@ export default function LessonsPage() {
                 {generatedContent && (
                   <button
                     onClick={() => {
-                      if (lessonPlanTab === 'worksheet') {
+                      if (lessonPlanTab === 'worksheet' && generatedContent.worksheet) {
                         printV2Worksheet(generatedContent.worksheet);
-                      } else {
+                      } else if (lessonPlanTab === 'lessonPlan' && generatedContent.lessonPlan) {
                         printLessonPlan(generatedContent.lessonPlan);
                       }
                     }}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                    disabled={
+                      (lessonPlanTab === 'worksheet' && !generatedContent.worksheet) ||
+                      (lessonPlanTab === 'lessonPlan' && !generatedContent.lessonPlan)
+                    }
+                    className="inline-flex items-center gap-2 px-3 py-2 text-white text-sm rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -287,7 +320,7 @@ export default function LessonsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <p>No worksheet generated yet.</p>
-                  <p className="text-sm mt-1">Fill out the form and click "Generate" to create a worksheet.</p>
+                  <p className="text-sm mt-1">Fill out the form and click "Generate Materials" to create content.</p>
                 </div>
               )}
             </div>
