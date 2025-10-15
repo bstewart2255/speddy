@@ -176,17 +176,17 @@ export function CalendarTodayView({
   const timeSlots = generateTimeSlots();
 
   // Helper functions for time conversion
-  const timeToMinutes = (time: string): number => {
+  const timeToMinutes = useCallback((time: string): number => {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
-  };
+  }, []);
 
-  const addMinutesToTime = (time: string, minutesToAdd: number): string => {
+  const addMinutesToTime = useCallback((time: string, minutesToAdd: number): string => {
     const totalMinutes = timeToMinutes(time) + minutesToAdd;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  };
+  }, [timeToMinutes]);
 
   const validateAllDropTargets = useCallback(async (session: ScheduleSession) => {
     if (!session) return;
@@ -223,7 +223,7 @@ export function CalendarTodayView({
     setValidDropTargets(valid);
     setInvalidDropTargets(invalid);
     setIsValidating(false);
-  }, [timeSlots, addMinutesToTime]);
+  }, [timeSlots, addMinutesToTime, timeToMinutes]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((session: ScheduleSession, event: React.DragEvent) => {
@@ -288,7 +288,7 @@ export function CalendarTodayView({
     } finally {
       handleDragEnd();
     }
-  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd, addMinutesToTime]);
+  }, [draggedSession, validDropTargets, optimisticUpdate, handleDragEnd, addMinutesToTime, timeToMinutes]);
 
   // Handler for completing/uncompleting a session
     const handleCompleteToggle = async (sessionId: string, completed: boolean) => {

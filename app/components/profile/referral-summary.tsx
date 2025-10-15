@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Copy, ChevronDown, ChevronUp, Gift, DollarSign } from 'lucide-react';
@@ -21,13 +21,7 @@ export function ReferralSummary() {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchReferralSummary();
-    }
-  }, [user]);
-
-  const fetchReferralSummary = async () => {
+  const fetchReferralSummary = useCallback(async () => {
     try {
       const supabase = createClient();
       
@@ -94,7 +88,13 @@ export function ReferralSummary() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchReferralSummary();
+    }
+  }, [user, fetchReferralSummary]);
 
   const handleCopyCode = async () => {
     if (!stats?.code) return;

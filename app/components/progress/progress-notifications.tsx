@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Bell, TrendingUp, Trophy, AlertCircle, Target } from 'lucide-react';
 
@@ -24,11 +24,7 @@ export function ProgressNotifications() {
   const [showAll, setShowAll] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -49,7 +45,11 @@ export function ProgressNotifications() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, showAll]);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
 
   const markAsRead = async (notificationId: string) => {
     await supabase

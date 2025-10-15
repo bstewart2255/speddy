@@ -438,7 +438,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       ...prev,
       [sessionId]: !validation.valid
     }));
-  }, [sessions]);
+  }, [sessions, timeToMinutes]);
 
   const handleDragStart = useCallback((session: any, event: React.DragEvent) => {
     setDraggedSession(session);
@@ -472,7 +472,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  }, []);
+  }, [timeToMinutes]);
 
   const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
     event.preventDefault();

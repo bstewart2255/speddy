@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import ExitTicketDisplay from './exit-ticket-display';
 import { createClient } from '@/lib/supabase/client';
@@ -30,23 +30,7 @@ export default function ExitTicketBuilder() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (currentSchool) {
-      loadStudents();
-    }
-  }, [currentSchool]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  async function loadStudents() {
+  const loadStudents = useCallback(async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -85,7 +69,23 @@ export default function ExitTicketBuilder() {
         setStudents(studentsWithGoals);
       }
     }
-  }
+  }, [currentSchool, showToast]);
+
+  useEffect(() => {
+    if (currentSchool) {
+      loadStudents();
+    }
+  }, [currentSchool, loadStudents]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleStudentToggle = (studentId: string) => {
     setSelectedStudentIds(prev =>

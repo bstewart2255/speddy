@@ -8,6 +8,8 @@ import { getStudentAssessment, upsertStudentAssessment, StudentAssessment } from
 import { SkillsChecklist } from './skills-checklist';
 import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
 import { AssessmentInputs } from './assessment-inputs';
+import { IEPGoalsUploader } from './iep-goals-uploader';
+import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -51,6 +53,8 @@ export function StudentDetailsModal({
   });
   const [assessment, setAssessment] = useState<StudentAssessment>({});
   const [loading, setLoading] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importData, setImportData] = useState<any>(null);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -148,6 +152,26 @@ export function StudentDetailsModal({
       alert('Failed to save. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadComplete = (data: any) => {
+    setImportData(data);
+    setShowImportPreview(true);
+  };
+
+  const handleImportComplete = async () => {
+    setShowImportPreview(false);
+    setImportData(null);
+
+    // Reload student details to show the newly imported goals
+    try {
+      const existingDetails = await getStudentDetails(student.id);
+      if (existingDetails) {
+        setDetails(existingDetails);
+      }
+    } catch (error) {
+      console.error('Error reloading student details:', error);
     }
   };
 
@@ -381,18 +405,27 @@ export function StudentDetailsModal({
 
               <div className="space-y-2">
                 {!readOnly && (
-                  <div className="flex justify-end">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setDetails({
-                        ...details,
-                        iep_goals: [...details.iep_goals, '']
-                      })}
-                      type="button"
-                    >
-                      + Add Goal
-                    </Button>
+                  <div className="space-y-3">
+                    {/* Import from Excel */}
+                    <IEPGoalsUploader
+                      onUploadComplete={handleUploadComplete}
+                      disabled={readOnly}
+                    />
+
+                    {/* Add Goal Manually */}
+                    <div className="flex justify-end">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setDetails({
+                          ...details,
+                          iep_goals: [...details.iep_goals, '']
+                        })}
+                        type="button"
+                      >
+                        + Add Goal Manually
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -487,6 +520,16 @@ export function StudentDetailsModal({
           </div>
         </div>
       </div>
+
+      {/* IEP Goals Import Preview Modal */}
+      {importData && (
+        <IEPGoalsPreviewModal
+          isOpen={showImportPreview}
+          onClose={() => setShowImportPreview(false)}
+          data={importData}
+          onImportComplete={handleImportComplete}
+        />
+      )}
     </div>
   );
 }
