@@ -217,18 +217,16 @@ function generateLessonPlanHtml(lessonPlan: LessonPlan): string {
       <!-- Teaching Steps -->
       <div style="margin-bottom: 24px;">
         <h2 style="font-size: 16pt; font-weight: bold; color: #1e293b; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">Teaching Steps</h2>
-        <ol style="margin: 0; padding-left: 24px;">
+        <div style="margin: 0;">
           ${lessonPlan.teachingSteps.map((step, i) => `
-            <li style="margin-bottom: 16px;">
-              <div style="display: flex; gap: 12px; align-items: flex-start;">
-                <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background-color: #dbeafe; color: #1e40af; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11pt;">
-                  ${step.step}
-                </span>
-                <span style="flex: 1; padding-top: 4px;">${escapeHtml(step.instruction)}</span>
-              </div>
-            </li>
+            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-start;">
+              <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background-color: #dbeafe; color: #1e40af; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11pt;">
+                ${step.step}
+              </span>
+              <span style="flex: 1; padding-top: 4px;">${escapeHtml(step.instruction)}</span>
+            </div>
           `).join('')}
-        </ol>
+        </div>
       </div>
 
       <!-- Guided Practice -->

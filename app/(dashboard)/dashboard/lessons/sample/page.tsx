@@ -195,16 +195,16 @@ export default function SampleLessonsPage() {
                       {/* Teaching Steps */}
                       <div>
                         <h4 className="font-semibold text-gray-900 mb-2">Teaching Steps</h4>
-                        <ol className="space-y-3">
+                        <div className="space-y-3">
                           {generatedContent.lessonPlan.teachingSteps.map((step: any, i: number) => (
-                            <li key={i} className="flex gap-3">
+                            <div key={i} className="flex gap-3">
                               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-medium">
                                 {step.step}
                               </span>
                               <span className="text-gray-700 flex-1">{step.instruction}</span>
-                            </li>
+                            </div>
                           ))}
-                        </ol>
+                        </div>
                       </div>
 
                       {/* Guided Practice */}
