@@ -51,7 +51,7 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
   // Generate header
   const headerHtml = generateWorksheetHeader({
     title: worksheet.title,
-    subtitle: `Duration: ${worksheet.duration} minutes`,
+    subtitle: '',  // Removed duration display
     showStudentInfo: true,
   });
 
@@ -112,15 +112,8 @@ function generateWorksheetHtml(worksheet: Worksheet): string {
     })
     .join('');
 
-  // Generate footer
-  const footerHtml = `
-    <div class="worksheet-footer">
-      Generated with Template-Based System (v2)
-    </div>
-  `;
-
   // Combine everything into complete document
-  const contentHtml = headerHtml + sectionsHtml + footerHtml;
+  const contentHtml = headerHtml + sectionsHtml;
 
   return generatePrintDocument({
     title: worksheet.title,
