@@ -12,6 +12,12 @@ import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
 import SavedWorksheets from './components/saved-worksheets';
 
+// Type definition for teaching step
+type TeachingStep = {
+  step: number;
+  instruction: string;
+};
+
 // Type definition for generated content
 interface GeneratedContent {
   worksheet?: {
@@ -25,7 +31,7 @@ interface GeneratedContent {
     duration: number;
     topic: string;
     objectives: string[];
-    teachingSteps: Array<{ step: number; instruction: string }>;
+    teachingSteps: TeachingStep[];
     guidedPractice: string[];
   };
   metadata?: {
@@ -271,39 +277,45 @@ export default function LessonsPage() {
                         </div>
 
                         {/* Learning Objectives */}
-                        <div>
-                          <h4 className="font-semibold text-gray-900 mb-2">Learning Objectives</h4>
-                          <ul className="list-disc list-inside space-y-1 text-gray-700">
-                            {generatedContent.lessonPlan.objectives.map((obj: string, i: number) => (
-                              <li key={i}>{obj}</li>
-                            ))}
-                          </ul>
-                        </div>
+                        {(generatedContent.lessonPlan.objectives?.length ?? 0) > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-900 mb-2">Learning Objectives</h4>
+                            <ul className="list-disc list-inside space-y-1 text-gray-700">
+                              {(generatedContent.lessonPlan.objectives ?? []).map((obj: string, i: number) => (
+                                <li key={i}>{obj}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
                         {/* Teaching Steps */}
-                        <div>
-                          <h4 className="font-semibold text-gray-900 mb-2">Teaching Steps</h4>
-                          <div className="space-y-3">
-                            {generatedContent.lessonPlan.teachingSteps.map((step: any, i: number) => (
-                              <div key={i} className="flex gap-3">
-                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-medium">
-                                  {step.step}
-                                </span>
-                                <span className="text-gray-700 flex-1">{step.instruction}</span>
-                              </div>
-                            ))}
+                        {(generatedContent.lessonPlan.teachingSteps?.length ?? 0) > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-900 mb-2">Teaching Steps</h4>
+                            <div className="space-y-3">
+                              {(generatedContent.lessonPlan.teachingSteps ?? []).map((step: TeachingStep, i: number) => (
+                                <div key={i} className="flex gap-3">
+                                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-medium">
+                                    {step.step}
+                                  </span>
+                                  <span className="text-gray-700 flex-1">{step.instruction}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* Guided Practice */}
-                        <div>
-                          <h4 className="font-semibold text-gray-900 mb-2">Guided Practice</h4>
-                          <ul className="list-disc list-inside space-y-1 text-gray-700">
-                            {generatedContent.lessonPlan.guidedPractice.map((practice: string, i: number) => (
-                              <li key={i}>{practice}</li>
-                            ))}
-                          </ul>
-                        </div>
+                        {(generatedContent.lessonPlan.guidedPractice?.length ?? 0) > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-900 mb-2">Guided Practice</h4>
+                            <ul className="list-disc list-inside space-y-1 text-gray-700">
+                              {(generatedContent.lessonPlan.guidedPractice ?? []).map((practice: string, i: number) => (
+                                <li key={i}>{practice}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
