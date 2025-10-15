@@ -131,6 +131,62 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Grade Level */}
+      <div>
+        <label htmlFor="grade" className="block text-sm font-medium text-gray-700 mb-2">
+          Grade Level
+        </label>
+        <select
+          id="grade"
+          value={grade}
+          onChange={(e) => setGrade(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="K">Kindergarten</option>
+          <option value="1">1st Grade</option>
+          <option value="2">2nd Grade</option>
+          <option value="3">3rd Grade</option>
+          <option value="4">4th Grade</option>
+          <option value="5">5th Grade</option>
+        </select>
+      </div>
+
+      {/* Student Selection (Optional) */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Students (Optional - for IEP-aware content)
+        </label>
+        {loadingStudents ? (
+          <div className="text-sm text-gray-500">Loading students...</div>
+        ) : students.length === 0 ? (
+          <div className="text-sm text-gray-500">No students found</div>
+        ) : (
+          <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
+            {students.map((student) => (
+              <label key={student.id} className="flex items-center py-1 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedStudentIds.includes(student.id)}
+                  onChange={() => handleStudentToggle(student.id)}
+                  className="mr-2"
+                />
+                <span className="text-sm">
+                  {student.initials} (Grade {student.grade_level})
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        {selectedStudentIds.length > 0 && (
+          <div className="mt-2 text-xs text-gray-600">
+            {selectedStudentIds.length} student{selectedStudentIds.length > 1 ? 's' : ''} selected
+          </div>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Select students to generate content based on their IEP goals. Leave empty to use grade level only.
+        </p>
+      </div>
+
       {/* Subject Type */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -184,26 +240,6 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
         )}
       </div>
 
-      {/* Grade */}
-      <div>
-        <label htmlFor="grade" className="block text-sm font-medium text-gray-700 mb-2">
-          Grade Level
-        </label>
-        <select
-          id="grade"
-          value={grade}
-          onChange={(e) => setGrade(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="K">Kindergarten</option>
-          <option value="1">1st Grade</option>
-          <option value="2">2nd Grade</option>
-          <option value="3">3rd Grade</option>
-          <option value="4">4th Grade</option>
-          <option value="5">5th Grade</option>
-        </select>
-      </div>
-
       {/* Duration */}
       <div>
         <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
@@ -220,42 +256,6 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           <option value="45">45 minutes</option>
           <option value="60">60 minutes</option>
         </select>
-      </div>
-
-      {/* Student Selection (Optional) */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Students (Optional - for IEP-aware content)
-        </label>
-        {loadingStudents ? (
-          <div className="text-sm text-gray-500">Loading students...</div>
-        ) : students.length === 0 ? (
-          <div className="text-sm text-gray-500">No students found</div>
-        ) : (
-          <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
-            {students.map((student) => (
-              <label key={student.id} className="flex items-center py-1 hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedStudentIds.includes(student.id)}
-                  onChange={() => handleStudentToggle(student.id)}
-                  className="mr-2"
-                />
-                <span className="text-sm">
-                  {student.initials} (Grade {student.grade_level})
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
-        {selectedStudentIds.length > 0 && (
-          <div className="mt-2 text-xs text-gray-600">
-            {selectedStudentIds.length} student{selectedStudentIds.length > 1 ? 's' : ''} selected
-          </div>
-        )}
-        <p className="mt-1 text-xs text-gray-500">
-          Select students to generate content based on their IEP goals. Leave empty to use grade level only.
-        </p>
       </div>
 
       {/* Error Display */}
