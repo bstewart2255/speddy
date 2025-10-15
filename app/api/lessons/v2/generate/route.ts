@@ -6,11 +6,13 @@ import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
 import { determineContentLevel } from '@/lib/lessons/ability-detector';
+import { withAuth } from '@/lib/api/with-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  return withAuth(async (req: NextRequest, userId: string) => {
   try {
     // Parse request body
     const body = await request.json();
@@ -204,11 +206,74 @@ export async function POST(request: NextRequest) {
       lessonPlanTokens: lessonPlanMetadata.totalTokens,
     } : result.metadata;
 
+    // Save to database silently (for analytics)
+    let savedLessonId: string | undefined;
+    try {
+      const supabase = await createClient();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('school_id, district_id, state_id')
+        .eq('id', userId)
+        .single();
+
+      // Prepare lesson record
+      const lessonDate = new Date().toISOString().split('T')[0];
+      const timeSlot = `on-demand-${Date.now()}`;  // Unique identifier for on-demand lessons
+
+      const lessonRecord = {
+        provider_id: userId,
+        lesson_source: 'ai_generated',
+        generation_version: 'v2',
+        lesson_date: lessonDate,
+        time_slot: timeSlot,
+        content: {
+          worksheet: result.worksheet,
+          lessonPlan: lessonPlan || null,
+        },
+        title: result.worksheet?.title || body.topic,
+        subject: body.subjectType.toUpperCase(),
+        topic: body.topic,
+        duration_minutes: body.duration,
+        student_ids: body.studentIds || [],
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          abilityLevel: students ? determineContentLevel(students, body.grade, body.subjectType).abilityLevel : body.grade,
+          hasLessonPlan: !!lessonPlan,
+        },
+        school_id: profile?.school_id || null,
+        district_id: profile?.district_id || null,
+        state_id: profile?.state_id || null,
+        ai_model: combinedMetadata.model,
+        prompt_tokens: combinedMetadata.promptTokens,
+        completion_tokens: combinedMetadata.completionTokens,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: savedLesson, error: saveError } = await supabase
+        .from('lessons')
+        .insert(lessonRecord)
+        .select('id')
+        .single();
+
+      if (saveError) {
+        console.error('[V2 API] Failed to save lesson to database:', saveError);
+        // Don't fail the request - lesson was generated successfully
+      } else if (savedLesson) {
+        savedLessonId = savedLesson.id;
+        console.log('[V2 API] Lesson saved to database:', savedLessonId);
+      }
+    } catch (saveError) {
+      console.error('[V2 API] Error saving lesson to database:', saveError);
+      // Don't fail the request - lesson was generated successfully
+    }
+
     // Return successful result with optional lesson plan and combined metadata
     return NextResponse.json({
       ...result,
       lessonPlan,
       metadata: combinedMetadata,
+      lessonId: savedLessonId,  // Include lessonId (though UI won't use it)
     });
   } catch (error) {
     console.error('V2 generation error:', error);
@@ -217,4 +282,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  })(request);
 }
