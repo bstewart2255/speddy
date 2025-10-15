@@ -18,6 +18,12 @@ export default function SampleLessonsPage() {
   const [generatedContent, setGeneratedContent] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
+  // Handler to reset tab when new content is generated
+  const handleGenerate = (result: any) => {
+    setGeneratedContent(result);
+    setActiveTab('worksheet'); // Always reset to worksheet tab
+  };
+
   // Only show in development
   if (process.env.NODE_ENV !== 'development') {
     return (
@@ -69,7 +75,7 @@ export default function SampleLessonsPage() {
             <h2 className="text-xl font-semibold text-gray-900 mb-4">
               Generate Sample Lesson
             </h2>
-            <SampleLessonForm onGenerate={setGeneratedContent} />
+            <SampleLessonForm onGenerate={handleGenerate} />
           </div>
 
           {/* Preview/Results */}

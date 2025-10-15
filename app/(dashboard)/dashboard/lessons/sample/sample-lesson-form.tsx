@@ -293,7 +293,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
             Generate Lesson Plan for Teacher
           </label>
           <p className="text-xs text-gray-500 mt-1">
-            Include teaching steps, guided practice, and differentiation tips alongside the worksheet
+            Include objectives, teaching steps, and guided practice alongside the worksheet
           </p>
         </div>
       </div>

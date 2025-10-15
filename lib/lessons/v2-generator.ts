@@ -37,6 +37,8 @@ export interface V2GenerationResult {
     generationTime: number;
     model: string;
     generationVersion: 'v2';
+    worksheetTokens?: number; // Token breakdown when lesson plan is generated
+    lessonPlanTokens?: number; // Token breakdown when lesson plan is generated
   };
 }
 

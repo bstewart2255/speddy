@@ -5,6 +5,7 @@ import { generateLessonPlan } from '@/lib/lessons/lesson-plan-generator';
 import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
+import { determineContentLevel } from '@/lib/lessons/ability-detector';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -164,13 +165,20 @@ export async function POST(request: NextRequest) {
     let lessonPlanMetadata;
     if (body.generateLessonPlan) {
       try {
+        // Reuse ability detection for consistency with worksheet generation
+        const abilityProfile = determineContentLevel(
+          students,
+          body.grade,
+          body.subjectType
+        );
+
         const lessonPlanRequest: LessonPlanRequest = {
           topic: body.topic,
           subjectType: body.subjectType,
           grade: body.grade,
           duration: body.duration,
           students,
-          abilityLevel: body.grade,  // Could enhance this to use detected ability level
+          abilityLevel: abilityProfile.abilityLevel,  // Use detected ability level
         };
 
         const lessonPlanResult = await generateLessonPlan(lessonPlanRequest, apiKey);
