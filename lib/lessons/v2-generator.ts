@@ -343,7 +343,7 @@ export function populateTemplate(
 
   // Return formatted worksheet
   return {
-    title: `${topicName} - Grade ${template.metadata.grade}`,
+    title: `${topicName} - G${template.metadata.grade}`,
     grade: template.metadata.grade,
     topic: template.metadata.topic,
     duration: template.metadata.duration,
