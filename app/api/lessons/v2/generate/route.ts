@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
 
     // Conditionally generate lesson plan
     let lessonPlan;
+    let lessonPlanMetadata;
     if (body.generateLessonPlan) {
       try {
         const lessonPlanRequest: LessonPlanRequest = {
@@ -172,7 +173,9 @@ export async function POST(request: NextRequest) {
           abilityLevel: body.grade,  // Could enhance this to use detected ability level
         };
 
-        lessonPlan = await generateLessonPlan(lessonPlanRequest, apiKey);
+        const lessonPlanResult = await generateLessonPlan(lessonPlanRequest, apiKey);
+        lessonPlan = lessonPlanResult.lessonPlan;
+        lessonPlanMetadata = lessonPlanResult.metadata;
         console.log('[V2 API] Lesson plan generated successfully');
       } catch (error) {
         console.error('[V2 API] Lesson plan generation failed:', error);
@@ -181,10 +184,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Return successful result with optional lesson plan
+    // Combine metadata if lesson plan was generated
+    const combinedMetadata = lessonPlanMetadata ? {
+      promptTokens: result.metadata.promptTokens + lessonPlanMetadata.promptTokens,
+      completionTokens: result.metadata.completionTokens + lessonPlanMetadata.completionTokens,
+      totalTokens: result.metadata.totalTokens + lessonPlanMetadata.totalTokens,
+      generationTime: result.metadata.generationTime + lessonPlanMetadata.generationTime,
+      model: result.metadata.model,
+      generationVersion: result.metadata.generationVersion,
+      worksheetTokens: result.metadata.totalTokens,
+      lessonPlanTokens: lessonPlanMetadata.totalTokens,
+    } : result.metadata;
+
+    // Return successful result with optional lesson plan and combined metadata
     return NextResponse.json({
       ...result,
       lessonPlan,
+      metadata: combinedMetadata,
     });
   } catch (error) {
     console.error('V2 generation error:', error);

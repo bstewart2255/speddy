@@ -141,6 +141,11 @@ export default function SampleLessonsPage() {
                       <span className="text-green-600 ml-1">
                         ({generatedContent.metadata?.promptTokens || 0} prompt + {generatedContent.metadata?.completionTokens || 0} completion)
                       </span>
+                      {generatedContent.metadata?.worksheetTokens && generatedContent.metadata?.lessonPlanTokens && (
+                        <div className="text-green-600 ml-1 mt-1">
+                          Breakdown: {generatedContent.metadata.worksheetTokens} worksheet + {generatedContent.metadata.lessonPlanTokens} lesson plan
+                        </div>
+                      )}
                     </div>
                     <div>
                       <span className="font-medium">Time:</span>{' '}

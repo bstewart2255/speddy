@@ -25,6 +25,20 @@ export interface LessonPlan {
 }
 
 /**
+ * Result of lesson plan generation including metadata
+ */
+export interface LessonPlanResult {
+  lessonPlan: LessonPlan;
+  metadata: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    generationTime: number;
+    model: string;
+  };
+}
+
+/**
  * Request for lesson plan generation
  */
 export interface LessonPlanRequest {
@@ -42,7 +56,8 @@ export interface LessonPlanRequest {
 export async function generateLessonPlan(
   request: LessonPlanRequest,
   apiKey: string
-): Promise<LessonPlan> {
+): Promise<LessonPlanResult> {
+  const startTime = Date.now();
   const { topic, subjectType, grade, duration, students, abilityLevel } = request;
 
   // Use ability level if available, otherwise use grade
@@ -104,7 +119,16 @@ export async function generateLessonPlan(
     throw new Error(`Failed to parse lesson plan JSON: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }
 
-  return lessonPlan;
+  return {
+    lessonPlan,
+    metadata: {
+      promptTokens: response.usage.input_tokens,
+      completionTokens: response.usage.output_tokens,
+      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      generationTime: Date.now() - startTime,
+      model: response.model,
+    },
+  };
 }
 
 /**
