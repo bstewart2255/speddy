@@ -41,6 +41,9 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
   const errors: Array<{ row: number; message: string }> = [];
   const sheetsProcessed: string[] = [];
 
+  // Temporary map to consolidate duplicate students across all worksheets
+  const studentMap = new Map<string, ParsedStudent>();
+
   // Process each worksheet
   for (const worksheet of workbook.worksheets) {
     sheetsProcessed.push(worksheet.name);
@@ -86,7 +89,7 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
             }
           }
 
-          // Only add student if they have at least one goal
+          // Only process if they have at least one goal
           if (goals.length === 0) return;
 
           // Generate initials
@@ -95,14 +98,29 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
           // Normalize grade level
           const normalizedGrade = normalizeGradeLevel(grade);
 
-          students.push({
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            initials,
-            gradeLevel: normalizedGrade,
-            goals,
-            rawRow: rowNumber
-          });
+          // Create unique key for student (name + grade)
+          const studentKey = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}_${normalizedGrade}`;
+
+          // Check if student already exists
+          if (studentMap.has(studentKey)) {
+            // Add goals to existing student (avoid duplicates)
+            const existing = studentMap.get(studentKey)!;
+            for (const goal of goals) {
+              if (!existing.goals.includes(goal)) {
+                existing.goals.push(goal);
+              }
+            }
+          } else {
+            // Add new student
+            studentMap.set(studentKey, {
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              initials,
+              gradeLevel: normalizedGrade,
+              goals,
+              rawRow: rowNumber
+            });
+          }
         } catch (error: any) {
           errors.push({
             row: rowNumber,
@@ -117,6 +135,9 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
       });
     }
   }
+
+  // Convert map to array
+  students.push(...Array.from(studentMap.values()));
 
   return {
     students,

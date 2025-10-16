@@ -18,8 +18,11 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
     if (!file) return;
 
     // Validate file type
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setError('Please select an Excel file (.xlsx or .xls)');
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    const isCSV = file.name.endsWith('.csv');
+
+    if (!isExcel && !isCSV) {
+      setError('Please select an Excel file (.xlsx or .xls) or CSV file (.csv)');
       return;
     }
 
@@ -74,7 +77,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.csv"
         onChange={handleFileSelect}
         className="hidden"
         disabled={disabled || uploading}
@@ -113,7 +116,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
             Processing...
           </>
         ) : (
-          '📄 Import from Excel'
+          '📄 Import from Excel/CSV'
         )}
       </Button>
 
@@ -124,7 +127,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
       )}
 
       <p className="text-xs text-gray-500">
-        Upload a SEIS report with IEP goals. The system will match students by initials and grade.
+        Upload a SEIS report (.xlsx, .xls, or .csv) with IEP goals. The system will match students by initials and grade.
       </p>
     </div>
   );

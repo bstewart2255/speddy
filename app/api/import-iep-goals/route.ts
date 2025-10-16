@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { parseSEISReport } from '@/lib/parsers/seis-parser';
+import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
@@ -52,12 +53,21 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     }
 
     // Validate file type
-    const validTypes = [
+    const validExcelTypes = [
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ];
 
-    if (!validTypes.includes(file.type) && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+    const validCSVTypes = [
+      'text/csv',
+      'text/plain',
+      'application/csv'
+    ];
+
+    const isExcel = validExcelTypes.includes(file.type) || file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    const isCSV = validCSVTypes.includes(file.type) || file.name.endsWith('.csv');
+
+    if (!isExcel && !isCSV) {
       log.warn('Invalid file type for IEP goals import', {
         userId,
         fileType: file.type,
@@ -65,7 +75,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       });
 
       return NextResponse.json(
-        { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls)' },
+        { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls) or CSV file (.csv)' },
         { status: 400 }
       );
     }
@@ -74,34 +84,41 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Step 1: Parse the Excel file
-    log.info('Parsing Excel file', { userId, fileName: file.name });
-    const parsePerf = measurePerformanceWithAlerts('parse_excel', 'api');
+    // Step 1: Parse the file (CSV or Excel)
+    const fileType = isCSV ? 'CSV' : 'Excel';
+    log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
+    const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
 
     let parseResult;
     try {
-      parseResult = await parseSEISReport(buffer);
+      // Use appropriate parser based on file type
+      if (isCSV) {
+        parseResult = await parseCSVReport(buffer);
+      } else {
+        parseResult = await parseSEISReport(buffer);
+      }
+
       parsePerf.end({ success: true });
 
-      log.info('Excel parsing complete', {
+      log.info(`${fileType} parsing complete`, {
         userId,
         studentsFound: parseResult.students.length,
         errors: parseResult.errors.length
       });
     } catch (error: any) {
       parsePerf.end({ success: false });
-      log.error('Excel parsing failed', error, { userId, fileName: file.name });
+      log.error(`${fileType} parsing failed`, error, { userId, fileName: file.name });
 
       return NextResponse.json(
         {
-          error: `Failed to parse Excel file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
+          error: `Failed to parse ${fileType} file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
         },
         { status: 400 }
       );
     }
 
     if (parseResult.students.length === 0) {
-      log.warn('No students found in Excel file', { userId, fileName: file.name });
+      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name });
 
       return NextResponse.json(
         {
@@ -177,7 +194,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     });
 
     // Step 4: Scrub PII from goals for matched students
-    const processedMatches: ProcessedMatch[] = [];
+    const processedMatchesMap = new Map<string, ProcessedMatch>();
     const scrubErrors: string[] = [];
 
     for (const match of matchResult.matches) {
@@ -186,9 +203,44 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         continue;
       }
 
+      const studentId = match.matchedStudent.id;
+
+      // Check if we've already processed this student
+      if (processedMatchesMap.has(studentId)) {
+        // Merge goals with existing entry (avoid duplicates)
+        const existing = processedMatchesMap.get(studentId)!;
+
+        log.info('Merging goals for already-processed student', {
+          userId,
+          studentId,
+          existingGoalsCount: existing.goals.length,
+          newGoalsCount: match.excelStudent.goals.length
+        });
+
+        const scrubPerf = measurePerformanceWithAlerts('scrub_pii', 'api');
+        const scrubResult = await scrubPIIFromGoals(
+          match.excelStudent.goals,
+          match.excelStudent.firstName,
+          match.excelStudent.lastName
+        );
+        scrubPerf.end({ success: scrubResult.errors.length === 0 });
+
+        if (scrubResult.errors.length > 0) {
+          scrubErrors.push(...scrubResult.errors);
+        }
+
+        // Add new goals (avoid duplicates)
+        for (const newGoal of scrubResult.goals) {
+          if (!existing.goals.some(g => g.scrubbed === newGoal.scrubbed)) {
+            existing.goals.push(newGoal);
+          }
+        }
+        continue;
+      }
+
       log.info('Scrubbing PII for student', {
         userId,
-        studentId: match.matchedStudent.id,
+        studentId,
         goalsCount: match.excelStudent.goals.length
       });
 
@@ -204,8 +256,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         scrubErrors.push(...scrubResult.errors);
       }
 
-      processedMatches.push({
-        studentId: match.matchedStudent.id,
+      processedMatchesMap.set(studentId, {
+        studentId,
         studentInitials: match.matchedStudent.initials,
         studentGrade: match.matchedStudent.grade_level,
         matchConfidence: match.confidence,
@@ -214,13 +266,40 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       });
     }
 
+    // Convert map to array
+    const processedMatches = Array.from(processedMatchesMap.values());
+
     // Track successful import
+    const totalGoals = processedMatches.reduce((sum, m) => sum + m.goals.length, 0);
+
     track.event('iep_goals_imported', {
       userId,
       studentsMatched: processedMatches.length,
       highConfidenceMatches: matchResult.summary.highConfidence,
-      totalGoals: processedMatches.reduce((sum, m) => sum + m.goals.length, 0)
+      totalGoals
     });
+
+    log.info('Preparing response', {
+      userId,
+      matchedStudents: processedMatches.length,
+      totalGoals
+    });
+
+    // Optimize response: Remove original text to reduce payload size
+    // Only send scrubbed goals and metadata
+    const optimizedMatches = processedMatches.map(match => ({
+      studentId: match.studentId,
+      studentInitials: match.studentInitials,
+      studentGrade: match.studentGrade,
+      matchConfidence: match.matchConfidence,
+      matchReason: match.matchReason,
+      goals: match.goals.map(goal => ({
+        // Remove 'original' field to reduce payload size by ~50%
+        scrubbed: goal.scrubbed,
+        piiDetected: goal.piiDetected,
+        confidence: goal.confidence
+      }))
+    }));
 
     perf.end({ success: true });
 
@@ -228,7 +307,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     return NextResponse.json({
       success: true,
       data: {
-        matches: processedMatches,
+        matches: optimizedMatches,
         summary: {
           totalParsed: parseResult.students.length,
           matched: processedMatches.length,
@@ -237,10 +316,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           mediumConfidence: matchResult.summary.mediumConfidence,
           lowConfidence: matchResult.summary.lowConfidence
         },
-        parseErrors: parseResult.errors,
-        scrubErrors,
+        parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [], // Limit errors
+        scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : [], // Limit errors
         unmatchedStudents: matchResult.matches
           .filter(m => m.confidence === 'none')
+          .slice(0, 20) // Limit unmatched to 20
           .map(m => ({
             firstName: m.excelStudent.firstName,
             lastName: m.excelStudent.lastName,
