@@ -24,6 +24,7 @@ export interface ParseResult {
     columnsDetected: string[];
     formatDetected?: 'seis-student-goals' | 'generic';
     goalsFiltered?: number; // Number of goals filtered out (SEIS only)
+    targetStudentFound?: boolean; // Whether target student was found (when targetStudent filter is used)
   };
 }
 
@@ -38,6 +39,13 @@ interface ColumnMapping {
 
 export interface ParseOptions {
   userSchools?: string[]; // School names user is associated with (for verification)
+  targetStudent?: {
+    initials: string;
+    gradeLevel: string;
+    schoolName: string;
+    firstName?: string;
+    lastName?: string;
+  }; // If provided, only parse goals for this specific student
 }
 
 /**
@@ -141,6 +149,48 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           continue;
         }
 
+        // Generate initials early for target matching
+        const initials = `${firstName.charAt(0).toUpperCase()}${lastName.charAt(0).toUpperCase()}`;
+        const normalizedGrade = normalizeGradeLevel(grade);
+
+        // If target student specified, filter to only that student
+        if (options.targetStudent) {
+          const { targetStudent } = options;
+
+          // Check initials match
+          if (initials !== targetStudent.initials) {
+            continue;
+          }
+
+          // Check grade match
+          if (normalizedGrade !== targetStudent.gradeLevel) {
+            continue;
+          }
+
+          // Check school match (fuzzy)
+          if (school) {
+            const schoolMatches = normalizeSchoolName(school).includes(normalizeSchoolName(targetStudent.schoolName)) ||
+                                 normalizeSchoolName(targetStudent.schoolName).includes(normalizeSchoolName(school));
+
+            if (!schoolMatches) {
+              continue;
+            }
+          }
+
+          // Bonus validation: check names if provided
+          if (targetStudent.firstName && targetStudent.lastName) {
+            const firstNameMatch = firstName.trim().toLowerCase() === targetStudent.firstName.toLowerCase();
+            const lastNameMatch = lastName.trim().toLowerCase() === targetStudent.lastName.toLowerCase();
+
+            if (!firstNameMatch || !lastNameMatch) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Found student with matching initials (${initials}), grade (${normalizedGrade}), and school, but name mismatch: CSV has "${firstName} ${lastName}", expected "${targetStudent.firstName} ${targetStudent.lastName}". Using CSV student.`
+              });
+            }
+          }
+        }
+
         // For SEIS format, check school verification if user has multiple schools
         if (isSEISFormat && school && options.userSchools && options.userSchools.length > 0) {
           const schoolMatches = options.userSchools.some(userSchool =>
@@ -183,12 +233,6 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           continue;
         }
 
-        // Generate initials
-        const initials = `${firstName.charAt(0).toUpperCase()}${lastName.charAt(0).toUpperCase()}`;
-
-        // Normalize grade level
-        const normalizedGrade = normalizeGradeLevel(grade);
-
         // Create unique key for student (name + grade)
         const studentKey = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}_${normalizedGrade}`;
 
@@ -224,6 +268,14 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     // Convert map to array
     students.push(...Array.from(studentMap.values()));
 
+    // Check if target student was requested but not found
+    if (options.targetStudent && students.length === 0) {
+      errors.push({
+        row: 0,
+        message: `Target student not found in CSV: ${options.targetStudent.initials}, Grade ${options.targetStudent.gradeLevel}, ${options.targetStudent.schoolName}. Please verify the student information matches the CSV file.`
+      });
+    }
+
     return {
       students,
       errors,
@@ -232,7 +284,8 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         totalRows: records.length,
         columnsDetected,
         formatDetected,
-        goalsFiltered: isSEISFormat ? goalsFiltered : undefined
+        goalsFiltered: isSEISFormat ? goalsFiltered : undefined,
+        targetStudentFound: options.targetStudent ? students.length > 0 : undefined
       }
     };
   } catch (error: any) {

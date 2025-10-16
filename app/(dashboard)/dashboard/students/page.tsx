@@ -27,6 +27,8 @@ type Student = {
   provider_id: string;
   created_at: string;
   updated_at: string;
+  school_site?: string | null;
+  school_id?: string | null;
 };
 
 export default function StudentsPage() {

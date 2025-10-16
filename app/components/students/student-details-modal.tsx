@@ -21,6 +21,7 @@ interface StudentDetailsModalProps {
     teacher_name: string;
     sessions_per_week: number;
     minutes_per_session: number;
+    school_id?: string | null;
   };
   readOnly?: boolean;
   onSave?: (studentId: string, details: StudentDetails) => void;
@@ -410,6 +411,11 @@ export function StudentDetailsModal({
                     <IEPGoalsUploader
                       onUploadComplete={handleUploadComplete}
                       disabled={readOnly}
+                      targetStudent={{
+                        id: student.id,
+                        initials: student.initials,
+                        grade_level: student.grade_level
+                      }}
                     />
 
                     {/* Add Goal Manually */}

@@ -39,12 +39,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Get form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const targetStudentId = formData.get('targetStudentId') as string | null;
 
     log.info('Processing IEP goals import', {
       userId,
       fileName: file?.name,
       fileType: file?.type,
-      fileSize: file?.size
+      fileSize: file?.size,
+      targetStudentId: targetStudentId || undefined
     });
 
     if (!file) {
@@ -101,7 +103,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const { data: dbStudents, error: dbError } = await supabase
       .from('students')
-      .select('id, initials, grade_level, school_site')
+      .select('id, initials, grade_level, school_site, school_id')
       .eq('provider_id', userId);
 
     dbPerf.end({ success: !dbError });
@@ -122,7 +124,73 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Step 3: Parse the file (CSV or Excel)
+    // Step 3: If targetStudentId provided, fetch target student details and school name
+    let targetStudent: {
+      initials: string;
+      gradeLevel: string;
+      schoolName: string;
+      firstName?: string;
+      lastName?: string;
+    } | undefined;
+
+    if (targetStudentId) {
+      log.info('Fetching target student details', { userId, targetStudentId });
+
+      // Find target student in dbStudents
+      const targetStudentRecord = dbStudents.find(s => s.id === targetStudentId);
+
+      if (!targetStudentRecord) {
+        log.error('Target student not found in user\'s students', { userId, targetStudentId });
+        return NextResponse.json(
+          { error: 'Target student not found in your account.' },
+          { status: 404 }
+        );
+      }
+
+      // Fetch school name from schools table if school_id exists
+      let schoolName = targetStudentRecord.school_site || '';
+
+      if (targetStudentRecord.school_id) {
+        const { data: schoolData, error: schoolError } = await supabase
+          .from('schools')
+          .select('name')
+          .eq('id', targetStudentRecord.school_id)
+          .single();
+
+        if (!schoolError && schoolData) {
+          schoolName = schoolData.name;
+        } else {
+          log.warn('Could not fetch school name, using school_site', {
+            userId,
+            schoolId: targetStudentRecord.school_id,
+            error: schoolError
+          });
+        }
+      }
+
+      // Fetch student details for first/last names
+      const { data: targetDetails } = await supabase
+        .from('student_details')
+        .select('first_name, last_name')
+        .eq('student_id', targetStudentId)
+        .single();
+
+      targetStudent = {
+        initials: targetStudentRecord.initials,
+        gradeLevel: targetStudentRecord.grade_level,
+        schoolName,
+        firstName: targetDetails?.first_name || undefined,
+        lastName: targetDetails?.last_name || undefined
+      };
+
+      log.info('Target student details fetched', {
+        userId,
+        targetStudentId,
+        targetStudent
+      });
+    }
+
+    // Step 4: Parse the file (CSV or Excel)
     // For CSV files with multi-school users, extract unique school sites from existing students
     let userSchools: string[] | undefined;
     if (isCSV && userProfile?.works_at_multiple_schools && dbStudents) {
@@ -149,7 +217,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     try {
       // Use appropriate parser based on file type
       if (isCSV) {
-        parseResult = await parseCSVReport(buffer, { userSchools });
+        parseResult = await parseCSVReport(buffer, { userSchools, targetStudent });
       } else {
         parseResult = await parseSEISReport(buffer);
       }
@@ -177,11 +245,18 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     }
 
     if (parseResult.students.length === 0) {
-      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name });
+      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name, targetStudentId });
 
-      const errorMessage = parseResult.metadata.formatDetected === 'seis-student-goals'
-        ? 'No resource/academic students found in the SEIS Student Goals Report. This may be because all goals were filtered out (Speech, OT, Counseling, etc.) or no students matched your school(s).'
-        : 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.';
+      let errorMessage: string;
+
+      if (targetStudent) {
+        // Specific error for target student not found
+        errorMessage = `Could not find student ${targetStudent.initials} (Grade ${targetStudent.gradeLevel}, ${targetStudent.schoolName}) in the uploaded file. Please verify the student's information matches the CSV file.`;
+      } else if (parseResult.metadata.formatDetected === 'seis-student-goals') {
+        errorMessage = 'No resource/academic students found in the SEIS Student Goals Report. This may be because all goals were filtered out (Speech, OT, Counseling, etc.) or no students matched your school(s).';
+      } else {
+        errorMessage = 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.';
+      }
 
       return NextResponse.json(
         {
