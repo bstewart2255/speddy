@@ -83,7 +83,7 @@ OUTPUT FORMAT (valid JSON):
       "goal": "[exact IEP goal text - for internal tracking only, NOT shown to student]",
       "assessmentItems": [
         {
-          "type": "multiple_choice" | "short_answer" | "problem" | "observation",
+          "type": "multiple_choice" | "short_answer" | "problem",
           "passage": "ONLY include for reading comprehension questions in FIRST item only",
           "prompt": "The actual instruction/question the student will read",
           "options": ["Option A", "Option B", "Option C", "Option D"]
