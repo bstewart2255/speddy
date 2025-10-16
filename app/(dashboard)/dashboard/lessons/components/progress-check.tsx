@@ -9,10 +9,9 @@ import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
 interface AssessmentItem {
-  type: 'multiple_choice' | 'short_answer' | 'problem' | 'observation';
+  type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
   options?: string[];
-  scoringNotes?: string;
 }
 
 interface IEPGoalAssessment {
