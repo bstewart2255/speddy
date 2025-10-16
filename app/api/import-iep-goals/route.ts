@@ -168,6 +168,16 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         }
       }
 
+      // CRITICAL: Warn if target student has no school data
+      // This could lead to false matches with students from other schools
+      if (!schoolName || schoolName.trim() === '') {
+        log.warn('Target student has no school data - import may be unreliable', {
+          userId,
+          targetStudentId,
+          studentInitials: targetStudentRecord.initials
+        });
+      }
+
       // Fetch student details for first/last names
       const { data: targetDetails } = await supabase
         .from('student_details')

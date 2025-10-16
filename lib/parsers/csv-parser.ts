@@ -4,6 +4,7 @@
  */
 
 import { parse } from 'csv-parse/sync';
+import { normalizeSchoolName } from '../school-helpers';
 
 export interface ParsedStudent {
   firstName: string;
@@ -168,13 +169,28 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           }
 
           // Check school match (fuzzy)
-          if (school) {
+          // CRITICAL: For single-student targeting, school matching is required to prevent false positives
+          if (school && targetStudent.schoolName) {
             const schoolMatches = normalizeSchoolName(school).includes(normalizeSchoolName(targetStudent.schoolName)) ||
                                  normalizeSchoolName(targetStudent.schoolName).includes(normalizeSchoolName(school));
 
             if (!schoolMatches) {
               continue;
             }
+          } else if (!school && targetStudent.schoolName) {
+            // CSV has no school column but we're targeting specific student - warn and skip
+            warnings.push({
+              row: rowIndex + 1,
+              message: `CSV missing school column. Cannot verify if student "${firstName} ${lastName}" attends "${targetStudent.schoolName}". Skipping for safety.`
+            });
+            continue;
+          } else if (school && !targetStudent.schoolName) {
+            // Target student has no school data but CSV has school - warn and skip for safety
+            warnings.push({
+              row: rowIndex + 1,
+              message: `Target student has no school data, but CSV shows "${school}". Skipping to prevent incorrect match.`
+            });
+            continue;
           }
 
           // Bonus validation: check names if provided
@@ -512,13 +528,3 @@ function isProviderGoal(goalType: string): boolean {
   return true;
 }
 
-/**
- * Normalize school name for comparison
- */
-function normalizeSchoolName(schoolName: string): string {
-  return schoolName
-    .toLowerCase()
-    .replace(/elementary|middle|high|school|unified|district/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
