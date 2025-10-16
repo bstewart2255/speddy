@@ -84,49 +84,15 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Step 1: Parse the file (CSV or Excel)
-    const fileType = isCSV ? 'CSV' : 'Excel';
-    log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
-    const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
+    // Step 1: Get user profile to check if they work at multiple schools
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('works_at_multiple_schools')
+      .eq('id', userId)
+      .single();
 
-    let parseResult;
-    try {
-      // Use appropriate parser based on file type
-      if (isCSV) {
-        parseResult = await parseCSVReport(buffer);
-      } else {
-        parseResult = await parseSEISReport(buffer);
-      }
-
-      parsePerf.end({ success: true });
-
-      log.info(`${fileType} parsing complete`, {
-        userId,
-        studentsFound: parseResult.students.length,
-        errors: parseResult.errors.length
-      });
-    } catch (error: any) {
-      parsePerf.end({ success: false });
-      log.error(`${fileType} parsing failed`, error, { userId, fileName: file.name });
-
-      return NextResponse.json(
-        {
-          error: `Failed to parse ${fileType} file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
-        },
-        { status: 400 }
-      );
-    }
-
-    if (parseResult.students.length === 0) {
-      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name });
-
-      return NextResponse.json(
-        {
-          error: 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.',
-          parseErrors: parseResult.errors
-        },
-        { status: 400 }
-      );
+    if (profileError) {
+      log.error('Failed to fetch user profile', profileError, { userId });
     }
 
     // Step 2: Get existing students from database
@@ -135,7 +101,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const { data: dbStudents, error: dbError } = await supabase
       .from('students')
-      .select('id, initials, grade_level')
+      .select('id, initials, grade_level, school_site')
       .eq('provider_id', userId);
 
     dbPerf.end({ success: !dbError });
@@ -156,7 +122,79 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Get student details for names (if available)
+    // Step 3: Parse the file (CSV or Excel)
+    // For CSV files with multi-school users, extract unique school sites from existing students
+    let userSchools: string[] | undefined;
+    if (isCSV && userProfile?.works_at_multiple_schools && dbStudents) {
+      userSchools = Array.from(
+        new Set(
+          dbStudents
+            .map(s => s.school_site)
+            .filter((site): site is string => site !== null && site !== undefined && site.trim() !== '')
+        )
+      );
+
+      log.info('Multi-school user detected, extracted school sites', {
+        userId,
+        schoolCount: userSchools.length,
+        schools: userSchools
+      });
+    }
+
+    const fileType = isCSV ? 'CSV' : 'Excel';
+    log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
+    const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
+
+    let parseResult;
+    try {
+      // Use appropriate parser based on file type
+      if (isCSV) {
+        parseResult = await parseCSVReport(buffer, { userSchools });
+      } else {
+        parseResult = await parseSEISReport(buffer);
+      }
+
+      parsePerf.end({ success: true });
+
+      log.info(`${fileType} parsing complete`, {
+        userId,
+        studentsFound: parseResult.students.length,
+        errors: parseResult.errors.length,
+        warnings: parseResult.warnings?.length || 0,
+        formatDetected: parseResult.metadata.formatDetected,
+        goalsFiltered: parseResult.metadata.goalsFiltered
+      });
+    } catch (error: any) {
+      parsePerf.end({ success: false });
+      log.error(`${fileType} parsing failed`, error, { userId, fileName: file.name });
+
+      return NextResponse.json(
+        {
+          error: `Failed to parse ${fileType} file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
+        },
+        { status: 400 }
+      );
+    }
+
+    if (parseResult.students.length === 0) {
+      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name });
+
+      const errorMessage = parseResult.metadata.formatDetected === 'seis-student-goals'
+        ? 'No resource/academic students found in the SEIS Student Goals Report. This may be because all goals were filtered out (Speech, OT, Counseling, etc.) or no students matched your school(s).'
+        : 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.';
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          parseErrors: parseResult.errors,
+          parseWarnings: parseResult.warnings || [],
+          metadata: parseResult.metadata
+        },
+        { status: 400 }
+      );
+    }
+
+    // Step 4: Get student details for names (if available)
     const { data: studentDetails } = await supabase
       .from('student_details')
       .select('student_id, first_name, last_name')
@@ -174,7 +212,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       };
     });
 
-    // Step 3: Match parsed students to database students
+    // Step 5: Match parsed students to database students
     log.info('Matching students', {
       userId,
       parsedCount: parseResult.students.length,
@@ -193,7 +231,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       noMatch: matchResult.summary.noMatch
     });
 
-    // Step 4: Scrub PII from goals for matched students
+    // Step 6: Scrub PII from goals for matched students
     const processedMatchesMap = new Map<string, ProcessedMatch>();
     const scrubErrors: string[] = [];
 
@@ -314,9 +352,12 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           unmatched: matchResult.summary.noMatch,
           highConfidence: matchResult.summary.highConfidence,
           mediumConfidence: matchResult.summary.mediumConfidence,
-          lowConfidence: matchResult.summary.lowConfidence
+          lowConfidence: matchResult.summary.lowConfidence,
+          formatDetected: parseResult.metadata.formatDetected,
+          goalsFiltered: parseResult.metadata.goalsFiltered
         },
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [], // Limit errors
+        parseWarnings: parseResult.warnings && parseResult.warnings.length > 0 ? parseResult.warnings.slice(0, 10) : [], // Limit warnings
         scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : [], // Limit errors
         unmatchedStudents: matchResult.matches
           .filter(m => m.confidence === 'none')
