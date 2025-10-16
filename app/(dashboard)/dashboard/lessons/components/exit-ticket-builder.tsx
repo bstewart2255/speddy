@@ -39,16 +39,15 @@ export default function ExitTicketBuilder() {
 
   const loadStudents = useCallback(async () => {
     setLoadingStudents(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user || !currentSchool) {
-      setLoadingStudents(false);
-      setStudents([]);
-      return;
-    }
+      if (!user || !currentSchool) {
+        setStudents([]);
+        return;
+      }
 
-    if (user && currentSchool) {
       // Get user role to determine how to filter students
       const userRole = await getUserRole(user.id);
 
@@ -82,8 +81,9 @@ export default function ExitTicketBuilder() {
         console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
       }
+    } finally {
+      setLoadingStudents(false);
     }
-    setLoadingStudents(false);
   }, [currentSchool, showToast]);
 
   useEffect(() => {

@@ -122,6 +122,7 @@ Important:
     const response = await client.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
+      system: 'You are a helpful educational assistant that creates brief assessments for students based on their IEP goals. Always respond with valid JSON.',
       messages: [
         {
           role: 'user',
@@ -147,8 +148,9 @@ Important:
         jsonText = codeBlockMatch[1];
       }
 
-      // Remove single-line comments (// ...) which are not valid JSON
-      jsonText = jsonText.replace(/\/\/[^\n]*/g, '');
+      // Remove single-line comments (// ...) at the start of lines only
+      // This avoids corrupting URLs like https://... inside JSON strings
+      jsonText = jsonText.replace(/^\s*\/\/.*$/gm, '');
 
       // Try parsing
       try {
