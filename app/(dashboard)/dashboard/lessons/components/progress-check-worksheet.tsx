@@ -8,7 +8,7 @@ import {
 } from '@/lib/shared/print-styles';
 
 interface AssessmentItem {
-  type: 'multiple_choice' | 'short_answer' | 'problem' | 'observation';
+  type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
   passage?: string;
   options?: string[];

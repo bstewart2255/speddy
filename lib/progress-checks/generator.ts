@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 export interface AssessmentItem {
-  type: 'multiple_choice' | 'short_answer' | 'problem' | 'observation';
+  type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
   passage?: string;
   options?: string[];
@@ -54,25 +54,26 @@ REQUIREMENTS:
    - Only the first item gets the "passage" field; remaining items are just questions about that passage
 6. For writing goals, specify how many sentences or paragraphs to write
 
-ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 4 TYPES:
+ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 3 TYPES:
 1. "multiple_choice" - Questions with 4 answer choices (must include "options" array with exactly 4 options)
 2. "short_answer" - Open-ended questions requiring written responses (specify length: "Write 3-5 sentences...")
 3. "problem" - Math problems or exercises requiring work space
-4. "observation" - Behavioral/performance tasks the student will demonstrate
+
+CRITICAL: DO NOT USE "observation" type questions. All questions must be completable on the worksheet itself without teacher interaction.
 
 MAPPING GOALS TO ASSESSMENT TYPES:
 - Reading comprehension → Use "short_answer" with passage field
 - Writing goals → Use "short_answer" (specify number of sentences: "Write 5 sentences about...")
 - Math goals → Use "problem" or "multiple_choice"
-- Behavioral/Social goals → Use "observation" (write what student should demonstrate)
-- Phonics/Decoding goals → Use "observation" (read words aloud) or "multiple_choice" (identify sound patterns)
+- Behavioral/Social goals → Convert to written reflection using "short_answer" (e.g., "Write 3 sentences describing how you show respect to your teacher and classmates")
+- Phonics/Decoding goals → Use "multiple_choice" for sound/word identification or "short_answer" for writing words with specific patterns
 - Knowledge recall → Use "multiple_choice" or "short_answer"
 
-PHONICS/DECODING GOALS - REALISTIC ASSESSMENT:
-- Decoding is about READING printed words aloud, not writing down sounds
-- For decode/phonics goals → Use "observation" type with prompt like "Read these words aloud to your teacher: cat, bat, hat, mat"
-- For sound identification → Use "multiple_choice" asking which word has a specific sound pattern
-- NEVER ask students to "write the sounds they hear" - that's not how decoding works in practice
+PHONICS/DECODING GOALS - PAPER-BASED ASSESSMENT:
+- For phonics goals → Use "multiple_choice" to identify words with specific sound patterns
+- For word building → Use "short_answer" asking students to write words (e.g., "Write 5 words that start with the 'ch' sound")
+- For sound identification → Use "multiple_choice" (e.g., "Which word has the same ending sound as 'cat'?")
+- NEVER use observation-based assessments that require reading aloud to the teacher
 
 OUTPUT FORMAT (valid JSON):
 {
@@ -97,10 +98,11 @@ VALIDATION CHECKLIST BEFORE RESPONDING:
 ✓ All prompts are student-readable instructions
 ✓ Multiple choice items have exactly 4 options
 ✓ Short answer items specify expected length (number of sentences)
-✓ Observation items describe what student should do, not how teacher should score
+✓ NO observation-type questions - all questions must be completable on paper
 ✓ Reading comprehension items include the passage in the "passage" field (first item only)
+✓ Behavioral/social goals converted to written reflections, not observations
 
-CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", "problem", or "observation". Do not create any other type names.
+CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", or "problem". Do NOT use "observation" type.
 
 You must respond with ONLY a valid JSON object. No other text.`;
 
@@ -115,9 +117,10 @@ ${request.iepGoals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n')}
 
 For EACH goal, create exactly 5 assessment items. Mix types appropriately:
 - Multiple choice for knowledge/comprehension
-- Short answer for application/explanation
+- Short answer for application/explanation and written reflections
 - Problems for skill demonstration
-- Observation prompts for behaviors/social skills`;
+
+IMPORTANT: Do NOT use observation-type questions. All questions must be completable on the worksheet without teacher interaction. For behavioral/social goals, use written reflections (short_answer type).`;
 
   try {
     const response = await client.messages.create({
