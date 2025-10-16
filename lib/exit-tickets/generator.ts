@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 interface ExitTicketRequest {
   studentInitials: string;
@@ -27,9 +27,12 @@ interface ExitTicketContent {
 }
 
 export async function generateExitTicket(request: ExitTicketRequest): Promise<ExitTicketContent> {
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+
+  const client = new Anthropic({ apiKey });
 
   // Create a focused prompt for exit ticket generation
   const prompt = `Generate a brief exit ticket assessment for a student. This should be completable in 3-5 minutes.
@@ -116,51 +119,63 @@ Important:
 - For reading comprehension, use the "passage" field once, then reference it in questions`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const response = await client.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2000,
+      system: 'You are a helpful educational assistant that creates brief assessments for students based on their IEP goals. Always respond with valid JSON.',
       messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful educational assistant that creates brief assessments for students based on their IEP goals. Always respond with valid JSON.'
-        },
         {
           role: 'user',
           content: prompt
         }
       ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' },
-      max_tokens: 1000,
     });
+
+    // Extract JSON from response
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text content in AI response');
+    }
 
     // Parse the AI response
     let content: ExitTicketContent;
-    const responseContent = completion.choices[0].message.content;
+    let jsonText = textContent.text;
 
-    if (responseContent) {
-      try {
-        content = JSON.parse(responseContent);
-      } catch (parseError) {
-        console.error('Failed to parse AI response:', parseError);
-        // Fallback to a simple format
-        content = {
-          problems: [
-            {
-              type: 'short_answer',
-              question: `Practice problem for: ${request.iepGoal}`,
-              answer: 'Student answer here'
-            }
-          ]
-        };
+    try {
+      // Try to extract JSON from markdown code blocks first
+      const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1];
       }
-    } else {
-      // Fallback if AI doesn't return expected format
+
+      // Remove single-line comments (// ...) at the start of lines only
+      // This avoids corrupting URLs like https://... inside JSON strings
+      jsonText = jsonText.replace(/^\s*\/\/.*$/gm, '');
+
+      // Try parsing
+      try {
+        content = JSON.parse(jsonText);
+      } catch (firstError) {
+        // Try to find JSON object boundaries
+        const firstBrace = jsonText.indexOf('{');
+        const lastBrace = jsonText.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const extractedJson = jsonText.substring(firstBrace, lastBrace + 1);
+          content = JSON.parse(extractedJson);
+        } else {
+          throw firstError; // Re-throw original error if extraction doesn't help
+        }
+      }
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', parseError);
+      // Fallback to a simple format
       content = {
         problems: [
           {
             type: 'short_answer',
-            question: `Assessment for ${request.studentInitials}: ${request.iepGoal}`,
-            answer: 'Student response'
+            question: `Practice problem for: ${request.iepGoal}`,
+            answer: 'Student answer here'
           }
         ]
       };

@@ -8,13 +8,19 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
+interface ExitTicketContent {
+  passage?: string;
+  problems?: unknown[];
+  items?: unknown[];
+}
+
 interface ExitTicket {
   id: string;
   student_id: string;
   student_initials: string;
   student_grade: number;
   iep_goal_text: string;
-  content: any;
+  content: ExitTicketContent;
   created_at: string;
 }
 
@@ -28,13 +34,20 @@ export default function ExitTicketBuilder() {
   const [generatedTickets, setGeneratedTickets] = useState<ExitTicket[]>([]);
   const [showDisplay, setShowDisplay] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadStudents = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    setLoadingStudents(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
-    if (user && currentSchool) {
+      if (!user || !currentSchool) {
+        setStudents([]);
+        return;
+      }
+
       // Get user role to determine how to filter students
       const userRole = await getUserRole(user.id);
 
@@ -68,6 +81,8 @@ export default function ExitTicketBuilder() {
         console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
       }
+    } finally {
+      setLoadingStudents(false);
     }
   }, [currentSchool, showToast]);
 
@@ -200,7 +215,11 @@ export default function ExitTicketBuilder() {
 
             {dropdownOpen && (
               <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-96 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                {students.length === 0 ? (
+                {loadingStudents ? (
+                  <div className="text-gray-500 px-3 py-2">
+                    Loading students...
+                  </div>
+                ) : students.length === 0 ? (
                   <div className="text-gray-500 px-3 py-2">
                     No students with IEP goals found
                   </div>
