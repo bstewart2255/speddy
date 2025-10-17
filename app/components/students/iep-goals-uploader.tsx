@@ -6,9 +6,14 @@ import { Button } from '../ui/button';
 interface IEPGoalsUploaderProps {
   onUploadComplete: (data: any) => void;
   disabled?: boolean;
+  targetStudent?: {
+    id: string;
+    initials: string;
+    grade_level: string;
+  };
 }
 
-export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoalsUploaderProps) {
+export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStudent }: IEPGoalsUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -18,8 +23,11 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
     if (!file) return;
 
     // Validate file type
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setError('Please select an Excel file (.xlsx or .xls)');
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    const isCSV = file.name.endsWith('.csv');
+
+    if (!isExcel && !isCSV) {
+      setError('Please select an Excel file (.xlsx or .xls) or CSV file (.csv)');
       return;
     }
 
@@ -37,6 +45,11 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
       // Create form data
       const formData = new FormData();
       formData.append('file', file);
+
+      // Add target student ID if provided
+      if (targetStudent) {
+        formData.append('targetStudentId', targetStudent.id);
+      }
 
       // Upload to API
       const response = await fetch('/api/import-iep-goals', {
@@ -74,7 +87,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.csv"
         onChange={handleFileSelect}
         className="hidden"
         disabled={disabled || uploading}
@@ -110,10 +123,10 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            Processing...
+            {targetStudent ? `Importing goals for ${targetStudent.initials}...` : 'Processing...'}
           </>
         ) : (
-          '📄 Import from Excel'
+          targetStudent ? `📄 Import IEP Goals for ${targetStudent.initials}` : '📄 Import from Excel/CSV'
         )}
       </Button>
 
@@ -124,7 +137,9 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false }: IEPGoal
       )}
 
       <p className="text-xs text-gray-500">
-        Upload a SEIS report with IEP goals. The system will match students by initials and grade.
+        {targetStudent
+          ? `Upload a SEIS report (.xlsx, .xls, or .csv) with IEP goals for ${targetStudent.initials} (Grade ${targetStudent.grade_level}).`
+          : 'Upload a SEIS report (.xlsx, .xls, or .csv) with IEP goals. The system will match students by initials and grade.'}
       </p>
     </div>
   );

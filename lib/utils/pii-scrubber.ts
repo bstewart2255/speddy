@@ -18,13 +18,30 @@ export interface ScrubResult {
 }
 
 /**
- * Scrub PII from IEP goals using Claude AI
+ * Scrub PII from IEP goals using Claude AI or regex fallback
  */
 export async function scrubPIIFromGoals(
   goals: string[],
   studentFirstName: string,
-  studentLastName: string
+  studentLastName: string,
+  useAI: boolean = false // Default to fast regex-based scrubbing
 ): Promise<ScrubResult> {
+  // Use fast regex-based scrubbing by default (much faster than AI)
+  if (!useAI) {
+    const scrubbedGoals: ScrubbedGoal[] = [];
+    for (const goal of goals) {
+      const scrubbed = basicPIIScrub(goal, studentFirstName, studentLastName);
+      scrubbedGoals.push({
+        original: goal,
+        scrubbed: scrubbed.text,
+        piiDetected: scrubbed.removed,
+        confidence: scrubbed.removed.length > 0 ? 'medium' : 'high'
+      });
+    }
+    return { goals: scrubbedGoals, errors: [] };
+  }
+
+  // AI-based scrubbing (slower but more accurate)
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {

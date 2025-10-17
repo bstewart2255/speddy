@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { parseSEISReport } from '@/lib/parsers/seis-parser';
+import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
@@ -38,12 +39,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Get form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const targetStudentId = formData.get('targetStudentId') as string | null;
 
     log.info('Processing IEP goals import', {
       userId,
       fileName: file?.name,
       fileType: file?.type,
-      fileSize: file?.size
+      fileSize: file?.size,
+      targetStudentId: targetStudentId || undefined
     });
 
     if (!file) {
@@ -52,12 +55,21 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     }
 
     // Validate file type
-    const validTypes = [
+    const validExcelTypes = [
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ];
 
-    if (!validTypes.includes(file.type) && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+    const validCSVTypes = [
+      'text/csv',
+      'text/plain',
+      'application/csv'
+    ];
+
+    const isExcel = validExcelTypes.includes(file.type) || file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    const isCSV = validCSVTypes.includes(file.type) || file.name.endsWith('.csv');
+
+    if (!isExcel && !isCSV) {
       log.warn('Invalid file type for IEP goals import', {
         userId,
         fileType: file.type,
@@ -65,7 +77,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       });
 
       return NextResponse.json(
-        { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls)' },
+        { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls) or CSV file (.csv)' },
         { status: 400 }
       );
     }
@@ -74,42 +86,15 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Step 1: Parse the Excel file
-    log.info('Parsing Excel file', { userId, fileName: file.name });
-    const parsePerf = measurePerformanceWithAlerts('parse_excel', 'api');
+    // Step 1: Get user profile to check if they work at multiple schools
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('works_at_multiple_schools')
+      .eq('id', userId)
+      .single();
 
-    let parseResult;
-    try {
-      parseResult = await parseSEISReport(buffer);
-      parsePerf.end({ success: true });
-
-      log.info('Excel parsing complete', {
-        userId,
-        studentsFound: parseResult.students.length,
-        errors: parseResult.errors.length
-      });
-    } catch (error: any) {
-      parsePerf.end({ success: false });
-      log.error('Excel parsing failed', error, { userId, fileName: file.name });
-
-      return NextResponse.json(
-        {
-          error: `Failed to parse Excel file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
-        },
-        { status: 400 }
-      );
-    }
-
-    if (parseResult.students.length === 0) {
-      log.warn('No students found in Excel file', { userId, fileName: file.name });
-
-      return NextResponse.json(
-        {
-          error: 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.',
-          parseErrors: parseResult.errors
-        },
-        { status: 400 }
-      );
+    if (profileError) {
+      log.error('Failed to fetch user profile', profileError, { userId });
     }
 
     // Step 2: Get existing students from database
@@ -118,7 +103,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const { data: dbStudents, error: dbError } = await supabase
       .from('students')
-      .select('id, initials, grade_level')
+      .select('id, initials, grade_level, school_site, school_id')
       .eq('provider_id', userId);
 
     dbPerf.end({ success: !dbError });
@@ -139,7 +124,162 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Get student details for names (if available)
+    // Step 3: If targetStudentId provided, fetch target student details and school name
+    let targetStudent: {
+      initials: string;
+      gradeLevel: string;
+      schoolName: string;
+      firstName?: string;
+      lastName?: string;
+    } | undefined;
+
+    if (targetStudentId) {
+      log.info('Fetching target student details', { userId, targetStudentId });
+
+      // Find target student in dbStudents
+      const targetStudentRecord = dbStudents.find(s => s.id === targetStudentId);
+
+      if (!targetStudentRecord) {
+        log.error('Target student not found in user\'s students', { userId, targetStudentId });
+        return NextResponse.json(
+          { error: 'Target student not found in your account.' },
+          { status: 404 }
+        );
+      }
+
+      // Fetch school name from schools table if school_id exists
+      let schoolName = targetStudentRecord.school_site || '';
+
+      if (targetStudentRecord.school_id) {
+        const { data: schoolData, error: schoolError } = await supabase
+          .from('schools')
+          .select('name')
+          .eq('id', targetStudentRecord.school_id)
+          .single();
+
+        if (!schoolError && schoolData) {
+          schoolName = schoolData.name;
+        } else {
+          log.warn('Could not fetch school name, using school_site', {
+            userId,
+            schoolId: targetStudentRecord.school_id,
+            error: schoolError
+          });
+        }
+      }
+
+      // CRITICAL: Warn if target student has no school data
+      // This could lead to false matches with students from other schools
+      if (!schoolName || schoolName.trim() === '') {
+        log.warn('Target student has no school data - import may be unreliable', {
+          userId,
+          targetStudentId,
+          studentInitials: targetStudentRecord.initials
+        });
+      }
+
+      // Fetch student details for first/last names
+      const { data: targetDetails } = await supabase
+        .from('student_details')
+        .select('first_name, last_name')
+        .eq('student_id', targetStudentId)
+        .single();
+
+      targetStudent = {
+        initials: targetStudentRecord.initials,
+        gradeLevel: targetStudentRecord.grade_level,
+        schoolName,
+        firstName: targetDetails?.first_name || undefined,
+        lastName: targetDetails?.last_name || undefined
+      };
+
+      log.info('Target student details fetched', {
+        userId,
+        targetStudentId,
+        targetStudent
+      });
+    }
+
+    // Step 4: Parse the file (CSV or Excel)
+    // For CSV files with multi-school users, extract unique school sites from existing students
+    let userSchools: string[] | undefined;
+    if (isCSV && userProfile?.works_at_multiple_schools && dbStudents) {
+      userSchools = Array.from(
+        new Set(
+          dbStudents
+            .map(s => s.school_site)
+            .filter((site): site is string => site !== null && site !== undefined && site.trim() !== '')
+        )
+      );
+
+      log.info('Multi-school user detected, extracted school sites', {
+        userId,
+        schoolCount: userSchools.length,
+        schools: userSchools
+      });
+    }
+
+    const fileType = isCSV ? 'CSV' : 'Excel';
+    log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
+    const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
+
+    let parseResult;
+    try {
+      // Use appropriate parser based on file type
+      if (isCSV) {
+        parseResult = await parseCSVReport(buffer, { userSchools, targetStudent });
+      } else {
+        parseResult = await parseSEISReport(buffer);
+      }
+
+      parsePerf.end({ success: true });
+
+      log.info(`${fileType} parsing complete`, {
+        userId,
+        studentsFound: parseResult.students.length,
+        errors: parseResult.errors.length,
+        warnings: parseResult.warnings?.length || 0,
+        formatDetected: parseResult.metadata.formatDetected,
+        goalsFiltered: parseResult.metadata.goalsFiltered
+      });
+    } catch (error: any) {
+      parsePerf.end({ success: false });
+      log.error(`${fileType} parsing failed`, error, { userId, fileName: file.name });
+
+      return NextResponse.json(
+        {
+          error: `Failed to parse ${fileType} file: ${error.message}. Please ensure the file contains student names, grades, and IEP goals.`
+        },
+        { status: 400 }
+      );
+    }
+
+    if (parseResult.students.length === 0) {
+      log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name, targetStudentId });
+
+      let errorMessage: string;
+
+      if (targetStudent) {
+        // Specific error for target student not found
+        errorMessage = `Could not find student ${targetStudent.initials} (Grade ${targetStudent.gradeLevel}, ${targetStudent.schoolName}) in the uploaded file. Please verify the student's information matches the CSV file.`;
+      } else if (parseResult.metadata.formatDetected === 'seis-student-goals') {
+        errorMessage = 'No resource/academic students found in the SEIS Student Goals Report. This may be because all goals were filtered out (Speech, OT, Counseling, etc.) or no students matched your school(s).';
+      } else {
+        errorMessage = 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.';
+      }
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          parseErrors: parseResult.errors,
+          parseWarnings: parseResult.warnings || [],
+          metadata: parseResult.metadata
+        },
+        { status: 400 }
+      );
+    }
+
+    // Step 4: Get student details for names (if available)
     const { data: studentDetails } = await supabase
       .from('student_details')
       .select('student_id, first_name, last_name')
@@ -157,7 +297,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       };
     });
 
-    // Step 3: Match parsed students to database students
+    // Step 5: Match parsed students to database students
     log.info('Matching students', {
       userId,
       parsedCount: parseResult.students.length,
@@ -176,8 +316,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       noMatch: matchResult.summary.noMatch
     });
 
-    // Step 4: Scrub PII from goals for matched students
-    const processedMatches: ProcessedMatch[] = [];
+    // Step 6: Scrub PII from goals for matched students
+    const processedMatchesMap = new Map<string, ProcessedMatch>();
     const scrubErrors: string[] = [];
 
     for (const match of matchResult.matches) {
@@ -186,9 +326,44 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         continue;
       }
 
+      const studentId = match.matchedStudent.id;
+
+      // Check if we've already processed this student
+      if (processedMatchesMap.has(studentId)) {
+        // Merge goals with existing entry (avoid duplicates)
+        const existing = processedMatchesMap.get(studentId)!;
+
+        log.info('Merging goals for already-processed student', {
+          userId,
+          studentId,
+          existingGoalsCount: existing.goals.length,
+          newGoalsCount: match.excelStudent.goals.length
+        });
+
+        const scrubPerf = measurePerformanceWithAlerts('scrub_pii', 'api');
+        const scrubResult = await scrubPIIFromGoals(
+          match.excelStudent.goals,
+          match.excelStudent.firstName,
+          match.excelStudent.lastName
+        );
+        scrubPerf.end({ success: scrubResult.errors.length === 0 });
+
+        if (scrubResult.errors.length > 0) {
+          scrubErrors.push(...scrubResult.errors);
+        }
+
+        // Add new goals (avoid duplicates)
+        for (const newGoal of scrubResult.goals) {
+          if (!existing.goals.some(g => g.scrubbed === newGoal.scrubbed)) {
+            existing.goals.push(newGoal);
+          }
+        }
+        continue;
+      }
+
       log.info('Scrubbing PII for student', {
         userId,
-        studentId: match.matchedStudent.id,
+        studentId,
         goalsCount: match.excelStudent.goals.length
       });
 
@@ -204,8 +379,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         scrubErrors.push(...scrubResult.errors);
       }
 
-      processedMatches.push({
-        studentId: match.matchedStudent.id,
+      processedMatchesMap.set(studentId, {
+        studentId,
         studentInitials: match.matchedStudent.initials,
         studentGrade: match.matchedStudent.grade_level,
         matchConfidence: match.confidence,
@@ -214,13 +389,40 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       });
     }
 
+    // Convert map to array
+    const processedMatches = Array.from(processedMatchesMap.values());
+
     // Track successful import
+    const totalGoals = processedMatches.reduce((sum, m) => sum + m.goals.length, 0);
+
     track.event('iep_goals_imported', {
       userId,
       studentsMatched: processedMatches.length,
       highConfidenceMatches: matchResult.summary.highConfidence,
-      totalGoals: processedMatches.reduce((sum, m) => sum + m.goals.length, 0)
+      totalGoals
     });
+
+    log.info('Preparing response', {
+      userId,
+      matchedStudents: processedMatches.length,
+      totalGoals
+    });
+
+    // Optimize response: Remove original text to reduce payload size
+    // Only send scrubbed goals and metadata
+    const optimizedMatches = processedMatches.map(match => ({
+      studentId: match.studentId,
+      studentInitials: match.studentInitials,
+      studentGrade: match.studentGrade,
+      matchConfidence: match.matchConfidence,
+      matchReason: match.matchReason,
+      goals: match.goals.map(goal => ({
+        // Remove 'original' field to reduce payload size by ~50%
+        scrubbed: goal.scrubbed,
+        piiDetected: goal.piiDetected,
+        confidence: goal.confidence
+      }))
+    }));
 
     perf.end({ success: true });
 
@@ -228,19 +430,23 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     return NextResponse.json({
       success: true,
       data: {
-        matches: processedMatches,
+        matches: optimizedMatches,
         summary: {
           totalParsed: parseResult.students.length,
           matched: processedMatches.length,
           unmatched: matchResult.summary.noMatch,
           highConfidence: matchResult.summary.highConfidence,
           mediumConfidence: matchResult.summary.mediumConfidence,
-          lowConfidence: matchResult.summary.lowConfidence
+          lowConfidence: matchResult.summary.lowConfidence,
+          formatDetected: parseResult.metadata.formatDetected,
+          goalsFiltered: parseResult.metadata.goalsFiltered
         },
-        parseErrors: parseResult.errors,
-        scrubErrors,
+        parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [], // Limit errors
+        parseWarnings: parseResult.warnings && parseResult.warnings.length > 0 ? parseResult.warnings.slice(0, 10) : [], // Limit warnings
+        scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : [], // Limit errors
         unmatchedStudents: matchResult.matches
           .filter(m => m.confidence === 'none')
+          .slice(0, 20) // Limit unmatched to 20
           .map(m => ({
             firstName: m.excelStudent.firstName,
             lastName: m.excelStudent.lastName,

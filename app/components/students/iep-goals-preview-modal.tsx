@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { createClient } from '@/lib/supabase/client';
 
 interface Goal {
-  original: string;
+  original?: string; // Optional - not sent in optimized response
   scrubbed: string;
   piiDetected: string[];
   confidence: 'high' | 'medium' | 'low';
