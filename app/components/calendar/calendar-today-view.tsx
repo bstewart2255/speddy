@@ -312,14 +312,26 @@ export function CalendarTodayView({
       // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
       const templateIds: string[] = [];
 
+      console.log('Selected sessions for grouping:', Array.from(selectedSessionIds));
+
       for (const sessionId of Array.from(selectedSessionIds)) {
         const session = sessionsState.find(s => s.id === sessionId);
-        if (!session) continue;
+        if (!session) {
+          console.warn('Session not found in state:', sessionId);
+          continue;
+        }
+
+        console.log('Finding template for session:', {
+          sessionId,
+          student_id: session.student_id,
+          day_of_week: session.day_of_week,
+          start_time: session.start_time
+        });
 
         // Query for the template session
-        const { data: templates } = await supabase
+        const { data: templates, error: templateError } = await supabase
           .from('schedule_sessions')
-          .select('id')
+          .select('id, student_id, day_of_week, start_time, group_id, group_name')
           .eq('provider_id', providerId)
           .eq('student_id', session.student_id)
           .eq('day_of_week', session.day_of_week)
@@ -327,13 +339,25 @@ export function CalendarTodayView({
           .is('session_date', null)
           .limit(1);
 
+        if (templateError) {
+          console.error('Error finding template:', templateError);
+          continue;
+        }
+
+        console.log('Template query result:', templates);
+
         if (templates && templates.length > 0) {
           templateIds.push(templates[0].id);
+          console.log('Found template:', templates[0]);
+        } else {
+          console.warn('No template found for session:', session);
         }
       }
 
+      console.log('Template IDs to group:', templateIds);
+
       if (templateIds.length < 2) {
-        throw new Error('Could not find template sessions to group. Please ensure sessions are from your recurring schedule.');
+        throw new Error(`Could not find template sessions to group. Found ${templateIds.length} template(s), need at least 2. Please ensure sessions are from your recurring schedule.`);
       }
 
       // Group the template sessions
@@ -349,15 +373,22 @@ export function CalendarTodayView({
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('Grouping API error:', data);
         throw new Error(data.error || 'Failed to create group');
       }
 
+      console.log('Grouping API response:', data);
+
       // Reload sessions to reflect the grouped templates
+      console.log('Reloading sessions for date:', currentDate);
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
         currentDate
       );
+      console.log('Reloaded sessions:', updatedSessions);
+      console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
+
       setSessionsState(updatedSessions);
 
       showToast(`Group "${groupNameInput.trim()}" created successfully`, 'success');
