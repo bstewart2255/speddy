@@ -297,11 +297,39 @@ export function CalendarTodayView({
 
     setSavingGroup(true);
     try {
+      // First, persist any temporary sessions to the database
+      const persistedSessionIds: string[] = [];
+      const sessionIdMap = new Map<string, string>(); // temp ID -> real ID
+
+      for (const sessionId of Array.from(selectedSessionIds)) {
+        const session = sessionsState.find(s => s.id === sessionId);
+        if (!session) continue;
+
+        if (isTemporarySession(sessionId)) {
+          // Persist this temporary session
+          const persisted = await sessionGenerator.saveSessionInstance(session);
+          if (persisted) {
+            sessionIdMap.set(sessionId, persisted.id);
+            persistedSessionIds.push(persisted.id);
+
+            // Update local state to replace temp session with persisted one
+            setSessionsState(prev =>
+              prev.map(s => s.id === sessionId ? persisted : s)
+            );
+          } else {
+            throw new Error('Failed to persist session before grouping');
+          }
+        } else {
+          persistedSessionIds.push(sessionId);
+        }
+      }
+
+      // Now group the persisted sessions
       const response = await fetch('/api/sessions/group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionIds: Array.from(selectedSessionIds),
+          sessionIds: persistedSessionIds,
           groupName: groupNameInput.trim()
         })
       });
@@ -547,9 +575,8 @@ export function CalendarTodayView({
                               type="checkbox"
                               checked={selectedSessionIds.has(session.id)}
                               onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
-                              disabled={isTemporarySession(session.id)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={isTemporarySession(session.id) ? "Save session first to enable grouping" : "Select for grouping"}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              title="Select for grouping"
                             />
 
                             <div className="text-sm font-medium text-gray-900">
