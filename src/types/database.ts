@@ -535,6 +535,8 @@ export interface Database {
           is_completed: boolean
           student_absent: boolean
           outside_schedule_conflict: boolean
+          group_id: string | null
+          group_name: string | null
         }
         Insert: {
           id?: string
@@ -556,6 +558,8 @@ export interface Database {
           is_completed?: boolean
           student_absent?: boolean
           outside_schedule_conflict?: boolean
+          group_id?: string | null
+          group_name?: string | null
         }
         Update: {
           id?: string
@@ -577,6 +581,8 @@ export interface Database {
           is_completed?: boolean
           student_absent?: boolean
           outside_schedule_conflict?: boolean
+          group_id?: string | null
+          group_name?: string | null
         }
       },
       lessons: {
@@ -591,6 +597,8 @@ export interface Database {
           lesson_date: string
           school_site: string | null
           notes: string | null
+          group_id: string | null
+          session_ids: string[] | null
         }
         Insert: {
           id?: string
@@ -603,6 +611,8 @@ export interface Database {
           lesson_date: string
           school_site?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
         }
         Update: {
           id?: string
@@ -615,6 +625,8 @@ export interface Database {
           lesson_date?: string
           school_site?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
         }
       },
       todos: {
@@ -986,6 +998,8 @@ export interface Database {
           activities: Json | null
           assessment: string | null
           notes: string | null
+          group_id: string | null
+          session_ids: string[] | null
           created_at: string
           updated_at: string
         }
@@ -1002,6 +1016,8 @@ export interface Database {
           activities?: Json | null
           assessment?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
           created_at?: string
           updated_at?: string
         }
@@ -1018,6 +1034,8 @@ export interface Database {
           activities?: Json | null
           assessment?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
           created_at?: string
           updated_at?: string
         }

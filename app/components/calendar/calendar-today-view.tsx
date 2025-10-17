@@ -23,8 +23,8 @@ interface CalendarTodayViewProps {
   onEventClick?: (event: CalendarEvent) => void;
 }
 
-export function CalendarTodayView({ 
-  sessions, 
+export function CalendarTodayView({
+  sessions,
   students,
   onSessionClick,
   currentDate = new Date(),
@@ -41,14 +41,42 @@ export function CalendarTodayView({
   const [savingNotes, setSavingNotes] = useState(false);
   const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
-  
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
 
+  // Grouping state
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [groupingModalOpen, setGroupingModalOpen] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [savingGroup, setSavingGroup] = useState(false);
+
   const supabase = useMemo(() => createClient<Database>(), []);
   const sessionGenerator = useMemo(() => new SessionGenerator(), []);
+
+  // Group color mapping (cycle through colors for different groups)
+  const groupColors = [
+    { border: 'border-l-4 border-blue-500', bg: 'bg-blue-50', badge: 'bg-blue-100 text-blue-700', badgeWithLesson: 'bg-blue-600 text-white' },
+    { border: 'border-l-4 border-green-500', bg: 'bg-green-50', badge: 'bg-green-100 text-green-700', badgeWithLesson: 'bg-green-600 text-white' },
+    { border: 'border-l-4 border-purple-500', bg: 'bg-purple-50', badge: 'bg-purple-100 text-purple-700', badgeWithLesson: 'bg-purple-600 text-white' },
+    { border: 'border-l-4 border-orange-500', bg: 'bg-orange-50', badge: 'bg-orange-100 text-orange-700', badgeWithLesson: 'bg-orange-600 text-white' },
+    { border: 'border-l-4 border-pink-500', bg: 'bg-pink-50', badge: 'bg-pink-100 text-pink-700', badgeWithLesson: 'bg-pink-600 text-white' },
+  ];
+
+  // Get color for a group (deterministic based on group_id)
+  const getGroupColor = (groupId: string) => {
+    // Use a simple hash of the group ID to pick a color
+    const hash = groupId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return groupColors[hash % groupColors.length];
+  };
+
+  // Helper function to check if session is temporary (not saved to database)
+  const isTemporarySession = (sessionId: string): boolean => {
+    return sessionId.startsWith('temp-');
+  };
 
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {
@@ -206,7 +234,7 @@ export function CalendarTodayView({
   // Handler for saving notes
   const handleSaveNotes = async () => {
     if (!selectedSession) return;
-    
+
     setSavingNotes(true);
     try {
       const { error } = await supabase
@@ -235,6 +263,208 @@ export function CalendarTodayView({
       showToast('Failed to save notes', 'error');
     } finally {
       setSavingNotes(false);
+    }
+  };
+
+  // Handler for checkbox selection
+  const handleSessionSelect = (sessionId: string, checked: boolean) => {
+    setSelectedSessionIds(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(sessionId);
+      } else {
+        newSet.delete(sessionId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handler for creating a group - show warning first
+  const handleCreateGroup = () => {
+    if (selectedSessionIds.size < 2) {
+      showToast('Please select at least 2 sessions to create a group', 'error');
+      return;
+    }
+    setWarningModalOpen(true);
+  };
+
+  // Handler to proceed after warning is acknowledged
+  const handleProceedWithGrouping = () => {
+    setWarningModalOpen(false);
+    setGroupNameInput('');
+    setGroupingModalOpen(true);
+  };
+
+  // Handler for saving group - groups TEMPLATE sessions for recurring behavior
+  const handleSaveGroup = async () => {
+    if (!groupNameInput.trim()) {
+      showToast('Please enter a group name', 'error');
+      return;
+    }
+
+    setSavingGroup(true);
+    try {
+      if (!providerId) {
+        throw new Error('User not authenticated');
+      }
+
+      // Find template sessions that correspond to the selected sessions
+      // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
+      const templateIds: string[] = [];
+
+      console.log('Selected sessions for grouping:', Array.from(selectedSessionIds));
+
+      for (const sessionId of Array.from(selectedSessionIds)) {
+        const session = sessionsState.find(s => s.id === sessionId);
+        if (!session) {
+          console.warn('Session not found in state:', sessionId);
+          continue;
+        }
+
+        console.log('Finding template for session:', {
+          sessionId,
+          student_id: session.student_id,
+          day_of_week: session.day_of_week,
+          start_time: session.start_time
+        });
+
+        // Query for the template session
+        const { data: templates, error: templateError } = await supabase
+          .from('schedule_sessions')
+          .select('id, student_id, day_of_week, start_time, group_id, group_name')
+          .eq('provider_id', providerId)
+          .eq('student_id', session.student_id)
+          .eq('day_of_week', session.day_of_week)
+          .eq('start_time', session.start_time)
+          .is('session_date', null)
+          .limit(1);
+
+        if (templateError) {
+          console.error('Error finding template:', templateError);
+          continue;
+        }
+
+        console.log('Template query result:', templates);
+
+        if (templates && templates.length > 0) {
+          templateIds.push(templates[0].id);
+          console.log('Found template:', templates[0]);
+        } else {
+          console.warn('No template found for session:', session);
+        }
+      }
+
+      console.log('Template IDs to group:', templateIds);
+
+      if (templateIds.length < 2) {
+        throw new Error(`Could not find template sessions to group. Found ${templateIds.length} template(s), need at least 2. Please ensure sessions are from your recurring schedule.`);
+      }
+
+      // Group the template sessions
+      const response = await fetch('/api/sessions/group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionIds: templateIds,
+          groupName: groupNameInput.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Grouping API error:', data);
+        throw new Error(data.error || 'Failed to create group');
+      }
+
+      console.log('Grouping API response:', data);
+
+      // Reload sessions to reflect the grouped templates
+      console.log('Reloading sessions for date:', currentDate);
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        currentDate,
+        currentDate
+      );
+      console.log('Reloaded sessions:', updatedSessions);
+      console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
+
+      setSessionsState(updatedSessions);
+
+      showToast(`Group "${groupNameInput.trim()}" created successfully`, 'success');
+      setGroupingModalOpen(false);
+      setSelectedSessionIds(new Set());
+      setGroupNameInput('');
+    } catch (error) {
+      console.error('Error creating group:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to create group', 'error');
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  // Handler for ungrouping sessions - ungroups the TEMPLATE session for recurring behavior
+  const handleUngroupSession = async (sessionId: string) => {
+    try {
+      if (!providerId) {
+        throw new Error('User not authenticated');
+      }
+
+      const session = sessionsState.find(s => s.id === sessionId);
+      if (!session) {
+        throw new Error('Session not found');
+      }
+
+      // Find the template session (preferred)
+      const { data: templates } = await supabase
+        .from('schedule_sessions')
+        .select('id, session_date')
+        .eq('provider_id', providerId)
+        .eq('student_id', session.student_id)
+        .eq('day_of_week', session.day_of_week)
+        .eq('start_time', session.start_time)
+        .is('session_date', null)
+        .limit(1);
+
+      let targetSessionId: string;
+
+      if (templates && templates.length > 0) {
+        // Found template - ungroup it (this is the normal case)
+        targetSessionId = templates[0].id;
+      } else {
+        // No template found - check if this is an old instance-based group
+        // In this case, ungroup the instance itself and log a warning
+        console.warn('No template found for ungrouping. Ungrouping instance instead. User should recreate group for recurring behavior.');
+        targetSessionId = sessionId;
+      }
+
+      // Ungroup the session (template or instance)
+      const response = await fetch('/api/sessions/ungroup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionIds: [targetSessionId]
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to ungroup session');
+      }
+
+      // Reload sessions to reflect the ungrouped session
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        currentDate,
+        currentDate
+      );
+      setSessionsState(updatedSessions);
+
+      showToast('Session removed from group', 'success');
+    } catch (error) {
+      console.error('Error ungrouping session:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to ungroup session', 'error');
     }
   };
 
@@ -364,67 +594,131 @@ export function CalendarTodayView({
 
       {/* Sessions list */}
       {!isHoliday() && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="divide-y divide-gray-100">
-            {filteredSessions.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                No sessions scheduled for today
-              </div>
-            ) : (
-              filteredSessions
-                .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                .map((session) => {
-                  const student = students.get(session.student_id);
+        <>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="divide-y divide-gray-100">
+              {filteredSessions.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  No sessions scheduled for today
+                </div>
+              ) : (
+                filteredSessions
+                  .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                  .map((session) => {
+                    const student = students.get(session.student_id);
+                    const isGrouped = !!session.group_id;
+                    const groupColor = isGrouped ? getGroupColor(session.group_id as string) : null;
 
-                  return (
-                    <div key={session.id} className="p-4 hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                    return (
+                      <div
+                        key={session.id}
+                        className={cn(
+                          "p-4 hover:bg-gray-50 transition-colors",
+                          isGrouped && groupColor?.border,
+                          isGrouped && groupColor?.bg
+                        )}
+                      >
+                        {/* Group badge (if session is grouped) */}
+                        {isGrouped && session.group_name && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <button
+                              type="button"
+                              className={cn(
+                                "text-xs px-2 py-1 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity",
+                                groupColor?.badge
+                              )}
+                              title="Click to create/view lesson plan for this group"
+                              onClick={() => {
+                                // TODO: Implement lesson plan view/create action
+                              }}
+                            >
+                              📚 {session.group_name}
+                            </button>
+                            <button
+                              onClick={() => handleUngroupSession(session.id)}
+                              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                              title="Remove from group"
+                            >
+                              ✕
+                            </button>
                           </div>
-                          <div className="text-sm font-semibold text-gray-900">
-                            {student?.initials || '?'}
-                          </div>
-                        </div>
+                        )}
 
-                        <div className="flex items-center gap-3">
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            session.delivered_by === 'sea' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {session.delivered_by === 'sea' ? 'SEA' : 'Provider'}
-                          </span>
-
-                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            {/* Selection checkbox */}
                             <input
                               type="checkbox"
-                              checked={!!session.completed_at}
-                              onChange={() => handleCompleteToggle(session.id, !session.completed_at)}
-                              disabled={updatingCompletion === session.id}
-                              className="rounded border-gray-300"
+                              checked={selectedSessionIds.has(session.id)}
+                              onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              title="Select for grouping"
+                              aria-label="Select session for grouping"
                             />
-                            <span className="text-gray-700">Completed</span>
-                          </label>
 
-                          <button
-                            onClick={() => {
-                              setSelectedSession(session);
-                              setNotesValue(session.session_notes || '');
-                              setNotesModalOpen(true);
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                            title={session.session_notes ? 'Edit notes' : 'Add notes'}
-                          >
-                            📝
-                          </button>
+                            <div className="text-sm font-medium text-gray-900">
+                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            </div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {student?.initials || '?'}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              session.delivered_by === 'sea'
+                                ? 'bg-green-100 text-green-700'
+                                : session.delivered_by === 'specialist'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
+                            </span>
+
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!session.completed_at}
+                                onChange={() => handleCompleteToggle(session.id, !session.completed_at)}
+                                disabled={updatingCompletion === session.id}
+                                className="rounded border-gray-300"
+                              />
+                              <span className="text-gray-700">Completed</span>
+                            </label>
+
+                            <button
+                              onClick={() => {
+                                setSelectedSession(session);
+                                setNotesValue(session.session_notes || '');
+                                setNotesModalOpen(true);
+                              }}
+                              className="text-gray-400 hover:text-gray-600"
+                              title={session.session_notes ? 'Edit notes' : 'Add notes'}
+                            >
+                              📝
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-            )}
+                    );
+                  })
+              )}
+            </div>
           </div>
-        </div>
+
+          {/* Create Group button (appears when 2+ sessions are selected) */}
+          {selectedSessionIds.size >= 2 && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <button
+                onClick={handleCreateGroup}
+                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <span>📁</span>
+                <span>Create Group ({selectedSessionIds.size} sessions selected)</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Notes Modal */}
@@ -451,6 +745,94 @@ export function CalendarTodayView({
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
               >
                 {savingNotes ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warning Modal for Recurring Groups */}
+      {warningModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                <span className="text-yellow-600 text-xl">⚠️</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Recurring Group Warning</h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  This group will apply to <strong>all future occurrences</strong> of these sessions, not just today.
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  For example, if you're grouping Thursday sessions, they will appear grouped <strong>every Thursday</strong> going forward.
+                </p>
+              </div>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-gray-700">
+                <strong>Note:</strong> You can ungroup sessions at any time, which will also remove the group from all future weeks.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setWarningModalOpen(false);
+                  setSelectedSessionIds(new Set());
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProceedWithGrouping}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              >
+                I Understand, Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Naming Modal */}
+      {groupingModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium mb-4">Create Session Group</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              You're grouping {selectedSessionIds.size} sessions together. Give this group a name:
+            </p>
+            <input
+              type="text"
+              value={groupNameInput}
+              onChange={(e) => setGroupNameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !savingGroup) {
+                  handleSaveGroup();
+                }
+              }}
+              className="w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., Morning Reading Group"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setGroupingModalOpen(false);
+                  setGroupNameInput('');
+                }}
+                disabled={savingGroup}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveGroup}
+                disabled={savingGroup || !groupNameInput.trim()}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingGroup ? 'Creating...' : 'Create Group'}
               </button>
             </div>
           </div>
