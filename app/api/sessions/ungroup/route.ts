@@ -32,7 +32,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Verify that all sessions belong to the current user
     const { data: existingSessions, error: fetchError } = await supabase
       .from('schedule_sessions')
-      .select('id, provider_id, group_id, group_name')
+      .select('id, provider_id, group_id, group_name, student_id, day_of_week, start_time, session_date')
       .in('id', sessionIds);
 
     if (fetchError) {
@@ -64,11 +64,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       .from('schedule_sessions')
       .update({
         group_id: null,
-        group_name: null,
-        updated_at: new Date().toISOString()
+        group_name: null
       })
+      .eq('provider_id', userId)
       .in('id', sessionIds)
-      .select();
+      .select('id, student_id, day_of_week, start_time, session_date');
     updatePerf.end({ success: !updateError });
 
     if (updateError) {
@@ -90,6 +90,38 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         { error: 'Failed to ungroup sessions' },
         { status: 500 }
       );
+    }
+
+    // Also clear existing instances that match any ungrouped templates
+    // This ensures that existing date-specific instances get updated too
+    if (updatedSessions && updatedSessions.length > 0) {
+      const templates = updatedSessions.filter(s => s.session_date == null);
+
+      for (const template of templates) {
+        const { error: instanceError } = await supabase
+          .from('schedule_sessions')
+          .update({
+            group_id: null,
+            group_name: null
+          })
+          .eq('provider_id', userId)
+          .eq('student_id', template.student_id)
+          .eq('day_of_week', template.day_of_week)
+          .eq('start_time', template.start_time)
+          .not('session_date', 'is', null); // Only update instances, not templates again
+
+        if (instanceError) {
+          log.warn('Failed to ungroup instances for template', instanceError, {
+            userId,
+            templateId: template.id
+          });
+        }
+      }
+
+      log.info('Updated existing instances to match ungrouped templates', {
+        userId,
+        templateCount: templates.length
+      });
     }
 
     log.info('Sessions ungrouped successfully', {

@@ -88,7 +88,7 @@ export class SessionGenerator {
 
     // If this is a temporary instance, create it in the database
     if (session.id.startsWith('temp-')) {
-      const insertData = {
+      const insertData: ScheduleSessionInsert = {
         student_id: session.student_id,
         provider_id: session.provider_id,
         day_of_week: session.day_of_week,
@@ -96,6 +96,7 @@ export class SessionGenerator {
         end_time: session.end_time,
         service_type: session.service_type,
         assigned_to_sea_id: session.assigned_to_sea_id,
+        assigned_to_specialist_id: session.assigned_to_specialist_id,
         delivered_by: session.delivered_by,
         session_date: session.session_date, // This ensures it's an instance
         completed_at: session.completed_at,

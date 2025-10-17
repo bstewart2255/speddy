@@ -112,18 +112,25 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     if (updatedSessions && updatedSessions.length > 0) {
       for (const template of updatedSessions) {
         // Update all instances that match this template
-        await supabase
+        const { error: instanceError } = await supabase
           .from('schedule_sessions')
           .update({
             group_id: finalGroupId,
-            group_name: groupName.trim(),
-            updated_at: new Date().toISOString()
+            group_name: groupName.trim()
           })
           .eq('provider_id', userId)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
           .not('session_date', 'is', null); // Only update instances, not templates again
+
+        if (instanceError) {
+          log.warn('Failed to update instances for template', instanceError, {
+            userId,
+            templateId: template.id,
+            groupId: finalGroupId
+          });
+        }
       }
 
       log.info('Updated existing instances to match grouped templates', {

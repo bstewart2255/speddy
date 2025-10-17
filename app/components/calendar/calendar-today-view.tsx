@@ -621,15 +621,19 @@ export function CalendarTodayView({
                         {/* Group badge (if session is grouped) */}
                         {isGrouped && session.group_name && (
                           <div className="flex items-center gap-2 mb-2">
-                            <span
+                            <button
+                              type="button"
                               className={cn(
                                 "text-xs px-2 py-1 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity",
                                 groupColor?.badge
                               )}
                               title="Click to create/view lesson plan for this group"
+                              onClick={() => {
+                                // TODO: Implement lesson plan view/create action
+                              }}
                             >
                               📚 {session.group_name}
-                            </span>
+                            </button>
                             <button
                               onClick={() => handleUngroupSession(session.id)}
                               className="text-xs text-gray-400 hover:text-red-600 transition-colors"
@@ -649,6 +653,7 @@ export function CalendarTodayView({
                               onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               title="Select for grouping"
+                              aria-label="Select session for grouping"
                             />
 
                             <div className="text-sm font-medium text-gray-900">
@@ -661,9 +666,13 @@ export function CalendarTodayView({
 
                           <div className="flex items-center gap-3">
                             <span className={`text-xs px-2 py-1 rounded ${
-                              session.delivered_by === 'sea' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                              session.delivered_by === 'sea'
+                                ? 'bg-green-100 text-green-700'
+                                : session.delivered_by === 'specialist'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-blue-100 text-blue-700'
                             }`}>
-                              {session.delivered_by === 'sea' ? 'SEA' : 'Provider'}
+                              {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
                             </span>
 
                             <label className="flex items-center gap-2 text-sm cursor-pointer">

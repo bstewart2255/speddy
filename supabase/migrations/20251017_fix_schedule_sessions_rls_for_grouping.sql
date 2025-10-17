@@ -17,9 +17,15 @@ CREATE POLICY "Users can update schedule sessions"
     )
   )
   WITH CHECK (
-    -- Simplified: just check that the provider_id remains the same
-    -- Assignment validation is handled at the application level
+    -- Allow providers to update their own sessions
+    -- Also allow SEAs to update sessions of their supervising provider
     provider_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'sea'
+        AND profiles.supervising_provider_id = schedule_sessions.provider_id
+    )
   );
 
 COMMENT ON POLICY "Users can update schedule sessions" ON schedule_sessions IS

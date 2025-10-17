@@ -5,8 +5,7 @@
 UPDATE schedule_sessions
 SET
   group_id = NULL,
-  group_name = NULL,
-  updated_at = NOW()
+  group_name = NULL
 WHERE group_id IS NOT NULL
   AND session_date IS NOT NULL;
 
