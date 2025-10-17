@@ -72,6 +72,11 @@ export function CalendarTodayView({
     return groupColors[hash % groupColors.length];
   };
 
+  // Helper function to check if session is temporary (not saved to database)
+  const isTemporarySession = (sessionId: string): boolean => {
+    return sessionId.startsWith('temp-');
+  };
+
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {
     const [hours, minutes] = time.split(':').map(Number);
@@ -542,8 +547,9 @@ export function CalendarTodayView({
                               type="checkbox"
                               checked={selectedSessionIds.has(session.id)}
                               onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              title="Select for grouping"
+                              disabled={isTemporarySession(session.id)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={isTemporarySession(session.id) ? "Save session first to enable grouping" : "Select for grouping"}
                             />
 
                             <div className="text-sm font-medium text-gray-900">
