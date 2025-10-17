@@ -597,6 +597,8 @@ export interface Database {
           lesson_date: string
           school_site: string | null
           notes: string | null
+          group_id: string | null
+          session_ids: string[] | null
         }
         Insert: {
           id?: string
@@ -609,6 +611,8 @@ export interface Database {
           lesson_date: string
           school_site?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
         }
         Update: {
           id?: string
@@ -621,6 +625,8 @@ export interface Database {
           lesson_date?: string
           school_site?: string | null
           notes?: string | null
+          group_id?: string | null
+          session_ids?: string[] | null
         }
       },
       todos: {
