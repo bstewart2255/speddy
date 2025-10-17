@@ -213,7 +213,9 @@ export class ManualPlacementService {
           end_time: timeSlot.endTime,
           service_type: 'provider',
           delivered_by: 'provider',
-          manually_placed: true
+          manually_placed: true,
+          group_id: null,
+          group_name: null
         })
         .select()
         .single();

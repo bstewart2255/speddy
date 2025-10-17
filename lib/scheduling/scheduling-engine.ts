@@ -487,7 +487,9 @@ export class SchedulingEngine {
       manually_placed: false,
       is_completed: false,
       student_absent: false,
-      outside_schedule_conflict: false
+      outside_schedule_conflict: false,
+      group_id: null,
+      group_name: null
     }));
   }
 

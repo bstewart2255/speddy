@@ -133,7 +133,9 @@ export class AutoScheduler {
             completed_at: null,
             completed_by: null,
             session_notes: null,
-            session_date: null
+            session_date: null,
+            group_id: null,
+            group_name: null
           });
         }
 

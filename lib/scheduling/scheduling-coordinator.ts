@@ -492,7 +492,9 @@ export class SchedulingCoordinator {
         created_at: new Date().toISOString(),
         is_completed: session.is_completed || false,
         student_absent: session.student_absent || false,
-        outside_schedule_conflict: session.outside_schedule_conflict || false
+        outside_schedule_conflict: session.outside_schedule_conflict || false,
+        group_id: session.group_id || null,
+        group_name: session.group_name || null
       });
     }
   }
