@@ -49,6 +49,7 @@ export function CalendarTodayView({
 
   // Grouping state
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
   const [groupingModalOpen, setGroupingModalOpen] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [savingGroup, setSavingGroup] = useState(false);
@@ -278,17 +279,23 @@ export function CalendarTodayView({
     });
   };
 
-  // Handler for creating a group
+  // Handler for creating a group - show warning first
   const handleCreateGroup = () => {
     if (selectedSessionIds.size < 2) {
       showToast('Please select at least 2 sessions to create a group', 'error');
       return;
     }
+    setWarningModalOpen(true);
+  };
+
+  // Handler to proceed after warning is acknowledged
+  const handleProceedWithGrouping = () => {
+    setWarningModalOpen(false);
     setGroupNameInput('');
     setGroupingModalOpen(true);
   };
 
-  // Handler for saving group
+  // Handler for saving group - groups TEMPLATE sessions for recurring behavior
   const handleSaveGroup = async () => {
     if (!groupNameInput.trim()) {
       showToast('Please enter a group name', 'error');
@@ -297,46 +304,44 @@ export function CalendarTodayView({
 
     setSavingGroup(true);
     try {
-      // First, persist any temporary sessions to the database
-      const persistedSessionIds: string[] = [];
-      const sessionIdMap = new Map<string, string>(); // temp ID -> real ID
+      if (!providerId) {
+        throw new Error('User not authenticated');
+      }
+
+      // Find template sessions that correspond to the selected sessions
+      // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
+      const templateIds: string[] = [];
 
       for (const sessionId of Array.from(selectedSessionIds)) {
         const session = sessionsState.find(s => s.id === sessionId);
-        if (!session) {
-          console.error('Session not found in state:', sessionId);
-          continue;
-        }
+        if (!session) continue;
 
-        if (isTemporarySession(sessionId)) {
-          // Persist this temporary session
-          console.log('Persisting temporary session:', sessionId, session);
-          const persisted = await sessionGenerator.saveSessionInstance(session);
-          console.log('Persisted result:', persisted);
+        // Query for the template session
+        const { data: templates } = await supabase
+          .from('schedule_sessions')
+          .select('id')
+          .eq('provider_id', providerId)
+          .eq('student_id', session.student_id)
+          .eq('day_of_week', session.day_of_week)
+          .eq('start_time', session.start_time)
+          .is('session_date', null)
+          .limit(1);
 
-          if (persisted) {
-            sessionIdMap.set(sessionId, persisted.id);
-            persistedSessionIds.push(persisted.id);
-
-            // Update local state to replace temp session with persisted one
-            setSessionsState(prev =>
-              prev.map(s => s.id === sessionId ? persisted : s)
-            );
-          } else {
-            console.error('saveSessionInstance returned null for session:', session);
-            throw new Error('Failed to persist session before grouping. Check console for details.');
-          }
-        } else {
-          persistedSessionIds.push(sessionId);
+        if (templates && templates.length > 0) {
+          templateIds.push(templates[0].id);
         }
       }
 
-      // Now group the persisted sessions
+      if (templateIds.length < 2) {
+        throw new Error('Could not find template sessions to group. Please ensure sessions are from your recurring schedule.');
+      }
+
+      // Group the template sessions
       const response = await fetch('/api/sessions/group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionIds: persistedSessionIds,
+          sessionIds: templateIds,
           groupName: groupNameInput.trim()
         })
       });
@@ -347,15 +352,13 @@ export function CalendarTodayView({
         throw new Error(data.error || 'Failed to create group');
       }
 
-      // Update local state with grouped sessions
-      if (data.sessions) {
-        setSessionsState(prev =>
-          prev.map(s => {
-            const updated = data.sessions.find((us: any) => us.id === s.id);
-            return updated || s;
-          })
-        );
-      }
+      // Reload sessions to reflect the grouped templates
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        currentDate,
+        currentDate
+      );
+      setSessionsState(updatedSessions);
 
       showToast(`Group "${groupNameInput.trim()}" created successfully`, 'success');
       setGroupingModalOpen(false);
@@ -369,14 +372,41 @@ export function CalendarTodayView({
     }
   };
 
-  // Handler for ungrouping sessions
+  // Handler for ungrouping sessions - ungroups the TEMPLATE session for recurring behavior
   const handleUngroupSession = async (sessionId: string) => {
     try {
+      if (!providerId) {
+        throw new Error('User not authenticated');
+      }
+
+      const session = sessionsState.find(s => s.id === sessionId);
+      if (!session) {
+        throw new Error('Session not found');
+      }
+
+      // Find the template session
+      const { data: templates } = await supabase
+        .from('schedule_sessions')
+        .select('id')
+        .eq('provider_id', providerId)
+        .eq('student_id', session.student_id)
+        .eq('day_of_week', session.day_of_week)
+        .eq('start_time', session.start_time)
+        .is('session_date', null)
+        .limit(1);
+
+      if (!templates || templates.length === 0) {
+        throw new Error('Could not find template session to ungroup');
+      }
+
+      const templateId = templates[0].id;
+
+      // Ungroup the template session
       const response = await fetch('/api/sessions/ungroup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionIds: [sessionId]
+          sessionIds: [templateId]
         })
       });
 
@@ -386,15 +416,13 @@ export function CalendarTodayView({
         throw new Error(data.error || 'Failed to ungroup session');
       }
 
-      // Update local state
-      if (data.sessions) {
-        setSessionsState(prev =>
-          prev.map(s => {
-            const updated = data.sessions.find((us: any) => us.id === s.id);
-            return updated || s;
-          })
-        );
-      }
+      // Reload sessions to reflect the ungrouped template
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        currentDate,
+        currentDate
+      );
+      setSessionsState(updatedSessions);
 
       showToast('Session removed from group', 'success');
     } catch (error) {
@@ -671,6 +699,50 @@ export function CalendarTodayView({
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
               >
                 {savingNotes ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warning Modal for Recurring Groups */}
+      {warningModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                <span className="text-yellow-600 text-xl">⚠️</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Recurring Group Warning</h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  This group will apply to <strong>all future occurrences</strong> of these sessions, not just today.
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  For example, if you're grouping Thursday sessions, they will appear grouped <strong>every Thursday</strong> going forward.
+                </p>
+              </div>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-gray-700">
+                <strong>Note:</strong> You can ungroup sessions at any time, which will also remove the group from all future weeks.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setWarningModalOpen(false);
+                  setSelectedSessionIds(new Set());
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProceedWithGrouping}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              >
+                I Understand, Continue
               </button>
             </div>
           </div>
