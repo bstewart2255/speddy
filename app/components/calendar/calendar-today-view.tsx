@@ -384,10 +384,10 @@ export function CalendarTodayView({
         throw new Error('Session not found');
       }
 
-      // Find the template session
+      // Find the template session (preferred)
       const { data: templates } = await supabase
         .from('schedule_sessions')
-        .select('id')
+        .select('id, session_date')
         .eq('provider_id', providerId)
         .eq('student_id', session.student_id)
         .eq('day_of_week', session.day_of_week)
@@ -395,18 +395,24 @@ export function CalendarTodayView({
         .is('session_date', null)
         .limit(1);
 
-      if (!templates || templates.length === 0) {
-        throw new Error('Could not find template session to ungroup');
+      let targetSessionId: string;
+
+      if (templates && templates.length > 0) {
+        // Found template - ungroup it (this is the normal case)
+        targetSessionId = templates[0].id;
+      } else {
+        // No template found - check if this is an old instance-based group
+        // In this case, ungroup the instance itself and log a warning
+        console.warn('No template found for ungrouping. Ungrouping instance instead. User should recreate group for recurring behavior.');
+        targetSessionId = sessionId;
       }
 
-      const templateId = templates[0].id;
-
-      // Ungroup the template session
+      // Ungroup the session (template or instance)
       const response = await fetch('/api/sessions/ungroup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionIds: [templateId]
+          sessionIds: [targetSessionId]
         })
       });
 
@@ -416,7 +422,7 @@ export function CalendarTodayView({
         throw new Error(data.error || 'Failed to ungroup session');
       }
 
-      // Reload sessions to reflect the ungrouped template
+      // Reload sessions to reflect the ungrouped session
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
