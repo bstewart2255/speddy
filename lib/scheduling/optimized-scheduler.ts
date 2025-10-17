@@ -569,10 +569,10 @@ export class OptimizedScheduler {
         end_time: slot.endTime,
         service_type: this.providerRole,
         assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
-        assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole) 
+        assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
           ? this.providerId : null,
-        delivered_by: this.providerRole === "sea" 
-          ? "sea" 
+        delivered_by: this.providerRole === "sea"
+          ? "sea"
           : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
             ? "specialist"
             : "provider",
@@ -583,7 +583,9 @@ export class OptimizedScheduler {
         manually_placed: false,
         is_completed: false,
         student_absent: false,
-        outside_schedule_conflict: false
+        outside_schedule_conflict: false,
+        group_id: null,
+        group_name: null
       });
     }
 
@@ -1059,7 +1061,9 @@ export class OptimizedScheduler {
         created_at: new Date().toISOString(),
         is_completed: session.is_completed || false,
         student_absent: session.student_absent || false,
-        outside_schedule_conflict: session.outside_schedule_conflict || false
+        outside_schedule_conflict: session.outside_schedule_conflict || false,
+        group_id: session.group_id || null,
+        group_name: session.group_name || null
       });
     }
   }
