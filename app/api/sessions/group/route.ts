@@ -125,7 +125,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .not('session_date', 'is', null); // Only update instances, not templates again
 
         if (instanceError) {
-          log.warn('Failed to update instances for template', instanceError, {
+          log.warn('Failed to update instances for template', {
+            error: instanceError,
             userId,
             templateId: template.id,
             groupId: finalGroupId

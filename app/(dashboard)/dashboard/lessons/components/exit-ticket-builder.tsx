@@ -8,10 +8,25 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { loadStudentsForUser, getUserRole, type StudentData } from '@/lib/supabase/queries/sea-students';
 
+interface ExitTicketProblem {
+  type: string;
+  question?: string;
+  prompt?: string;
+  problem?: string;
+  text?: string;
+  options?: string[];
+  choices?: string[];
+  answer?: string;
+  answer_format?: {
+    drawing_space?: boolean;
+    lines?: number;
+  };
+}
+
 interface ExitTicketContent {
   passage?: string;
-  problems?: unknown[];
-  items?: unknown[];
+  problems?: ExitTicketProblem[];
+  items?: ExitTicketProblem[];
 }
 
 interface ExitTicket {

@@ -14,13 +14,13 @@ import {
 import { stripQuestionNumber } from '@/lib/shared/question-types';
 import type { LessonPlan } from '@/lib/lessons/lesson-plan-generator';
 
-interface WorksheetSection {
+export interface WorksheetSection {
   title: string;
   instructions?: string;
   items: WorksheetItem[];
 }
 
-interface WorksheetItem {
+export interface WorksheetItem {
   type: string;
   content: string;
   choices?: string[];
@@ -28,7 +28,7 @@ interface WorksheetItem {
   solution?: string[];
 }
 
-interface Worksheet {
+export interface Worksheet {
   title: string;
   grade: string;
   topic: string;

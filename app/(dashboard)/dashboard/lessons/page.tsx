@@ -6,7 +6,7 @@ import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon, D
 import { ToastProvider } from '@/app/contexts/toast-context';
 import SampleLessonForm from './sample/sample-lesson-form';
 import WorksheetRenderer from './sample/worksheet-renderer';
-import { printV2Worksheet, printLessonPlan } from './sample/print-utils';
+import { printV2Worksheet, printLessonPlan, type Worksheet } from './sample/print-utils';
 import LessonBank from './components/lesson-bank';
 import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
@@ -20,11 +20,7 @@ type TeachingStep = {
 
 // Type definition for generated content
 interface GeneratedContent {
-  worksheet?: {
-    title?: string;
-    questions?: unknown[];
-    [key: string]: unknown;
-  };
+  worksheet?: Worksheet;
   lessonPlan?: {
     title: string;
     gradeLevel: string;
