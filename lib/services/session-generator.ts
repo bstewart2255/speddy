@@ -88,30 +88,38 @@ export class SessionGenerator {
 
     // If this is a temporary instance, create it in the database
     if (session.id.startsWith('temp-')) {
+      const insertData = {
+        student_id: session.student_id,
+        provider_id: session.provider_id,
+        day_of_week: session.day_of_week,
+        start_time: session.start_time,
+        end_time: session.end_time,
+        service_type: session.service_type,
+        assigned_to_sea_id: session.assigned_to_sea_id,
+        delivered_by: session.delivered_by,
+        session_date: session.session_date, // This ensures it's an instance
+        completed_at: session.completed_at,
+        completed_by: session.completed_by,
+        session_notes: session.session_notes,
+        group_id: session.group_id || null,
+        group_name: session.group_name || null
+      };
+
+      console.log('Inserting session instance:', insertData);
+
       const { data, error } = await this.supabase
         .from('schedule_sessions')
-        .insert({
-          student_id: session.student_id,
-          provider_id: session.provider_id,
-          day_of_week: session.day_of_week,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          service_type: session.service_type,
-          assigned_to_sea_id: session.assigned_to_sea_id,
-          delivered_by: session.delivered_by,
-          session_date: session.session_date, // This ensures it's an instance
-          completed_at: session.completed_at,
-          completed_by: session.completed_by,
-          session_notes: session.session_notes
-        })
+        .insert(insertData)
         .select()
         .single();
 
       if (error) {
         console.error('Error creating session instance:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         return null;
       }
 
+      console.log('Successfully created session instance:', data);
       return data;
     }
 

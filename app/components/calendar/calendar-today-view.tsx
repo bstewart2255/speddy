@@ -303,11 +303,17 @@ export function CalendarTodayView({
 
       for (const sessionId of Array.from(selectedSessionIds)) {
         const session = sessionsState.find(s => s.id === sessionId);
-        if (!session) continue;
+        if (!session) {
+          console.error('Session not found in state:', sessionId);
+          continue;
+        }
 
         if (isTemporarySession(sessionId)) {
           // Persist this temporary session
+          console.log('Persisting temporary session:', sessionId, session);
           const persisted = await sessionGenerator.saveSessionInstance(session);
+          console.log('Persisted result:', persisted);
+
           if (persisted) {
             sessionIdMap.set(sessionId, persisted.id);
             persistedSessionIds.push(persisted.id);
@@ -317,7 +323,8 @@ export function CalendarTodayView({
               prev.map(s => s.id === sessionId ? persisted : s)
             );
           } else {
-            throw new Error('Failed to persist session before grouping');
+            console.error('saveSessionInstance returned null for session:', session);
+            throw new Error('Failed to persist session before grouping. Check console for details.');
           }
         } else {
           persistedSessionIds.push(sessionId);
