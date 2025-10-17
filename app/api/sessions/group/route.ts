@@ -72,7 +72,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Update sessions with group information
+    // Update template sessions with group information
     const updatePerf = measurePerformanceWithAlerts('update_session_groups', 'database');
     const { data: updatedSessions, error: updateError } = await supabase
       .from('schedule_sessions')
@@ -105,6 +105,32 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         { error: 'Failed to group sessions' },
         { status: 500 }
       );
+    }
+
+    // Also update any existing instances that match these templates
+    // This ensures existing date-specific instances get the group info too
+    if (updatedSessions && updatedSessions.length > 0) {
+      for (const template of updatedSessions) {
+        // Update all instances that match this template
+        await supabase
+          .from('schedule_sessions')
+          .update({
+            group_id: finalGroupId,
+            group_name: groupName.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('provider_id', userId)
+          .eq('student_id', template.student_id)
+          .eq('day_of_week', template.day_of_week)
+          .eq('start_time', template.start_time)
+          .not('session_date', 'is', null); // Only update instances, not templates again
+      }
+
+      log.info('Updated existing instances to match grouped templates', {
+        userId,
+        groupId: finalGroupId,
+        templateCount: updatedSessions.length
+      });
     }
 
     log.info('Sessions grouped successfully', {
