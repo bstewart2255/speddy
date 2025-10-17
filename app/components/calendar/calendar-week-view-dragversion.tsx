@@ -779,6 +779,8 @@ export function CalendarWeekView({
       activities: lessonData.activities || null,
       assessment: lessonData.assessmentMethods || null,
       notes: lessonData.notes || null,
+      group_id: null,
+      session_ids: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
