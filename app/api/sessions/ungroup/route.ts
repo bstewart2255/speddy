@@ -4,6 +4,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withAuth } from '@/lib/api/with-auth';
+import { normalizeDeliveredBy } from '@/lib/auth/role-utils';
 
 // POST - Remove sessions from their group
 export const POST = withAuth(async (request: NextRequest, userId: string) => {
@@ -62,22 +63,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Map role to expected delivered_by value
-    const roleToDeliveredBy: Record<string, string> = {
-      'provider': 'provider',
-      'sea': 'sea',
-      'specialist': 'specialist'
-    };
-
-    const expectedDeliveredBy = roleToDeliveredBy[userProfile.role];
-    if (!expectedDeliveredBy) {
-      log.warn('Invalid user role for ungrouping', { userId, role: userProfile.role });
-      perf.end({ success: false, error: 'invalid_role' });
-      return NextResponse.json(
-        { error: 'Your role is not authorized to ungroup sessions' },
-        { status: 403 }
-      );
-    }
+    // Map role to expected delivered_by value using centralized function
+    const expectedDeliveredBy = normalizeDeliveredBy(userProfile.role);
 
     // Verify all sessions have matching delivered_by
     const mismatchedSessions = existingSessions?.filter(

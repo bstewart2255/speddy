@@ -8,6 +8,7 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
+import { normalizeDeliveredBy } from '@/lib/auth/role-utils';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -83,15 +84,8 @@ export function CalendarDayView({
   const canUserGroupSession = (session: ScheduleSession): boolean => {
     if (!userProfile?.role) return false;
 
-    // Map user role to delivered_by value
-    const roleToDeliveredBy: Record<string, string> = {
-      'provider': 'provider',
-      'sea': 'sea',
-      'specialist': 'specialist'
-    };
-
-    const expectedDeliveredBy = roleToDeliveredBy[userProfile.role];
-    if (!expectedDeliveredBy) return false;
+    // Map user role to delivered_by value using centralized function
+    const expectedDeliveredBy = normalizeDeliveredBy(userProfile.role);
 
     return session.delivered_by === expectedDeliveredBy;
   };
