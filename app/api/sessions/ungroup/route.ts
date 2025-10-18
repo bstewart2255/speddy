@@ -29,10 +29,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       sessionCount: sessionIds.length
     });
 
-    // Verify that all sessions belong to the current user
+    // Verify that all sessions belong to the current user and match delivered_by
     const { data: existingSessions, error: fetchError } = await supabase
       .from('schedule_sessions')
-      .select('id, provider_id, group_id, group_name, student_id, day_of_week, start_time, session_date')
+      .select('id, provider_id, delivered_by, group_id, group_name, student_id, day_of_week, start_time, session_date')
       .in('id', sessionIds);
 
     if (fetchError) {
@@ -54,6 +54,57 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       perf.end({ success: false, error: 'unauthorized' });
       return NextResponse.json(
         { error: 'Unauthorized: Some sessions do not belong to you' },
+        { status: 403 }
+      );
+    }
+
+    // Get user's role to validate delivered_by
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (profileError || !userProfile) {
+      log.error('Error fetching user profile', profileError, { userId });
+      perf.end({ success: false, error: 'database' });
+      return NextResponse.json(
+        { error: 'Failed to verify user permissions' },
+        { status: 500 }
+      );
+    }
+
+    // Map role to expected delivered_by value
+    const roleToDeliveredBy: Record<string, string> = {
+      'provider': 'provider',
+      'sea': 'sea',
+      'specialist': 'specialist'
+    };
+
+    const expectedDeliveredBy = roleToDeliveredBy[userProfile.role];
+    if (!expectedDeliveredBy) {
+      log.warn('Invalid user role for ungrouping', { userId, role: userProfile.role });
+      perf.end({ success: false, error: 'invalid_role' });
+      return NextResponse.json(
+        { error: 'Your role is not authorized to ungroup sessions' },
+        { status: 403 }
+      );
+    }
+
+    // Verify all sessions have matching delivered_by
+    const mismatchedSessions = existingSessions?.filter(
+      s => s.delivered_by !== expectedDeliveredBy
+    );
+    if (mismatchedSessions && mismatchedSessions.length > 0) {
+      log.warn('Attempted to ungroup sessions not assigned to user', {
+        userId,
+        userRole: userProfile.role,
+        expectedDeliveredBy,
+        mismatchedSessionIds: mismatchedSessions.map(s => s.id)
+      });
+      perf.end({ success: false, error: 'invalid_delivered_by' });
+      return NextResponse.json(
+        { error: 'You can only ungroup sessions that you are assigned to deliver' },
         { status: 403 }
       );
     }

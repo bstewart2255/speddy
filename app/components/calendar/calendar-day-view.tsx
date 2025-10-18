@@ -79,6 +79,23 @@ export function CalendarDayView({
     return hours * 60 + minutes;
   };
 
+  // Helper function to check if current user can group a session
+  const canUserGroupSession = (session: ScheduleSession): boolean => {
+    if (!userProfile?.role) return false;
+
+    // Map user role to delivered_by value
+    const roleToDeliveredBy: Record<string, string> = {
+      'provider': 'provider',
+      'sea': 'sea',
+      'specialist': 'specialist'
+    };
+
+    const expectedDeliveredBy = roleToDeliveredBy[userProfile.role];
+    if (!expectedDeliveredBy) return false;
+
+    return session.delivered_by === expectedDeliveredBy;
+  };
+
   // Load sessions and user info for the current date
   React.useEffect(() => {
     const loadSessions = async () => {
@@ -201,6 +218,21 @@ export function CalendarDayView({
       showToast('Please select at least 2 sessions to create a group', 'error');
       return;
     }
+
+    // Validate all selected sessions can be grouped by current user
+    const selectedSessions = Array.from(selectedSessionIds)
+      .map(id => sessionsState.find(s => s.id === id))
+      .filter(Boolean) as ScheduleSession[];
+
+    const invalidSessions = selectedSessions.filter(s => !canUserGroupSession(s));
+    if (invalidSessions.length > 0) {
+      showToast(
+        'You can only group sessions that you are assigned to deliver',
+        'error'
+      );
+      return;
+    }
+
     setWarningModalOpen(true);
   };
 
@@ -562,15 +594,17 @@ export function CalendarDayView({
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            {/* Selection checkbox */}
-                            <input
-                              type="checkbox"
-                              checked={selectedSessionIds.has(session.id)}
-                              onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              title="Select for grouping"
-                              aria-label="Select session for grouping"
-                            />
+                            {/* Selection checkbox - only show if user can group this session */}
+                            {canUserGroupSession(session) && (
+                              <input
+                                type="checkbox"
+                                checked={selectedSessionIds.has(session.id)}
+                                onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                title="Select for grouping"
+                                aria-label="Select session for grouping"
+                              />
+                            )}
 
                             <div className="text-sm font-medium text-gray-900">
                               {formatTime(session.start_time)} - {formatTime(session.end_time)}
