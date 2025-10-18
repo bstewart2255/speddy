@@ -35,10 +35,6 @@ export function CalendarTodayView({
 }: CalendarTodayViewProps) {
   const { showToast } = useToast();
 
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
-  const [notesValue, setNotesValue] = useState('');
-  const [savingNotes, setSavingNotes] = useState(false);
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -184,41 +180,6 @@ export function CalendarTodayView({
     const ampm = h >= 12 ? 'PM' : 'AM';
     const displayHours = h > 12 ? h - 12 : h === 0 ? 12 : h;
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-  };
-
-  // Handler for saving notes
-  const handleSaveNotes = async () => {
-    if (!selectedSession) return;
-
-    setSavingNotes(true);
-    try {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update({
-          session_notes: notesValue.trim() || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedSession.id);
-
-      if (error) throw error;
-
-      // Update local state
-      setSessionsState(prev =>
-        prev.map(s =>
-          s.id === selectedSession.id
-            ? { ...s, session_notes: notesValue.trim() || null }
-            : s
-        )
-      );
-
-      showToast('Notes saved successfully', 'success');
-      setNotesModalOpen(false);
-    } catch (error) {
-      console.error('Error saving notes:', error);
-      showToast('Failed to save notes', 'error');
-    } finally {
-      setSavingNotes(false);
-    }
   };
 
   // Handler for checkbox selection
@@ -629,18 +590,6 @@ export function CalendarTodayView({
                             }`}>
                               {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
                             </span>
-
-                            <button
-                              onClick={() => {
-                                setSelectedSession(session);
-                                setNotesValue(session.session_notes || '');
-                                setNotesModalOpen(true);
-                              }}
-                              className="text-gray-400 hover:text-gray-600"
-                              title={session.session_notes ? 'Edit notes' : 'Add notes'}
-                            >
-                              📝
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -663,36 +612,6 @@ export function CalendarTodayView({
             </div>
           )}
         </>
-      )}
-
-      {/* Notes Modal */}
-      {notesModalOpen && selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium mb-4">Session Notes</h3>
-            <textarea
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              className="w-full h-32 p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Add your notes here..."
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setNotesModalOpen(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveNotes}
-                disabled={savingNotes}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-              >
-                {savingNotes ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Warning Modal for Recurring Groups */}
