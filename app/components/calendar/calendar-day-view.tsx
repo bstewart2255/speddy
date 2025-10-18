@@ -12,18 +12,18 @@ import { toDateKeyLocal } from '../../utils/date-helpers';
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 
-interface CalendarTodayViewProps {
+interface CalendarDayViewProps {
   sessions: ScheduleSession[];
   students: Map<string, { initials: string; grade_level?: string }>;
   onSessionClick?: (session: ScheduleSession) => void;
-  currentDate?: Date;  
+  currentDate?: Date;
   holidays?: Array<{ date: string; name?: string }>;
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
 }
 
-export function CalendarTodayView({
+export function CalendarDayView({
   sessions,
   students,
   onSessionClick,
@@ -32,7 +32,7 @@ export function CalendarTodayView({
   calendarEvents = [],
   onAddEvent,
   onEventClick
-}: CalendarTodayViewProps) {
+}: CalendarDayViewProps) {
   const { showToast } = useToast();
 
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
