@@ -616,11 +616,13 @@ export function CalendarDayView({
 
                           <div className="flex items-center gap-3">
                             {(() => {
-                              // Check if this is a cross-provider assignment
-                              const isAssignedToMe = session.provider_id !== providerId;
+                              // Check if this is a cross-provider assignment:
+                              // 1. Session belongs to another provider
+                              // 2. Current user's role matches the delivered_by (they're assigned to deliver it)
+                              const isAssignedToMe = session.provider_id !== providerId && canUserGroupSession(session);
 
                               if (isAssignedToMe) {
-                                // Provider assigned to deliver another provider's session
+                                // Current user assigned to deliver another provider's session
                                 return (
                                   <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">
                                     Assigned

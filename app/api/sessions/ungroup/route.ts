@@ -44,19 +44,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Verify all sessions belong to the user
-    const invalidSessions = existingSessions?.filter(s => s.provider_id !== userId);
-    if (invalidSessions && invalidSessions.length > 0) {
-      log.warn('Unauthorized ungrouping attempt', {
-        userId,
-        invalidSessionIds: invalidSessions.map(s => s.id)
-      });
-      perf.end({ success: false, error: 'unauthorized' });
-      return NextResponse.json(
-        { error: 'Unauthorized: Some sessions do not belong to you' },
-        { status: 403 }
-      );
-    }
+    // Note: Authorization is enforced via delivered_by validation below and RLS policies
 
     // Get user's role to validate delivered_by
     const { data: userProfile, error: profileError } = await supabase
@@ -115,9 +103,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       .from('schedule_sessions')
       .update({
         group_id: null,
-        group_name: null
+        group_name: null,
+        updated_at: new Date().toISOString()
       })
-      .eq('provider_id', userId)
       .in('id', sessionIds)
       .select('id, student_id, day_of_week, start_time, session_date');
     updatePerf.end({ success: !updateError });
@@ -153,9 +141,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .from('schedule_sessions')
           .update({
             group_id: null,
-            group_name: null
+            group_name: null,
+            updated_at: new Date().toISOString()
           })
-          .eq('provider_id', userId)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
