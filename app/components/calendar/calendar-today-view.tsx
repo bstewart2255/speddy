@@ -39,7 +39,6 @@ export function CalendarTodayView({
   const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-  const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -185,50 +184,6 @@ export function CalendarTodayView({
     const ampm = h >= 12 ? 'PM' : 'AM';
     const displayHours = h > 12 ? h - 12 : h === 0 ? 12 : h;
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-  };
-
-  // Handler for completing/uncompleting a session
-  const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
-    setUpdatingCompletion(sessionId);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const session = sessionsState.find(s => s.id === sessionId);
-      if (!session) return;
-
-      const updates = {
-        completed_at: completed ? new Date().toISOString() : null,
-        completed_by: completed ? user.id : null,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update(updates)
-        .eq('id', sessionId);
-
-      if (error) throw error;
-
-      // Update local state immediately
-      setSessionsState(prev =>
-        prev.map(s =>
-          s.id === sessionId
-            ? { ...s, ...updates }
-            : s
-        )
-      );
-
-      showToast(
-        completed ? 'Session marked as completed' : 'Session marked as incomplete',
-        'success'
-      );
-    } catch (error) {
-      console.error('Error updating session completion:', error);
-      showToast('Failed to update session', 'error');
-    } finally {
-      setUpdatingCompletion(null);
-    }
   };
 
   // Handler for saving notes
@@ -674,17 +629,6 @@ export function CalendarTodayView({
                             }`}>
                               {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
                             </span>
-
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!session.completed_at}
-                                onChange={() => handleCompleteToggle(session.id, !session.completed_at)}
-                                disabled={updatingCompletion === session.id}
-                                className="rounded border-gray-300"
-                              />
-                              <span className="text-gray-700">Completed</span>
-                            </label>
 
                             <button
                               onClick={() => {
