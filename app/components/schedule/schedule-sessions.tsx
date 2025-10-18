@@ -101,9 +101,10 @@ Continue?`;
         : allStudents;
 
       // Get existing sessions to determine which students need scheduling
+      // IMPORTANT: We select all fields to ensure accurate counting and prevent duplicate sessions
       const { data: existingSessions } = await supabase
         .from('schedule_sessions')
-        .select('student_id')
+        .select('*')
         .eq('provider_id', user.id);
 
       // Count sessions per student
