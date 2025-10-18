@@ -8,22 +8,23 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
+import { normalizeDeliveredBy } from '@/lib/auth/role-utils';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 
-interface CalendarTodayViewProps {
+interface CalendarDayViewProps {
   sessions: ScheduleSession[];
   students: Map<string, { initials: string; grade_level?: string }>;
   onSessionClick?: (session: ScheduleSession) => void;
-  currentDate?: Date;  
+  currentDate?: Date;
   holidays?: Array<{ date: string; name?: string }>;
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
 }
 
-export function CalendarTodayView({
+export function CalendarDayView({
   sessions,
   students,
   onSessionClick,
@@ -32,14 +33,9 @@ export function CalendarTodayView({
   calendarEvents = [],
   onAddEvent,
   onEventClick
-}: CalendarTodayViewProps) {
+}: CalendarDayViewProps) {
   const { showToast } = useToast();
 
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
-  const [notesValue, setNotesValue] = useState('');
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [updatingCompletion, setUpdatingCompletion] = useState<string | null>(null);
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -82,6 +78,16 @@ export function CalendarTodayView({
   const timeToMinutes = (time: string): number => {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  };
+
+  // Helper function to check if current user can group a session
+  const canUserGroupSession = (session: ScheduleSession): boolean => {
+    if (!userProfile?.role) return false;
+
+    // Map user role to delivered_by value using centralized function
+    const expectedDeliveredBy = normalizeDeliveredBy(userProfile.role);
+
+    return session.delivered_by === expectedDeliveredBy;
   };
 
   // Load sessions and user info for the current date
@@ -187,85 +193,6 @@ export function CalendarTodayView({
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
 
-  // Handler for completing/uncompleting a session
-  const handleCompleteToggle = async (sessionId: string, completed: boolean) => {
-    setUpdatingCompletion(sessionId);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const session = sessionsState.find(s => s.id === sessionId);
-      if (!session) return;
-
-      const updates = {
-        completed_at: completed ? new Date().toISOString() : null,
-        completed_by: completed ? user.id : null,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update(updates)
-        .eq('id', sessionId);
-
-      if (error) throw error;
-
-      // Update local state immediately
-      setSessionsState(prev =>
-        prev.map(s =>
-          s.id === sessionId
-            ? { ...s, ...updates }
-            : s
-        )
-      );
-
-      showToast(
-        completed ? 'Session marked as completed' : 'Session marked as incomplete',
-        'success'
-      );
-    } catch (error) {
-      console.error('Error updating session completion:', error);
-      showToast('Failed to update session', 'error');
-    } finally {
-      setUpdatingCompletion(null);
-    }
-  };
-
-  // Handler for saving notes
-  const handleSaveNotes = async () => {
-    if (!selectedSession) return;
-
-    setSavingNotes(true);
-    try {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .update({
-          session_notes: notesValue.trim() || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedSession.id);
-
-      if (error) throw error;
-
-      // Update local state
-      setSessionsState(prev =>
-        prev.map(s =>
-          s.id === selectedSession.id
-            ? { ...s, session_notes: notesValue.trim() || null }
-            : s
-        )
-      );
-
-      showToast('Notes saved successfully', 'success');
-      setNotesModalOpen(false);
-    } catch (error) {
-      console.error('Error saving notes:', error);
-      showToast('Failed to save notes', 'error');
-    } finally {
-      setSavingNotes(false);
-    }
-  };
-
   // Handler for checkbox selection
   const handleSessionSelect = (sessionId: string, checked: boolean) => {
     setSelectedSessionIds(prev => {
@@ -285,6 +212,21 @@ export function CalendarTodayView({
       showToast('Please select at least 2 sessions to create a group', 'error');
       return;
     }
+
+    // Validate all selected sessions can be grouped by current user
+    const selectedSessions = Array.from(selectedSessionIds)
+      .map(id => sessionsState.find(s => s.id === id))
+      .filter(Boolean) as ScheduleSession[];
+
+    const invalidSessions = selectedSessions.filter(s => !canUserGroupSession(s));
+    if (invalidSessions.length > 0) {
+      showToast(
+        'You can only group sessions that you are assigned to deliver',
+        'error'
+      );
+      return;
+    }
+
     setWarningModalOpen(true);
   };
 
@@ -646,15 +588,17 @@ export function CalendarTodayView({
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            {/* Selection checkbox */}
-                            <input
-                              type="checkbox"
-                              checked={selectedSessionIds.has(session.id)}
-                              onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              title="Select for grouping"
-                              aria-label="Select session for grouping"
-                            />
+                            {/* Selection checkbox - only show if user can group this session */}
+                            {canUserGroupSession(session) && (
+                              <input
+                                type="checkbox"
+                                checked={selectedSessionIds.has(session.id)}
+                                onChange={(e) => handleSessionSelect(session.id, e.target.checked)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                title="Select for grouping"
+                                aria-label="Select session for grouping"
+                              />
+                            )}
 
                             <div className="text-sm font-medium text-gray-900">
                               {formatTime(session.start_time)} - {formatTime(session.end_time)}
@@ -665,38 +609,34 @@ export function CalendarTodayView({
                           </div>
 
                           <div className="flex items-center gap-3">
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              session.delivered_by === 'sea'
-                                ? 'bg-green-100 text-green-700'
-                                : session.delivered_by === 'specialist'
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-blue-100 text-blue-700'
-                            }`}>
-                              {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
-                            </span>
+                            {(() => {
+                              // Check if this is a cross-provider assignment:
+                              // 1. Session belongs to another provider
+                              // 2. Current user's role matches the delivered_by (they're assigned to deliver it)
+                              const isAssignedToMe = session.provider_id !== providerId && canUserGroupSession(session);
 
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!session.completed_at}
-                                onChange={() => handleCompleteToggle(session.id, !session.completed_at)}
-                                disabled={updatingCompletion === session.id}
-                                className="rounded border-gray-300"
-                              />
-                              <span className="text-gray-700">Completed</span>
-                            </label>
+                              if (isAssignedToMe) {
+                                // Current user assigned to deliver another provider's session
+                                return (
+                                  <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">
+                                    Assigned
+                                  </span>
+                                );
+                              }
 
-                            <button
-                              onClick={() => {
-                                setSelectedSession(session);
-                                setNotesValue(session.session_notes || '');
-                                setNotesModalOpen(true);
-                              }}
-                              className="text-gray-400 hover:text-gray-600"
-                              title={session.session_notes ? 'Edit notes' : 'Add notes'}
-                            >
-                              📝
-                            </button>
+                              // Normal delivered_by badge
+                              return (
+                                <span className={`text-xs px-2 py-1 rounded ${
+                                  session.delivered_by === 'sea'
+                                    ? 'bg-green-100 text-green-700'
+                                    : session.delivered_by === 'specialist'
+                                      ? 'bg-purple-100 text-purple-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                  {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -719,36 +659,6 @@ export function CalendarTodayView({
             </div>
           )}
         </>
-      )}
-
-      {/* Notes Modal */}
-      {notesModalOpen && selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium mb-4">Session Notes</h3>
-            <textarea
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              className="w-full h-32 p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Add your notes here..."
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setNotesModalOpen(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveNotes}
-                disabled={savingNotes}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-              >
-                {savingNotes ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Warning Modal for Recurring Groups */}

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
-import { CalendarTodayView } from "../../../components/calendar/calendar-today-view";
+import { CalendarDayView } from "../../../components/calendar/calendar-day-view";
 import { CalendarWeekView } from "../../../components/calendar/calendar-week-view";
 import { CalendarMonthView } from "../../../components/calendar/calendar-month-view";
 import { CalendarEventModal } from "../../../components/calendar/calendar-event-modal";
@@ -11,7 +11,7 @@ import { useSchool } from "../../../components/providers/school-context";
 import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
 
-type ViewType = 'today' | 'week' | 'month';
+type ViewType = 'day' | 'week' | 'month';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -24,7 +24,7 @@ interface Student {
 }
 
 export default function CalendarPage() {
-  const [currentView, setCurrentView] = useState<ViewType>('today');
+  const [currentView, setCurrentView] = useState<ViewType>('day');
   const [sessions, setSessions] = useState<ScheduleSession[]>([]);
   const [students, setStudents] = useState<Map<string, Student>>(new Map());
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -438,14 +438,14 @@ export default function CalendarPage() {
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button
-                onClick={() => setCurrentView('today')}
+                onClick={() => setCurrentView('day')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentView === 'today'
+                  currentView === 'day'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Today
+                Day
               </button>
               <button
                 onClick={() => setCurrentView('week')}
@@ -478,7 +478,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => {
-                  if (currentView === 'today') handlePreviousDay();
+                  if (currentView === 'day') handlePreviousDay();
                   else if (currentView === 'week') handlePreviousWeek();
                   else if (currentView === 'month') handlePreviousMonth();
                 }}
@@ -492,7 +492,7 @@ export default function CalendarPage() {
 
               <div className="text-center">
                 <h2 className="text-lg font-semibold">
-                  {currentView === 'today' && currentDate.toLocaleDateString('en-US', {
+                  {currentView === 'day' && currentDate.toLocaleDateString('en-US', {
                     weekday: 'long',
                     year: 'numeric',
                     month: 'long',
@@ -508,7 +508,7 @@ export default function CalendarPage() {
                     year: 'numeric'
                   })}
                 </h2>
-                {((currentView === 'today' && currentDate.toDateString() !== new Date().toDateString()) ||
+                {((currentView === 'day' && currentDate.toDateString() !== new Date().toDateString()) ||
                   (currentView === 'week' && weekOffset !== 0) ||
                   (currentView === 'month' && monthOffset !== 0)) && (
                   <button
@@ -522,7 +522,7 @@ export default function CalendarPage() {
 
               <button
                 onClick={() => {
-                  if (currentView === 'today') handleNextDay();
+                  if (currentView === 'day') handleNextDay();
                   else if (currentView === 'week') handleNextWeek();
                   else if (currentView === 'month') handleNextMonth();
                 }}
@@ -535,9 +535,9 @@ export default function CalendarPage() {
               </button>
             </div>
 
-            {currentView === 'today' && (
+            {currentView === 'day' && (
               <ToastProvider>
-                <CalendarTodayView 
+                <CalendarDayView 
                   sessions={sessions} 
                   students={students}
                   onSessionClick={handleSessionClick}

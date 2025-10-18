@@ -4,6 +4,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withAuth } from '@/lib/api/with-auth';
+import { normalizeDeliveredBy } from '@/lib/auth/role-utils';
 
 // POST - Group sessions together
 export const POST = withAuth(async (request: NextRequest, userId: string) => {
@@ -43,10 +44,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     });
 
     // Update all sessions with the group ID and name
-    // First verify that all sessions belong to the current user
+    // First verify that all sessions belong to the current user and match delivered_by
     const { data: existingSessions, error: fetchError } = await supabase
       .from('schedule_sessions')
-      .select('id, provider_id')
+      .select('id, provider_id, delivered_by')
       .in('id', sessionIds);
 
     if (fetchError) {
@@ -58,16 +59,41 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Verify all sessions belong to the user
-    const invalidSessions = existingSessions?.filter(s => s.provider_id !== userId);
-    if (invalidSessions && invalidSessions.length > 0) {
-      log.warn('Unauthorized grouping attempt', {
-        userId,
-        invalidSessionIds: invalidSessions.map(s => s.id)
-      });
-      perf.end({ success: false, error: 'unauthorized' });
+    // Note: Authorization is enforced via delivered_by validation below and RLS policies
+
+    // Get user's role to validate delivered_by
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (profileError || !userProfile) {
+      log.error('Error fetching user profile', profileError, { userId });
+      perf.end({ success: false, error: 'database' });
       return NextResponse.json(
-        { error: 'Unauthorized: Some sessions do not belong to you' },
+        { error: 'Failed to verify user permissions' },
+        { status: 500 }
+      );
+    }
+
+    // Map role to expected delivered_by value using centralized function
+    const expectedDeliveredBy = normalizeDeliveredBy(userProfile.role);
+
+    // Verify all sessions have matching delivered_by
+    const mismatchedSessions = existingSessions?.filter(
+      s => s.delivered_by !== expectedDeliveredBy
+    );
+    if (mismatchedSessions && mismatchedSessions.length > 0) {
+      log.warn('Attempted to group sessions not assigned to user', {
+        userId,
+        userRole: userProfile.role,
+        expectedDeliveredBy,
+        mismatchedSessionIds: mismatchedSessions.map(s => s.id)
+      });
+      perf.end({ success: false, error: 'invalid_delivered_by' });
+      return NextResponse.json(
+        { error: 'You can only group sessions that you are assigned to deliver' },
         { status: 403 }
       );
     }
@@ -116,9 +142,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .from('schedule_sessions')
           .update({
             group_id: finalGroupId,
-            group_name: groupName.trim()
+            group_name: groupName.trim(),
+            updated_at: new Date().toISOString()
           })
-          .eq('provider_id', userId)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
