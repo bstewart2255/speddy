@@ -615,15 +615,32 @@ export function CalendarDayView({
                           </div>
 
                           <div className="flex items-center gap-3">
-                            <span className={`text-xs px-2 py-1 rounded ${
-                              session.delivered_by === 'sea'
-                                ? 'bg-green-100 text-green-700'
-                                : session.delivered_by === 'specialist'
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-blue-100 text-blue-700'
-                            }`}>
-                              {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
-                            </span>
+                            {(() => {
+                              // Check if this is a cross-provider assignment
+                              const isAssignedToMe = session.provider_id !== providerId;
+
+                              if (isAssignedToMe) {
+                                // Provider assigned to deliver another provider's session
+                                return (
+                                  <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">
+                                    Assigned
+                                  </span>
+                                );
+                              }
+
+                              // Normal delivered_by badge
+                              return (
+                                <span className={`text-xs px-2 py-1 rounded ${
+                                  session.delivered_by === 'sea'
+                                    ? 'bg-green-100 text-green-700'
+                                    : session.delivered_by === 'specialist'
+                                      ? 'bg-purple-100 text-purple-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                  {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
