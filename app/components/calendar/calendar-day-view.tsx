@@ -159,8 +159,17 @@ export function CalendarDayView({
 
   // Memoize filtered sessions for performance
   const filteredSessions = useMemo(
-    () => sessionsState.filter((s) => students.has(s.student_id)),
-    [sessionsState, students]
+    () => sessionsState.filter((s) => {
+      // Always include sessions assigned to this user, even if student isn't in their list
+      const isAssignedToMe = (
+        s.assigned_to_specialist_id === providerId ||
+        s.assigned_to_sea_id === providerId
+      );
+
+      // Include if student is in the list OR if session is assigned to this user
+      return students.has(s.student_id) || isAssignedToMe;
+    }),
+    [sessionsState, students, providerId]
   );
 
   // Check if current date is a holiday
