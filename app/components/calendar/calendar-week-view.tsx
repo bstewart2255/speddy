@@ -1606,31 +1606,6 @@ export function CalendarWeekView({
               </div>
 
               <div className="p-2 min-h-[400px]">
-                {/* Single Create Lesson Button Per Day */}
-                {!isHolidayDay && !isPast && sortedDaySessions.length > 0 && !hasAIContent && (
-                  <div className="mb-3">
-                    <button
-                      onClick={() => handleCreateDailyLesson(date, sortedDaySessions)}
-                      className="w-full text-sm bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md font-medium transition-colors"
-                      title="Create lessons for this day"
-                    >
-                      + Create Lesson
-                    </button>
-                  </div>
-                )}
-
-                {/* AI Lessons Summary Button */}
-                {!isHolidayDay && timeSlotGroups.size > 0 && hasAIContent && (
-                  <div className="mb-2">
-                    <button
-                      onClick={() => handleViewAllAILessons(date)}
-                      className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-3 rounded-md border border-purple-300 text-sm"
-                    >
-                      Saved AI Lesson
-                    </button>
-                  </div>
-                )}
-
                 {/* Manual Lessons Summary Button */}
                 {dayManualLessons.length > 0 && (
                   <div className="mb-2">
