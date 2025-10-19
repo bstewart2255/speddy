@@ -15,18 +15,18 @@ export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
  *
  * Mapping:
  * - 'sea' → 'sea'
- * - 'speech', 'ot', 'counseling', 'specialist' → 'specialist'
- * - 'provider', 'resource', 'admin', etc. → 'provider'
+ * - 'resource', 'speech', 'ot', 'counseling', 'specialist' → 'specialist'
+ * - 'provider', 'admin', etc. → 'provider'
  */
 export function normalizeDeliveredBy(role: string): DeliveredByRole {
   if (role === 'sea') {
     return 'sea';
   }
 
-  if (['specialist', 'speech', 'ot', 'counseling'].includes(role)) {
+  if (['resource', 'specialist', 'speech', 'ot', 'counseling'].includes(role)) {
     return 'specialist';
   }
 
-  // Default to 'provider' for 'provider', 'resource', 'admin', and any other roles
+  // Default to 'provider' for 'provider', 'admin', and any other roles
   return 'provider';
 }
