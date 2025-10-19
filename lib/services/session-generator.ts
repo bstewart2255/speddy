@@ -1,12 +1,42 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
+import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
 
+/**
+ * Format a Date object as a local YYYY-MM-DD string
+ * Avoids timezone issues with toISOString() which uses UTC
+ */
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export class SessionGenerator {
   private supabase = createClient();
+
+  /**
+   * Apply role-based filters to a Supabase query
+   * This adds OR conditions for assigned sessions based on user role
+   */
+  private applyRoleFilter<T>(
+    query: T,
+    providerId: string,
+    normalizedRole: string
+  ): T {
+    if (SPECIALIST_SOURCE_ROLES.includes(normalizedRole as any)) {
+      return (query as any).or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
+    } else if (normalizedRole === 'sea') {
+      return (query as any).or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
+    } else {
+      return (query as any).eq('provider_id', providerId);
+    }
+  }
 
   /**
    * Get sessions for a specific date range
@@ -16,23 +46,43 @@ export class SessionGenerator {
   async getSessionsForDateRange(
     providerId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    userRole?: string
   ): Promise<ScheduleSession[]> {
     // First, get all instance sessions (where session_date is NOT NULL)
-    const { data: instances } = await this.supabase
+    let instancesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .eq('provider_id', providerId)
-      .gte('session_date', startDate.toISOString().split('T')[0])
-      .lte('session_date', endDate.toISOString().split('T')[0])
+      .gte('session_date', formatLocalDate(startDate))
+      .lte('session_date', formatLocalDate(endDate))
       .not('session_date', 'is', null);
 
+    // Include sessions assigned to this user based on their role
+    const normalizedRole = (userRole || '').toLowerCase().trim();
+    instancesQuery = this.applyRoleFilter(instancesQuery, providerId, normalizedRole);
+
+    const { data: instances, error: instancesError } = await instancesQuery;
+
+    if (instancesError) {
+      console.error('[SessionGenerator] Failed to fetch instances:', instancesError);
+      return [];
+    }
+
     // Get template sessions (where session_date is NULL)
-    const { data: templates } = await this.supabase
+    let templatesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .eq('provider_id', providerId)
       .is('session_date', null);
+
+    // Include templates assigned to this user based on their role
+    templatesQuery = this.applyRoleFilter(templatesQuery, providerId, normalizedRole);
+
+    const { data: templates, error: templatesError } = await templatesQuery;
+
+    if (templatesError) {
+      console.error('[SessionGenerator] Failed to fetch templates:', templatesError);
+      return instances || [];
+    }
 
     if (!templates || templates.length === 0) {
       return instances || [];
@@ -44,7 +94,7 @@ export class SessionGenerator {
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.getDay() || 7; // Convert Sunday to 7
-      const dateStr = currentDate.toISOString().split('T')[0];
+      const dateStr = formatLocalDate(currentDate);
 
       // Find templates for this day
       const dayTemplates = templates.filter(t => t.day_of_week === dayOfWeek);

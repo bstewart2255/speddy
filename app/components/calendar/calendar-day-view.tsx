@@ -43,6 +43,9 @@ export function CalendarDayView({
   const [providerId, setProviderId] = useState<string | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
 
+  // State for students fetched from assigned sessions
+  const [additionalStudents, setAdditionalStudents] = useState<Map<string, { initials: string; grade_level?: string }>>(new Map());
+
   // Grouping state
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
   const [warningModalOpen, setWarningModalOpen] = useState(false);
@@ -82,12 +85,20 @@ export function CalendarDayView({
 
   // Helper function to check if current user can group a session
   const canUserGroupSession = (session: ScheduleSession): boolean => {
-    if (!userProfile?.role) return false;
+    if (!providerId) return false;
 
-    // Map user role to delivered_by value using centralized function
-    const expectedDeliveredBy = normalizeDeliveredBy(userProfile.role);
+    // User can group sessions they are actually delivering
+    if (session.delivered_by === 'provider' && session.provider_id === providerId) {
+      return true;
+    }
+    if (session.delivered_by === 'specialist' && session.assigned_to_specialist_id === providerId) {
+      return true;
+    }
+    if (session.delivered_by === 'sea' && session.assigned_to_sea_id === providerId) {
+      return true;
+    }
 
-    return session.delivered_by === expectedDeliveredBy;
+    return false;
   };
 
   // Load sessions and user info for the current date
@@ -97,7 +108,7 @@ export function CalendarDayView({
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      
+
       setCurrentUser(user);
       setProviderId(user.id);
 
@@ -107,14 +118,15 @@ export function CalendarDayView({
         .select('role, school_site, school_district')
         .eq('id', user.id)
         .single();
-      
+
       setUserProfile(profile);
 
       // Get sessions for just this day
       const sessions = await sessionGenerator.getSessionsForDateRange(
         user.id,
         currentDate,
-        currentDate
+        currentDate,
+        profile?.role
       );
 
       setSessionsState(sessions);
@@ -123,10 +135,55 @@ export function CalendarDayView({
     loadSessions();
   }, [currentDate, sessionGenerator, supabase]);
 
+  // Fetch student data for assigned sessions (students that aren't in the prop)
+  React.useEffect(() => {
+    const fetchMissingStudents = async () => {
+      if (sessionsState.length === 0) return;
+
+      // Find student IDs that are in sessions but not in the students Map
+      // Filter out nulls and deduplicate
+      const missingStudentIds = Array.from(
+        new Set(
+          sessionsState
+            .map(s => s.student_id)
+            .filter((id): id is string => !!id && !students.has(id))
+        )
+      );
+
+      if (missingStudentIds.length === 0) return;
+
+      // Fetch the missing students
+      const { data: missingStudents, error: fetchError } = await supabase
+        .from('students')
+        .select('id, initials, grade_level')
+        .in('id', missingStudentIds);
+
+      if (fetchError) {
+        console.error('[Calendar Day View] Error fetching student data for assigned sessions:', fetchError);
+        return;
+      }
+
+      if (missingStudents && missingStudents.length > 0) {
+        setAdditionalStudents(prev => {
+          const newAdditionalStudents = new Map(prev);
+          missingStudents.forEach(student => {
+            newAdditionalStudents.set(student.id, {
+              initials: student.initials,
+              grade_level: student.grade_level || undefined
+            });
+          });
+          return newAdditionalStudents;
+        });
+      }
+    };
+
+    fetchMissingStudents();
+  }, [sessionsState, students, supabase]); // Remove additionalStudents from deps to avoid infinite loop
+
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
     const conflicts: Record<string, boolean> = {};
-    
+
     for (const session of sessionsState) {
       const validation = await sessionUpdateService.validateSessionMove({
         session,
@@ -135,10 +192,10 @@ export function CalendarDayView({
         targetEndTime: session.end_time,
         studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
       });
-      
+
       conflicts[session.id] = !validation.valid;
     }
-    
+
     setSessionConflicts(conflicts);
   }, [sessionsState]);
   
@@ -151,10 +208,30 @@ export function CalendarDayView({
     return () => clearTimeout(timer);
   }, [sessionsState, checkSessionConflicts]);
 
+  // Merge students from prop with additionally fetched students
+  const allStudents = useMemo(() => {
+    const merged = new Map(students);
+    additionalStudents.forEach((student, id) => {
+      if (!merged.has(id)) {
+        merged.set(id, student);
+      }
+    });
+    return merged;
+  }, [students, additionalStudents]);
+
   // Memoize filtered sessions for performance
   const filteredSessions = useMemo(
-    () => sessionsState.filter((s) => students.has(s.student_id)),
-    [sessionsState, students]
+    () => sessionsState.filter((s) => {
+      // Always include sessions assigned to this user, even if student isn't in their list
+      const isAssignedToMe = (
+        s.assigned_to_specialist_id === providerId ||
+        s.assigned_to_sea_id === providerId
+      );
+
+      // Include if student is in the merged list OR if session is assigned to this user
+      return allStudents.has(s.student_id) || isAssignedToMe;
+    }),
+    [sessionsState, allStudents, providerId]
   );
 
   // Check if current date is a holiday
@@ -326,7 +403,8 @@ export function CalendarDayView({
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
-        currentDate
+        currentDate,
+        userProfile?.role
       );
       console.log('Reloaded sessions:', updatedSessions);
       console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
@@ -399,7 +477,8 @@ export function CalendarDayView({
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
-        currentDate
+        currentDate,
+        userProfile?.role
       );
       setSessionsState(updatedSessions);
 
@@ -547,7 +626,7 @@ export function CalendarDayView({
                 filteredSessions
                   .sort((a, b) => a.start_time.localeCompare(b.start_time))
                   .map((session) => {
-                    const student = students.get(session.student_id);
+                    const student = allStudents.get(session.student_id);
                     const isGrouped = !!session.group_id;
                     const groupColor = isGrouped ? getGroupColor(session.group_id as string) : null;
 
