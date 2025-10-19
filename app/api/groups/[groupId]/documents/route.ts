@@ -3,19 +3,26 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
 
 // GET - Fetch all documents for a group
-export const GET = withAuth(async (
+export async function GET(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('get_group_documents', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     log.info('Fetching group documents', {
       userId,
@@ -85,19 +92,27 @@ export const GET = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
 
 // POST - Create a new document for a group
-export const POST = withAuth(async (
+export async function POST(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('create_group_document', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const body = await request.json();
     const { title, document_type, content, url, file_path } = body;
@@ -201,19 +216,27 @@ export const POST = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
 
 // PUT - Update an existing document
-export const PUT = withAuth(async (
+export async function PUT(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('update_group_document', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const body = await request.json();
     const { documentId, title, content, url, file_path } = body;
@@ -295,19 +318,27 @@ export const PUT = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
 
 // DELETE - Delete a document
-export const DELETE = withAuth(async (
+export async function DELETE(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('delete_group_document', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const searchParams = request.nextUrl.searchParams;
     const documentId = searchParams.get('documentId');
@@ -371,4 +402,4 @@ export const DELETE = withAuth(async (
       { status: 500 }
     );
   }
-});
+}

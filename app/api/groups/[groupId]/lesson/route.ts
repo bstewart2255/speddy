@@ -3,19 +3,26 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
 
 // GET - Fetch the lesson plan for a group
-export const GET = withAuth(async (
+export async function GET(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('get_group_lesson', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     log.info('Fetching group lesson', {
       userId,
@@ -87,19 +94,27 @@ export const GET = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
 
 // POST - Create or update lesson plan for a group
-export const POST = withAuth(async (
+export async function POST(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('save_group_lesson', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const body = await request.json();
     const {
@@ -251,19 +266,27 @@ export const POST = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
 
 // DELETE - Delete the lesson plan for a group
-export const DELETE = withAuth(async (
+export async function DELETE(
   request: NextRequest,
-  userId: string,
-  context: { params: { groupId: string } }
-) => {
+  props: { params: Promise<{ groupId: string }> }
+) {
   const perf = measurePerformanceWithAlerts('delete_group_lesson', 'api');
-  const { groupId } = context.params;
+  const params = await props.params;
+  const { groupId } = params;
 
   try {
     const supabase = await createClient();
+
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = user.id;
 
     log.info('Deleting group lesson', {
       userId,
@@ -331,4 +354,4 @@ export const DELETE = withAuth(async (
       { status: 500 }
     );
   }
-});
+}
