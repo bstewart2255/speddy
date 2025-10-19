@@ -153,12 +153,20 @@ export function CalendarDayView({
       if (missingStudentIds.length === 0) return;
 
       console.log('[Calendar Day View] Fetching data for', missingStudentIds.length, 'missing students');
+      console.log('[Calendar Day View] Missing student IDs:', missingStudentIds);
 
       // Fetch the missing students
-      const { data: missingStudents } = await supabase
+      const { data: missingStudents, error: fetchError } = await supabase
         .from('students')
         .select('id, initials, grade_level')
         .in('id', missingStudentIds);
+
+      if (fetchError) {
+        console.error('[Calendar Day View] Error fetching missing students:', fetchError);
+        return;
+      }
+
+      console.log('[Calendar Day View] Fetched students response:', missingStudents);
 
       if (missingStudents && missingStudents.length > 0) {
         console.log('[Calendar Day View] Loaded', missingStudents.length, 'missing students');
@@ -170,11 +178,13 @@ export function CalendarDayView({
           });
         });
         setAdditionalStudents(newAdditionalStudents);
+      } else {
+        console.warn('[Calendar Day View] No students returned from query - possible RLS issue?');
       }
     };
 
     fetchMissingStudents();
-  }, [sessionsState, students, supabase, additionalStudents]);
+  }, [sessionsState, students, supabase]); // Remove additionalStudents from deps to avoid infinite loop
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
