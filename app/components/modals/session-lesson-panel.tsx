@@ -27,47 +27,15 @@ export function SessionLessonPanel({
   const [subject, setSubject] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Fetch lesson on mount
+  // Note: We don't auto-fetch lessons for individual sessions because the current
+  // lesson storage system doesn't distinguish between group lessons, time-slot lessons,
+  // and individual session lessons. This could pull in lessons meant for groups.
+  // Users must explicitly create a lesson for this specific session.
+
   useEffect(() => {
-    fetchLesson();
-  }, [session.id]);
-
-  const fetchLesson = async () => {
-    setLoading(true);
-    try {
-      // Fetch lessons for this specific session date and time slot
-      const sessionDate = session.session_date || new Date().toISOString().split('T')[0];
-      const timeSlot = `${session.start_time}-${session.end_time}`;
-
-      const response = await fetch(`/api/save-lesson?date=${sessionDate}&timeSlot=${encodeURIComponent(timeSlot)}&studentId=${session.student_id}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        const lessons = data.lessons || [];
-
-        // Find the most recent lesson for this session
-        if (lessons.length > 0) {
-          const sessionLesson = lessons[0];
-          setLesson(sessionLesson);
-          setTitle(sessionLesson.title || '');
-          setSubject(sessionLesson.subject || '');
-          setNotes(sessionLesson.notes || '');
-
-          // Handle content based on type (JSONB or text)
-          if (typeof sessionLesson.content === 'object') {
-            setContent(JSON.stringify(sessionLesson.content, null, 2));
-          } else {
-            setContent(sessionLesson.content || '');
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching lesson:', error);
-      // Don't show error toast for missing lessons - it's normal
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Just set loading to false - no auto-fetch
+    setLoading(false);
+  }, []);
 
   const handleSaveLesson = async () => {
     if (!content.trim()) {
@@ -136,12 +104,12 @@ export function SessionLessonPanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-gray-500">Loading lesson...</div>
+        <div className="text-gray-500">Loading...</div>
       </div>
     );
   }
 
-  // No lesson exists and not editing - show create button
+  // No lesson exists - show create button
   if (!lesson && !editing) {
     return (
       <div className="space-y-4">
