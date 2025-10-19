@@ -141,9 +141,14 @@ export function CalendarDayView({
       if (sessionsState.length === 0) return;
 
       // Find student IDs that are in sessions but not in the students Map
-      const missingStudentIds = sessionsState
-        .map(s => s.student_id)
-        .filter(studentId => !students.has(studentId));
+      // Filter out nulls and deduplicate
+      const missingStudentIds = Array.from(
+        new Set(
+          sessionsState
+            .map(s => s.student_id)
+            .filter((id): id is string => !!id && !students.has(id))
+        )
+      );
 
       if (missingStudentIds.length === 0) return;
 
@@ -159,14 +164,16 @@ export function CalendarDayView({
       }
 
       if (missingStudents && missingStudents.length > 0) {
-        const newAdditionalStudents = new Map(additionalStudents);
-        missingStudents.forEach(student => {
-          newAdditionalStudents.set(student.id, {
-            initials: student.initials,
-            grade_level: student.grade_level || undefined
+        setAdditionalStudents(prev => {
+          const newAdditionalStudents = new Map(prev);
+          missingStudents.forEach(student => {
+            newAdditionalStudents.set(student.id, {
+              initials: student.initials,
+              grade_level: student.grade_level || undefined
+            });
           });
+          return newAdditionalStudents;
         });
-        setAdditionalStudents(newAdditionalStudents);
       }
     };
 

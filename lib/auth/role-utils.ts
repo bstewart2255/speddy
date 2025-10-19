@@ -8,6 +8,12 @@
 export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
 
 /**
+ * Centralized list of roles that map to 'specialist' delivered_by value
+ * Export this to avoid duplication across the codebase
+ */
+export const SPECIALIST_SOURCE_ROLES = ['resource', 'specialist', 'speech', 'ot', 'counseling'] as const;
+
+/**
  * Normalizes a user role to the corresponding delivered_by value
  *
  * @param role - The user's role from the profiles table
@@ -19,11 +25,13 @@ export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
  * - 'provider', 'admin', etc. → 'provider'
  */
 export function normalizeDeliveredBy(role: string): DeliveredByRole {
-  if (role === 'sea') {
+  const normalizedRole = (role || '').toLowerCase().trim();
+
+  if (normalizedRole === 'sea') {
     return 'sea';
   }
 
-  if (['resource', 'specialist', 'speech', 'ot', 'counseling'].includes(role)) {
+  if (SPECIALIST_SOURCE_ROLES.includes(normalizedRole as any)) {
     return 'specialist';
   }
 
