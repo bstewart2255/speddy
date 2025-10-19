@@ -19,6 +19,13 @@ export class SessionGenerator {
     endDate: Date,
     userRole?: string
   ): Promise<ScheduleSession[]> {
+    console.log('[SessionGenerator] getSessionsForDateRange called with:', {
+      providerId,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      userRole
+    });
+
     // First, get all instance sessions (where session_date is NOT NULL)
     let instancesQuery = this.supabase
       .from('schedule_sessions')
@@ -29,14 +36,18 @@ export class SessionGenerator {
 
     // Include sessions assigned to this user based on their role
     if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(userRole || '')) {
+      console.log('[SessionGenerator] Using specialist OR query for user:', providerId);
       instancesQuery = instancesQuery.or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
     } else if (userRole === 'sea') {
+      console.log('[SessionGenerator] Using SEA OR query for user:', providerId);
       instancesQuery = instancesQuery.or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
     } else {
+      console.log('[SessionGenerator] Using simple provider_id query for user:', providerId);
       instancesQuery = instancesQuery.eq('provider_id', providerId);
     }
 
     const { data: instances } = await instancesQuery;
+    console.log('[SessionGenerator] Instance sessions found:', instances?.length || 0);
 
     // Get template sessions (where session_date is NULL)
     let templatesQuery = this.supabase
@@ -46,14 +57,21 @@ export class SessionGenerator {
 
     // Include templates assigned to this user based on their role
     if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(userRole || '')) {
+      console.log('[SessionGenerator] Using specialist OR query for templates:', providerId);
       templatesQuery = templatesQuery.or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
     } else if (userRole === 'sea') {
+      console.log('[SessionGenerator] Using SEA OR query for templates:', providerId);
       templatesQuery = templatesQuery.or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
     } else {
+      console.log('[SessionGenerator] Using simple provider_id query for templates:', providerId);
       templatesQuery = templatesQuery.eq('provider_id', providerId);
     }
 
     const { data: templates } = await templatesQuery;
+    console.log('[SessionGenerator] Template sessions found:', templates?.length || 0);
+    if (templates && templates.length > 0) {
+      console.log('[SessionGenerator] Template sessions:', templates);
+    }
 
     if (!templates || templates.length === 0) {
       return instances || [];

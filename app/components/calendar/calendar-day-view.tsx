@@ -97,7 +97,8 @@ export function CalendarDayView({
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      
+
+      console.log('[Calendar Day View] Loading sessions for user:', user.id);
       setCurrentUser(user);
       setProviderId(user.id);
 
@@ -107,10 +108,12 @@ export function CalendarDayView({
         .select('role, school_site, school_district')
         .eq('id', user.id)
         .single();
-      
+
+      console.log('[Calendar Day View] User profile:', profile);
       setUserProfile(profile);
 
       // Get sessions for just this day
+      console.log('[Calendar Day View] Fetching sessions for date:', currentDate, 'with role:', profile?.role);
       const sessions = await sessionGenerator.getSessionsForDateRange(
         user.id,
         currentDate,
@@ -118,6 +121,8 @@ export function CalendarDayView({
         profile?.role
       );
 
+      console.log('[Calendar Day View] Sessions returned:', sessions.length);
+      console.log('[Calendar Day View] Sessions detail:', sessions);
       setSessionsState(sessions);
     };
 
