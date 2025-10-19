@@ -10,6 +10,7 @@ import { SessionGenerator } from '@/lib/services/session-generator';
 import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
 import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
 import { GroupDetailsModal } from "../modals/group-details-modal";
+import { SessionDetailsModal } from "../modals/session-details-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
@@ -131,6 +132,10 @@ export function CalendarWeekView({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedGroupName, setSelectedGroupName] = useState<string>('');
   const [selectedGroupSessions, setSelectedGroupSessions] = useState<ScheduleSession[]>([]);
+
+  // State for session details modal
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -543,6 +548,12 @@ export function CalendarWeekView({
     setSelectedGroupName(groupName);
     setSelectedGroupSessions(sessions);
     setGroupModalOpen(true);
+  };
+
+  // Handler for opening session details modal
+  const handleOpenSessionModal = (session: ScheduleSession) => {
+    setSelectedSession(session);
+    setSessionModalOpen(true);
   };
 
   // Simplified day color calculations - only holidays and past dates
@@ -1745,7 +1756,10 @@ export function CalendarWeekView({
                           const student = students.get(session.student_id);
                           return (
                             <div key={session.id} className="mb-2">
-                              <div className="bg-white border border-gray-200 rounded p-2 text-xs hover:border-gray-300 transition-colors">
+                              <div
+                                onClick={() => handleOpenSessionModal(session)}
+                                className="bg-white border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors cursor-pointer"
+                              >
                                 <div className="font-medium text-gray-900">
                                   {formatTime(session.start_time)}
                                 </div>
@@ -1947,6 +1961,19 @@ export function CalendarWeekView({
           groupName={selectedGroupName}
           sessions={selectedGroupSessions}
           students={students}
+        />
+      )}
+
+      {/* Session Details Modal */}
+      {selectedSession && (
+        <SessionDetailsModal
+          isOpen={sessionModalOpen}
+          onClose={() => {
+            setSessionModalOpen(false);
+            setSelectedSession(null);
+          }}
+          session={selectedSession}
+          student={students.get(selectedSession.student_id)}
         />
       )}
     </div>
