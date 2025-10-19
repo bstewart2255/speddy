@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Database } from '../../../src/types/database';
+import { SessionLessonPanel } from './session-lesson-panel';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -118,14 +119,10 @@ export function SessionDetailsModal({
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'lesson' && (
-            <div className="space-y-4">
-              <p className="text-gray-600">
-                Lesson plan functionality for individual sessions coming soon.
-              </p>
-              <p className="text-sm text-gray-500">
-                This tab will allow you to create and view lesson plans for this specific session.
-              </p>
-            </div>
+            <SessionLessonPanel
+              session={session}
+              studentInitials={student?.initials || '?'}
+            />
           )}
 
           {activeTab === 'documents' && (
