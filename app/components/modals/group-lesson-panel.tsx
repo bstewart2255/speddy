@@ -24,7 +24,6 @@ export function GroupLessonPanel({
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
   // Form state for manual lesson creation/editing
   const [title, setTitle] = useState('');
@@ -100,84 +99,6 @@ export function GroupLessonPanel({
     }
   };
 
-  const handleGenerateAILesson = async () => {
-    setGenerating(true);
-    try {
-      // Get unique student data from sessions
-      const studentData = sessions
-        .map(session => {
-          const student = students.get(session.student_id);
-          return {
-            id: session.student_id,
-            initials: student?.initials || '?',
-            grade_level: student?.grade_level || ''
-          };
-        })
-        .filter((s, index, self) =>
-          index === self.findIndex((t) => t.id === s.id)
-        );
-
-      // Calculate average duration
-      const avgDuration = Math.round(
-        sessions.reduce((sum, s) => {
-          const start = s.start_time.split(':').map(Number);
-          const end = s.end_time.split(':').map(Number);
-          const duration = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
-          return sum + duration;
-        }, 0) / sessions.length
-      );
-
-      // Use existing lesson generation API
-      const response = await fetch('/api/lessons/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          students: studentData.map(s => ({
-            id: s.id,
-            grade: s.grade_level
-          })),
-          subject: 'English Language Arts', // Default, could be made configurable
-          subjectType: 'ela',
-          duration: avgDuration,
-          topic: `Lesson for ${groupName}`,
-          teacherRole: 'resource', // Could be passed from user profile
-          groupId: groupId
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to generate AI lesson');
-
-      const data = await response.json();
-
-      if (data.lesson) {
-        // Save the generated lesson to the group
-        const saveResponse = await fetch(`/api/groups/${groupId}/lesson`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: `AI-Generated Lesson for ${groupName}`,
-            content: data.lesson,
-            lesson_source: 'ai_generated',
-            subject: 'English Language Arts',
-            ai_prompt: data.prompt || '',
-            duration_minutes: avgDuration
-          })
-        });
-
-        if (!saveResponse.ok) throw new Error('Failed to save AI lesson');
-
-        const savedData = await saveResponse.json();
-        setLesson(savedData.lesson);
-
-        showToast('AI lesson generated and saved successfully', 'success');
-      }
-    } catch (error) {
-      console.error('Error generating AI lesson:', error);
-      showToast('Failed to generate AI lesson', 'error');
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   const handleDeleteLesson = async () => {
     if (!confirm('Are you sure you want to delete this lesson?')) return;
@@ -211,7 +132,7 @@ export function GroupLessonPanel({
     );
   }
 
-  // No lesson exists and not editing - show options
+  // No lesson exists and not editing - show create button
   if (!lesson && !editing) {
     return (
       <div className="space-y-4">
@@ -219,32 +140,12 @@ export function GroupLessonPanel({
           <p className="text-gray-600 mb-6">
             No lesson plan created for this group yet
           </p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={handleGenerateAILesson}
-              disabled={generating}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Generating...</span>
-                </>
-              ) : (
-                <>
-                  <span>✨</span>
-                  <span>Generate AI Lesson</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => setEditing(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-            >
-              <span>📝</span>
-              <span>Create Manual Lesson</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Create Lesson
+          </button>
         </div>
       </div>
     );
