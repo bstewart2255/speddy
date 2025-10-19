@@ -109,7 +109,6 @@ export function CalendarDayView({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      console.log('[Calendar Day View] Loading sessions for user:', user.id);
       setCurrentUser(user);
       setProviderId(user.id);
 
@@ -120,11 +119,9 @@ export function CalendarDayView({
         .eq('id', user.id)
         .single();
 
-      console.log('[Calendar Day View] User profile:', profile);
       setUserProfile(profile);
 
       // Get sessions for just this day
-      console.log('[Calendar Day View] Fetching sessions for date:', currentDate, 'with role:', profile?.role);
       const sessions = await sessionGenerator.getSessionsForDateRange(
         user.id,
         currentDate,
@@ -132,8 +129,6 @@ export function CalendarDayView({
         profile?.role
       );
 
-      console.log('[Calendar Day View] Sessions returned:', sessions.length);
-      console.log('[Calendar Day View] Sessions detail:', sessions);
       setSessionsState(sessions);
     };
 
@@ -152,9 +147,6 @@ export function CalendarDayView({
 
       if (missingStudentIds.length === 0) return;
 
-      console.log('[Calendar Day View] Fetching data for', missingStudentIds.length, 'missing students');
-      console.log('[Calendar Day View] Missing student IDs:', missingStudentIds);
-
       // Fetch the missing students
       const { data: missingStudents, error: fetchError } = await supabase
         .from('students')
@@ -162,14 +154,11 @@ export function CalendarDayView({
         .in('id', missingStudentIds);
 
       if (fetchError) {
-        console.error('[Calendar Day View] Error fetching missing students:', fetchError);
+        console.error('[Calendar Day View] Error fetching student data for assigned sessions:', fetchError);
         return;
       }
 
-      console.log('[Calendar Day View] Fetched students response:', missingStudents);
-
       if (missingStudents && missingStudents.length > 0) {
-        console.log('[Calendar Day View] Loaded', missingStudents.length, 'missing students');
         const newAdditionalStudents = new Map(additionalStudents);
         missingStudents.forEach(student => {
           newAdditionalStudents.set(student.id, {
@@ -178,8 +167,6 @@ export function CalendarDayView({
           });
         });
         setAdditionalStudents(newAdditionalStudents);
-      } else {
-        console.warn('[Calendar Day View] No students returned from query - possible RLS issue?');
       }
     };
 
