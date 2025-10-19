@@ -16,23 +16,44 @@ export class SessionGenerator {
   async getSessionsForDateRange(
     providerId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    userRole?: string
   ): Promise<ScheduleSession[]> {
     // First, get all instance sessions (where session_date is NOT NULL)
-    const { data: instances } = await this.supabase
+    let instancesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .eq('provider_id', providerId)
       .gte('session_date', startDate.toISOString().split('T')[0])
       .lte('session_date', endDate.toISOString().split('T')[0])
       .not('session_date', 'is', null);
 
+    // Include sessions assigned to this user based on their role
+    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(userRole || '')) {
+      instancesQuery = instancesQuery.or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
+    } else if (userRole === 'sea') {
+      instancesQuery = instancesQuery.or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
+    } else {
+      instancesQuery = instancesQuery.eq('provider_id', providerId);
+    }
+
+    const { data: instances } = await instancesQuery;
+
     // Get template sessions (where session_date is NULL)
-    const { data: templates } = await this.supabase
+    let templatesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .eq('provider_id', providerId)
       .is('session_date', null);
+
+    // Include templates assigned to this user based on their role
+    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(userRole || '')) {
+      templatesQuery = templatesQuery.or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
+    } else if (userRole === 'sea') {
+      templatesQuery = templatesQuery.or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
+    } else {
+      templatesQuery = templatesQuery.eq('provider_id', providerId);
+    }
+
+    const { data: templates } = await templatesQuery;
 
     if (!templates || templates.length === 0) {
       return instances || [];

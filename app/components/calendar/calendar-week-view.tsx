@@ -196,7 +196,7 @@ export function CalendarWeekView({
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
 
-      const weekSessions = await sessionGenerator.getSessionsForDateRange(user.id, weekStart, weekEnd);
+      const weekSessions = await sessionGenerator.getSessionsForDateRange(user.id, weekStart, weekEnd, profile?.role);
 
       setSessionsState(weekSessions);
     };

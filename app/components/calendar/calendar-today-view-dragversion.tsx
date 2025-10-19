@@ -74,7 +74,8 @@ export function CalendarTodayView({
         const sessions = await sessionGenerator.getSessionsForDateRange(
           user.id,
           currentDate,
-          currentDate
+          currentDate,
+          profile?.role
         );
 
         setSessionsState(sessions);

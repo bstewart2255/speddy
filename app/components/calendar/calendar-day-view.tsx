@@ -114,7 +114,8 @@ export function CalendarDayView({
       const sessions = await sessionGenerator.getSessionsForDateRange(
         user.id,
         currentDate,
-        currentDate
+        currentDate,
+        profile?.role
       );
 
       setSessionsState(sessions);
@@ -326,7 +327,8 @@ export function CalendarDayView({
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
-        currentDate
+        currentDate,
+        userProfile?.role
       );
       console.log('Reloaded sessions:', updatedSessions);
       console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
@@ -399,7 +401,8 @@ export function CalendarDayView({
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
-        currentDate
+        currentDate,
+        userProfile?.role
       );
       setSessionsState(updatedSessions);
 
