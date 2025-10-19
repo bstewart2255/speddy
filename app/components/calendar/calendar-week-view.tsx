@@ -135,7 +135,7 @@ export function CalendarWeekView({
 
   // State for session details modal
   const [sessionModalOpen, setSessionModalOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  // Note: selectedSession is already declared above for notes modal, reusing it here
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -552,6 +552,8 @@ export function CalendarWeekView({
 
   // Handler for opening session details modal
   const handleOpenSessionModal = (session: ScheduleSession) => {
+    // Close notes modal if it's open
+    setNotesModalOpen(false);
     setSelectedSession(session);
     setSessionModalOpen(true);
   };
@@ -1783,53 +1785,6 @@ export function CalendarWeekView({
         })}
       </div>
 
-      {/* Modals */}
-      {selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium mb-4">Session Details</h3>
-            <div className="space-y-2 text-sm">
-              <p>
-                <strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}
-              </p>
-              <p>
-                <strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-              </p>
-              <p>
-                <strong>Type:</strong> {selectedSession.service_type}
-              </p>
-              {selectedSession.delivered_by === 'sea' && (
-                <p className="text-green-600">
-                  <strong>Delivered by SEA</strong>
-                </p>
-              )}
-              {sessionConflicts[selectedSession.id] && (
-                <p className="text-red-600">
-                  <strong>⚠️ This session has a scheduling conflict</strong>
-                </p>
-              )}
-              {selectedSession.session_notes && (
-                <div className="mt-2">
-                  <strong>Notes:</strong>
-                  <p className="mt-1 p-2 bg-gray-50 rounded">{selectedSession.session_notes}</p>
-                </div>
-              )}
-              {selectedSession.completed_at && (
-                <p className="text-green-600">
-                  <strong>✓ Completed</strong>
-                </p>
-              )}
-            </div>
-            <button
-              onClick={() => setSelectedSession(null)}
-              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* AI Content Modal */}
       <AIContentModal
         isOpen={modalOpen}
@@ -1965,12 +1920,12 @@ export function CalendarWeekView({
       )}
 
       {/* Session Details Modal */}
-      {selectedSession && (
+      {selectedSession && sessionModalOpen && (
         <SessionDetailsModal
           isOpen={sessionModalOpen}
           onClose={() => {
             setSessionModalOpen(false);
-            setSelectedSession(null);
+            // Don't clear selectedSession here in case notes modal needs it
           }}
           session={selectedSession}
           student={students.get(selectedSession.student_id)}
