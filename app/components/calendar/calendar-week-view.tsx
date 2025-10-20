@@ -9,6 +9,8 @@ import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
 import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
 import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
+import { GroupDetailsModal } from "../modals/group-details-modal";
+import { SessionDetailsModal } from "../modals/session-details-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
@@ -124,6 +126,16 @@ export function CalendarWeekView({
   const [enhancedModalLessons, setEnhancedModalLessons] = useState<any[]>([]);
   const [enhancedModalDate, setEnhancedModalDate] = useState<Date>(new Date());
   const [shouldShowModalAfterGeneration, setShouldShowModalAfterGeneration] = useState(false);
+
+  // State for group details modal
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupName, setSelectedGroupName] = useState<string>('');
+  const [selectedGroupSessions, setSelectedGroupSessions] = useState<ScheduleSession[]>([]);
+
+  // State for session details modal
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
+  // Note: selectedSession is already declared above for notes modal, reusing it here
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -492,23 +504,58 @@ export function CalendarWeekView({
   // Helper function to group sessions by time slots (using actual start-end times)
   const groupSessionsByTimeSlot = (sessions: ScheduleSession[]): Map<string, ScheduleSession[]> => {
     const timeSlotGroups = new Map<string, ScheduleSession[]>();
-    
+
     sessions.forEach(session => {
       if (!session.start_time || !session.end_time) return;
-      
+
       // Normalize time format by removing seconds if present
       const startTime = session.start_time.split(':').slice(0, 2).join(':');
       const endTime = session.end_time.split(':').slice(0, 2).join(':');
       const timeSlot = `${startTime}-${endTime}`;
-      
+
       if (!timeSlotGroups.has(timeSlot)) {
         timeSlotGroups.set(timeSlot, []);
       }
       timeSlotGroups.get(timeSlot)!.push(session);
     });
-    
+
     // Sort the map by time slot keys
     return new Map([...timeSlotGroups.entries()].sort());
+  };
+
+  // Helper function to aggregate sessions into groups and individual blocks
+  const aggregateSessionsForDisplay = (sessions: ScheduleSession[]) => {
+    const groups = new Map<string, ScheduleSession[]>();
+    const ungroupedSessions: ScheduleSession[] = [];
+
+    sessions.forEach(session => {
+      if (session.group_id) {
+        if (!groups.has(session.group_id)) {
+          groups.set(session.group_id, []);
+        }
+        groups.get(session.group_id)!.push(session);
+      } else {
+        ungroupedSessions.push(session);
+      }
+    });
+
+    return { groups, ungroupedSessions };
+  };
+
+  // Handler for opening group details modal
+  const handleOpenGroupModal = (groupId: string, groupName: string, sessions: ScheduleSession[]) => {
+    setSelectedGroupId(groupId);
+    setSelectedGroupName(groupName);
+    setSelectedGroupSessions(sessions);
+    setGroupModalOpen(true);
+  };
+
+  // Handler for opening session details modal
+  const handleOpenSessionModal = (session: ScheduleSession) => {
+    // Close notes modal if it's open
+    setNotesModalOpen(false);
+    setSelectedSession(session);
+    setSessionModalOpen(true);
   };
 
   // Simplified day color calculations - only holidays and past dates
@@ -1539,16 +1586,6 @@ export function CalendarWeekView({
           // Group sessions by time slot for display
           const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
 
-          // Debug logging for purple button condition (moved after timeSlotGroups is defined)
-          if (dateStr === '2025-09-16') {
-            console.log('[DEBUG] Purple button condition for 2025-09-16:', {
-              isHolidayDay,
-              timeSlotGroupsSize: timeSlotGroups.size,
-              hasAIContent,
-              dayAILessons,
-              showButton: !isHolidayDay && timeSlotGroups.size > 0 && hasAIContent
-            });
-          }
 
           return (
             <div
@@ -1572,31 +1609,6 @@ export function CalendarWeekView({
               </div>
 
               <div className="p-2 min-h-[400px]">
-                {/* Single Create Lesson Button Per Day */}
-                {!isHolidayDay && !isPast && sortedDaySessions.length > 0 && !hasAIContent && (
-                  <div className="mb-3">
-                    <button
-                      onClick={() => handleCreateDailyLesson(date, sortedDaySessions)}
-                      className="w-full text-sm bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md font-medium transition-colors"
-                      title="Create lessons for this day"
-                    >
-                      + Create Lesson
-                    </button>
-                  </div>
-                )}
-
-                {/* AI Lessons Summary Button */}
-                {!isHolidayDay && timeSlotGroups.size > 0 && hasAIContent && (
-                  <div className="mb-2">
-                    <button
-                      onClick={() => handleViewAllAILessons(date)}
-                      className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 font-medium py-2 px-3 rounded-md border border-purple-300 text-sm"
-                    >
-                      Saved AI Lesson
-                    </button>
-                  </div>
-                )}
-
                 {/* Manual Lessons Summary Button */}
                 {dayManualLessons.length > 0 && (
                   <div className="mb-2">
@@ -1658,7 +1670,7 @@ export function CalendarWeekView({
                   return null;
                 })()}
 
-                {/* Sessions */}
+                {/* Sessions and Groups */}
                 {isHolidayDay ? (
                   <p className="text-xs text-red-600 text-center mt-4">
                     Holiday - No sessions
@@ -1669,24 +1681,96 @@ export function CalendarWeekView({
                       No sessions
                     </p>
                   ) : (
-                    sortedDaySessions.map((session) => {
-                        const student = students.get(session.student_id);
-                        return (
-                          <div key={session.id} className="mb-2">
-                            <div className="bg-white border border-gray-200 rounded p-2 text-xs">
-                              <div className="font-medium text-gray-900">
-                                {formatTime(session.start_time)}
-                              </div>
-                              <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
-                                {student?.initials || '?'}
-                                {session.delivered_by === 'sea' && (
-                                  <div className="text-green-600 text-xs">SEA</div>
-                                )}
-                              </div>
+                    (() => {
+                      const { groups, ungroupedSessions } = aggregateSessionsForDisplay(sortedDaySessions);
+                      const allBlocks: Array<{ type: 'group' | 'session', data: any }> = [];
+
+                      // Add groups
+                      groups.forEach((groupSessions, groupId) => {
+                        const firstSession = groupSessions[0];
+                        if (firstSession) {
+                          allBlocks.push({
+                            type: 'group',
+                            data: {
+                              groupId,
+                              groupName: firstSession.group_name || 'Unnamed Group',
+                              sessions: groupSessions,
+                              earliestStart: groupSessions.reduce((min, s) =>
+                                s.start_time < min ? s.start_time : min, groupSessions[0].start_time),
+                              latestEnd: groupSessions.reduce((max, s) =>
+                                s.end_time > max ? s.end_time : max, groupSessions[0].end_time)
+                            }
+                          });
+                        }
+                      });
+
+                      // Add ungrouped sessions
+                      ungroupedSessions.forEach(session => {
+                        allBlocks.push({ type: 'session', data: session });
+                      });
+
+                      // Sort all blocks by start time
+                      allBlocks.sort((a, b) => {
+                        const aTime = a.type === 'group' ? a.data.earliestStart : a.data.start_time;
+                        const bTime = b.type === 'group' ? b.data.earliestStart : b.data.start_time;
+                        return aTime.localeCompare(bTime);
+                      });
+
+                      return allBlocks.map((block, idx) => {
+                        if (block.type === 'group') {
+                          const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
+                          const studentInitials = groupSessions
+                            .map(s => students.get(s.student_id)?.initials || '?')
+                            .filter((v, i, a) => a.indexOf(v) === i) // unique
+                            .join(', ');
+
+                          return (
+                            <div key={`group-${groupId}`} className="mb-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
+                                className="w-full text-left bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg p-3 text-xs hover:border-blue-400 transition-colors"
+                                aria-label={`Open group ${groupName} details`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                                  <div className="text-xs text-blue-700">{groupSessions.length} sessions</div>
+                                </div>
+                                <div className="font-medium text-gray-900">
+                                  {formatTime(earliestStart)} - {formatTime(latestEnd)}
+                                </div>
+                                <div className="text-gray-700 mt-1">
+                                  Students: {studentInitials}
+                                </div>
+                              </button>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        } else {
+                          const session = block.data;
+                          const student = students.get(session.student_id);
+                          return (
+                            <div key={session.id} className="mb-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSessionModal(session)}
+                                className="w-full text-left bg-white border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors"
+                                aria-label={`Open session for ${student?.initials || 'student'} at ${formatTime(session.start_time)}`}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {formatTime(session.start_time)}
+                                </div>
+                                <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
+                                  {student?.initials || '?'}
+                                  {session.delivered_by === 'sea' && (
+                                    <div className="text-green-600 text-xs">SEA</div>
+                                  )}
+                                </div>
+                              </button>
+                            </div>
+                          );
+                        }
+                      });
+                    })()
                   )
                 )}
               </div>
@@ -1694,53 +1778,6 @@ export function CalendarWeekView({
           );
         })}
       </div>
-
-      {/* Modals */}
-      {selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium mb-4">Session Details</h3>
-            <div className="space-y-2 text-sm">
-              <p>
-                <strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}
-              </p>
-              <p>
-                <strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-              </p>
-              <p>
-                <strong>Type:</strong> {selectedSession.service_type}
-              </p>
-              {selectedSession.delivered_by === 'sea' && (
-                <p className="text-green-600">
-                  <strong>Delivered by SEA</strong>
-                </p>
-              )}
-              {sessionConflicts[selectedSession.id] && (
-                <p className="text-red-600">
-                  <strong>⚠️ This session has a scheduling conflict</strong>
-                </p>
-              )}
-              {selectedSession.session_notes && (
-                <div className="mt-2">
-                  <strong>Notes:</strong>
-                  <p className="mt-1 p-2 bg-gray-50 rounded">{selectedSession.session_notes}</p>
-                </div>
-              )}
-              {selectedSession.completed_at && (
-                <p className="text-green-600">
-                  <strong>✓ Completed</strong>
-                </p>
-              )}
-            </div>
-            <button
-              onClick={() => setSelectedSession(null)}
-              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* AI Content Modal */}
       <AIContentModal
@@ -1858,6 +1895,36 @@ export function CalendarWeekView({
         isViewingSaved={true}
         hideControls={false}
       />
+
+      {/* Group Details Modal */}
+      {selectedGroupId && (
+        <GroupDetailsModal
+          isOpen={groupModalOpen}
+          onClose={() => {
+            setGroupModalOpen(false);
+            setSelectedGroupId(null);
+            setSelectedGroupName('');
+            setSelectedGroupSessions([]);
+          }}
+          groupId={selectedGroupId}
+          groupName={selectedGroupName}
+          sessions={selectedGroupSessions}
+          students={students}
+        />
+      )}
+
+      {/* Session Details Modal */}
+      {selectedSession && sessionModalOpen && (
+        <SessionDetailsModal
+          isOpen={sessionModalOpen}
+          onClose={() => {
+            setSessionModalOpen(false);
+            // Don't clear selectedSession here in case notes modal needs it
+          }}
+          session={selectedSession}
+          student={students.get(selectedSession.student_id)}
+        />
+      )}
     </div>
   );
 }
