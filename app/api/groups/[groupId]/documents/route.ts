@@ -158,6 +158,24 @@ export async function POST(
         return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
       }
     }
+    if (document_type === 'pdf') {
+      if (!file_path && !url) {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'Either file_path or url is required for PDFs' }, { status: 400 });
+      }
+      if (url) {
+        try {
+          const u = new URL(url);
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+            perf.end({ success: false });
+            return NextResponse.json({ error: 'Only http(s) URLs are allowed for PDF URLs' }, { status: 400 });
+          }
+        } catch {
+          perf.end({ success: false });
+          return NextResponse.json({ error: 'Invalid URL for PDF' }, { status: 400 });
+        }
+      }
+    }
 
     log.info('Creating group document', {
       userId,
