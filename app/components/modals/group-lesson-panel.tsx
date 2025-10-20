@@ -4,21 +4,16 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import type { Database } from '../../../src/types/database';
 
-type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type Lesson = Database['public']['Tables']['lessons']['Row'];
 
 interface GroupLessonPanelProps {
   groupId: string;
   groupName: string;
-  sessions: ScheduleSession[];
-  students: Map<string, { initials: string; grade_level?: string }>;
 }
 
 export function GroupLessonPanel({
   groupId,
-  groupName,
-  sessions,
-  students
+  groupName
 }: GroupLessonPanelProps) {
   const { showToast } = useToast();
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -33,13 +28,15 @@ export function GroupLessonPanel({
 
   // Fetch lesson on mount
   useEffect(() => {
-    fetchLesson();
+    const controller = new AbortController();
+    fetchLesson(controller.signal);
+    return () => controller.abort();
   }, [groupId]);
 
-  const fetchLesson = async () => {
+  const fetchLesson = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/groups/${groupId}/lesson`);
+      const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
       if (!response.ok) throw new Error('Failed to fetch lesson');
 
       const data = await response.json();
@@ -152,7 +149,7 @@ export function GroupLessonPanel({
   }
 
   // Editing or creating new lesson
-  if (editing || (!lesson && editing)) {
+  if (editing) {
     return (
       <div className="space-y-4">
         <h4 className="font-medium text-gray-900">

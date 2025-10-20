@@ -129,7 +129,7 @@ export function SessionLessonPanel({
   }
 
   // Editing or creating new lesson
-  if (editing || (!lesson && editing)) {
+  if (editing) {
     return (
       <div className="space-y-4">
         <h4 className="font-medium text-gray-900">

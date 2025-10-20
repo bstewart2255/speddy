@@ -12,6 +12,7 @@ export async function GET(
   const perf = measurePerformanceWithAlerts('get_group_lesson', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -22,7 +23,7 @@ export async function GET(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     log.info('Fetching group lesson', {
       userId,
@@ -104,6 +105,7 @@ export async function POST(
   const perf = measurePerformanceWithAlerts('save_group_lesson', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -114,7 +116,7 @@ export async function POST(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     const body = await request.json();
     const {
@@ -276,6 +278,7 @@ export async function DELETE(
   const perf = measurePerformanceWithAlerts('delete_group_lesson', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -286,7 +289,7 @@ export async function DELETE(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     log.info('Deleting group lesson', {
       userId,

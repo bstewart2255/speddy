@@ -32,13 +32,15 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
 
   // Fetch documents on mount
   useEffect(() => {
-    fetchDocuments();
+    const controller = new AbortController();
+    fetchDocuments(controller.signal);
+    return () => controller.abort();
   }, [groupId]);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/groups/${groupId}/documents`);
+      const response = await fetch(`/api/groups/${groupId}/documents`, { signal });
       if (!response.ok) throw new Error('Failed to fetch documents');
 
       const data = await response.json();
@@ -65,6 +67,20 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
     if (newDocType === 'link' && !newDocUrl.trim()) {
       showToast('Please enter a URL', 'error');
       return;
+    }
+
+    // Validate URL for links
+    if (newDocType === 'link') {
+      try {
+        const u = new URL(newDocUrl.trim());
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          showToast('Only http(s) links are allowed', 'error');
+          return;
+        }
+      } catch {
+        showToast('Please enter a valid URL', 'error');
+        return;
+      }
     }
 
     try {

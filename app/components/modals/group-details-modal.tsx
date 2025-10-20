@@ -125,8 +125,6 @@ export function GroupDetailsModal({
             <GroupLessonPanel
               groupId={groupId}
               groupName={groupName}
-              sessions={sessions}
-              students={students}
             />
           )}
 

@@ -12,6 +12,7 @@ export async function GET(
   const perf = measurePerformanceWithAlerts('get_group_documents', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -22,7 +23,7 @@ export async function GET(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     log.info('Fetching group documents', {
       userId,
@@ -102,6 +103,7 @@ export async function POST(
   const perf = measurePerformanceWithAlerts('create_group_document', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -112,7 +114,7 @@ export async function POST(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     const body = await request.json();
     const { title, document_type, content, url, file_path } = body;
@@ -133,6 +135,28 @@ export async function POST(
         { error: 'Invalid document_type. Must be one of: pdf, link, note' },
         { status: 400 }
       );
+    }
+
+    // Per-type validations
+    if (document_type === 'note' && !content) {
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'content is required for notes' }, { status: 400 });
+    }
+    if (document_type === 'link') {
+      if (!url) {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'url is required for links' }, { status: 400 });
+      }
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          perf.end({ success: false });
+          return NextResponse.json({ error: 'Only http(s) URLs are allowed' }, { status: 400 });
+        }
+      } catch {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+      }
     }
 
     log.info('Creating group document', {
@@ -226,6 +250,7 @@ export async function PUT(
   const perf = measurePerformanceWithAlerts('update_group_document', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -236,7 +261,7 @@ export async function PUT(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     const body = await request.json();
     const { documentId, title, content, url, file_path } = body;
@@ -260,7 +285,19 @@ export async function PUT(
     const updateData: any = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
-    if (url !== undefined) updateData.url = url;
+    if (url !== undefined) {
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          perf.end({ success: false });
+          return NextResponse.json({ error: 'Only http(s) URLs are allowed' }, { status: 400 });
+        }
+      } catch {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+      }
+      updateData.url = url;
+    }
     if (file_path !== undefined) updateData.file_path = file_path;
 
     // Update the document (RLS will ensure user owns it)
@@ -328,6 +365,7 @@ export async function DELETE(
   const perf = measurePerformanceWithAlerts('delete_group_document', 'api');
   const params = await props.params;
   const { groupId } = params;
+  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
@@ -338,7 +376,7 @@ export async function DELETE(
       perf.end({ success: false });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = user.id;
+    userId = user.id;
 
     const searchParams = request.nextUrl.searchParams;
     const documentId = searchParams.get('documentId');

@@ -23,6 +23,28 @@ CREATE INDEX idx_group_documents_group_id ON public.group_documents(group_id);
 CREATE INDEX idx_group_documents_created_by ON public.group_documents(created_by);
 CREATE INDEX idx_group_documents_document_type ON public.group_documents(document_type);
 
+-- Add CHECK constraints to enforce type-specific field requirements
+ALTER TABLE public.group_documents
+ADD CONSTRAINT group_documents_note_check
+  CHECK (
+    document_type <> 'note'
+    OR (content IS NOT NULL AND url IS NULL AND file_path IS NULL)
+  );
+
+ALTER TABLE public.group_documents
+ADD CONSTRAINT group_documents_link_check
+  CHECK (
+    document_type <> 'link'
+    OR (url IS NOT NULL AND content IS NULL AND file_path IS NULL)
+  );
+
+ALTER TABLE public.group_documents
+ADD CONSTRAINT group_documents_pdf_check
+  CHECK (
+    document_type <> 'pdf'
+    OR ((url IS NOT NULL OR file_path IS NOT NULL) AND content IS NULL)
+  );
+
 -- Enable Row Level Security
 ALTER TABLE public.group_documents ENABLE ROW LEVEL SECURITY;
 

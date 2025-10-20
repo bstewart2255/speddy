@@ -1586,16 +1586,6 @@ export function CalendarWeekView({
           // Group sessions by time slot for display
           const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
 
-          // Debug logging for purple button condition (moved after timeSlotGroups is defined)
-          if (dateStr === '2025-09-16') {
-            console.log('[DEBUG] Purple button condition for 2025-09-16:', {
-              isHolidayDay,
-              timeSlotGroupsSize: timeSlotGroups.size,
-              hasAIContent,
-              dayAILessons,
-              showButton: !isHolidayDay && timeSlotGroups.size > 0 && hasAIContent
-            });
-          }
 
           return (
             <div
@@ -1736,9 +1726,11 @@ export function CalendarWeekView({
 
                           return (
                             <div key={`group-${groupId}`} className="mb-2">
-                              <div
+                              <button
+                                type="button"
                                 onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                                className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg p-3 text-xs cursor-pointer hover:border-blue-400 transition-colors"
+                                className="w-full text-left bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg p-3 text-xs hover:border-blue-400 transition-colors"
+                                aria-label={`Open group ${groupName} details`}
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <div className="font-semibold text-blue-900">📚 {groupName}</div>
@@ -1750,7 +1742,7 @@ export function CalendarWeekView({
                                 <div className="text-gray-700 mt-1">
                                   Students: {studentInitials}
                                 </div>
-                              </div>
+                              </button>
                             </div>
                           );
                         } else {
@@ -1758,9 +1750,11 @@ export function CalendarWeekView({
                           const student = students.get(session.student_id);
                           return (
                             <div key={session.id} className="mb-2">
-                              <div
+                              <button
+                                type="button"
                                 onClick={() => handleOpenSessionModal(session)}
-                                className="bg-white border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors cursor-pointer"
+                                className="w-full text-left bg-white border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors"
+                                aria-label={`Open session for ${student?.initials || 'student'} at ${formatTime(session.start_time)}`}
                               >
                                 <div className="font-medium text-gray-900">
                                   {formatTime(session.start_time)}
@@ -1771,7 +1765,7 @@ export function CalendarWeekView({
                                     <div className="text-green-600 text-xs">SEA</div>
                                   )}
                                 </div>
-                              </div>
+                              </button>
                             </div>
                           );
                         }
