@@ -7,20 +7,24 @@ ADD COLUMN IF NOT EXISTS group_id UUID;
 -- Add index for efficient querying of group lessons
 CREATE INDEX IF NOT EXISTS idx_lessons_group_id ON public.lessons(group_id);
 
--- Add a check constraint to ensure lesson_source consistency
--- Group lessons should be marked appropriately
+-- Ensure group_id uniqueness: each group can only have one lesson
+-- Use a transaction to safely drop old constraint (if exists) and add unique index
 DO $$
 BEGIN
-  IF NOT EXISTS (
+  -- Drop the old CHECK constraint if it exists (from previous migration version)
+  IF EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'lessons_group_id_lesson_source_check'
   ) THEN
     ALTER TABLE public.lessons
-    ADD CONSTRAINT lessons_group_id_lesson_source_check
-    CHECK (
-      group_id IS NULL OR lesson_source = 'group'
-    );
+    DROP CONSTRAINT lessons_group_id_lesson_source_check;
   END IF;
 END $$;
+
+-- Add partial unique index to enforce one lesson per group_id
+-- Partial index only includes rows where group_id IS NOT NULL
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lessons_group_id_unique
+  ON public.lessons(group_id)
+  WHERE group_id IS NOT NULL;
 
 COMMENT ON COLUMN public.lessons.group_id IS 'References schedule_sessions.group_id for group-level lessons. When set, this lesson applies to all sessions in the group.';
 
