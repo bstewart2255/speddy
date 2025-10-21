@@ -87,18 +87,8 @@ export function CalendarDayView({
   const canUserGroupSession = (session: ScheduleSession): boolean => {
     if (!providerId) return false;
 
-    // User can group sessions they are actually delivering
-    if (session.delivered_by === 'provider' && session.provider_id === providerId) {
-      return true;
-    }
-    if (session.delivered_by === 'specialist' && session.assigned_to_specialist_id === providerId) {
-      return true;
-    }
-    if (session.delivered_by === 'sea' && session.assigned_to_sea_id === providerId) {
-      return true;
-    }
-
-    return false;
+    // User can only group sessions they own AND are delivering themselves
+    return session.delivered_by === 'provider' && session.provider_id === providerId;
   };
 
   // Load sessions and user info for the current date
@@ -435,6 +425,11 @@ export function CalendarDayView({
         throw new Error('Session not found');
       }
 
+      // Check if user has permission to ungroup this session
+      if (!canUserGroupSession(session)) {
+        throw new Error('You can only ungroup sessions that you are assigned to deliver');
+      }
+
       // Find the template session (preferred)
       const { data: templates } = await supabase
         .from('schedule_sessions')
@@ -655,13 +650,16 @@ export function CalendarDayView({
                             >
                               📚 {session.group_name}
                             </button>
-                            <button
-                              onClick={() => handleUngroupSession(session.id)}
-                              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
-                              title="Remove from group"
-                            >
-                              ✕
-                            </button>
+                            {/* Only show ungroup button if user has permission */}
+                            {canUserGroupSession(session) && (
+                              <button
+                                onClick={() => handleUngroupSession(session.id)}
+                                className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                                title="Remove from group"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
                         )}
 
