@@ -1,11 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { log } from '@/lib/monitoring/logger';
+import type { SchoolInfo } from '@/app/components/providers/school-context';
 
-export interface SchoolContext {
-  school_id?: string;
-  district_id?: string;
-  school_site?: string;
-}
+// Re-export SchoolInfo as SchoolContext for backwards compatibility
+export type SchoolContext = SchoolInfo;
 
 export interface Session {
   student_id: string;
@@ -29,8 +27,9 @@ export async function filterSessionsBySchool<T extends Session>(
     return sessions;
   }
 
-  const schoolId = currentSchool.school_id;
-  const districtId = currentSchool.district_id;
+  // Normalize null to undefined for consistent checks
+  const schoolId = currentSchool.school_id ?? undefined;
+  const districtId = currentSchool.district_id ?? undefined;
 
   // Dedupe student IDs before querying
   const studentIds = Array.from(new Set(
@@ -63,7 +62,7 @@ export async function filterSessionsBySchool<T extends Session>(
     return sessions.filter(s => schoolStudentIds.has(s.student_id));
   } else if (districtId) {
     // Fall back to district_id if school_id not available
-    const schoolSite = currentSchool.school_site;
+    const schoolSite = currentSchool.school_site ?? undefined;
 
     // Build query with district filter
     let query = supabase
