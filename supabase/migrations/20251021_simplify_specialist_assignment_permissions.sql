@@ -45,8 +45,8 @@ BEGIN
     IF provider_record.school_id = specialist_record.school_id THEN
       RETURN TRUE;
     END IF;
-  ELSE
-    -- Fallback to legacy school_district + school_site matching
+  -- Fallback to legacy school_district + school_site matching if either school_id is NULL
+  ELSIF provider_record.school_district IS NOT NULL AND provider_record.school_site IS NOT NULL THEN
     IF provider_record.school_district = specialist_record.school_district
        AND provider_record.school_site = specialist_record.school_site THEN
       RETURN TRUE;
@@ -101,11 +101,11 @@ BEGIN
     p.role::TEXT
   FROM profiles p
   WHERE (
-    -- Match by school_id if available
-    (user_school_id IS NOT NULL AND p.school_id = user_school_id)
+    -- Match by school_id if both users have it
+    (user_school_id IS NOT NULL AND p.school_id IS NOT NULL AND p.school_id = user_school_id)
     OR
-    -- Fallback to school_district + school_site for legacy schools
-    (user_school_id IS NULL AND p.school_district = user_school_district AND p.school_site = user_school_site)
+    -- Fallback to school_district + school_site only when both lack school_id
+    (user_school_id IS NULL AND p.school_id IS NULL AND p.school_district = user_school_district AND p.school_site = user_school_site)
   )
   AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist')
   AND p.id != current_user_id

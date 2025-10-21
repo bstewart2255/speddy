@@ -40,8 +40,8 @@ BEGIN
     IF provider_record.school_id = sea_record.school_id THEN
       RETURN TRUE;
     END IF;
-  ELSE
-    -- Fallback to legacy school_district + school_site matching
+  -- Fallback to legacy school_district + school_site matching if either school_id is NULL
+  ELSIF provider_record.school_district IS NOT NULL AND provider_record.school_site IS NOT NULL THEN
     IF provider_record.school_district = sea_record.school_district
        AND provider_record.school_site = sea_record.school_site THEN
       RETURN TRUE;
