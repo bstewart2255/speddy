@@ -222,7 +222,7 @@ export function GroupLessonPanel({
                 if (typeof lesson.content === 'object') {
                   setContent(JSON.stringify(lesson.content, null, 2));
                 } else {
-                  setContent(lesson.content || '');
+                  setContent(String(lesson.content || ''));
                 }
               }
             }}
@@ -242,6 +242,10 @@ export function GroupLessonPanel({
   }
 
   // Viewing existing lesson
+  if (!lesson) {
+    return null;
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between">

@@ -589,44 +589,99 @@ export interface Database {
         Row: {
           id: string
           provider_id: string
+          lesson_source: 'ai_generated' | 'ai_enhanced' | 'manual' | 'imported'
+          lesson_status: 'draft' | 'published' | 'archived'
           created_at: string
-          time_slot: string
-          student_ids: string[]
-          student_details: Json
-          content: string
+          updated_at: string
           lesson_date: string
-          school_site: string | null
+          time_slot: string | null
+          school_id: string | null
+          district_id: string | null
+          state_id: string | null
+          title: string | null
+          subject: string | null
+          topic: string | null
+          grade_levels: string[] | null
+          duration_minutes: number | null
+          content: Json
+          student_ids: string[] | null
+          student_details: Json | null
+          metadata: Json | null
           notes: string | null
+          ai_model: string | null
+          ai_prompt: string | null
+          ai_raw_response: Json | null
+          prompt_tokens: number | null
+          completion_tokens: number | null
+          total_tokens: number | null
           group_id: string | null
           session_ids: string[] | null
+          // Legacy fields (kept for backwards compatibility)
+          school_site: string | null
         }
         Insert: {
           id?: string
           provider_id: string
+          lesson_source?: 'ai_generated' | 'ai_enhanced' | 'manual' | 'imported'
+          lesson_status?: 'draft' | 'published' | 'archived'
           created_at?: string
-          time_slot: string
-          student_ids: string[]
-          student_details: Json
-          content: string
+          updated_at?: string
           lesson_date: string
-          school_site?: string | null
+          time_slot?: string | null
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
+          title?: string | null
+          subject?: string | null
+          topic?: string | null
+          grade_levels?: string[] | null
+          duration_minutes?: number | null
+          content?: Json
+          student_ids?: string[] | null
+          student_details?: Json | null
+          metadata?: Json | null
           notes?: string | null
+          ai_model?: string | null
+          ai_prompt?: string | null
+          ai_raw_response?: Json | null
+          prompt_tokens?: number | null
+          completion_tokens?: number | null
+          total_tokens?: number | null
           group_id?: string | null
           session_ids?: string[] | null
+          school_site?: string | null
         }
         Update: {
           id?: string
           provider_id?: string
+          lesson_source?: 'ai_generated' | 'ai_enhanced' | 'manual' | 'imported'
+          lesson_status?: 'draft' | 'published' | 'archived'
           created_at?: string
-          time_slot?: string
-          student_ids?: string[]
-          student_details?: Json
-          content?: string
+          updated_at?: string
           lesson_date?: string
-          school_site?: string | null
+          time_slot?: string | null
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
+          title?: string | null
+          subject?: string | null
+          topic?: string | null
+          grade_levels?: string[] | null
+          duration_minutes?: number | null
+          content?: Json
+          student_ids?: string[] | null
+          student_details?: Json | null
+          metadata?: Json | null
           notes?: string | null
+          ai_model?: string | null
+          ai_prompt?: string | null
+          ai_raw_response?: Json | null
+          prompt_tokens?: number | null
+          completion_tokens?: number | null
+          total_tokens?: number | null
           group_id?: string | null
           session_ids?: string[] | null
+          school_site?: string | null
         }
       },
       todos: {
