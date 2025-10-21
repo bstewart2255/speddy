@@ -48,18 +48,19 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     // Verify all sessions are either owned by user OR assigned to user
     const unauthorizedSessions = existingSessions?.filter(s => {
-      // User owns the session and is delivering it
-      if (s.provider_id === userId && s.delivered_by === 'provider') {
+      // User owns the session (regardless of who's delivering)
+      // This allows providers to ungroup their own sessions even if assigned to others
+      if (s.provider_id === userId) {
         return false; // Authorized
       }
 
       // User is assigned to deliver as specialist
-      if (s.delivered_by === 'specialist' && s.assigned_to_specialist_id === userId) {
+      if (s.assigned_to_specialist_id === userId) {
         return false; // Authorized
       }
 
       // User is assigned to deliver as SEA
-      if (s.delivered_by === 'sea' && s.assigned_to_sea_id === userId) {
+      if (s.assigned_to_sea_id === userId) {
         return false; // Authorized
       }
 

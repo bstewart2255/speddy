@@ -438,8 +438,23 @@ export function CalendarDayView({
         });
 
         if (templates && templates.length > 0) {
-          console.log('✓ Found template:', templates[0]);
-          templateIds.push(templates[0].id);
+          const template = templates[0];
+
+          // Authorization check: verify user has permission to access this template
+          const isAuthorized =
+            template.provider_id === providerId ||
+            template.assigned_to_specialist_id === providerId ||
+            template.assigned_to_sea_id === providerId;
+
+          if (!isAuthorized) {
+            console.warn('✗ Template found but user not authorized to access it. Session will be excluded from the group.');
+            console.log('Template provider_id:', template.provider_id);
+            console.log('Current user id:', providerId);
+            continue;
+          }
+
+          console.log('✓ Found template:', template);
+          templateIds.push(template.id);
         } else {
           console.warn('✗ No template found for session. This session will be excluded from the group.');
           console.log('Possible reasons:');

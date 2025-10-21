@@ -60,7 +60,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     // Note: Authorization is enforced via ownership and delivered_by validation below and RLS policies
 
-    // Log all sessions being validated
+    // Log all sessions being validated for debugging
     const sessionDetails = existingSessions?.map(s => ({
       id: s.id,
       provider_id: s.provider_id,
@@ -71,11 +71,6 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       isAssignedSpecialist: s.assigned_to_specialist_id === userId,
       isAssignedSea: s.assigned_to_sea_id === userId
     }));
-
-    console.log('=== VALIDATING SESSIONS FOR GROUPING ===');
-    console.log('User ID:', userId);
-    console.log('Session count:', existingSessions?.length || 0);
-    console.log('Session details:', JSON.stringify(sessionDetails, null, 2));
 
     log.info('Validating sessions for grouping', {
       userId,

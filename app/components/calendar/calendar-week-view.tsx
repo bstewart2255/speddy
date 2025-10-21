@@ -237,14 +237,14 @@ export function CalendarWeekView({
           return false;
         });
       } else if (viewMode === 'specialist') {
-        // Show only sessions assigned to specialists
+        // Show only sessions assigned to current user as specialist
         filteredSessions = weekSessions.filter(s =>
-          s.provider_id === user.id && s.assigned_to_specialist_id !== null
+          s.assigned_to_specialist_id === user.id
         );
       } else if (viewMode === 'sea') {
-        // Show only sessions assigned to SEAs
+        // Show only sessions assigned to current user as SEA
         filteredSessions = weekSessions.filter(s =>
-          s.provider_id === user.id && s.assigned_to_sea_id !== null
+          s.assigned_to_sea_id === user.id
         );
       }
 
