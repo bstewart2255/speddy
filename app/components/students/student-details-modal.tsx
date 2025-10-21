@@ -56,6 +56,7 @@ export function StudentDetailsModal({
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'areas' | 'assessments'>('current');
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -202,9 +203,56 @@ export function StudentDetailsModal({
             </button>
           </div>
 
+          {/* Tabs */}
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px px-6">
+              <button
+                onClick={() => setActiveTab('current')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'current'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Current Information
+              </button>
+              <button
+                onClick={() => setActiveTab('iep')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'iep'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                IEP Goals
+              </button>
+              <button
+                onClick={() => setActiveTab('areas')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'areas'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Areas of Need
+              </button>
+              <button
+                onClick={() => setActiveTab('assessments')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'assessments'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Academic Assessments
+              </button>
+            </nav>
+          </div>
+
           {/* Content */}
-          <div className="p-6 space-y-6">
-            {/* Current Information (Editable) */}
+          <div className="p-6 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+            {/* Current Information Tab */}
+            {activeTab === 'current' && (
             <div className="space-y-4">
               <h3 className="font-medium text-gray-900">Current Information</h3>
 
@@ -296,11 +344,10 @@ export function StudentDetailsModal({
                   </select>
                 </FormGroup>
               </div>
-            </div>
 
-            {/* Additional Details Form */}
-            <div className="space-y-4">
-              <h3 className="font-medium text-gray-900">Additional Information</h3>
+              {/* Additional Details */}
+              <div className="space-y-4 mt-6">
+                <h4 className="font-medium text-gray-700 text-base">Additional Details</h4>
 
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>
@@ -377,12 +424,15 @@ export function StudentDetailsModal({
                   />
                 </FormGroup>
               </div>
+              </div>
             </div>
-            
-            {/* IEP Goals Section */}
-            <div className="space-y-3 pt-4 border-t">
+            )}
+
+            {/* IEP Goals Tab */}
+            {activeTab === 'iep' && (
+            <div className="space-y-3">
               <div className="space-y-1">
-                <h4 className="font-medium text-gray-900">IEP Goals</h4>
+                <h3 className="font-medium text-gray-900">IEP Goals</h3>
                 <p className="text-sm text-gray-600">
                   Add specific goals from the student's IEP
                 </p>
@@ -451,7 +501,7 @@ export function StudentDetailsModal({
                             setDetails({...details, iep_goals: newGoals});
                           }}
                           placeholder="Enter IEP goal (no names or specific dates)..."
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y read-only:bg-gray-50 read-only:cursor-default"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[150px] resize-y read-only:bg-gray-50 read-only:cursor-default"
                           readOnly={readOnly}
                         />
                         {!readOnly && (
@@ -474,11 +524,13 @@ export function StudentDetailsModal({
                 )}
               </div>
             </div>
-  
-            {/* Working Skills Section */}
-            <div className="space-y-3 pt-4 border-t">
+            )}
+
+            {/* Areas of Need Tab */}
+            {activeTab === 'areas' && (
+            <div className="space-y-3">
               <div className="space-y-1">
-                <h4 className="font-medium text-gray-900">Areas of Need</h4>
+                <h3 className="font-medium text-gray-900">Areas of Need</h3>
                 <p className="text-sm text-gray-600">
                   Select the skills {student.initials} is currently working on. You can choose skills from different grade levels and trimesters.
                 </p>
@@ -491,11 +543,13 @@ export function StudentDetailsModal({
                 readOnly={readOnly}
               />
             </div>
+            )}
 
-            {/* Academic Assessments Section */}
-            <div className="space-y-3 pt-4 border-t">
+            {/* Academic Assessments Tab */}
+            {activeTab === 'assessments' && (
+            <div className="space-y-3">
               <div className="space-y-1">
-                <h4 className="font-medium text-gray-900">Academic Assessments</h4>
+                <h3 className="font-medium text-gray-900">Academic Assessments</h3>
                 <p className="text-sm text-gray-600">
                   Optional assessment data to help AI generate more personalized lesson content. All fields are optional.
                 </p>
@@ -507,6 +561,7 @@ export function StudentDetailsModal({
                 readOnly={readOnly}
               />
             </div>
+            )}
           </div>
           
           {/* Footer */}
