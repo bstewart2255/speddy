@@ -9,6 +9,8 @@ import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
 import { useSchool } from '../providers/school-context';
+import { filterSessionsBySchool } from '@/lib/utils/session-filters';
+import { log } from '@/lib/monitoring/logger';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -126,7 +128,7 @@ export function CalendarDayView({
 
       // If user works at multiple schools and no school is selected yet, wait
       if (profile?.works_at_multiple_schools && !currentSchool) {
-        console.log('[CalendarDayView] Waiting for school selection');
+        log.info('[CalendarDayView] Waiting for school selection');
         setSessionsState([]);
         return;
       }
@@ -140,46 +142,7 @@ export function CalendarDayView({
       );
 
       // Filter sessions by current school if applicable
-      let filteredSessions = sessions;
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id;
-        const districtId = currentSchool.district_id;
-
-        // Use school_id if available (migrated), otherwise fall back to text fields
-        if (schoolId) {
-          // Filter by school_id (most efficient)
-          const studentIds = sessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id')
-              .eq('school_id', schoolId)
-              .in('id', studentIds);
-
-            const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
-            filteredSessions = sessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        } else if (districtId) {
-          // Fall back to district_id if school_id not available
-          const studentIds = sessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id, school_site')
-              .eq('district_id', districtId)
-              .in('id', studentIds);
-
-            // Further filter by school_site within district
-            const schoolSite = currentSchool.school_site;
-            const schoolStudentIds = new Set(
-              studentsData
-                ?.filter(s => s.school_site === schoolSite)
-                .map(s => s.id) || []
-            );
-            filteredSessions = sessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        }
-      }
+      const filteredSessions = await filterSessionsBySchool(supabase, sessions, currentSchool);
 
       setSessionsState(filteredSessions);
     };
@@ -211,7 +174,7 @@ export function CalendarDayView({
         .in('id', missingStudentIds);
 
       if (fetchError) {
-        console.error('[Calendar Day View] Error fetching student data for assigned sessions:', fetchError);
+        log.error('[Calendar Day View] Error fetching student data for assigned sessions', fetchError);
         return;
       }
 
@@ -383,17 +346,16 @@ export function CalendarDayView({
       // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
       const templateIds: string[] = [];
 
-      console.log('Selected sessions for grouping:', Array.from(selectedSessionIds));
+      log.info('Selected sessions for grouping', { selectedSessionIds: Array.from(selectedSessionIds) });
 
       for (const sessionId of Array.from(selectedSessionIds)) {
         const session = sessionsState.find(s => s.id === sessionId);
         if (!session) {
-          console.warn('Session not found in state:', sessionId);
+          log.warn('Session not found in state', { sessionId });
           continue;
         }
 
-        console.log('=== Finding template for session ===');
-        console.log('Session details:', {
+        log.info('Finding template for session', {
           sessionId,
           student_id: session.student_id,
           day_of_week: session.day_of_week,
@@ -411,7 +373,7 @@ export function CalendarDayView({
         // Note: The template may have different delivered_by than the instance
         // (e.g., instance assigned to specialist still has a provider template)
         // so we don't filter by delivered_by or assignment here
-        console.log('Template query criteria:', {
+        log.info('Template query criteria', {
           student_id: session.student_id,
           day_of_week: session.day_of_week,
           start_time: session.start_time,
@@ -428,13 +390,13 @@ export function CalendarDayView({
           .limit(1);
 
         if (templateError) {
-          console.error('Error finding template:', templateError);
+          log.error('Error finding template', templateError);
           continue;
         }
 
-        console.log('Template query result:', {
+        log.info('Template query result', {
           found: templates?.length || 0,
-          templates: templates
+          templates
         });
 
         if (templates && templates.length > 0) {
@@ -447,25 +409,28 @@ export function CalendarDayView({
             template.assigned_to_sea_id === providerId;
 
           if (!isAuthorized) {
-            console.warn('✗ Template found but user not authorized to access it. Session will be excluded from the group.');
-            console.log('Template provider_id:', template.provider_id);
-            console.log('Current user id:', providerId);
+            log.warn('Template found but user not authorized to access it', {
+              template_provider_id: template.provider_id,
+              current_user_id: providerId
+            });
             continue;
           }
 
-          console.log('✓ Found template:', template);
+          log.info('Found authorized template', { template });
           templateIds.push(template.id);
         } else {
-          console.warn('✗ No template found for session. This session will be excluded from the group.');
-          console.log('Possible reasons:');
-          console.log('  1. Session is an instance-only (not recurring)');
-          console.log('  2. Template has different student_id, day_of_week, or start_time');
-          console.log('  3. Database query issue');
+          log.warn('No template found for session - session will be excluded from group', {
+            sessionId,
+            possibleReasons: [
+              'Session is an instance-only (not recurring)',
+              'Template has different student_id, day_of_week, or start_time',
+              'Database query issue'
+            ]
+          });
         }
-        console.log('=== End template search ===\n');
       }
 
-      console.log('Template IDs to group:', templateIds);
+      log.info('Template IDs to group', { templateIds });
 
       if (templateIds.length < 2) {
         throw new Error(`Could not find template sessions to group. Found ${templateIds.length} template(s), need at least 2. Please ensure sessions are from your recurring schedule.`);
@@ -484,61 +449,27 @@ export function CalendarDayView({
       const data = await response.json();
 
       if (!response.ok) {
-        console.error('Grouping API error:', data);
+        log.error('Grouping API error', data);
         throw new Error(data.error || 'Failed to create group');
       }
 
-      console.log('Grouping API response:', data);
+      log.info('Grouping API response', { data });
 
       // Reload sessions to reflect the grouped templates
-      console.log('Reloading sessions for date:', currentDate);
+      log.info('Reloading sessions for date', { currentDate });
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
         currentDate,
         userProfile?.role
       );
-      console.log('Reloaded sessions:', updatedSessions);
-      console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
+      log.info('Reloaded sessions', {
+        sessionCount: updatedSessions.length,
+        sessionsWithGroups: updatedSessions.filter(s => s.group_id).length
+      });
 
       // Filter by current school
-      let filteredSessions = updatedSessions;
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id;
-        const districtId = currentSchool.district_id;
-
-        // Use school_id if available (migrated), otherwise fall back to text fields
-        if (schoolId) {
-          const studentIds = updatedSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id')
-              .eq('school_id', schoolId)
-              .in('id', studentIds);
-
-            const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
-            filteredSessions = updatedSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        } else if (districtId) {
-          const studentIds = updatedSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id, school_site')
-              .eq('district_id', districtId)
-              .in('id', studentIds);
-
-            const schoolSite = currentSchool.school_site;
-            const schoolStudentIds = new Set(
-              studentsData
-                ?.filter(s => s.school_site === schoolSite)
-                .map(s => s.id) || []
-            );
-            filteredSessions = updatedSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        }
-      }
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
 
       setSessionsState(filteredSessions);
 
@@ -547,7 +478,7 @@ export function CalendarDayView({
       setSelectedSessionIds(new Set());
       setGroupNameInput('');
     } catch (error) {
-      console.error('Error creating group:', error);
+      log.error('Error creating group', error);
       showToast(error instanceof Error ? error.message : 'Failed to create group', 'error');
     } finally {
       setSavingGroup(false);
@@ -590,7 +521,7 @@ export function CalendarDayView({
       } else {
         // No template found - check if this is an old instance-based group
         // In this case, ungroup the instance itself and log a warning
-        console.warn('No template found for ungrouping. Ungrouping instance instead. User should recreate group for recurring behavior.');
+        log.warn('No template found for ungrouping - ungrouping instance instead', { sessionId });
         targetSessionId = sessionId;
       }
 
@@ -618,49 +549,13 @@ export function CalendarDayView({
       );
 
       // Filter by current school
-      let filteredSessions = updatedSessions;
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id;
-        const districtId = currentSchool.district_id;
-
-        // Use school_id if available (migrated), otherwise fall back to text fields
-        if (schoolId) {
-          const studentIds = updatedSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id')
-              .eq('school_id', schoolId)
-              .in('id', studentIds);
-
-            const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
-            filteredSessions = updatedSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        } else if (districtId) {
-          const studentIds = updatedSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id, school_site')
-              .eq('district_id', districtId)
-              .in('id', studentIds);
-
-            const schoolSite = currentSchool.school_site;
-            const schoolStudentIds = new Set(
-              studentsData
-                ?.filter(s => s.school_site === schoolSite)
-                .map(s => s.id) || []
-            );
-            filteredSessions = updatedSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        }
-      }
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
 
       setSessionsState(filteredSessions);
 
       showToast('Session removed from group', 'success');
     } catch (error) {
-      console.error('Error ungrouping session:', error);
+      log.error('Error ungrouping session', error);
       showToast(error instanceof Error ? error.message : 'Failed to ungroup session', 'error');
     }
   };

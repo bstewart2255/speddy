@@ -18,6 +18,7 @@ import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
+import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -226,16 +227,10 @@ export function CalendarWeekView({
       let filteredSessions = weekSessions;
 
       if (viewMode === 'my-sessions') {
-        // Show all sessions user is responsible for delivering
-        filteredSessions = weekSessions.filter(s => {
-          // Own sessions delivered as provider
-          if (s.provider_id === user.id && s.delivered_by === 'provider') return true;
-          // Assigned to me as specialist
-          if (s.delivered_by === 'specialist' && s.assigned_to_specialist_id === user.id) return true;
-          // Assigned to me as SEA
-          if (s.delivered_by === 'sea' && s.assigned_to_sea_id === user.id) return true;
-          return false;
-        });
+        // Show all sessions owned by the user, regardless of who is delivering
+        // This aligns with the API route logic which allows providers to group/ungroup
+        // any session they own, regardless of delivered_by
+        filteredSessions = weekSessions.filter(s => s.provider_id === user.id);
       } else if (viewMode === 'specialist') {
         // Show only sessions assigned to current user as specialist
         filteredSessions = weekSessions.filter(s =>
@@ -249,43 +244,7 @@ export function CalendarWeekView({
       }
 
       // Apply school filtering if current school is set
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id;
-        const districtId = currentSchool.district_id;
-
-        if (schoolId) {
-          // Filter by school_id (most efficient)
-          const studentIds = filteredSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id')
-              .eq('school_id', schoolId)
-              .in('id', studentIds);
-
-            const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
-            filteredSessions = filteredSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        } else if (districtId) {
-          // Fall back to district_id if school_id not available
-          const studentIds = filteredSessions.map(s => s.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase
-              .from('students')
-              .select('id, school_site')
-              .eq('district_id', districtId)
-              .in('id', studentIds);
-
-            const schoolSite = currentSchool.school_site;
-            const schoolStudentIds = new Set(
-              studentsData
-                ?.filter(s => s.school_site === schoolSite)
-                .map(s => s.id) || []
-            );
-            filteredSessions = filteredSessions.filter(s => schoolStudentIds.has(s.student_id));
-          }
-        }
-      }
+      filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool);
 
       setSessionsState(filteredSessions);
     };
