@@ -184,7 +184,7 @@ IMPORTANT: Use "visual-math" for computation, "math-work" for word problems.
 
 Mix different problem types for comprehensive practice.`;
 
-    case 'addition':
+    case 'addition': {
       const additionInfo = getMathComplexity(grade);
       return `TOPIC: Addition Practice
 
@@ -204,8 +204,9 @@ Complexity:
 IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building addition fluency and understanding of place value in addition.`;
+    }
 
-    case 'subtraction':
+    case 'subtraction': {
       const subtractionInfo = getMathComplexity(grade);
       return `TOPIC: Subtraction Practice
 
@@ -225,8 +226,9 @@ Complexity:
 IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building subtraction fluency and understanding of regrouping/borrowing.`;
+    }
 
-    case 'multiplication':
+    case 'multiplication': {
       const multiplicationInfo = getMathComplexity(grade);
       return `TOPIC: Multiplication Practice
 
@@ -247,8 +249,9 @@ Complexity:
 IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building multiplication fact fluency and multi-digit multiplication skills.`;
+    }
 
-    case 'division':
+    case 'division': {
       const divisionInfo = getMathComplexity(grade);
       return `TOPIC: Division Practice
 
@@ -268,8 +271,9 @@ Complexity:
 IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building division fact fluency and long division skills.`;
+    }
 
-    case 'fractions':
+    case 'fractions': {
       const fractionsInfo = getMathComplexity(grade);
       return `TOPIC: Fractions Practice
 
@@ -289,6 +293,7 @@ Complexity:
 IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
 
 Focus on building conceptual understanding of fractions and fraction operations.`;
+    }
 
     default:
       return `Create ${problemCount} educational questions/problems appropriate for grade ${grade}.`;
