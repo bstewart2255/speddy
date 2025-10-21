@@ -18,6 +18,7 @@ import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
+import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -111,6 +112,7 @@ export function CalendarWeekView({
   const [userProfile, setUserProfile] = useState<any>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+  const [additionalStudents, setAdditionalStudents] = useState<Map<string, { initials: string; grade_level?: string }>>(new Map());
   
   // State for manual lesson creation
   const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
@@ -136,6 +138,10 @@ export function CalendarWeekView({
   // State for session details modal
   const [sessionModalOpen, setSessionModalOpen] = useState(false);
   // Note: selectedSession is already declared above for notes modal, reusing it here
+
+  // State for assignment view mode
+  type ViewMode = 'my-sessions' | 'specialist' | 'sea';
+  const [viewMode, setViewMode] = useState<ViewMode>('my-sessions');
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -185,18 +191,25 @@ export function CalendarWeekView({
     const loadSessions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      
+
       setCurrentUser(user);
       setProviderId(user.id);
 
       // Get user profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, school_site, school_district')
+        .select('role, school_site, school_district, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
-      
+
       setUserProfile(profile);
+
+      // If user works at multiple schools and no school is selected yet, wait
+      if (profile?.works_at_multiple_schools && !currentSchool) {
+        console.log('[CalendarWeekView] Waiting for school selection');
+        setSessionsState([]);
+        return;
+      }
 
       // Get the Monday of the current week
       const weekStart = new Date();
@@ -210,12 +223,91 @@ export function CalendarWeekView({
 
       const weekSessions = await sessionGenerator.getSessionsForDateRange(user.id, weekStart, weekEnd, profile?.role);
 
-      setSessionsState(weekSessions);
+      // Filter by view mode
+      let filteredSessions = weekSessions;
+
+      if (viewMode === 'my-sessions') {
+        // Show all sessions owned by the user, regardless of who is delivering
+        // This aligns with the API route logic which allows providers to group/ungroup
+        // any session they own, regardless of delivered_by
+        filteredSessions = weekSessions.filter(s => s.provider_id === user.id);
+      } else if (viewMode === 'specialist') {
+        // Show only sessions assigned to current user as specialist
+        filteredSessions = weekSessions.filter(s =>
+          s.assigned_to_specialist_id === user.id
+        );
+      } else if (viewMode === 'sea') {
+        // Show only sessions assigned to current user as SEA
+        filteredSessions = weekSessions.filter(s =>
+          s.assigned_to_sea_id === user.id
+        );
+      }
+
+      // Apply school filtering if current school is set
+      filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool);
+
+      setSessionsState(filteredSessions);
     };
 
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset]);
+  }, [weekOffset, viewMode, currentSchool]);
+
+  // Fetch student data for assigned sessions (students that aren't in the prop)
+  React.useEffect(() => {
+    const fetchMissingStudents = async () => {
+      if (sessionsState.length === 0) return;
+
+      // Find student IDs that are in sessions but not in the students Map
+      // Filter out nulls and deduplicate
+      const missingStudentIds = Array.from(
+        new Set(
+          sessionsState
+            .map(s => s.student_id)
+            .filter((id): id is string => !!id && !students.has(id))
+        )
+      );
+
+      if (missingStudentIds.length === 0) return;
+
+      // Fetch the missing students
+      const { data: missingStudents, error: fetchError } = await supabase
+        .from('students')
+        .select('id, initials, grade_level')
+        .in('id', missingStudentIds);
+
+      if (fetchError) {
+        console.error('[Calendar Week View] Error fetching student data for assigned sessions:', fetchError);
+        return;
+      }
+
+      if (missingStudents && missingStudents.length > 0) {
+        setAdditionalStudents(prev => {
+          const newAdditionalStudents = new Map(prev);
+          missingStudents.forEach(student => {
+            newAdditionalStudents.set(student.id, {
+              initials: student.initials,
+              grade_level: student.grade_level || undefined
+            });
+          });
+          return newAdditionalStudents;
+        });
+      }
+    };
+
+    fetchMissingStudents();
+  }, [sessionsState, students, supabase]);
+
+  // Merge students from prop with additionally fetched students
+  const allStudents = useMemo(() => {
+    const merged = new Map(students);
+    additionalStudents.forEach((student, id) => {
+      if (!merged.has(id)) {
+        merged.set(id, student);
+      }
+    });
+    return merged;
+  }, [students, additionalStudents]);
 
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
@@ -658,8 +750,8 @@ export function CalendarWeekView({
     
     // Get student details for the new API format
     const studentList = Array.from(sessionStudents).map(studentId => {
-      const student = students.get(studentId);
-      
+      const student = allStudents.get(studentId);
+
       return {
         id: studentId,
         grade: parseGradeLevel(student?.grade_level)
@@ -721,9 +813,9 @@ export function CalendarWeekView({
       // Store the JSON lesson reference
       const lessonContent = JSON.stringify(data.lesson);
 
-      // Extract student info for this time slot  
+      // Extract student info for this time slot
       const slotStudents = slotSessions.map(s => {
-        const student = students.get(s.student_id!);
+        const student = allStudents.get(s.student_id!);
         return {
           id: s.student_id || '',
           initials: student?.initials || 'Unknown',
@@ -806,7 +898,7 @@ export function CalendarWeekView({
         .filter((id): id is string => id !== null)
         .map(id => ({
           id,
-          grade: parseGradeLevel(students.get(id)?.grade_level)
+          grade: parseGradeLevel(allStudents.get(id)?.grade_level)
         }));
       
       // Generate deterministic idempotency key for on-demand lessons
@@ -860,8 +952,8 @@ export function CalendarWeekView({
             .filter((id): id is string => id !== null)
             .map(id => ({
               id,
-              initials: students.get(id)?.initials || '',
-              grade_level: students.get(id)?.grade_level || '',
+              initials: allStudents.get(id)?.initials || '',
+              grade_level: allStudents.get(id)?.grade_level || '',
               teacher_name: ''
             }))
         };
@@ -989,8 +1081,8 @@ export function CalendarWeekView({
           const slotSessions = timeSlotGroups.get(timeSlot) || [];
           const slotStudents = slotSessions.map(session => ({
             id: session.student_id || '',
-            initials: students.get(session.student_id || '')?.initials || '',
-            grade_level: students.get(session.student_id || '')?.grade_level || '',
+            initials: allStudents.get(session.student_id || '')?.initials || '',
+            grade_level: allStudents.get(session.student_id || '')?.grade_level || '',
             teacher_name: '' // Teacher name not available on session
           }));
           
@@ -1102,7 +1194,7 @@ export function CalendarWeekView({
     return weekDates.map((date, index) => {
       const dayOfWeek = index + 1; // 1-5 for Monday-Friday
       const daySessions = weekSessions.filter(
-        (s) => s.day_of_week === dayOfWeek && students.has(s.student_id)
+        (s) => s.day_of_week === dayOfWeek
       );
       const isHolidayDay = isHoliday(date);
       const holidayName = isHolidayDay ? getHolidayName(date) : null;
@@ -1178,7 +1270,7 @@ export function CalendarWeekView({
         
         // Get student details for the new API format
         const studentList = Array.from(sessionStudents).map(studentId => {
-          const student = students.get(studentId);
+          const student = allStudents.get(studentId);
           return {
             id: studentId,
             grade: parseGradeLevel(student?.grade_level)
@@ -1286,8 +1378,8 @@ export function CalendarWeekView({
                   lessonId: result.lessonId,
                   students: mapping.slotSessions.map(session => ({
                     id: session.student_id || '',
-                    initials: students.get(session.student_id || '')?.initials || '',
-                    grade_level: students.get(session.student_id || '')?.grade_level || '',
+                    initials: allStudents.get(session.student_id || '')?.initials || '',
+                    grade_level: allStudents.get(session.student_id || '')?.grade_level || '',
                     teacher_name: ''
                   }))
                 };
@@ -1572,6 +1664,44 @@ export function CalendarWeekView({
 
   return (
     <div className="w-full">
+      {/* View Mode Toggle */}
+      <div className="mb-4 flex gap-2 items-center">
+        <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
+        <button
+          onClick={() => setViewMode('my-sessions')}
+          className={cn(
+            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+            viewMode === 'my-sessions'
+              ? "bg-blue-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          )}
+        >
+          My Sessions
+        </button>
+        <button
+          onClick={() => setViewMode('specialist')}
+          className={cn(
+            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+            viewMode === 'specialist'
+              ? "bg-purple-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          )}
+        >
+          Assigned to Specialist
+        </button>
+        <button
+          onClick={() => setViewMode('sea')}
+          className={cn(
+            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+            viewMode === 'sea'
+              ? "bg-green-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          )}
+        >
+          Assigned to SEA
+        </button>
+      </div>
+
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
           const dateStr = toLocalDateKey(date);
@@ -1720,7 +1850,7 @@ export function CalendarWeekView({
                         if (block.type === 'group') {
                           const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
                           const studentInitials = groupSessions
-                            .map(s => students.get(s.student_id)?.initials || '?')
+                            .map(s => allStudents.get(s.student_id)?.initials || '?')
                             .filter((v, i, a) => a.indexOf(v) === i) // unique
                             .join(', ');
 
@@ -1729,7 +1859,12 @@ export function CalendarWeekView({
                               <button
                                 type="button"
                                 onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                                className="w-full text-left bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 rounded-lg p-3 text-xs hover:border-blue-400 transition-colors"
+                                className={cn(
+                                  "w-full text-left border-2 border-blue-300 rounded-lg p-3 text-xs hover:border-blue-400 transition-colors",
+                                  viewMode === 'my-sessions' && "bg-gradient-to-r from-blue-50 to-purple-50",
+                                  viewMode === 'specialist' && "bg-gradient-to-r from-purple-100 to-purple-50",
+                                  viewMode === 'sea' && "bg-gradient-to-r from-green-100 to-green-50"
+                                )}
                                 aria-label={`Open group ${groupName} details`}
                               >
                                 <div className="flex items-center justify-between mb-1">
@@ -1747,13 +1882,18 @@ export function CalendarWeekView({
                           );
                         } else {
                           const session = block.data;
-                          const student = students.get(session.student_id);
+                          const student = allStudents.get(session.student_id);
                           return (
                             <div key={session.id} className="mb-2">
                               <button
                                 type="button"
                                 onClick={() => handleOpenSessionModal(session)}
-                                className="w-full text-left bg-white border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors"
+                                className={cn(
+                                  "w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors",
+                                  viewMode === 'my-sessions' && "bg-white",
+                                  viewMode === 'specialist' && "bg-purple-50",
+                                  viewMode === 'sea' && "bg-green-50"
+                                )}
                                 aria-label={`Open session for ${student?.initials || 'student'} at ${formatTime(session.start_time)}`}
                               >
                                 <div className="font-medium text-gray-900">
@@ -1794,8 +1934,8 @@ export function CalendarWeekView({
           student_number: '',
           first_name: '',
           last_name: '',
-          initials: students.get(session.student_id || '')?.initials || '',
-          grade_level: students.get(session.student_id || '')?.grade_level || '',
+          initials: allStudents.get(session.student_id || '')?.initials || '',
+          grade_level: allStudents.get(session.student_id || '')?.grade_level || '',
           teacher_name: ''
         }))}
         content={aiContent}
@@ -1909,7 +2049,7 @@ export function CalendarWeekView({
           groupId={selectedGroupId}
           groupName={selectedGroupName}
           sessions={selectedGroupSessions}
-          students={students}
+          students={allStudents}
         />
       )}
 
@@ -1922,7 +2062,7 @@ export function CalendarWeekView({
             // Don't clear selectedSession here in case notes modal needs it
           }}
           session={selectedSession}
-          student={students.get(selectedSession.student_id)}
+          student={allStudents.get(selectedSession.student_id)}
         />
       )}
     </div>

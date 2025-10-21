@@ -8,7 +8,9 @@ import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
-import { normalizeDeliveredBy } from '@/lib/auth/role-utils';
+import { useSchool } from '../providers/school-context';
+import { filterSessionsBySchool } from '@/lib/utils/session-filters';
+import { log } from '@/lib/monitoring/logger';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -35,6 +37,7 @@ export function CalendarDayView({
   onEventClick
 }: CalendarDayViewProps) {
   const { showToast } = useToast();
+  const { currentSchool } = useSchool();
 
   const [sessionsState, setSessionsState] = useState<ScheduleSession[]>([]);
 
@@ -87,10 +90,12 @@ export function CalendarDayView({
   const canUserGroupSession = (session: ScheduleSession): boolean => {
     if (!providerId) return false;
 
-    // User can group sessions they are actually delivering
+    // User can group sessions they own AND are delivering themselves
     if (session.delivered_by === 'provider' && session.provider_id === providerId) {
       return true;
     }
+
+    // User can also group sessions they are assigned to deliver
     if (session.delivered_by === 'specialist' && session.assigned_to_specialist_id === providerId) {
       return true;
     }
@@ -115,13 +120,20 @@ export function CalendarDayView({
       // Get user profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, school_site, school_district')
+        .select('role, school_site, school_district, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
 
       setUserProfile(profile);
 
-      // Get sessions for just this day
+      // If user works at multiple schools and no school is selected yet, wait
+      if (profile?.works_at_multiple_schools && !currentSchool) {
+        log.info('[CalendarDayView] Waiting for school selection');
+        setSessionsState([]);
+        return;
+      }
+
+      // Get sessions for just this day with school filtering
       const sessions = await sessionGenerator.getSessionsForDateRange(
         user.id,
         currentDate,
@@ -129,11 +141,14 @@ export function CalendarDayView({
         profile?.role
       );
 
-      setSessionsState(sessions);
+      // Filter sessions by current school if applicable
+      const filteredSessions = await filterSessionsBySchool(supabase, sessions, currentSchool);
+
+      setSessionsState(filteredSessions);
     };
 
     loadSessions();
-  }, [currentDate, sessionGenerator, supabase]);
+  }, [currentDate, currentSchool, sessionGenerator, supabase]);
 
   // Fetch student data for assigned sessions (students that aren't in the prop)
   React.useEffect(() => {
@@ -159,7 +174,7 @@ export function CalendarDayView({
         .in('id', missingStudentIds);
 
       if (fetchError) {
-        console.error('[Calendar Day View] Error fetching student data for assigned sessions:', fetchError);
+        log.error('[Calendar Day View] Error fetching student data for assigned sessions', fetchError);
         return;
       }
 
@@ -331,27 +346,43 @@ export function CalendarDayView({
       // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
       const templateIds: string[] = [];
 
-      console.log('Selected sessions for grouping:', Array.from(selectedSessionIds));
+      log.info('Selected sessions for grouping', { selectedSessionIds: Array.from(selectedSessionIds) });
 
       for (const sessionId of Array.from(selectedSessionIds)) {
         const session = sessionsState.find(s => s.id === sessionId);
         if (!session) {
-          console.warn('Session not found in state:', sessionId);
+          log.warn('Session not found in state', { sessionId });
           continue;
         }
 
-        console.log('Finding template for session:', {
+        log.info('Finding template for session', {
           sessionId,
           student_id: session.student_id,
           day_of_week: session.day_of_week,
-          start_time: session.start_time
+          start_time: session.start_time,
+          session_date: session.session_date,
+          delivered_by: session.delivered_by,
+          provider_id: session.provider_id,
+          assigned_to_specialist_id: session.assigned_to_specialist_id,
+          assigned_to_sea_id: session.assigned_to_sea_id,
+          group_id: session.group_id
         });
 
         // Query for the template session
+        // Find template that matches session characteristics (student, day, time)
+        // Note: The template may have different delivered_by than the instance
+        // (e.g., instance assigned to specialist still has a provider template)
+        // so we don't filter by delivered_by or assignment here
+        log.info('Template query criteria', {
+          student_id: session.student_id,
+          day_of_week: session.day_of_week,
+          start_time: session.start_time,
+          session_date: 'IS NULL'
+        });
+
         const { data: templates, error: templateError } = await supabase
           .from('schedule_sessions')
-          .select('id, student_id, day_of_week, start_time, group_id, group_name')
-          .eq('provider_id', providerId)
+          .select('id, student_id, day_of_week, start_time, group_id, group_name, provider_id, delivered_by, assigned_to_specialist_id, assigned_to_sea_id, session_date')
           .eq('student_id', session.student_id)
           .eq('day_of_week', session.day_of_week)
           .eq('start_time', session.start_time)
@@ -359,21 +390,47 @@ export function CalendarDayView({
           .limit(1);
 
         if (templateError) {
-          console.error('Error finding template:', templateError);
+          log.error('Error finding template', templateError);
           continue;
         }
 
-        console.log('Template query result:', templates);
+        log.info('Template query result', {
+          found: templates?.length || 0,
+          templates
+        });
 
         if (templates && templates.length > 0) {
-          templateIds.push(templates[0].id);
-          console.log('Found template:', templates[0]);
+          const template = templates[0];
+
+          // Authorization check: verify user has permission to access this template
+          const isAuthorized =
+            template.provider_id === providerId ||
+            template.assigned_to_specialist_id === providerId ||
+            template.assigned_to_sea_id === providerId;
+
+          if (!isAuthorized) {
+            log.warn('Template found but user not authorized to access it', {
+              template_provider_id: template.provider_id,
+              current_user_id: providerId
+            });
+            continue;
+          }
+
+          log.info('Found authorized template', { template });
+          templateIds.push(template.id);
         } else {
-          console.warn('No template found for session:', session);
+          log.warn('No template found for session - session will be excluded from group', {
+            sessionId,
+            possibleReasons: [
+              'Session is an instance-only (not recurring)',
+              'Template has different student_id, day_of_week, or start_time',
+              'Database query issue'
+            ]
+          });
         }
       }
 
-      console.log('Template IDs to group:', templateIds);
+      log.info('Template IDs to group', { templateIds });
 
       if (templateIds.length < 2) {
         throw new Error(`Could not find template sessions to group. Found ${templateIds.length} template(s), need at least 2. Please ensure sessions are from your recurring schedule.`);
@@ -392,31 +449,36 @@ export function CalendarDayView({
       const data = await response.json();
 
       if (!response.ok) {
-        console.error('Grouping API error:', data);
+        log.error('Grouping API error', data);
         throw new Error(data.error || 'Failed to create group');
       }
 
-      console.log('Grouping API response:', data);
+      log.info('Grouping API response', { data });
 
       // Reload sessions to reflect the grouped templates
-      console.log('Reloading sessions for date:', currentDate);
+      log.info('Reloading sessions for date', { currentDate });
       const updatedSessions = await sessionGenerator.getSessionsForDateRange(
         providerId,
         currentDate,
         currentDate,
         userProfile?.role
       );
-      console.log('Reloaded sessions:', updatedSessions);
-      console.log('Sessions with groups:', updatedSessions.filter(s => s.group_id));
+      log.info('Reloaded sessions', {
+        sessionCount: updatedSessions.length,
+        sessionsWithGroups: updatedSessions.filter(s => s.group_id).length
+      });
 
-      setSessionsState(updatedSessions);
+      // Filter by current school
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
+
+      setSessionsState(filteredSessions);
 
       showToast(`Group "${groupNameInput.trim()}" created successfully`, 'success');
       setGroupingModalOpen(false);
       setSelectedSessionIds(new Set());
       setGroupNameInput('');
     } catch (error) {
-      console.error('Error creating group:', error);
+      log.error('Error creating group', error);
       showToast(error instanceof Error ? error.message : 'Failed to create group', 'error');
     } finally {
       setSavingGroup(false);
@@ -433,6 +495,11 @@ export function CalendarDayView({
       const session = sessionsState.find(s => s.id === sessionId);
       if (!session) {
         throw new Error('Session not found');
+      }
+
+      // Check if user has permission to ungroup this session
+      if (!canUserGroupSession(session)) {
+        throw new Error('You can only ungroup sessions that you are assigned to deliver');
       }
 
       // Find the template session (preferred)
@@ -454,7 +521,7 @@ export function CalendarDayView({
       } else {
         // No template found - check if this is an old instance-based group
         // In this case, ungroup the instance itself and log a warning
-        console.warn('No template found for ungrouping. Ungrouping instance instead. User should recreate group for recurring behavior.');
+        log.warn('No template found for ungrouping - ungrouping instance instead', { sessionId });
         targetSessionId = sessionId;
       }
 
@@ -480,11 +547,15 @@ export function CalendarDayView({
         currentDate,
         userProfile?.role
       );
-      setSessionsState(updatedSessions);
+
+      // Filter by current school
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
+
+      setSessionsState(filteredSessions);
 
       showToast('Session removed from group', 'success');
     } catch (error) {
-      console.error('Error ungrouping session:', error);
+      log.error('Error ungrouping session', error);
       showToast(error instanceof Error ? error.message : 'Failed to ungroup session', 'error');
     }
   };
@@ -655,13 +726,16 @@ export function CalendarDayView({
                             >
                               📚 {session.group_name}
                             </button>
-                            <button
-                              onClick={() => handleUngroupSession(session.id)}
-                              className="text-xs text-gray-400 hover:text-red-600 transition-colors"
-                              title="Remove from group"
-                            >
-                              ✕
-                            </button>
+                            {/* Only show ungroup button if user has permission */}
+                            {canUserGroupSession(session) && (
+                              <button
+                                onClick={() => handleUngroupSession(session.id)}
+                                className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                                title="Remove from group"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
                         )}
 
