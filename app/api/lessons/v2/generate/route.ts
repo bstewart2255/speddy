@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const validElaTopics = ['reading-comprehension', 'phonics-decoding', 'writing-prompt', 'grammar-vocabulary'];
-    const validMathTopics = ['computation', 'word-problems', 'mixed-practice'];
+    const validMathTopics = ['computation', 'word-problems', 'mixed-practice', 'addition', 'subtraction', 'multiplication', 'division', 'fractions'];
     const validTopics = body.subjectType === 'ela' ? validElaTopics : validMathTopics;
 
     if (!validTopics.includes(body.topic)) {

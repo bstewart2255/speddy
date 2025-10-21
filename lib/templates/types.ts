@@ -14,7 +14,12 @@ export type ELATopic =
 export type MathTopic =
   | 'computation'
   | 'word-problems'
-  | 'mixed-practice';
+  | 'mixed-practice'
+  | 'addition'
+  | 'subtraction'
+  | 'multiplication'
+  | 'division'
+  | 'fractions';
 
 export type TemplateTopic = ELATopic | MathTopic;
 

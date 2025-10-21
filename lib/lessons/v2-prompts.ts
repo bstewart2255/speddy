@@ -184,6 +184,112 @@ IMPORTANT: Use "visual-math" for computation, "math-work" for word problems.
 
 Mix different problem types for comprehensive practice.`;
 
+    case 'addition':
+      const additionInfo = getMathComplexity(grade);
+      return `TOPIC: Addition Practice
+
+Create addition practice problems for grade ${grade}.
+
+Include:
+- 3 example problems with step-by-step solutions
+- ${problemCount} practice problems (ALL must use type "visual-math")
+
+Focus: ADDITION ONLY
+Number range: ${additionInfo.numberRange}
+Complexity:
+- Kindergarten-1st: single-digit addition, sums within 10-20
+- 2nd: two-digit addition with and without regrouping
+- 3rd-5th: multi-digit addition, column addition
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
+
+Focus on building addition fluency and understanding of place value in addition.`;
+
+    case 'subtraction':
+      const subtractionInfo = getMathComplexity(grade);
+      return `TOPIC: Subtraction Practice
+
+Create subtraction practice problems for grade ${grade}.
+
+Include:
+- 3 example problems with step-by-step solutions
+- ${problemCount} practice problems (ALL must use type "visual-math")
+
+Focus: SUBTRACTION ONLY
+Number range: ${subtractionInfo.numberRange}
+Complexity:
+- Kindergarten-1st: single-digit subtraction within 10-20
+- 2nd: two-digit subtraction with and without regrouping
+- 3rd-5th: multi-digit subtraction, borrowing across zeros
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
+
+Focus on building subtraction fluency and understanding of regrouping/borrowing.`;
+
+    case 'multiplication':
+      const multiplicationInfo = getMathComplexity(grade);
+      return `TOPIC: Multiplication Practice
+
+Create multiplication practice problems for grade ${grade}.
+
+Include:
+- 3 example problems with step-by-step solutions
+- ${problemCount} practice problems (ALL must use type "visual-math")
+
+Focus: MULTIPLICATION ONLY
+Number range: ${multiplicationInfo.numberRange}
+Complexity:
+- 2nd: introduction to multiplication as repeated addition (2x, 5x, 10x)
+- 3rd: multiplication facts (times tables 1-12)
+- 4th: multi-digit multiplication (2-digit × 1-digit, 2-digit × 2-digit)
+- 5th: multi-digit multiplication with larger numbers
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
+
+Focus on building multiplication fact fluency and multi-digit multiplication skills.`;
+
+    case 'division':
+      const divisionInfo = getMathComplexity(grade);
+      return `TOPIC: Division Practice
+
+Create division practice problems for grade ${grade}.
+
+Include:
+- 3 example problems with step-by-step solutions
+- ${problemCount} practice problems (ALL must use type "visual-math")
+
+Focus: DIVISION ONLY
+Number range: ${divisionInfo.numberRange}
+Complexity:
+- 3rd: introduction to division, division facts (inverse of multiplication)
+- 4th: long division (2-digit ÷ 1-digit, 3-digit ÷ 1-digit)
+- 5th: long division with larger numbers, division with remainders
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
+
+Focus on building division fact fluency and long division skills.`;
+
+    case 'fractions':
+      const fractionsInfo = getMathComplexity(grade);
+      return `TOPIC: Fractions Practice
+
+Create fraction practice problems for grade ${grade}.
+
+Include:
+- 3 example problems with step-by-step solutions
+- ${problemCount} practice problems (ALL must use type "visual-math")
+
+Focus: FRACTIONS ONLY
+Number range: ${fractionsInfo.numberRange}
+Complexity:
+- 3rd: identifying fractions, comparing fractions, equivalent fractions (halves, thirds, fourths)
+- 4th: adding/subtracting fractions with like denominators, mixed numbers
+- 5th: adding/subtracting fractions with unlike denominators, multiplying fractions
+
+IMPORTANT: All practice problems MUST use "type": "visual-math" (not short-answer, not any other type).
+
+Focus on building conceptual understanding of fractions and fraction operations.`;
+
     default:
       return `Create ${problemCount} educational questions/problems appropriate for grade ${grade}.`;
   }
@@ -233,6 +339,18 @@ function getResponseFormat(topic: TemplateTopic): string {
   "questions": [
     { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" },
     { "text": "Word problem...", "type": "math-work", "answer": "..." }
+  ],`;
+
+    case 'addition':
+    case 'subtraction':
+    case 'multiplication':
+    case 'division':
+    case 'fractions':
+      return `"examples": [
+    { "problem": "2 + 2", "solution": ["Step 1: ...", "Answer: 4"], "teachingPoint": "..." }
+  ],
+  "questions": [
+    { "text": "3 + 5 = ___", "type": "visual-math", "answer": "8" }
   ],`;
 
     default:
