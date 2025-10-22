@@ -239,14 +239,18 @@ export function CalendarWeekView({
         // any session they own, regardless of delivered_by
         filteredSessions = weekSessions.filter(s => s.provider_id === user.id);
       } else if (viewMode === 'specialist') {
-        // Show only sessions assigned to current user as specialist
+        // Show MY students that I assigned to specialists (not sessions assigned TO me)
         filteredSessions = weekSessions.filter(s =>
-          s.assigned_to_specialist_id === user.id
+          s.provider_id === user.id &&
+          s.assigned_to_specialist_id !== null &&
+          s.assigned_to_specialist_id !== user.id
         );
       } else if (viewMode === 'sea') {
-        // Show only sessions assigned to current user as SEA
+        // Show MY students that I assigned to SEAs (not sessions assigned TO me)
         filteredSessions = weekSessions.filter(s =>
-          s.assigned_to_sea_id === user.id
+          s.provider_id === user.id &&
+          s.assigned_to_sea_id !== null &&
+          s.assigned_to_sea_id !== user.id
         );
       }
 
