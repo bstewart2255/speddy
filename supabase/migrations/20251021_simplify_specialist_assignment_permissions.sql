@@ -1,9 +1,7 @@
 -- Update specialist assignment permissions to support both school_id and legacy school matching
 -- Any Resource Specialist can assign sessions to any other specialist at the same school
 
--- Drop and recreate the function with improved school matching logic
-DROP FUNCTION IF EXISTS can_assign_specialist_to_session(UUID, UUID);
-
+-- Update the function with improved school matching logic (using CREATE OR REPLACE to avoid dependency issues)
 CREATE OR REPLACE FUNCTION can_assign_specialist_to_session(
   provider_id UUID,
   specialist_id UUID
@@ -56,7 +54,7 @@ BEGIN
   -- Not at the same school
   RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Add comment explaining the logic
 COMMENT ON FUNCTION can_assign_specialist_to_session(UUID, UUID) IS
@@ -67,9 +65,7 @@ Returns TRUE if:
 3. Provider and target are at the same school (matched by school_id or school_district+school_site)
 4. Not a self-assignment (provider_id != specialist_id)';
 
--- Update the get_available_specialists function to also support legacy schools
-DROP FUNCTION IF EXISTS get_available_specialists(UUID);
-
+-- Update the get_available_specialists function to also support legacy schools (using CREATE OR REPLACE to avoid dependency issues)
 CREATE OR REPLACE FUNCTION get_available_specialists(current_user_id UUID)
 RETURNS TABLE (
   id UUID,
@@ -111,7 +107,7 @@ BEGIN
   AND p.id != current_user_id
   ORDER BY p.full_name;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION get_available_specialists(UUID) IS
 'Returns all specialists at the same school as the current user, excluding the current user.

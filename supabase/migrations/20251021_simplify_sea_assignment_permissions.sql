@@ -1,9 +1,7 @@
 -- Simplify SEA assignment permissions to pure school-based matching
 -- Any Resource Specialist can assign sessions to any SEA at the same school
 
--- Drop and recreate the function with simplified logic
-DROP FUNCTION IF EXISTS can_assign_sea_to_session(UUID, UUID);
-
+-- Update the function with simplified logic (using CREATE OR REPLACE to avoid dependency issues)
 CREATE OR REPLACE FUNCTION can_assign_sea_to_session(
   provider_id UUID,
   sea_id UUID
@@ -51,7 +49,7 @@ BEGIN
   -- Not at the same school
   RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Add comment explaining the simplified logic
 COMMENT ON FUNCTION can_assign_sea_to_session(UUID, UUID) IS
