@@ -151,7 +151,7 @@ export function CalendarWeekView({
     if (userProfile?.role === 'sea') {
       setViewMode('sea');
     }
-  }, [userProfile]);
+  }, [userProfile, setViewMode]);
 
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {

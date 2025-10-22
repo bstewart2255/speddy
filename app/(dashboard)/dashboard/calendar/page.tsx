@@ -201,11 +201,19 @@ export default function CalendarPage() {
 
       if (profile?.role === 'sea') {
         // SEAs use RPC function to get their students
+        // Pass both school_id and legacy school_site+district for migration compatibility
         const schoolId = currentSchool?.school_id || null;
-        const { data, error } = await supabase
-          .rpc('get_sea_students', { p_school_id: schoolId });
-        studentData = data;
-        studentError = error;
+        const schoolSite = currentSchool?.school_site ?? (currentSchool as any).site ?? null;
+        const schoolDistrict = currentSchool?.school_district ?? (currentSchool as any).district ?? null;
+
+        const result = await supabase
+          .rpc('get_sea_students', {
+            p_school_id: schoolId,
+            p_school_site: schoolSite,
+            p_school_district: schoolDistrict
+          });
+        studentData = result.data;
+        studentError = result.error;
       } else {
         // Other roles fetch students by provider_id
         let studentQuery = supabase
@@ -219,24 +227,28 @@ export default function CalendarPage() {
           const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
           const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
 
-          console.log('[DEBUG] Filtering students with school context:', {
-            currentSchool,
-            schoolId,
-            schoolSite,
-            schoolDistrict
-          });
+          if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+            console.log('[DEBUG] Filtering students with school context:', {
+              currentSchool,
+              schoolId,
+              schoolSite,
+              schoolDistrict
+            });
+          }
 
           if (schoolSite && schoolDistrict) {
-            console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
+            if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+              console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
+            }
             // Filter by school_site and school_district which includes all students at this school
             // This works for both legacy (NULL school_id) and migrated (populated school_id) students
             studentQuery = studentQuery
               .eq('school_site', schoolSite)
               .eq('school_district', schoolDistrict);
-          } else {
+          } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
             console.warn('[DEBUG] No valid school filter criteria, students may include all schools');
           }
-        } else {
+        } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
           console.warn('[DEBUG] No currentSchool context, loading all students for provider');
         }
 
