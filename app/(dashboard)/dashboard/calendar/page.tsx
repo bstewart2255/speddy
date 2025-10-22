@@ -145,6 +145,7 @@ export default function CalendarPage() {
       setProviderId(user.id);
 
       // Fetch sessions filtered by current school
+      // For SEAs: filter by assigned_to_sea_id, for others: filter by provider_id
       let sessionQuery = supabase
         .from('schedule_sessions')
         .select(`
@@ -155,8 +156,15 @@ export default function CalendarPage() {
             school_site,
             school_district
           )
-        `)
-        .eq('provider_id', user.id);
+        `);
+
+      if (profile?.role === 'sea') {
+        sessionQuery = sessionQuery
+          .eq('assigned_to_sea_id', user.id)
+          .eq('delivered_by', 'sea');
+      } else {
+        sessionQuery = sessionQuery.eq('provider_id', user.id);
+      }
 
       // Apply school filter if currentSchool is available (normalize aliases)
       if (currentSchool) {
@@ -187,39 +195,67 @@ export default function CalendarPage() {
       setSessions(sessionRows);
 
       // Fetch students filtered by current school
-      let studentQuery = supabase
-        .from('students')
-        .select('id, initials, grade_level')
-        .eq('provider_id', user.id);
+      // For SEAs: use get_sea_students RPC, for others: query students table
+      let studentData;
+      let studentError;
 
-      // Apply school filter if currentSchool is available (normalize aliases)
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id ?? null;
-        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
-        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+      if (profile?.role === 'sea') {
+        // SEAs use RPC function to get their students
+        // Pass both school_id and legacy school_site+district for migration compatibility
+        const schoolId = currentSchool?.school_id || null;
+        const schoolSite = currentSchool?.school_site ?? (currentSchool as any).site ?? null;
+        const schoolDistrict = currentSchool?.school_district ?? (currentSchool as any).district ?? null;
 
-        console.log('[DEBUG] Filtering students with school context:', {
-          currentSchool,
-          schoolId,
-          schoolSite,
-          schoolDistrict
-        });
-
-        if (schoolSite && schoolDistrict) {
-          console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
-          // Filter by school_site and school_district which includes all students at this school
-          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
-          studentQuery = studentQuery
-            .eq('school_site', schoolSite)
-            .eq('school_district', schoolDistrict);
-        } else {
-          console.warn('[DEBUG] No valid school filter criteria, students may include all schools');
-        }
+        const result = await supabase
+          .rpc('get_sea_students', {
+            p_school_id: schoolId,
+            p_school_site: schoolSite,
+            p_school_district: schoolDistrict
+          });
+        studentData = result.data;
+        studentError = result.error;
       } else {
-        console.warn('[DEBUG] No currentSchool context, loading all students for provider');
-      }
+        // Other roles fetch students by provider_id
+        let studentQuery = supabase
+          .from('students')
+          .select('id, initials, grade_level')
+          .eq('provider_id', user.id);
 
-      const { data: studentData, error: studentError } = await studentQuery;
+        // Apply school filter if currentSchool is available (normalize aliases)
+        if (currentSchool) {
+          const schoolId = currentSchool.school_id ?? null;
+          const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
+          const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+
+          if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+            console.log('[DEBUG] Filtering students with school context:', {
+              currentSchool,
+              schoolId,
+              schoolSite,
+              schoolDistrict
+            });
+          }
+
+          if (schoolSite && schoolDistrict) {
+            if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+              console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
+            }
+            // Filter by school_site and school_district which includes all students at this school
+            // This works for both legacy (NULL school_id) and migrated (populated school_id) students
+            studentQuery = studentQuery
+              .eq('school_site', schoolSite)
+              .eq('school_district', schoolDistrict);
+          } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+            console.warn('[DEBUG] No valid school filter criteria, students may include all schools');
+          }
+        } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
+          console.warn('[DEBUG] No currentSchool context, loading all students for provider');
+        }
+
+        const result = await studentQuery;
+        studentData = result.data;
+        studentError = result.error;
+      }
 
       if (studentError) throw studentError;
 
@@ -457,16 +493,19 @@ export default function CalendarPage() {
               >
                 Week
               </button>
-              <button
-                onClick={() => setCurrentView('month')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentView === 'month'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Month
-              </button>
+              {/* Hide Month view for SEAs */}
+              {userRole !== 'sea' && (
+                <button
+                  onClick={() => setCurrentView('month')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    currentView === 'month'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Month
+                </button>
+              )}
             </nav>
           </div>
         </div>
