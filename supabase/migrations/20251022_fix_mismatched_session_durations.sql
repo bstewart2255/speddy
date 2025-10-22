@@ -76,26 +76,9 @@ WHERE
   end_time > '17:00:00'::time
   AND status = 'active'; -- Don't overwrite existing conflict reasons
 
--- Conflict type 3: Session for a special activity teacher overlaps with another session
-WITH teacher_overlaps AS (
-  SELECT DISTINCT ss1.id
-  FROM public.schedule_sessions ss1
-  INNER JOIN public.students s1 ON ss1.student_id = s1.id
-  INNER JOIN public.schedule_sessions ss2 ON
-    ss2.day_of_week = ss1.day_of_week
-    AND ss2.id != ss1.id
-  INNER JOIN public.students s2 ON ss2.student_id = s2.id
-  INNER JOIN public.special_activities sa ON s1.provider_id = sa.provider_id
-  WHERE
-    sa.teacher_name = s2.teacher_name
-    AND ss1.start_time < ss2.end_time
-    AND ss1.end_time > ss2.start_time
-)
-UPDATE public.schedule_sessions
-SET
-  status = 'needs_attention',
-  conflict_reason = COALESCE(conflict_reason || ' AND ', '') || 'Teacher scheduling conflict'
-WHERE id IN (SELECT id FROM teacher_overlaps);
+-- Teacher conflict detection removed: recognized as a false positive
+-- It's normal for multiple students from the same classroom teacher to have
+-- sessions at the same time (that's when they're pulled out of class)
 
 -- Add comment
 COMMENT ON FUNCTION recalculate_session_end_time IS

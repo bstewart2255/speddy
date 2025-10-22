@@ -59,8 +59,12 @@ export async function updateExistingSessionsForStudent(
       return { success: true };
     }
 
-    // Step 1: Update session durations if minutes_per_session changed
-    if (durationChanged && newRequirements.minutes_per_session) {
+    // Step 1: Reset all sessions to 'active' before processing
+    // This ensures stale conflict flags are cleared
+    await resetSessionsToActive(supabase, studentId);
+
+    // Step 2: Update session durations if minutes_per_session changed
+    if (durationChanged && newRequirements.minutes_per_session != null) {
       await updateSessionDurations(
         supabase,
         existingSessions,
@@ -68,8 +72,8 @@ export async function updateExistingSessionsForStudent(
       );
     }
 
-    // Step 2: Adjust session count if sessions_per_week changed
-    if (countChanged && newRequirements.sessions_per_week) {
+    // Step 3: Adjust session count if sessions_per_week changed
+    if (countChanged && newRequirements.sessions_per_week != null) {
       await adjustSessionCount(
         supabase,
         studentId,
@@ -78,10 +82,10 @@ export async function updateExistingSessionsForStudent(
       );
     }
 
-    // Step 3: Detect conflicts in updated sessions
+    // Step 4: Detect conflicts in updated sessions
     const conflictResult = await detectSessionConflicts(supabase, studentId);
 
-    // Step 4: Mark conflicting sessions
+    // Step 5: Mark conflicting sessions
     if (conflictResult.hasConflicts) {
       await markConflictingSessions(supabase, conflictResult.conflictingSessions);
     }
@@ -96,6 +100,28 @@ export async function updateExistingSessionsForStudent(
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+  }
+}
+
+/**
+ * Resets all sessions for a student to 'active' status
+ * This clears any stale conflict flags before re-running conflict detection
+ */
+async function resetSessionsToActive(
+  supabase: ReturnType<typeof createClient<Database>>,
+  studentId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('schedule_sessions')
+    .update({
+      status: 'active',
+      conflict_reason: null,
+    })
+    .eq('student_id', studentId)
+    .neq('status', 'active'); // Only update non-active sessions
+
+  if (error) {
+    throw new Error(`Failed to reset session statuses: ${error.message}`);
   }
 }
 
@@ -123,7 +149,11 @@ async function updateSessionDurations(
       .eq('id', session.id);
   });
 
-  await Promise.all(updates);
+  const results = await Promise.all(updates);
+  const firstError = results.find(r => r.error)?.error;
+  if (firstError) {
+    throw new Error(`Failed to update session duration: ${firstError.message}`);
+  }
 }
 
 /**
@@ -143,13 +173,18 @@ async function adjustSessionCount(
   // Need to delete excess sessions
   const excessCount = currentCount - targetCount;
 
-  // Get sessions sorted by day and time
-  const { data: sessions } = await supabase
+  // Get sessions sorted by day and time, but only active (not completed) sessions
+  const { data: sessions, error: listErr } = await supabase
     .from('schedule_sessions')
     .select('id')
     .eq('student_id', studentId)
+    .eq('is_completed', false)
     .order('day_of_week', { ascending: true })
     .order('start_time', { ascending: true });
+
+  if (listErr) {
+    throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
+  }
 
   if (!sessions) return;
 
@@ -158,10 +193,14 @@ async function adjustSessionCount(
 
   if (sessionsToDelete.length > 0) {
     const deleteIds = sessionsToDelete.map(s => s.id);
-    await supabase
+    const { error: delErr } = await supabase
       .from('schedule_sessions')
       .delete()
       .in('id', deleteIds);
+
+    if (delErr) {
+      throw new Error(`Failed to delete excess sessions: ${delErr.message}`);
+    }
   }
 }
 

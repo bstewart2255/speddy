@@ -392,11 +392,12 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         session.delivered_by === 'sea' ? 'border-2 border-orange-400' :
                         session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
 
-                      // Add conflict styling
+                      // Add conflict styling with patterns for accessibility
+                      // Using both border thickness and distinctive patterns
                       const conflictClass = isConflict
-                        ? 'border-2 border-red-500 bg-red-100'
+                        ? 'border-4 border-red-600 bg-red-100 shadow-[inset_0_0_0_2px_rgba(220,38,38,0.3)]'
                         : isNeedsAttention
-                          ? 'border-2 border-yellow-500'
+                          ? 'border-4 border-yellow-600 shadow-[inset_0_0_0_2px_rgba(202,138,4,0.3)]'
                           : '';
 
                       const columnIndex = sessionColumns.get(session.id) ?? 0;

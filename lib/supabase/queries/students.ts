@@ -296,6 +296,7 @@ export async function deleteStudent(studentId: string) {
 
 /**
  * Update a student's session requirements if owned by the user.
+ * Returns the updated student and optionally sync result information
  */
 export async function updateStudent(studentId: string, updates: {
   initials?: string;
@@ -304,7 +305,10 @@ export async function updateStudent(studentId: string, updates: {
   teacher_id?: string;
   sessions_per_week?: number;
   minutes_per_session?: number;
-}) {
+}): Promise<{
+  student: any;
+  syncResult?: { success: boolean; error?: string; conflictCount?: number };
+}> {
   const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to verify ownership
@@ -389,8 +393,10 @@ export async function updateStudent(studentId: string, updates: {
     updates.sessions_per_week !== undefined ||
     updates.minutes_per_session !== undefined;
 
+  let syncResult: { success: boolean; error?: string; conflictCount?: number } | undefined;
+
   if (requirementsChanged && oldStudentResult.data) {
-    const syncResult = await updateExistingSessionsForStudent(
+    syncResult = await updateExistingSessionsForStudent(
       studentId,
       {
         minutes_per_session: oldStudentResult.data.minutes_per_session,
@@ -404,13 +410,16 @@ export async function updateStudent(studentId: string, updates: {
 
     if (!syncResult.success) {
       console.error('Failed to sync sessions:', syncResult.error);
-      // Don't throw - student update was successful, just log the sync issue
+      // Don't throw - student update was successful, return sync error to caller
     } else if (syncResult.conflictCount && syncResult.conflictCount > 0) {
       console.log(`Updated sessions with ${syncResult.conflictCount} conflicts flagged`);
     }
   }
 
-  return updateResult.data;
+  return {
+    student: updateResult.data,
+    syncResult,
+  };
 }
 
 /**
