@@ -146,6 +146,13 @@ export function CalendarWeekView({
   const supabase = createClient<Database>();
   const { showToast } = useToast();
 
+  // Auto-set view mode for SEA users
+  useEffect(() => {
+    if (userProfile?.role === 'sea') {
+      setViewMode('sea');
+    }
+  }, [userProfile]);
+
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {
     const [hours, minutes] = time.split(':').map(Number);
@@ -1664,43 +1671,45 @@ export function CalendarWeekView({
 
   return (
     <div className="w-full">
-      {/* View Mode Toggle */}
-      <div className="mb-4 flex gap-2 items-center">
-        <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
-        <button
-          onClick={() => setViewMode('my-sessions')}
-          className={cn(
-            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-            viewMode === 'my-sessions'
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          )}
-        >
-          My Sessions
-        </button>
-        <button
-          onClick={() => setViewMode('specialist')}
-          className={cn(
-            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-            viewMode === 'specialist'
-              ? "bg-purple-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          )}
-        >
-          Assigned to Specialist
-        </button>
-        <button
-          onClick={() => setViewMode('sea')}
-          className={cn(
-            "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-            viewMode === 'sea'
-              ? "bg-green-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          )}
-        >
-          Assigned to SEA
-        </button>
-      </div>
+      {/* View Mode Toggle - Hidden for SEA users */}
+      {userProfile?.role !== 'sea' && (
+        <div className="mb-4 flex gap-2 items-center">
+          <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
+          <button
+            onClick={() => setViewMode('my-sessions')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              viewMode === 'my-sessions'
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            )}
+          >
+            My Sessions
+          </button>
+          <button
+            onClick={() => setViewMode('specialist')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              viewMode === 'specialist'
+                ? "bg-purple-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            )}
+          >
+            Assigned to Specialist
+          </button>
+          <button
+            onClick={() => setViewMode('sea')}
+            className={cn(
+              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              viewMode === 'sea'
+                ? "bg-green-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            )}
+          >
+            Assigned to SEA
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-5 gap-3 mb-4">
         {daysInWeek.map(({ date, sessions: daySessions, dayOfWeek, isHoliday: isHolidayDay, holidayName }) => {
