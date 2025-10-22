@@ -37,11 +37,12 @@ export function ConflictFilterPanel({
     let teacherList: string[] = [];
     
     if (teachersFromTable && teachersFromTable.length > 0) {
-      // Use teachers from the teachers table
-      teacherList = teachersFromTable
-        .map(formatTeacherName)
-        .filter(Boolean)
-        .sort();
+      // Use teachers from the teachers table (deduplicate in case of duplicate names)
+      teacherList = Array.from(new Set(
+        teachersFromTable
+          .map(formatTeacherName)
+          .filter(Boolean)
+      )).sort();
     } else {
       // Fall back to extracting from students and activities
       const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
@@ -157,10 +158,10 @@ export function ConflictFilterPanel({
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
               <option value="">All Teachers</option>
-              {teachers.map((teacher) => {
+              {teachers.map((teacher, index) => {
                 const grade = teacherGrades.get(teacher);
                 return (
-                  <option key={teacher} value={teacher}>
+                  <option key={`teacher-${index}-${teacher}`} value={teacher}>
                     {teacher} {grade ? `(${grade})` : ''}
                   </option>
                 );
