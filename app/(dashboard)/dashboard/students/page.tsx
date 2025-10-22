@@ -15,15 +15,17 @@ import { StudentDetailsModal } from '../../../components/students/student-detail
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { useRouter } from 'next/navigation';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import { StudentBulkImporter } from '../../../components/students/student-bulk-importer';
+import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
 
 type Student = {
   id: string;
   initials: string;
   grade_level: string;
-  teacher_name: string;
+  teacher_name: string | null;
   teacher_id?: string | null;
-  sessions_per_week: number;
-  minutes_per_session: number;
+  sessions_per_week: number | null;
+  minutes_per_session: number | null;
   provider_id: string;
   created_at: string;
   updated_at: string;
@@ -55,6 +57,8 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const [showBulkImportSection, setShowBulkImportSection] = useState(false);
+  const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading } = useSchool();
@@ -240,8 +244,8 @@ export default function StudentsPage() {
   const handleEdit = (student: Student) => {
     setEditingId(student.id);
     setEditFormData({
-      sessions_per_week: student.sessions_per_week.toString(),
-      minutes_per_session: student.minutes_per_session.toString()
+      sessions_per_week: student.sessions_per_week?.toString() || '',
+      minutes_per_session: student.minutes_per_session?.toString() || ''
     });
   };
 
@@ -295,6 +299,12 @@ export default function StudentsPage() {
               >
                 Import CSV
               </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowBulkImportSection(!showBulkImportSection)}
+              >
+                Bulk Import Students
+              </Button>
               <AIUploadButton
                 uploadType="students"
                 onSuccess={fetchStudents}
@@ -324,6 +334,49 @@ export default function StudentsPage() {
               </CardBody>
             </Card>
           </div>
+        )}
+
+        {/* Bulk Import Section */}
+        {!isViewOnly && showBulkImportSection && (
+          <div className="mb-6">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Bulk Import Students from SEIS Report</CardTitle>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowBulkImportSection(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody className="p-6">
+                <StudentBulkImporter
+                  currentSchool={currentSchool}
+                  onUploadComplete={(data) => {
+                    setBulkImportPreviewData(data);
+                  }}
+                />
+              </CardBody>
+            </Card>
+          </div>
+        )}
+
+        {/* Bulk Import Preview Modal */}
+        {bulkImportPreviewData && (
+          <StudentImportPreviewModal
+            isOpen={!!bulkImportPreviewData}
+            onClose={() => setBulkImportPreviewData(null)}
+            data={bulkImportPreviewData}
+            currentSchool={currentSchool}
+            onImportComplete={() => {
+              fetchStudents();
+              setShowBulkImportSection(false);
+              setBulkImportPreviewData(null);
+            }}
+          />
         )}
 
         {/* Unscheduled Sessions Notification */}
@@ -559,12 +612,16 @@ export default function StudentsPage() {
                       <GradeTag grade={student.grade_level} />
                     </TableCell>
                     <TableCell>
-                      <button
-                        onClick={() => setSelectedTeacherName(student.teacher_name)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                      >
-                        {student.teacher_name}
-                      </button>
+                      {student.teacher_name ? (
+                        <button
+                          onClick={() => setSelectedTeacherName(student.teacher_name)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        >
+                          {student.teacher_name}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 italic">Not assigned</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {!isViewOnly && editingId === student.id ? (
@@ -589,8 +646,10 @@ export default function StudentsPage() {
                           </select>
                           <span>min</span>
                         </div>
-                      ) : (
+                      ) : student.sessions_per_week && student.minutes_per_session ? (
                         `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
+                      ) : (
+                        <span className="text-gray-400 italic">Not configured</span>
                       )}
                     </TableCell>
                     {/* <TableCell>

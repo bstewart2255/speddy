@@ -93,6 +93,13 @@ export class AutoScheduler {
       };
 
       try {
+        // Skip students without scheduling configuration (e.g., from bulk import)
+        if (!student.sessions_per_week || !student.minutes_per_session) {
+          result.unscheduledStudents.push(student);
+          result.errors.push(`Student ${student.initials} does not have scheduling configured (sessions/week and minutes/session required)`);
+          return result;
+        }
+
         // Get current data
         const [bellSchedules, specialActivities, existingSessions] = await Promise.all([
           this.getBellSchedules(),

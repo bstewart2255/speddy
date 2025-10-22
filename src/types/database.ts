@@ -145,10 +145,10 @@ export interface Database {
           provider_id: string
           initials: string
           grade_level: string
-          teacher_name: string
+          teacher_name: string | null
           teacher_id: string | null
-          sessions_per_week: number
-          minutes_per_session: number
+          sessions_per_week: number | null
+          minutes_per_session: number | null
           school_id: string | null
           district_id: string | null
           state_id: string | null
@@ -162,10 +162,10 @@ export interface Database {
           provider_id: string
           initials: string
           grade_level: string
-          teacher_name: string
+          teacher_name?: string | null
           teacher_id?: string | null
-          sessions_per_week: number
-          minutes_per_session: number
+          sessions_per_week?: number | null
+          minutes_per_session?: number | null
           school_id?: string | null
           district_id?: string | null
           state_id?: string | null
@@ -179,10 +179,10 @@ export interface Database {
           provider_id?: string
           initials?: string
           grade_level?: string
-          teacher_name?: string
+          teacher_name?: string | null
           teacher_id?: string | null
-          sessions_per_week?: number
-          minutes_per_session?: number
+          sessions_per_week?: number | null
+          minutes_per_session?: number | null
           school_id?: string | null
           district_id?: string | null
           state_id?: string | null

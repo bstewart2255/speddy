@@ -84,6 +84,7 @@ function findBestMatch(
     }
 
     // Match by full name if available (bonus points)
+    let nameMatches = false;
     if (dbStudent.first_name && dbStudent.last_name) {
       const nameMatch = compareNames(
         excelStudent.firstName,
@@ -94,10 +95,15 @@ function findBestMatch(
       if (nameMatch.matches) {
         score += 10;
         reasons.push(nameMatch.reason);
+        nameMatches = true;
       }
     }
 
-    if (score > 0) {
+    // Only consider as a potential duplicate if:
+    // 1. Initials match (at least partially), OR
+    // 2. Full names match
+    // Grade alone is not enough to flag as duplicate
+    if (score > 0 && (initialsMatch.matches || nameMatches)) {
       possibleMatches.push({ student: dbStudent, score, reasons });
     }
   }
