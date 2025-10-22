@@ -31,16 +31,26 @@ CREATE POLICY "Users and assigned members can update sessions with permission ch
       assigned_to_sea_id = auth.uid()
     )
     AND
-    -- Validate SEA assignment if being set
+    -- Validate SEA assignment only if it's actually changing
     (
-      assigned_to_sea_id IS NULL
-      OR can_assign_sea_to_session(auth.uid(), assigned_to_sea_id)
+      assigned_to_sea_id IS NULL  -- Being removed
+      OR assigned_to_sea_id = (
+        SELECT s.assigned_to_sea_id
+        FROM schedule_sessions s
+        WHERE s.id = schedule_sessions.id
+      )  -- Unchanged
+      OR can_assign_sea_to_session(auth.uid(), assigned_to_sea_id)  -- Changed, validate
     )
     AND
-    -- Validate specialist assignment if being set
+    -- Validate specialist assignment only if it's actually changing
     (
-      assigned_to_specialist_id IS NULL
-      OR can_assign_specialist_to_session(auth.uid(), assigned_to_specialist_id)
+      assigned_to_specialist_id IS NULL  -- Being removed
+      OR assigned_to_specialist_id = (
+        SELECT s.assigned_to_specialist_id
+        FROM schedule_sessions s
+        WHERE s.id = schedule_sessions.id
+      )  -- Unchanged
+      OR can_assign_specialist_to_session(auth.uid(), assigned_to_specialist_id)  -- Changed, validate
     )
   );
 
