@@ -15,6 +15,8 @@ import { StudentDetailsModal } from '../../../components/students/student-detail
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { useRouter } from 'next/navigation';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
+import { StudentBulkImporter } from '../../../components/students/student-bulk-importer';
+import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
 
 type Student = {
   id: string;
@@ -55,6 +57,8 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
+  const [showBulkImportSection, setShowBulkImportSection] = useState(false);
+  const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading } = useSchool();
@@ -295,6 +299,12 @@ export default function StudentsPage() {
               >
                 Import CSV
               </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowBulkImportSection(!showBulkImportSection)}
+              >
+                Bulk Import Students
+              </Button>
               <AIUploadButton
                 uploadType="students"
                 onSuccess={fetchStudents}
@@ -324,6 +334,49 @@ export default function StudentsPage() {
               </CardBody>
             </Card>
           </div>
+        )}
+
+        {/* Bulk Import Section */}
+        {!isViewOnly && showBulkImportSection && (
+          <div className="mb-6">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Bulk Import Students from SEIS Report</CardTitle>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowBulkImportSection(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody className="p-6">
+                <StudentBulkImporter
+                  currentSchool={currentSchool}
+                  onUploadComplete={(data) => {
+                    setBulkImportPreviewData(data);
+                  }}
+                />
+              </CardBody>
+            </Card>
+          </div>
+        )}
+
+        {/* Bulk Import Preview Modal */}
+        {bulkImportPreviewData && (
+          <StudentImportPreviewModal
+            isOpen={!!bulkImportPreviewData}
+            onClose={() => setBulkImportPreviewData(null)}
+            data={bulkImportPreviewData}
+            currentSchool={currentSchool}
+            onImportComplete={() => {
+              fetchStudents();
+              setShowBulkImportSection(false);
+              setBulkImportPreviewData(null);
+            }}
+          />
         )}
 
         {/* Unscheduled Sessions Notification */}
