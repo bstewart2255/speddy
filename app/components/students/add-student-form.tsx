@@ -123,7 +123,7 @@
             value={formData.sessions_per_week}
             onChange={(e) => setFormData({ ...formData, sessions_per_week: parseInt(e.target.value) })}
             min={1}
-            max={10}
+            max={20}
             required
           />
         </FormGroup>
