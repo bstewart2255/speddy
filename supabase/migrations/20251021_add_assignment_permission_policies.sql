@@ -2,8 +2,8 @@
 -- These policies validate that assignments use the can_assign_sea_to_session()
 -- and can_assign_specialist_to_session() functions
 
--- Drop the existing update policy if it exists
-DROP POLICY IF EXISTS "Users and SEAs can update schedule sessions" ON schedule_sessions;
+-- Drop the comprehensive policy if it exists (for idempotency)
+DROP POLICY IF EXISTS "Users and assigned members can update sessions with permission checks" ON schedule_sessions;
 
 -- Create a comprehensive update policy that includes assignment permission checks
 CREATE POLICY "Users and assigned members can update sessions with permission checks"
