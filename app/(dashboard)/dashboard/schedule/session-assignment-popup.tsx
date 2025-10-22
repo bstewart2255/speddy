@@ -114,15 +114,26 @@ export function SessionAssignmentPopup({
         .eq("id", session.id);
 
       if (error) {
+        // Log the full error for debugging
+        console.error('[SessionAssignmentPopup] Full error object:', JSON.stringify(error, null, 2));
+        console.error('[SessionAssignmentPopup] Error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+
         // Check if it's a permission error and provide specific message
         if (error.message?.includes('can_assign_sea_to_session')) {
           throw new Error('You do not have permission to assign sessions to this SEA. They may need to be shared at your school first.');
         } else if (error.message?.includes('can_assign_specialist_to_session')) {
           throw new Error('You do not have permission to assign sessions to this specialist. Only Resource Specialists can assign to other specialists at the same school.');
-        } else if (error.message?.includes('policy')) {
-          throw new Error('You do not have permission to make this assignment.');
+        } else if (error.message?.includes('policy') || error.code === '42501') {
+          throw new Error(`Permission denied: ${error.message || 'You do not have permission to make this assignment.'}`);
+        } else if (error.code === '23514') {
+          throw new Error(`Constraint violation: ${error.message || 'Assignment data is invalid.'}`);
         }
-        throw error;
+        throw new Error(`Database error (${error.code}): ${error.message || 'Unknown error'}`);
       }
 
       onUpdate();
