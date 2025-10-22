@@ -41,12 +41,13 @@ export function ConflictFilterPanel({
       teacherList = Array.from(new Set(
         teachersFromTable
           .map(formatTeacherName)
+          .map(name => name.trim()) // Trim whitespace to catch duplicates like "Mohr" and "Mohr "
           .filter(Boolean)
       )).sort();
     } else {
       // Fall back to extracting from students and activities
-      const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean);
-      const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean);
+      const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean).map(name => name.trim());
+      const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean).map(name => name.trim());
       const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
       teacherList = Array.from(new Set(allTeachers)).filter(Boolean).sort();
     }
