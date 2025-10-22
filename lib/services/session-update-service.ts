@@ -137,14 +137,27 @@ export class SessionUpdateService {
       }
 
       // Perform the update (either valid or forced)
+      const updateData: any = {
+        day_of_week: newDay,
+        start_time: newStartTime,
+        end_time: newEndTime,
+        updated_at: new Date().toISOString()
+      };
+
+      // Update conflict status based on validation
+      if (validation.valid) {
+        // Valid move - clear any existing conflicts
+        updateData.status = 'active';
+        updateData.conflict_reason = null;
+      } else if (forceUpdate && validation.conflicts && validation.conflicts.length > 0) {
+        // Forced move with conflicts - mark as needs attention
+        updateData.status = 'needs_attention';
+        updateData.conflict_reason = validation.conflicts.map(c => c.description).join(' AND ');
+      }
+
       const { data: updatedSession, error: updateError } = await this.supabase
         .from('schedule_sessions')
-        .update({
-          day_of_week: newDay,
-          start_time: newStartTime,
-          end_time: newEndTime,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', sessionId)
         .select()
         .single();

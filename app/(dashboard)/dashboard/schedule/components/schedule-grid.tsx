@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, memo } from 'react';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
@@ -376,15 +377,29 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       const isDayFiltered = selectedDay && session.day_of_week !== selectedDay;
                       const shouldGrayOut = isGradeFiltered || isTimeFiltered || isDayFiltered;
 
+                      // Check for conflict status
+                      const hasConflict = session.status === 'needs_attention' || session.status === 'conflict';
+                      const isNeedsAttention = session.status === 'needs_attention';
+                      const isConflict = session.status === 'conflict';
+
                       const gradeColor = shouldGrayOut
                         ? 'bg-gray-300 hover:bg-gray-400 opacity-50'
                         : student
                           ? GRADE_COLOR_MAP[student.grade_level] || 'bg-gray-400'
                           : 'bg-gray-400';
 
-                      const assignmentClass = 
-                        session.delivered_by === 'sea' ? 'border-2 border-orange-400' : 
+                      const assignmentClass =
+                        session.delivered_by === 'sea' ? 'border-2 border-orange-400' :
                         session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
+
+                      // Add conflict styling with patterns for accessibility
+                      // Using both border thickness and distinctive patterns
+                      const conflictClass = isConflict
+                        ? 'border-4 border-red-600 bg-red-100 shadow-[inset_0_0_0_2px_rgba(220,38,38,0.3)]'
+                        : isNeedsAttention
+                          ? 'border-4 border-yellow-600 shadow-[inset_0_0_0_2px_rgba(202,138,4,0.3)]'
+                          : '';
+
                       const columnIndex = sessionColumns.get(session.id) ?? 0;
                       const fixedWidth = 25;
                       const gap = 1;
@@ -398,7 +413,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           draggable
                           onDragStart={(e) => onDragStart(e, session)}
                           onDragEnd={onDragEnd}
-                          className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${assignmentClass} ${
+                          className={`absolute ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md hover:z-10 group ${highlightClass} ${assignmentClass} ${conflictClass} ${
                             draggedSession?.id === session.id ? 'opacity-50 cursor-grabbing' : 'cursor-grab'
                           }`}
                           style={{
@@ -415,6 +430,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             const rect = e.currentTarget.getBoundingClientRect();
                             onSessionClick(session, rect);
                           }}
+                          title={hasConflict ? session.conflict_reason || 'Session needs attention' : undefined}
                         >
                           <div className="flex flex-col h-full relative overflow-hidden">
                             <div className="font-medium text-[10px]">{student?.initials}</div>
@@ -426,9 +442,16 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                                 <span className="text-[8px] font-bold text-white">S</span>
                               </div>
                             )}
+                            {hasConflict && (
+                              <div className="absolute -top-1 -left-1 w-4 h-4 flex items-center justify-center">
+                                <ExclamationTriangleIcon
+                                  className={`w-4 h-4 ${isConflict ? 'text-red-600' : 'text-yellow-600'}`}
+                                />
+                              </div>
+                            )}
                             {sessionTags[session.id]?.trim() && (
                               <div className="absolute bottom-0 left-0 bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded-full">
-                                {sessionTags[session.id].trim().length > 4 
+                                {sessionTags[session.id].trim().length > 4
                                   ? sessionTags[session.id].trim().substring(0, 4) + '...'
                                   : sessionTags[session.id].trim()}
                               </div>

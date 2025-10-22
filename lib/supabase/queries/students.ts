@@ -3,6 +3,7 @@ import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
 import { getOrCreateTeacher } from './teachers';
+import { updateExistingSessionsForStudent } from '../../scheduling/session-requirement-sync';
 import type { Database } from '../../../src/types/database';
 
 /**
@@ -295,6 +296,7 @@ export async function deleteStudent(studentId: string) {
 
 /**
  * Update a student's session requirements if owned by the user.
+ * Returns the updated student and optionally sync result information
  */
 export async function updateStudent(studentId: string, updates: {
   initials?: string;
@@ -303,7 +305,10 @@ export async function updateStudent(studentId: string, updates: {
   teacher_id?: string;
   sessions_per_week?: number;
   minutes_per_session?: number;
-}) {
+}): Promise<{
+  student: any;
+  syncResult?: { success: boolean; error?: string; conflictCount?: number };
+}> {
   const supabase = createClient<Database>();
 
   // CRITICAL: Get current user to verify ownership
@@ -311,12 +316,27 @@ export async function updateStudent(studentId: string, updates: {
     () => supabase.auth.getUser(),
     { operation: 'get_user_for_update_student' }
   );
-  
+
   if (authResult.error || !authResult.data?.data.user) {
     throw new Error('No user found');
   }
-  
+
   const user = authResult.data.data.user;
+
+  // Fetch old student data before updating (needed for session sync)
+  const oldStudentResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('sessions_per_week, minutes_per_session')
+        .eq('id', studentId)
+        .eq('provider_id', user.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_student_before_update' }
+  );
 
   // Get or create teacher if teacher_name is provided but no teacher_id
   let teacherId = updates.teacher_id;
@@ -352,8 +372,8 @@ export async function updateStudent(studentId: string, updates: {
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'update_student', 
+    {
+      operation: 'update_student',
       userId: user.id,
       studentId,
       updates: Object.keys(updateData)
@@ -368,7 +388,38 @@ export async function updateStudent(studentId: string, updates: {
     throw updateResult.error;
   }
 
-  return updateResult.data;
+  // If scheduling requirements changed, sync existing sessions
+  const requirementsChanged =
+    updates.sessions_per_week !== undefined ||
+    updates.minutes_per_session !== undefined;
+
+  let syncResult: { success: boolean; error?: string; conflictCount?: number } | undefined;
+
+  if (requirementsChanged && oldStudentResult.data) {
+    syncResult = await updateExistingSessionsForStudent(
+      studentId,
+      {
+        minutes_per_session: oldStudentResult.data.minutes_per_session,
+        sessions_per_week: oldStudentResult.data.sessions_per_week,
+      },
+      {
+        minutes_per_session: updateResult.data.minutes_per_session,
+        sessions_per_week: updateResult.data.sessions_per_week,
+      }
+    );
+
+    if (!syncResult.success) {
+      console.error('Failed to sync sessions:', syncResult.error);
+      // Don't throw - student update was successful, return sync error to caller
+    } else if (syncResult.conflictCount && syncResult.conflictCount > 0) {
+      console.log(`Updated sessions with ${syncResult.conflictCount} conflicts flagged`);
+    }
+  }
+
+  return {
+    student: updateResult.data,
+    syncResult,
+  };
 }
 
 /**

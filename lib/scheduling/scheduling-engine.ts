@@ -489,7 +489,9 @@ export class SchedulingEngine {
       student_absent: false,
       outside_schedule_conflict: false,
       group_id: null,
-      group_name: null
+      group_name: null,
+      status: 'active' as const,
+      conflict_reason: null
     }));
   }
 
