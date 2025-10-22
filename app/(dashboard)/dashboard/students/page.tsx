@@ -22,10 +22,10 @@ type Student = {
   id: string;
   initials: string;
   grade_level: string;
-  teacher_name: string;
+  teacher_name: string | null;
   teacher_id?: string | null;
-  sessions_per_week: number;
-  minutes_per_session: number;
+  sessions_per_week: number | null;
+  minutes_per_session: number | null;
   provider_id: string;
   created_at: string;
   updated_at: string;
@@ -244,8 +244,8 @@ export default function StudentsPage() {
   const handleEdit = (student: Student) => {
     setEditingId(student.id);
     setEditFormData({
-      sessions_per_week: student.sessions_per_week.toString(),
-      minutes_per_session: student.minutes_per_session.toString()
+      sessions_per_week: student.sessions_per_week?.toString() || '',
+      minutes_per_session: student.minutes_per_session?.toString() || ''
     });
   };
 
@@ -612,12 +612,16 @@ export default function StudentsPage() {
                       <GradeTag grade={student.grade_level} />
                     </TableCell>
                     <TableCell>
-                      <button
-                        onClick={() => setSelectedTeacherName(student.teacher_name)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                      >
-                        {student.teacher_name}
-                      </button>
+                      {student.teacher_name ? (
+                        <button
+                          onClick={() => setSelectedTeacherName(student.teacher_name)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        >
+                          {student.teacher_name}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 italic">Not assigned</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {!isViewOnly && editingId === student.id ? (
@@ -642,8 +646,10 @@ export default function StudentsPage() {
                           </select>
                           <span>min</span>
                         </div>
-                      ) : (
+                      ) : student.sessions_per_week && student.minutes_per_session ? (
                         `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
+                      ) : (
+                        <span className="text-gray-400 italic">Not configured</span>
                       )}
                     </TableCell>
                     {/* <TableCell>

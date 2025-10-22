@@ -418,13 +418,32 @@ export class OptimizedScheduler {
       canManuallyPlace: false
     };
 
+    // Filter out students without scheduling configuration (e.g., from bulk import)
+    const studentsWithoutConfig = students.filter(s => !s.sessions_per_week || !s.minutes_per_session);
+    const studentsToSchedule = students.filter(s => s.sessions_per_week && s.minutes_per_session);
+
+    if (studentsWithoutConfig.length > 0) {
+      studentsWithoutConfig.forEach(student => {
+        results.unplacedStudents.push(student);
+        results.errors.push(`Student ${student.initials} does not have scheduling configured (sessions/week and minutes/session required)`);
+        results.totalFailed++;
+      });
+      this.log(`Skipped ${studentsWithoutConfig.length} students without scheduling configuration: ${studentsWithoutConfig.map(s => s.initials).join(', ')}`);
+    }
+
+    // Early return if no students to schedule
+    if (studentsToSchedule.length === 0) {
+      this.log('No students to schedule (all missing configuration)');
+      return results;
+    }
+
     // Populate student grade map for grade grouping optimization
-    students.forEach(student => {
+    studentsToSchedule.forEach(student => {
       this.context!.studentGradeMap.set(student.id, student.grade_level.trim());
     });
 
     // Sort students by total minutes needed (descending) to handle harder cases first
-    const sortedStudents = [...students].sort((a, b) => {
+    const sortedStudents = [...studentsToSchedule].sort((a, b) => {
       const totalMinutesA = a.sessions_per_week * a.minutes_per_session;
       const totalMinutesB = b.sessions_per_week * b.minutes_per_session;
 

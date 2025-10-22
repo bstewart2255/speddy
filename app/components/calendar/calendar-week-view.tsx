@@ -148,10 +148,10 @@ export function CalendarWeekView({
 
   // Auto-set view mode for SEA users
   useEffect(() => {
-    if (userProfile?.role === 'sea') {
+    if (userProfile?.role === 'sea' && viewMode !== 'sea') {
       setViewMode('sea');
     }
-  }, [userProfile, setViewMode]);
+  }, [userProfile, viewMode, setViewMode]);
 
   // Helper function for time conversion
   const timeToMinutes = (time: string): number => {

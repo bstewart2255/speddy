@@ -65,11 +65,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Import each student
     for (const student of students) {
       try {
-        // Validate initials
-        if (!student.initials || student.initials.length < 2 || student.initials.length > 4) {
+        // Normalize and validate initials
+        const initialsNormalized = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '');
+        const fallbackInitials = `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
+
+        if (initialsNormalized.length < 2 || initialsNormalized.length > 4) {
           results.push({
             success: false,
-            initials: student.initials || `${student.firstName[0]}${student.lastName[0]}`,
+            initials: initialsNormalized || fallbackInitials,
             error: 'Invalid initials: must be 2-4 characters'
           });
           errorCount++;
@@ -81,15 +84,15 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .from('students')
           .select('id, initials')
           .eq('provider_id', userId)
-          .eq('initials', student.initials)
+          .eq('initials', initialsNormalized)
           .eq('grade_level', student.gradeLevel)
           .maybeSingle();
 
         if (existingStudent) {
           results.push({
             success: false,
-            initials: student.initials,
-            error: `Student with initials "${student.initials}" in grade ${student.gradeLevel} already exists`
+            initials: initialsNormalized,
+            error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
           });
           errorCount++;
           continue;
@@ -97,106 +100,157 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
         // Determine school context
         // Priority: student-specific (from current school selection) > user profile > null
-        // This ensures students are imported to the currently selected school
+        // IMPORTANT: Must validate user has access to the school for security
+        const requestedSchoolId = student.schoolId || userProfile?.school_id || null;
+
+        // Validate user has access to the requested school
+        if (requestedSchoolId) {
+          const { data: accessibleSchools, error: schoolsError } = await supabase
+            .rpc('user_accessible_school_ids');
+
+          if (schoolsError) {
+            log.error('Failed to fetch accessible schools', schoolsError, {
+              userId,
+              studentInitials: initialsNormalized
+            });
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              error: 'Failed to validate school access'
+            });
+            errorCount++;
+            continue;
+          }
+
+          const hasAccess = accessibleSchools?.some(s => s.school_id === requestedSchoolId);
+          if (!hasAccess) {
+            log.error('User does not have access to requested school', null, {
+              userId,
+              requestedSchoolId,
+              studentInitials: initialsNormalized
+            });
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              error: `User does not have access to school ${requestedSchoolId}`
+            });
+            errorCount++;
+            continue;
+          }
+        }
+
         const schoolSite = student.schoolSite || userProfile?.school_site || null;
-        const schoolId = student.schoolId || userProfile?.school_id || null;
+        const schoolId = requestedSchoolId;
         const districtId = student.districtId || userProfile?.district_id || null;
         const stateId = student.stateId || userProfile?.state_id || null;
 
         log.info('Assigning student to school', {
           userId,
-          studentInitials: student.initials,
+          studentInitials: initialsNormalized,
           schoolId,
           schoolSite
         });
 
-        // Create student record (without teacher/schedule info - they're now nullable)
-        const { data: newStudent, error: studentError } = await supabase
-          .from('students')
-          .insert({
-            provider_id: userId,
-            initials: student.initials,
-            grade_level: student.gradeLevel,
-            school_site: schoolSite,
-            school_id: schoolId,
-            district_id: districtId,
-            state_id: stateId,
-            // teacher_name, sessions_per_week, minutes_per_session are now nullable
-            // User will fill these in later
+        // Create student and student_details atomically using RPC function
+        // This prevents orphaned student records if student_details insert fails
+        const { data: importResult, error: importError } = await supabase
+          .rpc('import_student_atomic', {
+            p_provider_id: userId,
+            p_initials: initialsNormalized,
+            p_grade_level: student.gradeLevel,
+            p_school_site: schoolSite,
+            p_school_id: schoolId,
+            p_district_id: districtId,
+            p_state_id: stateId,
+            p_first_name: student.firstName,
+            p_last_name: student.lastName,
+            p_iep_goals: student.goals
           })
-          .select('id')
           .single();
 
-        if (studentError || !newStudent) {
-          log.error('Failed to create student record', studentError, {
+        // Check for RPC call errors
+        if (importError) {
+          log.error('Failed to call import_student_atomic', importError, {
             userId,
-            studentInitials: student.initials
+            studentInitials: initialsNormalized
           });
 
           results.push({
             success: false,
-            initials: student.initials,
-            error: studentError?.message || 'Failed to create student record'
+            initials: initialsNormalized,
+            error: 'Failed to import student'
           });
           errorCount++;
           continue;
         }
 
-        // Create student_details record with name and IEP goals
-        const { error: detailsError } = await supabase
-          .from('student_details')
-          .insert({
-            student_id: newStudent.id,
-            first_name: student.firstName,
-            last_name: student.lastName,
-            iep_goals: student.goals
-          });
+        // Check the result from the RPC function
+        if (!importResult || !importResult.success) {
+          const errorMessage = importResult?.error_message || 'Unknown error';
 
-        if (detailsError) {
-          log.error('Failed to create student_details record', detailsError, {
-            userId,
-            studentId: newStudent.id,
-            studentInitials: student.initials
-          });
+          // Check if this is a unique constraint violation
+          const isDuplicate = errorMessage.includes('duplicate key') ||
+                             errorMessage.includes('unique constraint') ||
+                             errorMessage.includes('ux_students_provider_grade_initials');
 
-          // Rollback: delete the student record
-          await supabase
-            .from('students')
-            .delete()
-            .eq('id', newStudent.id);
+          if (isDuplicate) {
+            log.warn('Duplicate student detected during atomic insert', {
+              userId,
+              studentInitials: initialsNormalized,
+              gradeLevel: student.gradeLevel
+            });
 
-          results.push({
-            success: false,
-            initials: student.initials,
-            error: 'Failed to create student details'
-          });
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+            });
+          } else {
+            log.error('Failed to create student atomically', null, {
+              userId,
+              studentInitials: initialsNormalized,
+              errorMessage
+            });
+
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              error: errorMessage
+            });
+          }
+
           errorCount++;
           continue;
         }
+
+        const newStudent = { id: importResult.student_id };
 
         // Success
         log.info('Student created successfully', {
           userId,
           studentId: newStudent.id,
-          studentInitials: student.initials,
+          studentInitials: initialsNormalized,
           goalsCount: student.goals.length
         });
 
         results.push({
           success: true,
           studentId: newStudent.id,
-          initials: student.initials
+          initials: initialsNormalized
         });
         successCount++;
       } catch (error: any) {
+        const errorInitials = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '') ||
+                             `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
+
         log.error('Error importing student', error, {
           userId,
-          studentInitials: student.initials
+          studentInitials: errorInitials
         });
 
         results.push({
           success: false,
-          initials: student.initials,
+          initials: errorInitials,
           error: error.message || 'Unknown error occurred'
         });
         errorCount++;
