@@ -449,7 +449,12 @@ export function CalendarDayView({
       const data = await response.json();
 
       if (!response.ok) {
-        log.error('Grouping API error', data);
+        log.error('Grouping API error', {
+          error: data.error,
+          data: JSON.stringify(data),
+          status: response.status,
+          statusText: response.statusText
+        });
         throw new Error(data.error || 'Failed to create group');
       }
 
@@ -478,7 +483,10 @@ export function CalendarDayView({
       setSelectedSessionIds(new Set());
       setGroupNameInput('');
     } catch (error) {
-      log.error('Error creating group', error);
+      log.error('Error creating group', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error
+      });
       showToast(error instanceof Error ? error.message : 'Failed to create group', 'error');
     } finally {
       setSavingGroup(false);
