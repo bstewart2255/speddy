@@ -115,7 +115,7 @@ export default function LoginForm() {
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
 
-      <p className="text-center text-sm text-gray-600">
+      <p className="hidden text-center text-sm text-gray-600">
         Don&apos;t have an account?{' '}
         <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
           Sign up
@@ -135,7 +135,7 @@ export default function LoginForm() {
       </div>
 
       {/* Referral Program Link - with extra spacing */}
-      <div className="mt-12 text-center">
+      <div className="hidden mt-12 text-center">
         <button
           type="button"
           onClick={() => {
