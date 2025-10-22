@@ -537,6 +537,8 @@ export interface Database {
           outside_schedule_conflict: boolean
           group_id: string | null
           group_name: string | null
+          status: 'active' | 'conflict' | 'needs_attention'
+          conflict_reason: string | null
         }
         Insert: {
           id?: string
@@ -560,6 +562,8 @@ export interface Database {
           outside_schedule_conflict?: boolean
           group_id?: string | null
           group_name?: string | null
+          status?: 'active' | 'conflict' | 'needs_attention'
+          conflict_reason?: string | null
         }
         Update: {
           id?: string
@@ -583,6 +587,8 @@ export interface Database {
           outside_schedule_conflict?: boolean
           group_id?: string | null
           group_name?: string | null
+          status?: 'active' | 'conflict' | 'needs_attention'
+          conflict_reason?: string | null
         }
       },
       lessons: {
