@@ -246,12 +246,14 @@ export class SessionDistributor {
     availableSlots: TimeSlot[]
   ): DistributionStrategy {
     // Determine strategy based on student needs and available slots
-    const totalMinutesNeeded = student.sessions_per_week * student.minutes_per_session;
+    const sessions = student.sessions_per_week || 0;
+    const minutes = student.minutes_per_session || 30;
+    const totalMinutesNeeded = sessions * minutes;
     const slotsByDay = this.groupSlotsByDay(availableSlots);
     const avgSlotsPerDay = availableSlots.length / slotsByDay.size;
     
     // Use two-pass for complex cases
-    if (student.sessions_per_week > 3 || totalMinutesNeeded > 120) {
+    if (sessions > 3 || totalMinutesNeeded > 120) {
       return 'two-pass';
     }
     
@@ -278,12 +280,13 @@ export class SessionDistributor {
     context: DistributionContext
   ): DistributionResult {
     const strategy = this.getDistributionStrategy(student, availableSlots);
+    const sessionsNeeded = student.sessions_per_week || 0;
     let distributedSlots: TimeSlot[] = [];
     
     switch (strategy) {
       case 'two-pass':
         distributedSlots = this.distributeTwoPass(
-          student.sessions_per_week,
+          sessionsNeeded,
           availableSlots,
           this.config.firstPassLimit
         );
@@ -291,7 +294,7 @@ export class SessionDistributor {
         
       case 'grade-grouped':
         distributedSlots = this.distributeWithGradeGrouping(
-          student.sessions_per_week,
+          sessionsNeeded,
           availableSlots,
           context.targetGrade,
           context.studentGradeMap,
@@ -301,14 +304,14 @@ export class SessionDistributor {
         
       case 'even':
         distributedSlots = this.distributeEvenly(
-          student.sessions_per_week,
+          sessionsNeeded,
           availableSlots
         );
         break;
         
       case 'compact':
         distributedSlots = this.distributeCompact(
-          student.sessions_per_week,
+          sessionsNeeded,
           availableSlots
         );
         break;
@@ -316,7 +319,7 @@ export class SessionDistributor {
       case 'spread':
       default:
         distributedSlots = this.distributeSpread(
-          student.sessions_per_week,
+          sessionsNeeded,
           availableSlots
         );
         break;

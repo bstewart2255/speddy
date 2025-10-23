@@ -263,7 +263,7 @@ export class SchedulingCoordinator {
     }
     
     const availableSlots: TimeSlot[] = [];
-    const duration = student.minutes_per_session;
+    const duration = student.minutes_per_session || 30;
     
     // Check each valid slot
     for (const [key, slot] of this.context.validSlots) {
@@ -494,7 +494,9 @@ export class SchedulingCoordinator {
         student_absent: session.student_absent || false,
         outside_schedule_conflict: session.outside_schedule_conflict || false,
         group_id: session.group_id || null,
-        group_name: session.group_name || null
+        group_name: session.group_name || null,
+        status: session.status || 'active',
+        conflict_reason: session.conflict_reason || null
       });
     }
   }

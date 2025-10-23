@@ -77,9 +77,11 @@ export class SchedulingEngine {
         context
       );
 
-      if (validSlots.length < student.sessions_per_week) {
+      const sessionsNeeded = student.sessions_per_week || 0;
+      
+      if (validSlots.length < sessionsNeeded) {
         result.errors.push(
-          `Only ${validSlots.length} valid slots available, need ${student.sessions_per_week}`
+          `Only ${validSlots.length} valid slots available, need ${sessionsNeeded}`
         );
         result.unscheduledStudents.push(student);
         this.performanceMetrics.failedSchedulings++;
@@ -91,7 +93,7 @@ export class SchedulingEngine {
 
       // Distribute sessions using selected strategy
       const distributedSlots = this.distributeSessions(
-        student.sessions_per_week,
+        sessionsNeeded,
         validSlots,
         strategy,
         context
@@ -109,7 +111,7 @@ export class SchedulingEngine {
         result.scheduledSessions = this.createSessions(student, distributedSlots);
       }
 
-      result.success = result.scheduledSessions.length === student.sessions_per_week;
+      result.success = result.scheduledSessions.length === sessionsNeeded;
       if (result.success) {
         this.performanceMetrics.successfulSchedulings++;
       } else {
@@ -220,11 +222,13 @@ export class SchedulingEngine {
     availableSlots: TimeSlot[],
     context: SchedulingContext
   ): DistributionStrategy {
-    const totalMinutes = student.sessions_per_week * student.minutes_per_session;
+    const sessions = student.sessions_per_week || 0;
+    const minutes = student.minutes_per_session || 30;
+    const totalMinutes = sessions * minutes;
     const slotsByDay = this.groupSlotsByDay(availableSlots);
     
     // Complex scheduling needs two-pass
-    if (student.sessions_per_week > 3 || totalMinutes > 120) {
+    if (sessions > 3 || totalMinutes > 120) {
       return 'two-pass';
     }
     
@@ -258,10 +262,12 @@ export class SchedulingEngine {
   ): TimeSlot[] {
     this.performanceMetrics.optimizationRuns++;
     
+    const sessionsNeeded = student.sessions_per_week || 0;
+    
     // Score each slot combination
     const scoredCombinations = this.generateSlotCombinations(
       slots,
-      student.sessions_per_week
+      sessionsNeeded
     ).map(combination => ({
       slots: combination,
       score: this.scoreSlotCombination(combination, student, context)
@@ -445,14 +451,17 @@ export class SchedulingEngine {
   private calculateSchedulingDifficulty(student: Student): number {
     let difficulty = 0;
     
+    const sessions = student.sessions_per_week || 0;
+    const minutes = student.minutes_per_session || 30;
+    
     // More sessions = harder
-    difficulty += student.sessions_per_week * 2;
+    difficulty += sessions * 2;
     
     // Longer sessions = harder
-    difficulty += student.minutes_per_session / 15;
+    difficulty += minutes / 15;
     
     // Total minutes needed
-    const totalMinutes = student.sessions_per_week * student.minutes_per_session;
+    const totalMinutes = sessions * minutes;
     difficulty += totalMinutes / 30;
     
     // Special grades (K, TK) are harder

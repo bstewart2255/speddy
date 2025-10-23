@@ -332,7 +332,9 @@ export class ConstraintValidator {
     const errors: ValidationError[] = [];
     
     // Use cached index for O(1) lookup
-    const teacherActivities = specialActivitiesByTeacher.get(student.teacher_name)?.get(slot.dayOfWeek) || [];
+    const teacherActivities = student.teacher_name 
+      ? specialActivitiesByTeacher.get(student.teacher_name)?.get(slot.dayOfWeek) || []
+      : [];
     
     for (const activity of teacherActivities) {
       if (this.hasTimeOverlap(
