@@ -234,29 +234,31 @@ export function CalendarWeekView({
       let filteredSessions = weekSessions;
 
       if (viewMode === 'my-sessions') {
-        // Show all sessions owned by the user, regardless of who is delivering
-        // This aligns with the API route logic which allows providers to group/ungroup
-        // any session they own, regardless of delivered_by
-        filteredSessions = weekSessions.filter(s => s.provider_id === user.id);
-      } else if (viewMode === 'specialist') {
-        // Show BOTH:
-        // 1. Sessions assigned TO me as a specialist
-        // 2. MY students that I (as provider) delegated to other specialists
+        // Show all sessions owned by the user OR assigned to them
+        // This includes:
+        // 1. Sessions I own as provider (regardless of who delivers)
+        // 2. Sessions assigned TO me as a specialist
+        // 3. Sessions assigned TO me as a SEA
         filteredSessions = weekSessions.filter(s =>
+          s.provider_id === user.id ||
           s.assigned_to_specialist_id === user.id ||
-          (s.provider_id === user.id &&
-           s.assigned_to_specialist_id !== null &&
-           s.assigned_to_specialist_id !== user.id)
+          s.assigned_to_sea_id === user.id
+        );
+      } else if (viewMode === 'specialist') {
+        // Show ONLY MY students that I (as provider) delegated to other specialists
+        // Note: Sessions assigned TO me appear in "My Sessions" view via SessionGenerator
+        filteredSessions = weekSessions.filter(s =>
+          s.provider_id === user.id &&
+          s.assigned_to_specialist_id !== null &&
+          s.assigned_to_specialist_id !== user.id
         );
       } else if (viewMode === 'sea') {
-        // Show BOTH:
-        // 1. Sessions assigned TO me as a SEA
-        // 2. MY students that I (as provider) delegated to other SEAs
+        // Show ONLY MY students that I (as provider) delegated to other SEAs
+        // Note: Sessions assigned TO me appear in "My Sessions" view via SessionGenerator
         filteredSessions = weekSessions.filter(s =>
-          s.assigned_to_sea_id === user.id ||
-          (s.provider_id === user.id &&
-           s.assigned_to_sea_id !== null &&
-           s.assigned_to_sea_id !== user.id)
+          s.provider_id === user.id &&
+          s.assigned_to_sea_id !== null &&
+          s.assigned_to_sea_id !== user.id
         );
       }
 
