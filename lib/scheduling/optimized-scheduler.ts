@@ -444,8 +444,12 @@ export class OptimizedScheduler {
 
     // Sort students by total minutes needed (descending) to handle harder cases first
     const sortedStudents = [...studentsToSchedule].sort((a, b) => {
-      const totalMinutesA = a.sessions_per_week * a.minutes_per_session;
-      const totalMinutesB = b.sessions_per_week * b.minutes_per_session;
+      const sessionsA = a.sessions_per_week || 0;
+      const minutesA = a.minutes_per_session || 0;
+      const sessionsB = b.sessions_per_week || 0;
+      const minutesB = b.minutes_per_session || 0;
+      const totalMinutesA = sessionsA * minutesA;
+      const totalMinutesB = sessionsB * minutesB;
 
       // First sort by total minutes
       if (totalMinutesB !== totalMinutesA) {
@@ -453,13 +457,15 @@ export class OptimizedScheduler {
       }
 
       // If total minutes are equal, sort by number of sessions (more sessions = harder to schedule)
-      return b.sessions_per_week - a.sessions_per_week;
+      return sessionsB - sessionsA;
     });
 
     this.log('Student scheduling order:');
     sortedStudents.forEach(s => {
-      const totalMinutes = s.sessions_per_week * s.minutes_per_session;
-      this.log(`  ${s.initials}: ${s.sessions_per_week} sessions × ${s.minutes_per_session}min = ${totalMinutes} total minutes`);
+      const sessions = s.sessions_per_week || 0;
+      const minutes = s.minutes_per_session || 0;
+      const totalMinutes = sessions * minutes;
+      this.log(`  ${s.initials}: ${sessions} sessions × ${minutes}min = ${totalMinutes} total minutes`);
     });
 
     const allScheduledSessions: Omit<
@@ -554,8 +560,8 @@ export class OptimizedScheduler {
       return result;
     }
 
-    const sessionsNeeded = student.sessions_per_week;
-    const duration = student.minutes_per_session;
+    const sessionsNeeded = student.sessions_per_week || 0;
+    const duration = student.minutes_per_session || 30;
 
     this.log(
       `\nScheduling ${student.initials}: ${sessionsNeeded} sessions x ${duration}min`,
@@ -758,7 +764,9 @@ export class OptimizedScheduler {
         if (hasBellConflict) continue;
 
         // Check special activities using cached index (O(1) lookup)
-        const teacherActivities = this.context!.specialActivitiesByTeacher.get(student.teacher_name)?.get(day) || [];
+        const teacherActivities = student.teacher_name 
+          ? this.context!.specialActivitiesByTeacher.get(student.teacher_name)?.get(day) || []
+          : [];
         
         const hasActivityConflict = teacherActivities.some(activity => {
           const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
@@ -1084,7 +1092,9 @@ export class OptimizedScheduler {
         student_absent: session.student_absent || false,
         outside_schedule_conflict: session.outside_schedule_conflict || false,
         group_id: session.group_id || null,
-        group_name: session.group_name || null
+        group_name: session.group_name || null,
+        status: session.status || 'active',
+        conflict_reason: session.conflict_reason || null
       });
     }
   }

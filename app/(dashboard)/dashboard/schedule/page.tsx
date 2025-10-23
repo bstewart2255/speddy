@@ -146,7 +146,8 @@ export default function SchedulePage() {
     const newStartTime = `${dragPosition.time}:00`;
     const [hours, minutes] = dragPosition.time.split(':').map(Number);
     const endDate = new Date();
-    endDate.setHours(hours, minutes + student.minutes_per_session, 0);
+    const minutesPerSession = student.minutes_per_session || 30; // Default to 30 if null
+    endDate.setHours(hours, minutes + minutesPerSession, 0);
     const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
     optimisticUpdateSession(sessionToMove.id, {

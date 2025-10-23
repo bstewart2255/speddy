@@ -260,7 +260,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         matchStatus: isNew ? 'new' : 'duplicate',
         matchedStudentId: isNew ? undefined : match.matchedStudent?.id,
         matchedStudentInitials: isNew ? undefined : match.matchedStudent?.initials,
-        matchConfidence: isNew ? undefined : match.confidence,
+        matchConfidence: isNew ? undefined : (match.confidence === 'none' ? undefined : match.confidence as 'high' | 'medium' | 'low'),
         matchReason: isNew ? undefined : match.reason
       });
     }
