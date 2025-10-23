@@ -153,22 +153,32 @@ export default function SchedulePage() {
       day_of_week: day,
       start_time: newStartTime,
       end_time: newEndTime,
+      status: 'active', // Optimistically assume the move will be valid
+      conflict_reason: null,
     });
 
     // Perform actual update
     const result = await handleSessionDrop(sessionToMove, day, dragPosition.time, student);
     
     if (!result.success) {
-      // Revert optimistic update
+      // Revert optimistic update, restoring original conflict status
       optimisticUpdateSession(sessionToMove.id, {
         day_of_week: sessionToMove.day_of_week,
         start_time: sessionToMove.start_time,
         end_time: sessionToMove.end_time,
+        status: sessionToMove.status,
+        conflict_reason: sessionToMove.conflict_reason,
       });
-      
+
       if (result.error) {
         alert(`Failed to update session: ${result.error}`);
       }
+    } else if (result.hasConflicts && result.conflicts) {
+      // If the move succeeded but created new conflicts, update the status
+      optimisticUpdateSession(sessionToMove.id, {
+        status: 'needs_attention',
+        conflict_reason: result.conflicts.map(c => c.description).join(' AND '),
+      });
     }
   }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop]);
 
