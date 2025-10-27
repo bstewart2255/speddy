@@ -222,6 +222,11 @@ export default function SchedulePage() {
         return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
       }
 
+      // Handle 'assigned' filter - show only sessions assigned to the current specialist
+      if (sessionFilter === 'assigned' && currentUserId) {
+        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
+      }
+
       // Special handling for specialist users - show their assigned sessions for 'mine' filter
       if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
         return allSessions.filter(s =>
@@ -308,6 +313,7 @@ export default function SchedulePage() {
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
             showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
+            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(providerRole)}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}

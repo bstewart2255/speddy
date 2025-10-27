@@ -28,7 +28,7 @@ interface ScheduleGridProps {
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
-  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
+  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
   draggedSession: ScheduleSession | null;
   dragPosition: ScheduleDragPosition | null;
   selectedSession: ScheduleSession | null;
@@ -155,6 +155,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
         return allSessions.filter(s => s.delivered_by === 'sea');
       case 'specialist':
         return allSessions.filter(s => s.delivered_by === 'specialist');
+      case 'assigned':
+        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
       default:
         return allSessions;
     }
