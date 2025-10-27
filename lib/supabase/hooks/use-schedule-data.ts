@@ -141,22 +141,59 @@ export function useScheduleData() {
 
       // Fetch sessions based on students
       const studentIds = studentsResult.data?.map(s => s.id) || [];
-      
-      // For specialist users, also fetch sessions assigned to them
-      let sessionsQuery = supabase
-        .from('schedule_sessions')
-        .select('*')
-        .in('student_id', studentIds)
-        .is('session_date', null);
-      
-      // Build OR condition for provider_id or specialist assignment
+
+      // For specialist users, also fetch sessions assigned to them (even from other providers' students)
+      let sessionsResult;
       if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role)) {
-        sessionsQuery = sessionsQuery.or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id}`);
+        // Fetch sessions where:
+        // 1. Student belongs to this user (any sessions for my students)
+        // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
+        if (studentIds.length > 0) {
+          sessionsResult = await supabase
+            .from('schedule_sessions')
+            .select('*')
+            .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${user.id}`)
+            .is('session_date', null);
+        } else {
+          // No students, only fetch assigned sessions
+          sessionsResult = await supabase
+            .from('schedule_sessions')
+            .select('*')
+            .eq('assigned_to_specialist_id', user.id)
+            .is('session_date', null);
+        }
       } else {
-        sessionsQuery = sessionsQuery.eq('provider_id', user.id);
+        // For non-specialist users, only fetch their own students' sessions
+        sessionsResult = await supabase
+          .from('schedule_sessions')
+          .select('*')
+          .in('student_id', studentIds)
+          .eq('provider_id', user.id)
+          .is('session_date', null);
       }
-      
-      const sessionsResult = await sessionsQuery;
+
+      // For specialists, also fetch students from assigned sessions
+      let allStudents = studentsResult.data || [];
+      if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role) && sessionsResult.data) {
+        // Get student IDs from assigned sessions that aren't already in our student list
+        const assignedSessionStudentIds = sessionsResult.data
+          .filter(session => session.assigned_to_specialist_id === user.id)
+          .map(session => session.student_id)
+          .filter(studentId => !studentIds.includes(studentId));
+
+        // Fetch those students if any
+        if (assignedSessionStudentIds.length > 0) {
+          const { data: assignedStudents } = await supabase
+            .from('students')
+            .select('*')
+            .in('id', assignedSessionStudentIds);
+
+          if (assignedStudents) {
+            allStudents = [...allStudents, ...assignedStudents];
+            console.log(`[useScheduleData] Fetched ${assignedStudents.length} additional students from assigned sessions`);
+          }
+        }
+      }
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
@@ -248,7 +285,7 @@ export function useScheduleData() {
       }
 
       setData({
-        students: studentsResult.data || [],
+        students: allStudents,
         sessions: sessionsResult.data || [],
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
@@ -263,7 +300,7 @@ export function useScheduleData() {
       });
 
       console.log('[useScheduleData] Data loaded:', {
-        students: studentsResult.data?.length || 0,
+        students: allStudents.length,
         sessions: sessionsResult.data?.length || 0,
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
