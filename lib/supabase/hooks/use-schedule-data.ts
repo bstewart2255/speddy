@@ -299,12 +299,17 @@ export function useScheduleData() {
         error: null,
       });
 
+      const assignedSessions = sessionsResult.data?.filter(s => s.assigned_to_specialist_id === user.id) || [];
       console.log('[useScheduleData] Data loaded:', {
         students: allStudents.length,
         sessions: sessionsResult.data?.length || 0,
+        assignedToMe: assignedSessions.length,
+        assignedSessionIds: assignedSessions.map(s => s.id),
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,
+        userId: user.id,
+        role: profile.role,
       });
 
     } catch (error) {
