@@ -224,14 +224,7 @@ export default function SchedulePage() {
 
       // Handle 'assigned' filter - show only sessions assigned to the current specialist
       if (sessionFilter === 'assigned' && currentUserId) {
-        const assignedSessions = allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
-        console.log('[SchedulePage] Assigned filter active:', {
-          totalSessions: allSessions.length,
-          currentUserId,
-          assignedCount: assignedSessions.length,
-          assignedSessionIds: assignedSessions.map(s => s.id),
-        });
-        return assignedSessions;
+        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
       }
 
       // Special handling for specialist users - show their assigned sessions for 'mine' filter
