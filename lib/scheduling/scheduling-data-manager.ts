@@ -311,6 +311,31 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .select('*')
           .eq('assigned_to_specialist_id', this.providerId!);
       }
+
+      // Filter assigned sessions to only include those for students at the current school
+      if (!sessionsResult.error && sessionsResult.data) {
+        const assignedSessionStudentIds = sessionsResult.data
+          .filter(session => session.assigned_to_specialist_id === this.providerId && !studentIds.includes(session.student_id))
+          .map(session => session.student_id);
+
+        if (assignedSessionStudentIds.length > 0) {
+          // Fetch students from assigned sessions to check their school
+          const { data: assignedStudentsCheck } = await this.supabase
+            .from('students')
+            .select('id')
+            .in('id', assignedSessionStudentIds)
+            .eq('school_site', this.schoolSite!)
+            .eq('school_district', this.schoolDistrict!);
+
+          const validAssignedStudentIds = assignedStudentsCheck?.map(s => s.id) || [];
+
+          // Filter sessions to only include valid assigned sessions
+          sessionsResult.data = sessionsResult.data.filter(session =>
+            studentIds.includes(session.student_id) || // My students
+            (session.assigned_to_specialist_id === this.providerId && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
+          );
+        }
+      }
     } else {
       // For non-specialist users, only fetch their own students' sessions
       if (studentIds.length === 0) {

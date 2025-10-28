@@ -162,6 +162,30 @@ export function useScheduleData() {
             .eq('assigned_to_specialist_id', user.id)
             .is('session_date', null);
         }
+
+        // Filter assigned sessions to only include those for students at the current school
+        if (sessionsResult.data) {
+          const assignedSessionStudentIds = sessionsResult.data
+            .filter(session => session.assigned_to_specialist_id === user.id && !studentIds.includes(session.student_id))
+            .map(session => session.student_id);
+
+          if (assignedSessionStudentIds.length > 0) {
+            // Fetch students from assigned sessions to check their school
+            const { data: assignedStudentsCheck } = await supabase
+              .from('students')
+              .select('id')
+              .in('id', assignedSessionStudentIds)
+              .eq('school_site', currentSchool.school_site);
+
+            const validAssignedStudentIds = assignedStudentsCheck?.map(s => s.id) || [];
+
+            // Filter sessions to only include valid assigned sessions
+            sessionsResult.data = sessionsResult.data.filter(session =>
+              studentIds.includes(session.student_id) || // My students
+              (session.assigned_to_specialist_id === user.id && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
+            );
+          }
+        }
       } else {
         // For non-specialist users, only fetch their own students' sessions
         sessionsResult = await supabase
@@ -190,7 +214,6 @@ export function useScheduleData() {
 
           if (assignedStudents) {
             allStudents = [...allStudents, ...assignedStudents];
-            console.log(`[useScheduleData] Fetched ${assignedStudents.length} additional students from assigned sessions`);
           }
         }
       }
