@@ -3,13 +3,14 @@
 import React from 'react';
 
 interface ScheduleControlsProps {
-  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist';
+  sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
   highlightedStudentId: string | null;
-  onSessionFilterChange: (filter: 'all' | 'mine' | 'sea' | 'specialist') => void;
+  onSessionFilterChange: (filter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned') => void;
   showSpecialistFilter?: boolean;
+  showAssignedFilter?: boolean;
   onGradeToggle: (grade: string) => void;
   onTimeSlotClear: () => void;
   onDayClear: () => void;
@@ -35,6 +36,7 @@ export function ScheduleControls({
   highlightedStudentId,
   onSessionFilterChange,
   showSpecialistFilter = false,
+  showAssignedFilter = false,
   onGradeToggle,
   onTimeSlotClear,
   onDayClear,
@@ -78,6 +80,14 @@ export function ScheduleControls({
               onClick={() => onSessionFilterChange('specialist')}
             >
               Specialist Sessions
+            </FilterButton>
+          )}
+          {showAssignedFilter && (
+            <FilterButton
+              active={sessionFilter === 'assigned'}
+              onClick={() => onSessionFilterChange('assigned')}
+            >
+              Assigned Sessions
             </FilterButton>
           )}
         </div>

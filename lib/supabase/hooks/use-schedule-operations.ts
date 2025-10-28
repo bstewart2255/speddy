@@ -57,7 +57,8 @@ export function useScheduleOperations() {
       // Calculate end time
       const [hours, minutes] = targetTime.split(':').map(Number);
       const endDate = new Date();
-      endDate.setHours(hours, minutes + student.minutes_per_session, 0);
+      const minutesPerSession = student.minutes_per_session || 30;
+      endDate.setHours(hours, minutes + minutesPerSession, 0);
       const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
       const newStartTimeWithSeconds = `${targetTime}:00`;
 
@@ -212,7 +213,8 @@ export function useScheduleOperations() {
         const [hours, minutes] = targetTime.split(':');
         const startTimeStr = `${hours}:${minutes}:00`;
         const endTime = new Date();
-        endTime.setHours(parseInt(hours), parseInt(minutes) + student.minutes_per_session, 0);
+        const minutesPerSession = student.minutes_per_session || 30;
+        endTime.setHours(parseInt(hours), parseInt(minutes) + minutesPerSession, 0);
         const endTimeStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`;
         
         // Use validateOnly method for drag preview (no database update)

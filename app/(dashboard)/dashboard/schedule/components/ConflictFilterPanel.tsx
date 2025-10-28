@@ -46,8 +46,8 @@ export function ConflictFilterPanel({
       )).sort();
     } else {
       // Fall back to extracting from students and activities
-      const teachersFromStudents = students.map(s => s.teacher_name).filter(Boolean).map(name => name.trim());
-      const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter(Boolean).map(name => name.trim());
+      const teachersFromStudents = students.map(s => s.teacher_name).filter((name): name is string => Boolean(name)).map(name => name.trim());
+      const teachersFromActivities = specialActivities.map(sa => sa.teacher_name).filter((name): name is string => Boolean(name)).map(name => name.trim());
       const allTeachers = [...teachersFromStudents, ...teachersFromActivities];
       teacherList = Array.from(new Set(allTeachers)).filter(Boolean).sort();
     }

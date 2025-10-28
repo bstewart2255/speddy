@@ -85,14 +85,21 @@ export function useSchedulingData(config?: DataManagerConfig): UseSchedulingData
         if (!user) {
           throw new Error('Not authenticated');
         }
-        
+
+        // Get user profile for role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
         // Always re-initialize when school changes to ensure proper filtering
         // Use empty string as fallback if school_district is somehow missing
         const schoolDistrict = currentSchool.school_district || '';
-        await dataManager.initialize(user.id, currentSchool.school_site, schoolDistrict, currentSchool.school_id || undefined);
+        await dataManager.initialize(user.id, currentSchool.school_site, schoolDistrict, currentSchool.school_id || undefined, profile?.role);
         setIsInitialized(true);
         setLastRefresh(new Date());
-        
+
         setIsLoading(false);
       } catch (err) {
         console.error('[useSchedulingData] Initialization error:', err);

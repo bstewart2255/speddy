@@ -30,6 +30,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private config: DataManagerConfig;
   private initialized = false;
   private providerId: string | null = null;
+  private providerRole: string | null = null;
   private schoolSite: string | null = null;
   private schoolDistrict: string | null = null;
   private schoolId: string | null = null;
@@ -86,15 +87,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   /**
    * Initialize the data manager with provider and school context
    */
-  public async initialize(providerId: string, schoolSite: string, schoolDistrict: string, schoolId?: string): Promise<void> {
-    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite}/${schoolDistrict} (school_id: ${schoolId})`);
-    
+  public async initialize(providerId: string, schoolSite: string, schoolDistrict: string, schoolId?: string, providerRole?: string): Promise<void> {
+    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite}/${schoolDistrict} (school_id: ${schoolId}, role: ${providerRole})`);
+
     this.providerId = providerId;
+    this.providerRole = providerRole || null;
     this.schoolSite = schoolSite;
     this.schoolDistrict = schoolDistrict;
     this.schoolId = schoolId || null;
     this.data.version.modifiedBy = providerId;
-    
+
     await this.loadAllData();
     this.initialized = true;
   }
@@ -283,34 +285,78 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       .eq('provider_id', this.providerId!)
       .eq('school_site', this.schoolSite!)
       .eq('school_district', this.schoolDistrict!);
-    
+
     if (studentError) {
       this.cacheMetadata.fetchErrors.push(`Students fetch: ${studentError.message}`);
       return [];
     }
-    
-    if (!students || students.length === 0) {
-      console.log('[DataManager] No students found for school, returning empty sessions');
+
+    const studentIds = students?.map(s => s.id) || [];
+
+    // For specialist users, also fetch sessions assigned to them (even from other providers' students)
+    let sessionsResult;
+    if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)) {
+      // Fetch sessions where:
+      // 1. Student belongs to this user (any sessions for my students)
+      // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
+      if (studentIds.length > 0) {
+        sessionsResult = await this.supabase
+          .from('schedule_sessions')
+          .select('*')
+          .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`);
+      } else {
+        // No students, only fetch assigned sessions
+        sessionsResult = await this.supabase
+          .from('schedule_sessions')
+          .select('*')
+          .eq('assigned_to_specialist_id', this.providerId!);
+      }
+
+      // Filter assigned sessions to only include those for students at the current school
+      if (!sessionsResult.error && sessionsResult.data) {
+        const assignedSessionStudentIds = sessionsResult.data
+          .filter(session => session.assigned_to_specialist_id === this.providerId && !studentIds.includes(session.student_id))
+          .map(session => session.student_id);
+
+        if (assignedSessionStudentIds.length > 0) {
+          // Fetch students from assigned sessions to check their school
+          const { data: assignedStudentsCheck } = await this.supabase
+            .from('students')
+            .select('id')
+            .in('id', assignedSessionStudentIds)
+            .eq('school_site', this.schoolSite!)
+            .eq('school_district', this.schoolDistrict!);
+
+          const validAssignedStudentIds = assignedStudentsCheck?.map(s => s.id) || [];
+
+          // Filter sessions to only include valid assigned sessions
+          sessionsResult.data = sessionsResult.data.filter(session =>
+            studentIds.includes(session.student_id) || // My students
+            (session.assigned_to_specialist_id === this.providerId && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
+          );
+        }
+      }
+    } else {
+      // For non-specialist users, only fetch their own students' sessions
+      if (studentIds.length === 0) {
+        console.log('[DataManager] No students found for school, returning empty sessions');
+        return [];
+      }
+
+      sessionsResult = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('provider_id', this.providerId!)
+        .in('student_id', studentIds);
+    }
+
+    if (sessionsResult.error) {
+      this.cacheMetadata.fetchErrors.push(`Existing sessions: ${sessionsResult.error.message}`);
       return [];
     }
-    
-    // Get student IDs
-    const studentIds = students.map(s => s.id);
-    
-    // Fetch sessions only for students in the current school
-    const { data, error } = await this.supabase
-      .from('schedule_sessions')
-      .select('*')
-      .eq('provider_id', this.providerId!)
-      .in('student_id', studentIds);
-    
-    if (error) {
-      this.cacheMetadata.fetchErrors.push(`Existing sessions: ${error.message}`);
-      return [];
-    }
-    
-    console.log(`[DataManager] Fetched ${data?.length || 0} sessions for ${studentIds.length} students at ${this.schoolSite}`);
-    return data || [];
+
+    console.log(`[DataManager] Fetched ${sessionsResult.data?.length || 0} sessions for ${studentIds.length} students at ${this.schoolSite}`);
+    return sessionsResult.data || [];
   }
   
   /**

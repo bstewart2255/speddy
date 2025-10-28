@@ -146,7 +146,8 @@ export default function SchedulePage() {
     const newStartTime = `${dragPosition.time}:00`;
     const [hours, minutes] = dragPosition.time.split(':').map(Number);
     const endDate = new Date();
-    endDate.setHours(hours, minutes + student.minutes_per_session, 0);
+    const minutesPerSession = student.minutes_per_session || 30; // Default to 30 if null
+    endDate.setHours(hours, minutes + minutesPerSession, 0);
     const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
     optimisticUpdateSession(sessionToMove.id, {
@@ -219,6 +220,11 @@ export default function SchedulePage() {
       // Special handling for SEA users - always show their assigned sessions
       if (providerRole === 'sea' && currentUserId) {
         return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
+      }
+
+      // Handle 'assigned' filter - show only sessions assigned to the current specialist
+      if (sessionFilter === 'assigned' && currentUserId) {
+        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
       }
 
       // Special handling for specialist users - show their assigned sessions for 'mine' filter
@@ -307,6 +313,7 @@ export default function SchedulePage() {
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
             showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
+            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(providerRole)}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}

@@ -515,7 +515,12 @@ export default function StudentsPage() {
           <StudentDetailsModal
             isOpen={!!selectedStudent}
             onClose={() => setSelectedStudent(null)}
-            student={selectedStudent}
+            student={{
+              ...selectedStudent,
+              teacher_name: selectedStudent.teacher_name || '',
+              sessions_per_week: selectedStudent.sessions_per_week || 0,
+              minutes_per_session: selectedStudent.minutes_per_session || 0
+            }}
             readOnly={isViewOnly}
             onSave={(studentId, details) => {
             }}

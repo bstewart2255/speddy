@@ -92,8 +92,8 @@ export function StudentBulkImporter({ onUploadComplete, disabled = false, curren
 
       <Button
         type="button"
-        variant="default"
-        size="default"
+        variant="primary"
+        size="md"
         onClick={handleButtonClick}
         disabled={disabled || uploading}
       >

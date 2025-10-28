@@ -185,8 +185,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         }
 
         // Check the result from the RPC function
-        if (!importResult || !importResult.success) {
-          const errorMessage = importResult?.error_message || 'Unknown error';
+        if (!importResult || !(importResult as { success?: boolean }).success) {
+          const errorMessage = (importResult as { error_message?: string })?.error_message || 'Unknown error';
 
           // Check if this is a unique constraint violation
           const isDuplicate = errorMessage.includes('duplicate key') ||
@@ -223,7 +223,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           continue;
         }
 
-        const newStudent = { id: importResult.student_id };
+        const newStudent = { id: (importResult as { student_id?: string }).student_id };
 
         // Success
         log.info('Student created successfully', {
