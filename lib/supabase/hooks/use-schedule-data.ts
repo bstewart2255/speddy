@@ -328,12 +328,15 @@ export function useScheduleData() {
   useEffect(() => {
     if (isDataManagerInitialized && !isDataManagerLoading && data.students.length > 0) {
       const cachedSessions = getExistingSessions();
-      // Filter cached sessions to only include those for students in the current school
+      // Filter cached sessions to include:
+      // 1. Sessions for students in the current school
+      // 2. Sessions assigned to the current user (for specialists)
       const studentIds = data.students.map(s => s.id);
-      const filteredSessions = cachedSessions.filter(session => 
-        studentIds.includes(session.student_id)
+      const filteredSessions = cachedSessions.filter(session =>
+        studentIds.includes(session.student_id) ||
+        (data.currentUserId && session.assigned_to_specialist_id === data.currentUserId)
       );
-      
+
       if (filteredSessions.length > 0) {
         setData(prev => ({
           ...prev,
@@ -341,12 +344,12 @@ export function useScheduleData() {
         }));
         console.log('[useScheduleData] Synced with data manager:', filteredSessions.length, 'sessions (filtered from', cachedSessions.length, ')');
       }
-      
+
       if (isCacheStale) {
         refreshSchedulingData().catch(console.error);
       }
     }
-  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, refreshSchedulingData, data.students]);
+  }, [isDataManagerInitialized, isDataManagerLoading, getExistingSessions, isCacheStale, refreshSchedulingData, data.students, data.currentUserId]);
 
   // Real-time subscription
   useEffect(() => {
