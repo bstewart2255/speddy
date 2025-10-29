@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { SchedulingCoordinator, SchedulingCoordinatorConfig } from './scheduling-coordinator';
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { DEFAULT_SCHEDULING_CONFIG } from './scheduling-config';
+import { filterScheduledSessions } from '../utils/session-helpers';
 import type {
   Student,
   ScheduleSession,
@@ -167,7 +168,10 @@ export class OptimizedScheduler {
   private createBackwardCompatibleContext(schoolSite: string): SchedulingContext {
     // Get data from data manager for backward compatibility
     const workDays = this.dataManager.getProviderWorkDays(schoolSite);
-    const existingSessions = this.dataManager.getExistingSessions();
+    const allSessions = this.dataManager.getExistingSessions();
+    
+    // Filter to only include fully scheduled sessions (with non-null day/time fields)
+    const existingSessions = filterScheduledSessions(allSessions);
     
     return {
       schoolSite,
