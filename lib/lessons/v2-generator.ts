@@ -180,17 +180,8 @@ export async function generateV2Worksheet(
     }
 
     // Step 4: Validate content
-    console.log('[V2 Generator] Parsed content:', JSON.stringify(content, null, 2));
-
     const validation = validateV2Content(content);
     if (!validation.valid) {
-      console.error('[V2 Generator] Validation failed:', validation.errors);
-      console.error('[V2 Generator] Content structure:', {
-        hasQuestions: Array.isArray(content.questions),
-        questionCount: content.questions?.length,
-        hasMetadata: !!content.metadata,
-        firstQuestion: content.questions?.[0],
-      });
       return {
         success: false,
         error: `Content validation failed: ${validation.errors.join(', ')}`,
