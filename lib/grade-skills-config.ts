@@ -14,6 +14,21 @@ export interface GradeSkills {
 }
 
 export const GRADE_SKILLS_CONFIG: GradeSkills = {
+  'TK': {
+    label: 'Transitional Kindergarten',
+    skills: [
+      { id: 'alphabet-awareness', label: 'Alphabet Awareness', category: 'ela', trimester: 'beginning' },
+      { id: 'beginning-sounds', label: 'Beginning Letter Sounds', category: 'ela', trimester: 'middle' },
+      { id: 'name-recognition', label: 'Name Recognition', category: 'ela', trimester: 'beginning' },
+      { id: 'print-awareness', label: 'Print Awareness (Left to Right)', category: 'ela', trimester: 'middle' },
+      { id: 'rhyming-words', label: 'Rhyming Words', category: 'ela', trimester: 'end' },
+      { id: 'counting-10', label: 'Counting to 10', category: 'math', trimester: 'beginning' },
+      { id: 'number-recognition-5', label: 'Number Recognition 0-5', category: 'math', trimester: 'beginning' },
+      { id: 'basic-colors-shapes', label: 'Colors & Basic Shapes', category: 'math', trimester: 'middle' },
+      { id: 'size-comparison', label: 'Size Comparison (Big/Small)', category: 'math', trimester: 'middle' },
+      { id: 'simple-sorting', label: 'Simple Sorting by Attribute', category: 'math', trimester: 'end' }
+    ]
+  },
   'K': {
     label: 'Kindergarten',
     skills: [

@@ -11,12 +11,17 @@ export function standardizeGradeLevel(grade: string | null | undefined): string 
   if (!grade) return null;
   
   const gradeStr = grade.toString().toLowerCase().trim();
-  
+
   // Handle pre-K first (must come before kindergarten check)
   if (gradeStr.includes('pre') && (gradeStr.includes('k') || gradeStr.includes('kind'))) {
     return 'PreK';
   }
-  
+
+  // Handle transitional kindergarten (TK)
+  if (gradeStr === 'tk' || (gradeStr.includes('transitional') && (gradeStr.includes('k') || gradeStr.includes('kind')))) {
+    return 'TK';
+  }
+
   // Handle kindergarten
   if (gradeStr.includes('kind') || gradeStr === 'k') {
     return 'K';
@@ -64,11 +69,15 @@ export function standardizeGradeLevel(grade: string | null | undefined): string 
  */
 export function formatGradeLevel(standardizedGrade: string | null | undefined): string {
   if (!standardizedGrade) return 'Unknown Grade';
-  
+
   if (standardizedGrade === 'K') {
     return 'Kindergarten';
   }
-  
+
+  if (standardizedGrade === 'TK') {
+    return 'Transitional Kindergarten';
+  }
+
   if (standardizedGrade === 'PreK') {
     return 'Pre-Kindergarten';
   }
@@ -114,7 +123,8 @@ export function compareGradeLevels(grade1: string, grade2: string): number {
   
   // Handle special grades
   const gradeOrder: Record<string, number> = {
-    'PreK': -1,
+    'PreK': -2,
+    'TK': -1,
     'K': 0
   };
   

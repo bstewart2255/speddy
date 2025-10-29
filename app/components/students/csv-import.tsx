@@ -198,7 +198,7 @@ GH,4,Garcia,3,30`;
             <strong>Optional:</strong> Sessions Per Week, Minutes Per Session
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Grade format: K, 1, 2, 3, 4, 5, etc. • Sessions are auto-created in Unscheduled Sessions when schedule requirements are included.
+            Grade format: TK, K, 1, 2, 3, 4, 5, etc. • Sessions are auto-created in Unscheduled Sessions when schedule requirements are included.
           </p>
         </div>
         <div className="flex justify-center gap-4">
