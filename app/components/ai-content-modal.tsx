@@ -167,12 +167,11 @@ export function AIContentModal({
           ${styles}
         </head>
         <body>
-          <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-            <h1 style="margin: 0;">Special Education Lesson Plan</h1>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(timeSlot)}</p>
-            <p style="margin: 5px 0;"><strong>Students:</strong> ${students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
-            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-            ${notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
+          <div class="print-header" style="margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 6px;">
+            <h2 style="margin: 0 0 4px 0; font-size: 18px;">Special Education Lesson Plan</h2>
+            <p style="margin: 2px 0; font-size: 12px;"><strong>Date:</strong> ${new Date().toLocaleDateString()} | <strong>Time:</strong> ${escapeHTML(timeSlot)}</p>
+            <p style="margin: 2px 0; font-size: 12px;"><strong>Students:</strong> ${students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
+            ${notes ? `<p style="margin: 2px 0; font-size: 12px;"><strong>Notes:</strong> ${escapeHTML(notes)}</p>` : ''}
           </div>
           ${printableHtml}
         </body>

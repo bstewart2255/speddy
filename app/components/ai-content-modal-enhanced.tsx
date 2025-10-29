@@ -198,11 +198,10 @@ export function AIContentModalEnhanced({
               ${styles}
             </head>
             <body>
-              <div class="print-header" style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-                <h1 style="margin: 0;">Lesson Plan</h1>
-                <p style="margin: 5px 0;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()}</p>
-                <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(formatTimeSlot(lesson.timeSlot))}</p>
-                <p style="margin: 5px 0;"><strong>Students:</strong> ${lesson.students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
+              <div class="print-header" style="margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 6px;">
+                <h2 style="margin: 0 0 4px 0; font-size: 18px;">Lesson Plan</h2>
+                <p style="margin: 2px 0; font-size: 12px;"><strong>Date:</strong> ${lessonDate.toLocaleDateString()} | <strong>Time:</strong> ${escapeHTML(formatTimeSlot(lesson.timeSlot))}</p>
+                <p style="margin: 2px 0; font-size: 12px;"><strong>Students:</strong> ${lesson.students.map(s => `${escapeHTML(s.initials)} (Grade ${escapeHTML(String(s.grade_level))})`).join(', ')}</p>
               </div>
               ${printHtml}
             </body>
