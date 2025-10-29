@@ -128,10 +128,12 @@ export function CalendarTodayView({
     [sessionsState, adjustedDayOfWeek, students]
   );
 
-  // Sort sessions by start time
-  const sortedSessions = [...todaySessions].sort((a, b) => 
-    a.start_time.localeCompare(b.start_time)
-  );
+  // Sort sessions by start time (filter out unscheduled sessions)
+  const sortedSessions = [...todaySessions]
+    .filter(s => s.start_time && s.end_time)
+    .sort((a, b) =>
+      a.start_time!.localeCompare(b.start_time!)
+    );
 
   // Format time helper
   const formatTime = (time: string) => {
@@ -191,20 +193,27 @@ export function CalendarTodayView({
 
   const validateAllDropTargets = useCallback(async (session: ScheduleSession) => {
     if (!session) return;
-    
+
+    // Skip validation for unscheduled sessions
+    if (!session.start_time || !session.end_time || !session.day_of_week) {
+      setValidDropTargets(new Set());
+      setInvalidDropTargets(new Set());
+      return;
+    }
+
     setIsValidating(true);
     const valid = new Set<string>();
     const invalid = new Set<string>();
-    
+
     // Check all time slots for the current day
     for (const targetTime of timeSlots) {
       // Skip if it's the current slot
       if (targetTime === session.start_time) continue;
-      
+
       // Calculate new end time based on session duration
       const duration = timeToMinutes(session.end_time) - timeToMinutes(session.start_time);
       const newEndTime = addMinutesToTime(targetTime, duration);
-      
+
       // Validate the move
       const validation = await sessionUpdateService.validateSessionMove({
         session,
@@ -254,16 +263,21 @@ export function CalendarTodayView({
 
   const handleDrop = useCallback(async (event: React.DragEvent, targetTime: string) => {
     event.preventDefault();
-    
+
     if (!draggedSession || !validDropTargets.has(targetTime)) {
       // showToast('Cannot move session to this time slot', 'error');
       return;
     }
-    
+
+    // Skip if session has null times (unscheduled)
+    if (!draggedSession.start_time || !draggedSession.end_time || !draggedSession.day_of_week) {
+      return;
+    }
+
     // Calculate new end time
     const duration = timeToMinutes(draggedSession.end_time) - timeToMinutes(draggedSession.start_time);
     const newEndTime = addMinutesToTime(targetTime, duration);
-    
+
     // Use optimistic update for immediate UI feedback
     optimisticUpdate(draggedSession.id, {
       start_time: targetTime,
@@ -543,7 +557,9 @@ export function CalendarTodayView({
 
               <div className="mb-4 text-sm text-gray-600">
                 <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
-                <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                {selectedSession.start_time && selectedSession.end_time && (
+                  <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                )}
               </div>
 
               <textarea

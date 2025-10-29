@@ -10,11 +10,13 @@ import { ScheduleControls } from './components/schedule-controls';
 import { ScheduleGrid } from './components/schedule-grid';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
+import { UnscheduledSessionsPanel } from './components/unscheduled-sessions-panel';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '../../../../lib/supabase/client';
 import { useSessionTags } from './hooks/useSessionTags';
 import { useVisualFilters } from './hooks/useVisualFilters';
 import { useTeachers } from './hooks/useTeachers';
+import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import type { ScheduleSession } from '@/src/types/database';
 
 export default function SchedulePage() {
@@ -31,6 +33,7 @@ export default function SchedulePage() {
   const {
     students,
     sessions,
+    unscheduledSessions,
     bellSchedules,
     specialActivities,
     schoolHours,
@@ -82,6 +85,8 @@ export default function SchedulePage() {
     clearDragValidation,
   } = useScheduleOperations();
 
+  // Unscheduled panel state
+  const [isUnscheduledPanelDragOver, setIsUnscheduledPanelDragOver] = React.useState(false);
 
   // Handle drag start - Simple drag without validation
   const handleDragStart = useCallback((e: React.DragEvent, session: ScheduleSession) => {
@@ -194,6 +199,77 @@ export default function SchedulePage() {
     refreshSessions();
     closeSessionPopup();
   }, [refreshSessions, closeSessionPopup]);
+
+  // Handle drag over unscheduled panel
+  const handleUnscheduledPanelDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsUnscheduledPanelDragOver(true);
+  }, []);
+
+  // Reset drag over state when drag ends
+  useEffect(() => {
+    if (!draggedSession) {
+      setIsUnscheduledPanelDragOver(false);
+    }
+  }, [draggedSession]);
+
+  // Handle drop into unscheduled panel (unschedule the session)
+  const handleUnscheduledPanelDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsUnscheduledPanelDragOver(false);
+
+    if (!draggedSession) return;
+
+    const sessionToUnschedule = draggedSession;
+    endDrag();
+    clearDragValidation();
+
+    // Optimistically remove from grid by setting times to null
+    optimisticUpdateSession(sessionToUnschedule.id, {
+      day_of_week: null,
+      start_time: null,
+      end_time: null,
+      status: 'active',
+      conflict_reason: null,
+    });
+
+    // Perform actual unschedule
+    const result = await sessionUpdateService.unscheduleSession(sessionToUnschedule.id);
+
+    if (!result.success) {
+      // Revert optimistic update
+      optimisticUpdateSession(sessionToUnschedule.id, {
+        day_of_week: sessionToUnschedule.day_of_week,
+        start_time: sessionToUnschedule.start_time,
+        end_time: sessionToUnschedule.end_time,
+        status: sessionToUnschedule.status,
+        conflict_reason: sessionToUnschedule.conflict_reason,
+      });
+
+      if (result.error) {
+        alert(`Failed to unschedule session: ${result.error}`);
+      }
+    } else {
+      // Refresh to get updated data
+      await refreshSessions();
+    }
+  }, [draggedSession, endDrag, clearDragValidation, optimisticUpdateSession, refreshSessions]);
+
+  // Handle clearing all sessions from a specific day
+  const handleClearDay = useCallback(async (day: number) => {
+    if (!currentUserId) return;
+
+    const result = await sessionUpdateService.unscheduleDaySessions(currentUserId, day);
+
+    if (result.success) {
+      // Refresh sessions to reflect the changes
+      await refreshSessions();
+      alert(`Successfully cleared ${result.count || 0} sessions from the day`);
+    } else {
+      alert(`Failed to clear day: ${result.error}`);
+    }
+  }, [currentUserId, refreshSessions]);
 
   // Handle time slot click
   const handleTimeSlotClick = useCallback((time: string) => {
@@ -353,6 +429,19 @@ export default function SchedulePage() {
             onHighlightToggle={toggleHighlight}
             onPopupClose={closeSessionPopup}
             onPopupUpdate={handlePopupUpdate}
+            onClearDay={handleClearDay}
+          />
+
+          {/* Unscheduled Sessions Panel */}
+          <UnscheduledSessionsPanel
+            unscheduledSessions={unscheduledSessions}
+            students={students}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOver={handleUnscheduledPanelDragOver}
+            onDrop={handleUnscheduledPanelDrop}
+            draggedSessionId={draggedSession?.id || null}
+            isDragOver={isUnscheduledPanelDragOver}
           />
 
           {/* Footer */}

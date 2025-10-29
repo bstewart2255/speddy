@@ -17,6 +17,7 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 interface ScheduleData {
   students: Student[];
   sessions: ScheduleSession[];
+  unscheduledSessions: ScheduleSession[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   schoolHours: SchoolHour[];
@@ -36,6 +37,7 @@ export function useScheduleData() {
   const [data, setData] = useState<ScheduleData>({
     students: [],
     sessions: [],
+    unscheduledSessions: [],
     bellSchedules: [],
     specialActivities: [],
     schoolHours: [],
@@ -307,9 +309,15 @@ export function useScheduleData() {
         }
       }
 
+      // Separate scheduled and unscheduled sessions
+      const allSessions = sessionsResult.data || [];
+      const scheduledSessions = allSessions.filter(s => s.day_of_week !== null);
+      const unscheduledSessions = allSessions.filter(s => s.day_of_week === null);
+
       setData({
         students: allStudents,
-        sessions: sessionsResult.data || [],
+        sessions: scheduledSessions,
+        unscheduledSessions: unscheduledSessions,
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
         schoolHours: schoolHoursData,
@@ -324,7 +332,9 @@ export function useScheduleData() {
 
       console.log('[useScheduleData] Data loaded:', {
         students: allStudents.length,
-        sessions: sessionsResult.data?.length || 0,
+        scheduledSessions: scheduledSessions.length,
+        unscheduledSessions: unscheduledSessions.length,
+        totalSessions: allSessions.length,
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,

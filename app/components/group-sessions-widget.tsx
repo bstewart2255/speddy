@@ -214,6 +214,7 @@ export function GroupSessionsWidget() {
     const slotMinutes = slotHour * 60 + slotMin;
 
     return sessions.filter((session) => {
+      if (!session.start_time) return false;
       const [sessionHour, sessionMin] = session.start_time
         .split(":")
         .map(Number);

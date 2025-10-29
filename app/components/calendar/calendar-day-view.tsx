@@ -200,6 +200,12 @@ export function CalendarDayView({
     const conflicts: Record<string, boolean> = {};
 
     for (const session of sessionsState) {
+      // Skip validation for unscheduled sessions (with null times)
+      if (!session.day_of_week || !session.start_time || !session.end_time) {
+        conflicts[session.id] = false;
+        continue;
+      }
+
       const validation = await sessionUpdateService.validateSessionMove({
         session,
         targetDay: session.day_of_week,
@@ -703,7 +709,8 @@ export function CalendarDayView({
                 </div>
               ) : (
                 filteredSessions
-                  .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                  .filter(s => s.start_time && s.end_time) // Filter out unscheduled sessions
+                  .sort((a, b) => a.start_time!.localeCompare(b.start_time!))
                   .map((session) => {
                     const student = allStudents.get(session.student_id);
                     const isGrouped = !!session.group_id;
@@ -762,7 +769,7 @@ export function CalendarDayView({
                             )}
 
                             <div className="text-sm font-medium text-gray-900">
-                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                              {formatTime(session.start_time!)} - {formatTime(session.end_time!)}
                             </div>
                             <div className="text-sm font-semibold text-gray-900">
                               {student?.initials || '?'}
