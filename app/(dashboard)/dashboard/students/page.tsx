@@ -222,6 +222,7 @@ export default function StudentsPage() {
 
       setShowAddForm(false);
       fetchStudents();
+      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error creating student:', error);
       alert(error.message || 'Failed to add student');
