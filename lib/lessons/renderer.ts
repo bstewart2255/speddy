@@ -139,6 +139,11 @@ export class WorksheetRenderer {
         page-break-inside: avoid;
         margin: 15px 0;
       }
+      /* Allow reading passages to break across pages to avoid wasted space */
+      .section.passage,
+      .section[data-type="passage"] {
+        page-break-inside: auto;
+      }
       .teacher-plan {
         page-break-inside: avoid;
       }
@@ -447,7 +452,7 @@ export class WorksheetRenderer {
                               section.title?.toLowerCase().includes('story');
 
       return `
-      <div class="section">
+      <div class="section${isReadingSection ? ' passage' : ''}">
         <h2>${this.escapeHtml(section.title)}</h2>
         ${section.instructions ? `<p class="section-instructions"><em>${this.escapeHtml(section.instructions)}</em></p>` : ''}
 
