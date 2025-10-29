@@ -222,11 +222,8 @@ export default function SchedulePage() {
     }
   }, [draggedSession]);
 
-  // Handle drop into unscheduled panel (unschedule the session)
-  const handleUnscheduledPanelDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsUnscheduledPanelDragOver(false);
-
+  // Shared logic for unscheduling a session
+  const unscheduleSessionWithOptimisticUpdate = useCallback(async () => {
     if (!draggedSession) return;
 
     const sessionToUnschedule = draggedSession;
@@ -263,6 +260,13 @@ export default function SchedulePage() {
       await refreshSessions();
     }
   }, [draggedSession, endDrag, clearDragValidation, optimisticUpdateSession, refreshSessions]);
+
+  // Handle drop into unscheduled panel (unschedule the session)
+  const handleUnscheduledPanelDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsUnscheduledPanelDragOver(false);
+    await unscheduleSessionWithOptimisticUpdate();
+  }, [unscheduleSessionWithOptimisticUpdate]);
 
   // Handle drag over unscheduled header
   const handleUnscheduledHeaderDragOver = useCallback((e: React.DragEvent) => {
@@ -284,43 +288,8 @@ export default function SchedulePage() {
     e.preventDefault();
     e.stopPropagation();
     setIsUnscheduledHeaderDragOver(false);
-
-    if (!draggedSession) return;
-
-    const sessionToUnschedule = draggedSession;
-    endDrag();
-    clearDragValidation();
-
-    // Optimistically remove from grid by setting times to null
-    optimisticUpdateSession(sessionToUnschedule.id, {
-      day_of_week: null,
-      start_time: null,
-      end_time: null,
-      status: 'active',
-      conflict_reason: null,
-    });
-
-    // Perform actual unschedule
-    const result = await sessionUpdateService.unscheduleSession(sessionToUnschedule.id);
-
-    if (!result.success) {
-      // Revert optimistic update
-      optimisticUpdateSession(sessionToUnschedule.id, {
-        day_of_week: sessionToUnschedule.day_of_week,
-        start_time: sessionToUnschedule.start_time,
-        end_time: sessionToUnschedule.end_time,
-        status: sessionToUnschedule.status,
-        conflict_reason: sessionToUnschedule.conflict_reason,
-      });
-
-      if (result.error) {
-        alert(`Failed to unschedule session: ${result.error}`);
-      }
-    } else {
-      // Refresh to get updated data
-      await refreshSessions();
-    }
-  }, [draggedSession, endDrag, clearDragValidation, optimisticUpdateSession, refreshSessions]);
+    await unscheduleSessionWithOptimisticUpdate();
+  }, [unscheduleSessionWithOptimisticUpdate]);
 
   // Handle clearing all sessions from a specific day
   const handleClearDay = useCallback(async (day: number) => {

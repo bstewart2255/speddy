@@ -12,6 +12,7 @@ import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { toLocalDateKey } from '@/lib/utils/date-time';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -750,9 +751,7 @@ export function CalendarWeekView({
     return sessionsState
       .filter((session) =>
         students.has(session.student_id) &&
-        session.day_of_week !== null &&
-        session.start_time !== null &&
-        session.end_time !== null
+        isScheduledSession(session)
       )
       .reduce((acc, session) => {
         (acc[session.day_of_week!] ||= []).push(session);

@@ -19,6 +19,7 @@ import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -1743,7 +1744,7 @@ export function CalendarWeekView({
 
           // Sort sessions by start time for chronological order
           const sortedDaySessions = [...daySessions]
-            .filter(s => s.start_time !== null)
+            .filter(s => isScheduledSession(s))
             .sort((a, b) => a.start_time!.localeCompare(b.start_time!));
 
           // Group sessions by time slot for display
@@ -1851,7 +1852,7 @@ export function CalendarWeekView({
                       // Add groups
                       groups.forEach((groupSessions, groupId) => {
                         // Filter out unscheduled sessions
-                        const scheduledSessions = groupSessions.filter(s => s.start_time !== null && s.end_time !== null);
+                        const scheduledSessions = groupSessions.filter(s => isScheduledSession(s));
                         const firstSession = scheduledSessions[0];
                         if (firstSession && firstSession.start_time && firstSession.end_time) {
                           allBlocks.push({

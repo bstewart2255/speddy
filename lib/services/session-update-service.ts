@@ -638,6 +638,8 @@ export class SessionUpdateService {
 
   /**
    * Unschedules a session by setting day_of_week, start_time, and end_time to NULL
+   * Status is set to 'active' since unscheduled sessions can't have conflicts or need attention
+   * (those statuses only apply to scheduled sessions)
    */
   async unscheduleSession(sessionId: string): Promise<{
     success: boolean;
@@ -651,7 +653,7 @@ export class SessionUpdateService {
           day_of_week: null,
           start_time: null,
           end_time: null,
-          status: 'active', // Clear any conflict status when unscheduling
+          status: 'active', // Unscheduled sessions are active by default (conflicts/attention only apply to scheduled sessions)
           conflict_reason: null,
           updated_at: new Date().toISOString()
         })

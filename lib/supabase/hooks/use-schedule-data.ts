@@ -6,6 +6,7 @@ import { useSchool } from '../../../app/components/providers/school-context';
 import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 import type { Database, SchoolHour } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -311,8 +312,8 @@ export function useScheduleData() {
 
       // Separate scheduled and unscheduled sessions
       const allSessions = sessionsResult.data || [];
-      const scheduledSessions = allSessions.filter(s => s.day_of_week !== null);
-      const unscheduledSessions = allSessions.filter(s => s.day_of_week === null);
+      const scheduledSessions = allSessions.filter(s => isScheduledSession(s));
+      const unscheduledSessions = allSessions.filter(s => !isScheduledSession(s));
 
       setData({
         students: allStudents,
@@ -454,10 +455,16 @@ export function useScheduleData() {
       const isInScheduled = prev.sessions.some(s => s.id === sessionId);
       const isInUnscheduled = prev.unscheduledSessions.some(s => s.id === sessionId);
 
-      // Determine if session should be scheduled or unscheduled after update
-      const willBeScheduled = updates.day_of_week !== undefined
-        ? updates.day_of_week !== null
-        : isInScheduled;
+      // Find the current session object
+      const currentSession = isInScheduled
+        ? prev.sessions.find(s => s.id === sessionId)
+        : prev.unscheduledSessions.find(s => s.id === sessionId);
+
+      if (!currentSession) return prev;
+
+      // Create a temporary session object with updates applied to check scheduling status
+      const updatedSession = { ...currentSession, ...updates };
+      const willBeScheduled = isScheduledSession(updatedSession);
 
       if (isInUnscheduled && willBeScheduled) {
         // Moving from unscheduled to scheduled

@@ -6,6 +6,7 @@ import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
 import { DayColumnMenu } from './day-column-menu';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 import type {
   BellSchedule,
   ScheduleSession,
@@ -265,7 +266,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
             </div>
             {DAYS.map((day, index) => {
               const dayNumber = index + 1;
-              const daySessionsCount = sessions.filter(s => s.day_of_week === dayNumber).length;
+              const daySessionsCount = sessions.filter(s => s.day_of_week === dayNumber && isScheduledSession(s)).length;
 
               return (
                 <div
