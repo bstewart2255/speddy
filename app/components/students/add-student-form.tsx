@@ -40,8 +40,8 @@
 
         console.log('Student created:', student);
 
-        // Show success message with scheduling reminder
-        alert(`Student "${student.initials}" has been added successfully!\n\nReminder: Go to the Schedule page and click "Re-schedule All Sessions" to schedule their sessions.`);
+        // Show success message - sessions are auto-created
+        alert(`Student "${student.initials}" has been added successfully!\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`);
 
         onSuccess();
         onClose();

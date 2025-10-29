@@ -134,7 +134,65 @@ export async function createStudent(studentData: {
     throw new Error(insertResult.error.message || 'Failed to add student');
   }
 
-  return insertResult.data;
+  const createdStudent = insertResult.data;
+
+  // Create unscheduled sessions if schedule requirements are present
+  if (studentData.sessions_per_week && studentData.minutes_per_session) {
+    try {
+      const sessionsPerf = measurePerformanceWithAlerts('create_unscheduled_sessions', 'database');
+
+      // Create N unscheduled session records
+      const unscheduledSessions = Array.from({ length: studentData.sessions_per_week }, () => ({
+        student_id: createdStudent.id,
+        provider_id: user.id,
+        day_of_week: null,
+        start_time: null,
+        end_time: null,
+        minutes_per_session: studentData.minutes_per_session,
+        status: 'active' as const,
+        delivered_by: 'provider' as const,
+      }));
+
+      const sessionsResult = await safeQuery(
+        async () => {
+          const { error } = await supabase
+            .from('schedule_sessions')
+            .insert(unscheduledSessions);
+          if (error) throw error;
+          return null;
+        },
+        {
+          operation: 'create_unscheduled_sessions',
+          userId: user.id,
+          studentId: createdStudent.id,
+          sessionCount: studentData.sessions_per_week,
+        }
+      );
+      sessionsPerf.end({ success: !sessionsResult.error });
+
+      if (sessionsResult.error) {
+        // If session creation fails, rollback the student
+        console.error('Failed to create sessions, rolling back student:', sessionsResult.error);
+        await safeQuery(
+          async () => {
+            const { error } = await supabase
+              .from('students')
+              .delete()
+              .eq('id', createdStudent.id);
+            if (error) throw error;
+            return null;
+          },
+          { operation: 'rollback_student_after_session_failure' }
+        );
+        throw new Error('Failed to create sessions for student. Student creation has been rolled back.');
+      }
+    } catch (error) {
+      // Re-throw session creation errors
+      throw error;
+    }
+  }
+
+  return createdStudent;
 }
 
 /**

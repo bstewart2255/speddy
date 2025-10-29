@@ -40,11 +40,13 @@ GH,4,Garcia,3,30`;
     const firstRow = data[0];
     const headers = Object.keys(firstRow).map(h => h.toLowerCase().trim());
 
-    const requiredColumns = ['initials', 'grade', 'teacher', 'sessions per week', 'minutes per session'];
+    // Only initials, grade, and teacher are required
+    // Sessions per week and minutes per session are optional
+    const requiredColumns = ['initials', 'grade', 'teacher'];
     const missing = requiredColumns.filter(col => {
       const colLower = col.toLowerCase();
-      return !headers.some(header => 
-        header === colLower || 
+      return !headers.some(header =>
+        header === colLower ||
         header.replace(/\s+/g, '') === colLower.replace(/\s+/g, '')
       );
     });
@@ -76,35 +78,88 @@ GH,4,Garcia,3,30`;
           console.log('Parsed data:', results.data);
           try {
             if (!validateColumns(results.data)) {
-              throw new Error('CSV missing required columns. Expected: Initials, Grade, Teacher, Sessions Per Week, Minutes Per Session');
+              throw new Error('CSV missing required columns. Required: Initials, Grade, Teacher. Optional: Sessions Per Week, Minutes Per Session');
             }
 
             const students = results.data
               .filter((row: any) => row.initials && row.grade && row.teacher)
-              .map((row: any) => ({
-                provider_id: user.user!.id,
-                initials: row.initials.toUpperCase().trim(),
-                grade_level: row.grade.toString().toUpperCase().trim(),
-                teacher_name: row.teacher.trim(),
-                sessions_per_week: parseInt(row['sessions per week']) || 2,
-                minutes_per_session: parseInt(row['minutes per session']) || 30,
-                school_site: currentSchool?.school_site || '',
-                school_district: currentSchool?.school_district || ''
-              }));
+              .map((row: any) => {
+                const student: any = {
+                  provider_id: user.user!.id,
+                  initials: row.initials.toUpperCase().trim(),
+                  grade_level: row.grade.toString().toUpperCase().trim(),
+                  teacher_name: row.teacher.trim(),
+                  school_site: currentSchool?.school_site || '',
+                  school_district: currentSchool?.school_district || ''
+                };
+
+                // Only include schedule requirements if they're present
+                if (row['sessions per week']) {
+                  student.sessions_per_week = parseInt(row['sessions per week']);
+                }
+                if (row['minutes per session']) {
+                  student.minutes_per_session = parseInt(row['minutes per session']);
+                }
+
+                return student;
+              });
 
             console.log('Students to insert:', students);
 
             if (students.length > 0) {
-              const { error: insertError } = await supabase
+              const { data: insertedStudents, error: insertError } = await supabase
                 .from('students')
-                .insert(students);
+                .insert(students)
+                .select();
 
               if (insertError) {
                 console.error('Insert error:', insertError);
                 throw insertError;
               }
 
-              alert(`Successfully imported ${students.length} students!`);
+              // Create unscheduled sessions for students with schedule requirements
+              let studentsWithSessions = 0;
+              if (insertedStudents && insertedStudents.length > 0) {
+                const allSessions: any[] = [];
+
+                insertedStudents.forEach((student) => {
+                  // Only create sessions if both requirements are present
+                  if (student.sessions_per_week && student.minutes_per_session) {
+                    const unscheduledSessions = Array.from({ length: student.sessions_per_week }, () => ({
+                      student_id: student.id,
+                      provider_id: user.user!.id,
+                      day_of_week: null,
+                      start_time: null,
+                      end_time: null,
+                      minutes_per_session: student.minutes_per_session,
+                      status: 'active' as const,
+                      delivered_by: 'provider' as const,
+                    }));
+                    allSessions.push(...unscheduledSessions);
+                    studentsWithSessions++;
+                  }
+                });
+
+                // Bulk insert all sessions at once
+                if (allSessions.length > 0) {
+                  const { error: sessionsError } = await supabase
+                    .from('schedule_sessions')
+                    .insert(allSessions);
+
+                  if (sessionsError) {
+                    console.error('Sessions creation error:', sessionsError);
+                    // Don't throw - students were created successfully
+                    alert(`Successfully imported ${students.length} students, but failed to create sessions. You can add them manually from the Schedule page.`);
+                  } else {
+                    alert(`Successfully imported ${students.length} students! ${studentsWithSessions} students have sessions created in Unscheduled Sessions.`);
+                  }
+                } else {
+                  alert(`Successfully imported ${students.length} students! No sessions created (missing schedule requirements).`);
+                }
+              } else {
+                alert(`Successfully imported ${students.length} students!`);
+              }
+
               onSuccess();
             } else {
               throw new Error('No valid students found in CSV');
@@ -139,10 +194,11 @@ GH,4,Garcia,3,30`;
         <div className="mb-4">
           <p className="text-lg font-medium text-gray-900 mb-2">Upload Students CSV</p>
           <p className="text-sm text-gray-600">
-            CSV should include: Initials, Grade, Teacher, Sessions Per Week, Minutes Per Session
+            <strong>Required:</strong> Initials, Grade, Teacher<br />
+            <strong>Optional:</strong> Sessions Per Week, Minutes Per Session
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Grade format: K, 1, 2, 3, 4, 5, etc.
+            Grade format: K, 1, 2, 3, 4, 5, etc. • Sessions are auto-created in Unscheduled Sessions when schedule requirements are included.
           </p>
         </div>
         <div className="flex justify-center gap-4">
