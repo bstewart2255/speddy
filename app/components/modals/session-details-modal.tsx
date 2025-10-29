@@ -51,8 +51,8 @@ export function SessionDetailsModal({
 
   if (!isOpen) return null;
 
-  const formatTime = (time: string) => {
-    if (!time) return "";
+  const formatTime = (time: string | null) => {
+    if (!time) return "Unscheduled";
     const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? "PM" : "AM";

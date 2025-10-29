@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { getSchoolHours } from '../supabase/queries/school-hours';
+import { filterScheduledSessions } from '../utils/session-helpers';
 
 /**
  * Utility class used to automatically generate schedule sessions for students.
@@ -180,7 +181,8 @@ export class AutoScheduler {
         .from('schedule_sessions')
         .select('*')
         .eq('provider_id', this.providerId);
-      return data || [];
+      // Filter to only return scheduled sessions (with non-null day/time fields)
+      return filterScheduledSessions(data || []);
     }
 
   /**

@@ -7,6 +7,7 @@ import {
   BellSchedule,
   SpecialActivity,
 } from "../../../src/types/database";
+import { filterScheduledSessions } from "@/lib/utils/session-helpers";
 
 interface ExportPDFProps {
   students: Student[];
@@ -62,7 +63,8 @@ export function ExportPDF({
     setIsGenerating(true);
 
     try {
-      const filteredSessions = getFilteredSessions();
+      // Filter for only scheduled sessions (with non-null day/time fields)
+      const filteredSessions = filterScheduledSessions(getFilteredSessions());
 
       let content = `Weekly Schedule\n`;
       content += `Provider: ${providerName}\n`;

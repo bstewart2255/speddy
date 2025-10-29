@@ -12,6 +12,7 @@ import { cn } from '@/src/utils/cn';
 import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ScheduleSession } from '@/src/types/database';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 interface Holiday {
   date: string;
@@ -439,6 +440,15 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
+    // Only check conflicts for scheduled sessions (with non-null day/time fields)
+    if (!isScheduledSession(session)) {
+      setSessionConflicts(prev => ({
+        ...prev,
+        [sessionId]: false
+      }));
+      return;
+    }
+
     const validation = await sessionUpdateService.validateSessionMove({
       session,
       targetDay: session.day_of_week,
@@ -479,8 +489,17 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
     if (!draggedSession) return;
 
+    // Only allow dropping scheduled sessions
+    if (!isScheduledSession(draggedSession)) {
+      handleDragEnd();
+      return;
+    }
+
+    // Store the scheduled session with narrowed type
+    const scheduledSession = draggedSession;
+
     // Calculate new times
-    const duration = timeToMinutes(draggedSession.end_time) - timeToMinutes(draggedSession.start_time);
+    const duration = timeToMinutes(scheduledSession.end_time) - timeToMinutes(scheduledSession.start_time);
     const hour = parseInt(targetTime.split(':')[0]);
     const isPM = targetTime.includes('PM');
     const adjustedHour = isPM && hour !== 12 ? hour + 12 : (hour === 12 && !isPM ? 0 : hour);
@@ -488,13 +507,13 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     const newEndTime = addMinutesToTime(formattedStartTime, duration);
 
     // Check if this is actually a move (not dropping on the same slot)
-    if (draggedSession.start_time === formattedStartTime) {
+    if (scheduledSession.start_time === formattedStartTime) {
       handleDragEnd();
       return;
     }
 
     // Apply optimistic update immediately for smooth UX
-    optimisticUpdate(draggedSession.id, {
+    optimisticUpdate(scheduledSession.id, {
       start_time: formattedStartTime,
       end_time: newEndTime
     });
@@ -502,8 +521,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     try {
       // Perform the update without validation blocking
       const result = await sessionUpdateService.updateSessionTime(
-        draggedSession.id,
-        draggedSession.day_of_week,
+        scheduledSession.id,
+        scheduledSession.day_of_week,
         formattedStartTime,
         newEndTime
       );
@@ -511,34 +530,34 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       if (!result.success) {
         console.error('Failed to move session:', result.error);
         // Revert optimistic update on failure
-        optimisticUpdate(draggedSession.id, {
-          start_time: draggedSession.start_time,
-          end_time: draggedSession.end_time
+        optimisticUpdate(scheduledSession.id, {
+          start_time: scheduledSession.start_time,
+          end_time: scheduledSession.end_time
         });
       } else if (result.hasConflicts && result.conflicts) {
         // Show warning dialog for conflicts
         const conflictMessages = result.conflicts.map(c => `- ${c.description}`).join('\n');
         const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`;
-        
+
         if (!confirm(confirmMessage)) {
           // User cancelled - revert the optimistic update and the database change
-          optimisticUpdate(draggedSession.id, {
-            start_time: draggedSession.start_time,
-            end_time: draggedSession.end_time
+          optimisticUpdate(scheduledSession.id, {
+            start_time: scheduledSession.start_time,
+            end_time: scheduledSession.end_time
           });
-          
+
           // Revert the database change
           await sessionUpdateService.updateSessionTime(
-            draggedSession.id,
-            draggedSession.day_of_week,
-            draggedSession.start_time,
-            draggedSession.end_time
+            scheduledSession.id,
+            scheduledSession.day_of_week,
+            scheduledSession.start_time,
+            scheduledSession.end_time
           );
         }
       }
 
       // Check conflicts ONLY for the moved session
-      await checkSessionConflicts(draggedSession.id);
+      await checkSessionConflicts(scheduledSession.id);
 
     } catch (error) {
       console.error('Error during session move:', error);
@@ -550,8 +569,11 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   // Group sessions by day and time
   const sessionsByDayTime = React.useMemo(() => {
     const grouped: Record<string, any[]> = {}; // Note: now stores arrays of sessions
-    
-    sessions.forEach((session) => {
+
+    // Filter to only scheduled sessions (with non-null day/time fields)
+    const scheduledSessions = sessions.filter(isScheduledSession);
+
+    scheduledSessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
       const timeIndex = getTimeSlotIndex(session.start_time);
       const span = getSessionSpan(session.start_time, session.end_time);

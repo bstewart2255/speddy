@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Database } from '../../../src/types/database';
 import { GroupLessonPanel } from './group-lesson-panel';
 import { GroupDocumentsPanel } from './group-documents-panel';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -56,8 +57,8 @@ export function GroupDetailsModal({
 
   if (!isOpen) return null;
 
-  const formatTime = (time: string) => {
-    if (!time) return "";
+  const formatTime = (time: string | null) => {
+    if (!time) return "Unscheduled";
     const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? "PM" : "AM";
