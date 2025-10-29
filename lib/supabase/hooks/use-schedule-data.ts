@@ -449,12 +449,56 @@ export function useScheduleData() {
 
   // Optimistic update function
   const optimisticUpdateSession = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {
-    setData(prev => ({
-      ...prev,
-      sessions: prev.sessions.map(s => 
-        s.id === sessionId ? { ...s, ...updates } : s
-      ),
-    }));
+    setData(prev => {
+      // Check if the session is being moved between scheduled and unscheduled
+      const isInScheduled = prev.sessions.some(s => s.id === sessionId);
+      const isInUnscheduled = prev.unscheduledSessions.some(s => s.id === sessionId);
+
+      // Determine if session should be scheduled or unscheduled after update
+      const willBeScheduled = updates.day_of_week !== undefined
+        ? updates.day_of_week !== null
+        : isInScheduled;
+
+      if (isInUnscheduled && willBeScheduled) {
+        // Moving from unscheduled to scheduled
+        const session = prev.unscheduledSessions.find(s => s.id === sessionId);
+        if (session) {
+          return {
+            ...prev,
+            sessions: [...prev.sessions, { ...session, ...updates }],
+            unscheduledSessions: prev.unscheduledSessions.filter(s => s.id !== sessionId),
+          };
+        }
+      } else if (isInScheduled && !willBeScheduled) {
+        // Moving from scheduled to unscheduled
+        const session = prev.sessions.find(s => s.id === sessionId);
+        if (session) {
+          return {
+            ...prev,
+            sessions: prev.sessions.filter(s => s.id !== sessionId),
+            unscheduledSessions: [...prev.unscheduledSessions, { ...session, ...updates }],
+          };
+        }
+      } else if (isInScheduled) {
+        // Updating within scheduled sessions
+        return {
+          ...prev,
+          sessions: prev.sessions.map(s =>
+            s.id === sessionId ? { ...s, ...updates } : s
+          ),
+        };
+      } else if (isInUnscheduled) {
+        // Updating within unscheduled sessions
+        return {
+          ...prev,
+          unscheduledSessions: prev.unscheduledSessions.map(s =>
+            s.id === sessionId ? { ...s, ...updates } : s
+          ),
+        };
+      }
+
+      return prev;
+    });
   }, []);
 
   // Refresh functions

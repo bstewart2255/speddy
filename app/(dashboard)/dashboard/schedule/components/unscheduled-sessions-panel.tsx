@@ -11,9 +11,14 @@ interface UnscheduledSessionsPanelProps {
   onDragStart: (e: React.DragEvent, session: ScheduleSession) => void;
   onDragEnd: () => void;
   onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  onHeaderDragOver: (e: React.DragEvent) => void;
+  onHeaderDrop: (e: React.DragEvent) => void;
+  onHeaderDragLeave: (e: React.DragEvent) => void;
   draggedSessionId: string | null;
   isDragOver: boolean;
+  isDragOverHeader: boolean;
 }
 
 export function UnscheduledSessionsPanel({
@@ -22,9 +27,14 @@ export function UnscheduledSessionsPanel({
   onDragStart,
   onDragEnd,
   onDragOver,
+  onDragLeave,
   onDrop,
+  onHeaderDragOver,
+  onHeaderDrop,
+  onHeaderDragLeave,
   draggedSessionId,
   isDragOver,
+  isDragOverHeader,
 }: UnscheduledSessionsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -60,7 +70,14 @@ export function UnscheduledSessionsPanel({
       {/* Toggle Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-150 flex items-center justify-between transition-all border-b border-gray-200"
+        onDragOver={onHeaderDragOver}
+        onDrop={onHeaderDrop}
+        onDragLeave={onHeaderDragLeave}
+        aria-expanded={isExpanded}
+        aria-controls="unscheduled-panel-content"
+        className={`w-full px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-150 flex items-center justify-between transition-all border-b border-gray-200 ${
+          isDragOverHeader ? 'bg-blue-100 border-2 border-blue-500 shadow-lg' : ''
+        }`}
       >
         <div className="flex items-center gap-3">
           {isExpanded ? (
@@ -79,17 +96,25 @@ export function UnscheduledSessionsPanel({
           </div>
         </div>
         <div className="text-sm text-gray-600">
-          {isExpanded ? 'Click to collapse' : 'Click to expand and manage unscheduled sessions'}
+          {isDragOverHeader
+            ? 'Drop to unschedule'
+            : isExpanded
+              ? 'Click to collapse'
+              : 'Click to expand and manage unscheduled sessions'}
         </div>
       </button>
 
       {/* Panel Content */}
       {isExpanded && (
         <div
+          id="unscheduled-panel-content"
+          role="region"
+          aria-label="Unscheduled sessions panel"
           className={`p-6 bg-gray-50 max-h-96 overflow-y-auto transition-all ${
             isDragOver ? 'bg-blue-50 border-2 border-blue-400 border-dashed' : ''
           }`}
           onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
         >
           {totalSessions === 0 ? (

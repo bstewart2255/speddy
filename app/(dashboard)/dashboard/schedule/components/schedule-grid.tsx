@@ -5,7 +5,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
-import { ClearDayButton } from './clear-day-button';
+import { DayColumnMenu } from './day-column-menu';
 import type {
   BellSchedule,
   ScheduleSession,
@@ -270,27 +270,27 @@ export const ScheduleGrid = memo(function ScheduleGrid({
               return (
                 <div
                   key={day}
-                  className={`p-3 font-semibold text-center border-r last:border-r-0 transition-colors ${
+                  className={`relative p-3 font-semibold text-center border-r last:border-r-0 transition-colors ${
                     selectedDay === dayNumber
                       ? 'bg-blue-100 text-blue-700'
                       : 'text-gray-700 bg-gray-50'
                   }`}
                 >
-                  <div className="flex flex-col gap-1">
-                    <div
-                      className="cursor-pointer hover:text-blue-600"
-                      onClick={() => onDayClick(dayNumber)}
-                    >
-                      {day}
-                    </div>
-                    {onClearDay && (
-                      <ClearDayButton
+                  {onClearDay && (
+                    <div className="absolute top-1 right-1">
+                      <DayColumnMenu
                         day={dayNumber}
                         dayName={day}
                         sessionCount={daySessionsCount}
                         onClearDay={onClearDay}
                       />
-                    )}
+                    </div>
+                  )}
+                  <div
+                    className="cursor-pointer hover:text-blue-600"
+                    onClick={() => onDayClick(dayNumber)}
+                  >
+                    {day}
                   </div>
                 </div>
               );

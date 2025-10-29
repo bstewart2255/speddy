@@ -28,7 +28,7 @@ export default function SchedulePage() {
     teachers
   );
   const { sessionTags, setSessionTags } = useSessionTags();
-  
+
   // Data management hook
   const {
     students,
@@ -87,6 +87,7 @@ export default function SchedulePage() {
 
   // Unscheduled panel state
   const [isUnscheduledPanelDragOver, setIsUnscheduledPanelDragOver] = React.useState(false);
+  const [isUnscheduledHeaderDragOver, setIsUnscheduledHeaderDragOver] = React.useState(false);
 
   // Handle drag start - Simple drag without validation
   const handleDragStart = useCallback((e: React.DragEvent, session: ScheduleSession) => {
@@ -207,10 +208,17 @@ export default function SchedulePage() {
     setIsUnscheduledPanelDragOver(true);
   }, []);
 
+  // Handle drag leave from unscheduled panel
+  const handleUnscheduledPanelDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsUnscheduledPanelDragOver(false);
+  }, []);
+
   // Reset drag over state when drag ends
   useEffect(() => {
     if (!draggedSession) {
       setIsUnscheduledPanelDragOver(false);
+      setIsUnscheduledHeaderDragOver(false);
     }
   }, [draggedSession]);
 
@@ -218,6 +226,64 @@ export default function SchedulePage() {
   const handleUnscheduledPanelDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsUnscheduledPanelDragOver(false);
+
+    if (!draggedSession) return;
+
+    const sessionToUnschedule = draggedSession;
+    endDrag();
+    clearDragValidation();
+
+    // Optimistically remove from grid by setting times to null
+    optimisticUpdateSession(sessionToUnschedule.id, {
+      day_of_week: null,
+      start_time: null,
+      end_time: null,
+      status: 'active',
+      conflict_reason: null,
+    });
+
+    // Perform actual unschedule
+    const result = await sessionUpdateService.unscheduleSession(sessionToUnschedule.id);
+
+    if (!result.success) {
+      // Revert optimistic update
+      optimisticUpdateSession(sessionToUnschedule.id, {
+        day_of_week: sessionToUnschedule.day_of_week,
+        start_time: sessionToUnschedule.start_time,
+        end_time: sessionToUnschedule.end_time,
+        status: sessionToUnschedule.status,
+        conflict_reason: sessionToUnschedule.conflict_reason,
+      });
+
+      if (result.error) {
+        alert(`Failed to unschedule session: ${result.error}`);
+      }
+    } else {
+      // Refresh to get updated data
+      await refreshSessions();
+    }
+  }, [draggedSession, endDrag, clearDragValidation, optimisticUpdateSession, refreshSessions]);
+
+  // Handle drag over unscheduled header
+  const handleUnscheduledHeaderDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setIsUnscheduledHeaderDragOver(true);
+  }, []);
+
+  // Handle drag leave from unscheduled header
+  const handleUnscheduledHeaderDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsUnscheduledHeaderDragOver(false);
+  }, []);
+
+  // Handle drop on unscheduled header (reuse same logic as panel drop)
+  const handleUnscheduledHeaderDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsUnscheduledHeaderDragOver(false);
 
     if (!draggedSession) return;
 
@@ -439,9 +505,14 @@ export default function SchedulePage() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragOver={handleUnscheduledPanelDragOver}
+            onDragLeave={handleUnscheduledPanelDragLeave}
             onDrop={handleUnscheduledPanelDrop}
+            onHeaderDragOver={handleUnscheduledHeaderDragOver}
+            onHeaderDrop={handleUnscheduledHeaderDrop}
+            onHeaderDragLeave={handleUnscheduledHeaderDragLeave}
             draggedSessionId={draggedSession?.id || null}
             isDragOver={isUnscheduledPanelDragOver}
+            isDragOverHeader={isUnscheduledHeaderDragOver}
           />
 
           {/* Footer */}
