@@ -132,17 +132,17 @@ export class WorksheetRenderer {
         padding: 15px;
       }
       h1, h2, h3, h4, h5 {
-        page-break-after: avoid;
+        page-break-after: avoid;  /* Keep headers with next content */
         page-break-inside: avoid;
       }
       .section {
-        page-break-inside: avoid;
+        page-break-inside: auto;  /* Allow sections to break between questions */
         margin: 15px 0;
       }
-      /* Allow reading passages to break across pages to avoid wasted space */
-      .section.passage,
-      .section[data-type="passage"] {
-        page-break-inside: auto;
+      /* Keep individual questions together with their answer components */
+      .item {
+        page-break-inside: avoid;  /* Question + answer lines/choices stay together */
+        margin-bottom: 15px;
       }
       .teacher-plan {
         page-break-inside: avoid;
