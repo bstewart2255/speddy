@@ -465,7 +465,7 @@ export class AnthropicProvider implements AIProvider {
       const message = await this.client.messages.create({
         model: this.model,
         max_tokens: this.maxTokens,
-        temperature: 0.7,
+        temperature: 0,  // Use 0 for deterministic JSON output (was 0.7)
         system: fullSystemPrompt,
         messages: [
           {
@@ -526,7 +526,7 @@ export class AnthropicProvider implements AIProvider {
         completionTokens: message.usage?.output_tokens || 0,
         generationMetadata: {
           provider: 'Anthropic',
-          temperature: 0.7,
+          temperature: 0,
           maxTokens: this.maxTokens,
           generationTimeMs: Date.now() - startTime
         }
