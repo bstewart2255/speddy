@@ -108,6 +108,8 @@ export async function generateV2Worksheet(
     const response = await client.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 4000,
+      temperature: 0, // Deterministic for consistent JSON structure
+      system: 'You are a helpful assistant that generates educational content. You must respond with ONLY valid JSON. No markdown code blocks, no explanations, just pure JSON.',
       messages: [
         {
           role: 'user',
