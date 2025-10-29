@@ -435,9 +435,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const aiPerf = measurePerformanceWithAlerts('anthropic_parse_file', 'api');
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-4-5",
       max_tokens: 8000, // Increased to handle more bell schedules
-      temperature: 0.2, // Lower temperature for more consistent parsing
+      temperature: 0, // Deterministic for consistent file parsing
       messages: [
         { role: "user", content: systemPrompt },
         { role: "user", content: userPrompt },

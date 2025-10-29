@@ -99,9 +99,9 @@ Please remove all PII while preserving the educational content and goals.`;
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5',
       max_tokens: 4000,
-      temperature: 0.1, // Low temperature for consistent PII detection
+      temperature: 0, // Deterministic for consistent PII detection
       messages: [
         { role: 'user', content: systemPrompt },
         { role: 'user', content: userPrompt }
