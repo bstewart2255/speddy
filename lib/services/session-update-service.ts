@@ -635,6 +635,80 @@ export class SessionUpdateService {
 
     return timeMin >= startMin && timeMin < endMin;
   }
+
+  /**
+   * Unschedules a session by setting day_of_week, start_time, and end_time to NULL
+   * Status is set to 'active' since unscheduled sessions can't have conflicts or need attention
+   * (those statuses only apply to scheduled sessions)
+   */
+  async unscheduleSession(sessionId: string): Promise<{
+    success: boolean;
+    error?: string;
+    session?: ScheduleSession;
+  }> {
+    try {
+      const { data: updatedSession, error: updateError } = await this.supabase
+        .from('schedule_sessions')
+        .update({
+          day_of_week: null,
+          start_time: null,
+          end_time: null,
+          status: 'active', // Unscheduled sessions are active by default (conflicts/attention only apply to scheduled sessions)
+          conflict_reason: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error unscheduling session:', updateError);
+        return { success: false, error: 'Failed to unschedule session' };
+      }
+
+      console.log('Session unscheduled successfully:', sessionId);
+      return { success: true, session: updatedSession };
+    } catch (error) {
+      console.error('Unschedule session error:', error);
+      return { success: false, error: 'An unexpected error occurred' };
+    }
+  }
+
+  /**
+   * Unschedules all sessions for a specific day
+   */
+  async unscheduleDaySessions(providerId: string, dayOfWeek: number): Promise<{
+    success: boolean;
+    error?: string;
+    count?: number;
+  }> {
+    try {
+      const { data: updatedSessions, error: updateError } = await this.supabase
+        .from('schedule_sessions')
+        .update({
+          day_of_week: null,
+          start_time: null,
+          end_time: null,
+          status: 'active',
+          conflict_reason: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('provider_id', providerId)
+        .eq('day_of_week', dayOfWeek)
+        .select();
+
+      if (updateError) {
+        console.error('Error unscheduling day sessions:', updateError);
+        return { success: false, error: 'Failed to unschedule sessions' };
+      }
+
+      console.log(`Unscheduled ${updatedSessions?.length || 0} sessions from day ${dayOfWeek}`);
+      return { success: true, count: updatedSessions?.length || 0 };
+    } catch (error) {
+      console.error('Unschedule day sessions error:', error);
+      return { success: false, error: 'An unexpected error occurred' };
+    }
+  }
 }
 
 // Export a singleton instance

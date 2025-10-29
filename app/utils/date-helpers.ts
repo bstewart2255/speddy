@@ -29,7 +29,7 @@ export function parseTime(timeString: string): { hours: number; minutes: number 
 /**
  * Get minutes until the first upcoming session from a list of sessions
  */
-export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string }>, currentTime: Date): number | null {
+export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string | null }>, currentTime: Date): number | null {
   if (!sessions.length) return null;
 
   const now = currentTime;
@@ -38,6 +38,7 @@ export function getMinutesUntilFirstSession(sessions: Array<{ start_time: string
   // Find all upcoming sessions today
   const upcomingSessions = sessions
     .map(session => {
+      if (!session.start_time) return null;
       const parsed = parseTime(session.start_time);
       if (!parsed) return null;
       return {

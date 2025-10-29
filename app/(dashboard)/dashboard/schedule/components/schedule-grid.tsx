@@ -5,6 +5,8 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
+import { DayColumnMenu } from './day-column-menu';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 import type {
   BellSchedule,
   ScheduleSession,
@@ -56,6 +58,7 @@ interface ScheduleGridProps {
   onHighlightToggle: (studentId: string) => void;
   onPopupClose: () => void;
   onPopupUpdate: () => void;
+  onClearDay?: (day: number) => void;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -102,6 +105,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   onHighlightToggle,
   onPopupClose,
   onPopupUpdate,
+  onClearDay,
 }: ScheduleGridProps) {
   // NEW: Merge conflicting start slots into red "bands" per day
   // Generate time markers
@@ -134,6 +138,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   };
 
   const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
+    // Unscheduled sessions (with null times) don't overlap with any time slot
+    if (!session.start_time || !session.end_time) return false;
+
     const [slotHour, slotMinute] = timeSlot.split(':').map(Number);
     const slotStartMinutes = slotHour * 60 + slotMinute;
     const slotEndMinutes = slotStartMinutes + 15;
@@ -165,11 +172,16 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   // Calculate session columns to prevent overlaps
   const daySessionColumns = useMemo(() => {
     const columns: Record<number, Array<Array<ScheduleSession>>> = {};
-    
+
     DAYS.forEach((_, dayIndex) => {
       const dayNumber = dayIndex + 1;
-      const daySessions = sessions.filter(s => s.day_of_week === dayNumber);
-      
+      // Filter for scheduled sessions only (with non-null times)
+      const daySessions = sessions.filter(s =>
+        s.day_of_week === dayNumber &&
+        s.start_time !== null &&
+        s.end_time !== null
+      );
+
       if (daySessions.length === 0) {
         columns[dayNumber] = [];
         return;
@@ -177,22 +189,22 @@ export const ScheduleGrid = memo(function ScheduleGrid({
 
       // Sort by start time
       daySessions.sort((a, b) => {
-        const timeA = parseInt(a.start_time.replace(':', ''));
-        const timeB = parseInt(b.start_time.replace(':', ''));
+        const timeA = parseInt(a.start_time!.replace(':', ''));
+        const timeB = parseInt(b.start_time!.replace(':', ''));
         return timeA - timeB;
       });
 
       // Group into columns
       const sessionColumns: Array<Array<ScheduleSession>> = [];
       daySessions.forEach(session => {
-        const sessionStart = parseInt(session.start_time.replace(':', ''));
-        const sessionEnd = parseInt(session.end_time.replace(':', ''));
+        const sessionStart = parseInt(session.start_time!.replace(':', ''));
+        const sessionEnd = parseInt(session.end_time!.replace(':', ''));
 
         let placed = false;
         for (let col = 0; col < sessionColumns.length; col++) {
           const canPlace = sessionColumns[col].every(existing => {
-            const existingStart = parseInt(existing.start_time.replace(':', ''));
-            const existingEnd = parseInt(existing.end_time.replace(':', ''));
+            const existingStart = parseInt(existing.start_time!.replace(':', ''));
+            const existingEnd = parseInt(existing.end_time!.replace(':', ''));
             return sessionEnd <= existingStart || sessionStart >= existingEnd;
           });
 
@@ -252,19 +264,38 @@ export const ScheduleGrid = memo(function ScheduleGrid({
             <div className="p-3 font-semibold text-gray-700 text-center border-r">
               Time
             </div>
-            {DAYS.map((day, index) => (
-              <div
-                key={day}
-                className={`p-3 font-semibold text-center border-r last:border-r-0 cursor-pointer transition-colors ${
-                  selectedDay === index + 1
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-700 bg-gray-50 hover:bg-gray-100'
-                }`}
-                onClick={() => onDayClick(index + 1)}
-              >
-                {day}
-              </div>
-            ))}
+            {DAYS.map((day, index) => {
+              const dayNumber = index + 1;
+              const daySessionsCount = sessions.filter(s => s.day_of_week === dayNumber && isScheduledSession(s)).length;
+
+              return (
+                <div
+                  key={day}
+                  className={`relative p-3 font-semibold text-center border-r last:border-r-0 transition-colors ${
+                    selectedDay === dayNumber
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-700 bg-gray-50'
+                  }`}
+                >
+                  {onClearDay && (
+                    <div className="absolute top-1 right-1">
+                      <DayColumnMenu
+                        day={dayNumber}
+                        dayName={day}
+                        sessionCount={daySessionsCount}
+                        onClearDay={onClearDay}
+                      />
+                    </div>
+                  )}
+                  <div
+                    className="cursor-pointer hover:text-blue-600"
+                    onClick={() => onDayClick(dayNumber)}
+                  >
+                    {day}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Grid Body */}
@@ -369,8 +400,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                     {/* Sessions */}
                     {daySessions.map(session => {
                       const student = students.find(s => s.id === session.student_id);
-                      const startTime = session.start_time.substring(0, 5);
-                      const endTime = session.end_time.substring(0, 5);
+                      // daySessions are already filtered for non-null times
+                      const startTime = session.start_time!.substring(0, 5);
+                      const endTime = session.end_time!.substring(0, 5);
                       const top = timeToPixels(startTime);
                       const height = timeToPixels(endTime) - top;
 

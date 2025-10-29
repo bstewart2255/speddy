@@ -19,6 +19,7 @@ import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -331,8 +332,14 @@ export function CalendarWeekView({
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
     const conflicts: Record<string, boolean> = {};
-    
+
     for (const session of sessionsState) {
+      // Skip validation for unscheduled sessions (with null times)
+      if (!session.day_of_week || !session.start_time || !session.end_time) {
+        conflicts[session.id] = false;
+        continue;
+      }
+
       const validation = await sessionUpdateService.validateSessionMove({
         session,
         targetDay: session.day_of_week,
@@ -340,10 +347,10 @@ export function CalendarWeekView({
         targetEndTime: session.end_time,
         studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
       });
-      
+
       conflicts[session.id] = !validation.valid;
     }
-    
+
     setSessionConflicts(conflicts);
   }, [sessionsState]);
   
@@ -996,6 +1003,7 @@ export function CalendarWeekView({
     if (dayLessons && dayLessons[timeSlot]) {
       // Get the sessions for this time slot
       const daySessions = sessionsState.filter((s) => {
+        if (!s.day_of_week) return false;
         const sessionDate = new Date(weekDates[0]);
         sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
         return sessionDate.toDateString() === date.toDateString();
@@ -1021,6 +1029,7 @@ export function CalendarWeekView({
       setSelectedDate(date);
       setSelectedTimeSlot(timeSlot);
       const daySessions = sessionsState.filter((s) => {
+        if (!s.day_of_week) return false;
         const sessionDate = new Date(weekDates[0]);
         sessionDate.setDate(
           weekDates[0].getDate() + (s.day_of_week - 1)
@@ -1087,6 +1096,7 @@ export function CalendarWeekView({
       if (timeSlots.length > 0) {
         // Get all sessions for this day
         const daySessions = sessionsState.filter((s) => {
+          if (!s.day_of_week) return false;
           const sessionDate = new Date(weekDates[0]);
           sessionDate.setDate(weekDates[0].getDate() + (s.day_of_week - 1));
           return sessionDate.toDateString() === date.toDateString();
@@ -1200,6 +1210,7 @@ export function CalendarWeekView({
   const getDaysInWeek = () => {
     const startDate = weekDates[0];
     const weekSessions = sessionsState.filter((session) => {
+      if (!session.day_of_week) return false;
       const sessionDate = new Date(startDate);
       sessionDate.setDate(
         startDate.getDate() + (session.day_of_week - 1)
@@ -1732,7 +1743,9 @@ export function CalendarWeekView({
           const isPast = isDateInPast(date);
 
           // Sort sessions by start time for chronological order
-          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
+          const sortedDaySessions = [...daySessions]
+            .filter(s => isScheduledSession(s))
+            .sort((a, b) => a.start_time!.localeCompare(b.start_time!));
 
           // Group sessions by time slot for display
           const timeSlotGroups = groupSessionsByTimeSlot(sortedDaySessions);
@@ -1838,18 +1851,20 @@ export function CalendarWeekView({
 
                       // Add groups
                       groups.forEach((groupSessions, groupId) => {
-                        const firstSession = groupSessions[0];
-                        if (firstSession) {
+                        // Filter out unscheduled sessions
+                        const scheduledSessions = groupSessions.filter(s => isScheduledSession(s));
+                        const firstSession = scheduledSessions[0];
+                        if (firstSession && firstSession.start_time && firstSession.end_time) {
                           allBlocks.push({
                             type: 'group',
                             data: {
                               groupId,
                               groupName: firstSession.group_name || 'Unnamed Group',
-                              sessions: groupSessions,
-                              earliestStart: groupSessions.reduce((min, s) =>
-                                s.start_time < min ? s.start_time : min, groupSessions[0].start_time),
-                              latestEnd: groupSessions.reduce((max, s) =>
-                                s.end_time > max ? s.end_time : max, groupSessions[0].end_time)
+                              sessions: scheduledSessions,
+                              earliestStart: scheduledSessions.reduce((min, s) =>
+                                s.start_time! < min ? s.start_time! : min, firstSession.start_time),
+                              latestEnd: scheduledSessions.reduce((max, s) =>
+                                s.end_time! > max ? s.end_time! : max, firstSession.end_time)
                             }
                           });
                         }

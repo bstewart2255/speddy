@@ -6,6 +6,7 @@ import { useSchool } from '../../../app/components/providers/school-context';
 import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 import type { Database, SchoolHour } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -17,6 +18,7 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 interface ScheduleData {
   students: Student[];
   sessions: ScheduleSession[];
+  unscheduledSessions: ScheduleSession[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   schoolHours: SchoolHour[];
@@ -36,6 +38,7 @@ export function useScheduleData() {
   const [data, setData] = useState<ScheduleData>({
     students: [],
     sessions: [],
+    unscheduledSessions: [],
     bellSchedules: [],
     specialActivities: [],
     schoolHours: [],
@@ -307,9 +310,15 @@ export function useScheduleData() {
         }
       }
 
+      // Separate scheduled and unscheduled sessions
+      const allSessions = sessionsResult.data || [];
+      const scheduledSessions = allSessions.filter(s => isScheduledSession(s));
+      const unscheduledSessions = allSessions.filter(s => !isScheduledSession(s));
+
       setData({
         students: allStudents,
-        sessions: sessionsResult.data || [],
+        sessions: scheduledSessions,
+        unscheduledSessions: unscheduledSessions,
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
         schoolHours: schoolHoursData,
@@ -324,7 +333,9 @@ export function useScheduleData() {
 
       console.log('[useScheduleData] Data loaded:', {
         students: allStudents.length,
-        sessions: sessionsResult.data?.length || 0,
+        scheduledSessions: scheduledSessions.length,
+        unscheduledSessions: unscheduledSessions.length,
+        totalSessions: allSessions.length,
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,
@@ -439,12 +450,62 @@ export function useScheduleData() {
 
   // Optimistic update function
   const optimisticUpdateSession = useCallback((sessionId: string, updates: Partial<ScheduleSession>) => {
-    setData(prev => ({
-      ...prev,
-      sessions: prev.sessions.map(s => 
-        s.id === sessionId ? { ...s, ...updates } : s
-      ),
-    }));
+    setData(prev => {
+      // Check if the session is being moved between scheduled and unscheduled
+      const isInScheduled = prev.sessions.some(s => s.id === sessionId);
+      const isInUnscheduled = prev.unscheduledSessions.some(s => s.id === sessionId);
+
+      // Find the current session object
+      const currentSession = isInScheduled
+        ? prev.sessions.find(s => s.id === sessionId)
+        : prev.unscheduledSessions.find(s => s.id === sessionId);
+
+      if (!currentSession) return prev;
+
+      // Create a temporary session object with updates applied to check scheduling status
+      const updatedSession = { ...currentSession, ...updates };
+      const willBeScheduled = isScheduledSession(updatedSession);
+
+      if (isInUnscheduled && willBeScheduled) {
+        // Moving from unscheduled to scheduled
+        const session = prev.unscheduledSessions.find(s => s.id === sessionId);
+        if (session) {
+          return {
+            ...prev,
+            sessions: [...prev.sessions, { ...session, ...updates }],
+            unscheduledSessions: prev.unscheduledSessions.filter(s => s.id !== sessionId),
+          };
+        }
+      } else if (isInScheduled && !willBeScheduled) {
+        // Moving from scheduled to unscheduled
+        const session = prev.sessions.find(s => s.id === sessionId);
+        if (session) {
+          return {
+            ...prev,
+            sessions: prev.sessions.filter(s => s.id !== sessionId),
+            unscheduledSessions: [...prev.unscheduledSessions, { ...session, ...updates }],
+          };
+        }
+      } else if (isInScheduled) {
+        // Updating within scheduled sessions
+        return {
+          ...prev,
+          sessions: prev.sessions.map(s =>
+            s.id === sessionId ? { ...s, ...updates } : s
+          ),
+        };
+      } else if (isInUnscheduled) {
+        // Updating within unscheduled sessions
+        return {
+          ...prev,
+          unscheduledSessions: prev.unscheduledSessions.map(s =>
+            s.id === sessionId ? { ...s, ...updates } : s
+          ),
+        };
+      }
+
+      return prev;
+    });
   }, []);
 
   // Refresh functions

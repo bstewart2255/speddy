@@ -12,6 +12,7 @@ import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { toLocalDateKey } from '@/lib/utils/date-time';
+import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -156,8 +157,14 @@ export function CalendarWeekView({
   // Check for conflicts after sessions are loaded
   const checkSessionConflicts = useCallback(async () => {
     const conflicts: Record<string, boolean> = {};
-    
+
     for (const session of sessionsState) {
+      // Skip validation for unscheduled sessions (with null times)
+      if (!session.day_of_week || !session.start_time || !session.end_time) {
+        conflicts[session.id] = false;
+        continue;
+      }
+
       const validation = await sessionUpdateService.validateSessionMove({
         session,
         targetDay: session.day_of_week,
@@ -165,10 +172,10 @@ export function CalendarWeekView({
         targetEndTime: session.end_time,
         studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
       });
-      
+
       conflicts[session.id] = !validation.valid;
     }
-    
+
     setSessionConflicts(conflicts);
   }, [sessionsState]);
   
@@ -363,13 +370,16 @@ export function CalendarWeekView({
           // Group sessions by time slot (same logic as GroupSessionsWidget)
           const sessionsByTimeSlot: Record<string, ScheduleSession[]> = {};
 
-          selectedDaySessions.forEach((session) => {
-            const timeKey = session.start_time;
-            if (!sessionsByTimeSlot[timeKey]) {
-              sessionsByTimeSlot[timeKey] = [];
-            }
-            sessionsByTimeSlot[timeKey].push(session);
-          });
+          // Filter out unscheduled sessions before grouping
+          selectedDaySessions
+            .filter(session => session.start_time !== null)
+            .forEach((session) => {
+              const timeKey = session.start_time!;
+              if (!sessionsByTimeSlot[timeKey]) {
+                sessionsByTimeSlot[timeKey] = [];
+              }
+              sessionsByTimeSlot[timeKey].push(session);
+            });
 
           // Sort time slots
           const sortedTimeSlots = Object.keys(sessionsByTimeSlot).sort();
@@ -549,28 +559,35 @@ export function CalendarWeekView({
 
   const validateAllDropTargets = useCallback(async (session: ScheduleSession) => {
     if (!session) return;
-    
+
+    // Skip validation for unscheduled sessions (with null times)
+    if (!session.start_time || !session.end_time || !session.day_of_week) {
+      setValidDropDays(new Set());
+      setInvalidDropDays(new Set());
+      return;
+    }
+
     setIsValidating(true);
     const valid = new Set<number>();
     const invalid = new Set<number>();
-    
+
     // Check all days in the week
     for (let dayIndex = 0; dayIndex < weekDates.length; dayIndex++) {
       const targetDate = weekDates[dayIndex];
       const targetDay = dayIndex + 1; // 1-5 for Monday-Friday
-      
+
       // Skip if it's the current day
       if (targetDay === session.day_of_week) {
         valid.add(targetDay);
         continue;
       }
-      
+
       // Check if date is in the past
       if (isDateInPast(targetDate)) {
         invalid.add(targetDay);
         continue;
       }
-      
+
       // Basic validation for day change
       // In a real implementation, you might want to check provider availability
       const validation = await sessionUpdateService.validateSessionMove({
@@ -580,14 +597,14 @@ export function CalendarWeekView({
         targetEndTime: session.end_time,
         studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
       });
-      
+
       if (validation.valid) {
         valid.add(targetDay);
       } else {
         invalid.add(targetDay);
       }
     }
-    
+
     setValidDropDays(valid);
     setInvalidDropDays(invalid);
     setIsValidating(false);
@@ -621,17 +638,23 @@ export function CalendarWeekView({
 
   const handleDrop = useCallback(async (event: React.DragEvent, targetDay: number) => {
     event.preventDefault();
-    
+
     if (!draggedSession || !validDropDays.has(targetDay)) {
       showToast('Cannot move session to this day', 'error');
       return;
     }
-    
+
+    // Skip if session doesn't have valid times
+    if (!draggedSession.start_time || !draggedSession.end_time) {
+      showToast('Cannot move unscheduled session', 'error');
+      return;
+    }
+
     // Use optimistic update for immediate UI feedback
     optimisticUpdate(draggedSession.id, {
       day_of_week: targetDay
     });
-    
+
     try {
       const result = await sessionUpdateService.updateSessionTime(
         draggedSession.id,
@@ -723,12 +746,15 @@ export function CalendarWeekView({
     }
   };
 
-  // Group sessions by day, filtering out sessions without valid students
+  // Group sessions by day, filtering out sessions without valid students and unscheduled sessions
   const sessionsByDay = React.useMemo(() => {
     return sessionsState
-      .filter((session) => students.has(session.student_id))
+      .filter((session) =>
+        students.has(session.student_id) &&
+        isScheduledSession(session)
+      )
       .reduce((acc, session) => {
-        (acc[session.day_of_week] ||= []).push(session);
+        (acc[session.day_of_week!] ||= []).push(session);
         return acc;
       }, {} as Record<number, ScheduleSession[]>);
   }, [sessionsState, students]);
@@ -736,7 +762,7 @@ export function CalendarWeekView({
   // Sort sessions within each day
   Object.keys(sessionsByDay).forEach((day) => {
     sessionsByDay[Number(day)].sort((a, b) =>
-      a.start_time.localeCompare(b.start_time),
+      a.start_time!.localeCompare(b.start_time!),
     );
   });
 
@@ -989,7 +1015,7 @@ export function CalendarWeekView({
           const isToday = date.toDateString() === new Date().toDateString();
           
           // Sort sessions by start time for chronological order
-          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time.localeCompare(b.start_time));
+          const sortedDaySessions = [...daySessions].sort((a, b) => a.start_time!.localeCompare(b.start_time!));
 
           return (
             <div
@@ -1238,7 +1264,7 @@ export function CalendarWeekView({
                             }}
                             className="text-gray-900 hover:text-blue-600 font-medium"
                           >
-                            {formatTime(session.start_time)}
+                            {session.start_time && formatTime(session.start_time)}
                           </button>
                           <div className="flex items-center gap-1 mt-0.5">
                             {currentSession.completed_at && (
@@ -1331,10 +1357,12 @@ export function CalendarWeekView({
                     <p className="text-sm text-gray-600">Student</p>
                     <p className="font-medium">{students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Time</p>
-                    <p className="font-medium">{formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
-                  </div>
+                  {selectedSession.start_time && selectedSession.end_time && (
+                    <div>
+                      <p className="text-sm text-gray-600">Time</p>
+                      <p className="font-medium">{formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-gray-600">Delivered by</p>
                     <p className="font-medium">{selectedSession.delivered_by === 'sea' ? 'SEA' : 'Provider'}</p>
@@ -1399,7 +1427,9 @@ export function CalendarWeekView({
 
                 <div className="mb-4 text-sm text-gray-600">
                   <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
-                  <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                  {selectedSession.start_time && selectedSession.end_time && (
+                    <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
+                  )}
                 </div>
 
                 <textarea

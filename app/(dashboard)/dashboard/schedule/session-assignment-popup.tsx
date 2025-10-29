@@ -179,8 +179,11 @@ export function SessionAssignmentPopup({
       <div className="mb-3">
         <h3 className="font-medium text-gray-900">Session Assignment</h3>
         <p className="text-sm text-gray-600">
-          {student?.initials} - {formatTime(session.start_time.substring(0, 5))} to{" "}
-          {formatTime(session.end_time.substring(0, 5))}
+          {student?.initials}
+          {session.start_time && session.end_time && (
+            <> - {formatTime(session.start_time.substring(0, 5))} to{" "}
+            {formatTime(session.end_time.substring(0, 5))}</>
+          )}
         </p>
       </div>
 

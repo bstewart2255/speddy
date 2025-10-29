@@ -458,20 +458,23 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private cacheExistingSessions(sessions: ScheduleSession[]): void {
     this.data.data.existingSessions.clear();
-    
-    sessions.forEach(session => {
-      if (!this.data.data.existingSessions.has(session.day_of_week)) {
-        this.data.data.existingSessions.set(session.day_of_week, new Map());
-      }
-      
-      const timeMap = this.data.data.existingSessions.get(session.day_of_week)!;
-      const timeKey = `${session.start_time}-${session.end_time}`;
-      if (!timeMap.has(timeKey)) {
-        timeMap.set(timeKey, []);
-      }
-      
-      timeMap.get(timeKey)!.push(session);
-    });
+
+    // Only process scheduled sessions (with non-null times)
+    sessions
+      .filter(session => session.day_of_week !== null && session.start_time !== null && session.end_time !== null)
+      .forEach(session => {
+        if (!this.data.data.existingSessions.has(session.day_of_week!)) {
+          this.data.data.existingSessions.set(session.day_of_week!, new Map());
+        }
+
+        const timeMap = this.data.data.existingSessions.get(session.day_of_week!)!;
+        const timeKey = `${session.start_time!}-${session.end_time!}`;
+        if (!timeMap.has(timeKey)) {
+          timeMap.set(timeKey, []);
+        }
+
+        timeMap.get(timeKey)!.push(session);
+      });
   }
   
   /**
@@ -586,9 +589,10 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       if (dayMap) {
         dayMap.forEach((sessionList) => {
           sessionList.forEach(session => {
+            // Sessions in existingSessions cache are guaranteed to have non-null times
             if (!timeRange || this.timeRangesOverlap(
               timeRange,
-              { startTime: session.start_time, endTime: session.end_time }
+              { startTime: session.start_time!, endTime: session.end_time! }
             )) {
               sessions.push(session);
             }

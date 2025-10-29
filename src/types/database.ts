@@ -519,9 +519,9 @@ export interface Database {
           id: string
           provider_id: string
           student_id: string
-          day_of_week: number
-          start_time: string
-          end_time: string
+          day_of_week: number | null
+          start_time: string | null
+          end_time: string | null
           service_type: string
           assigned_to_sea_id: string | null
           assigned_to_specialist_id: string | null
@@ -544,9 +544,9 @@ export interface Database {
           id?: string
           provider_id: string
           student_id: string
-          day_of_week: number
-          start_time: string
-          end_time: string
+          day_of_week?: number | null
+          start_time?: string | null
+          end_time?: string | null
           service_type: string
           assigned_to_sea_id?: string | null
           assigned_to_specialist_id?: string | null
@@ -569,9 +569,9 @@ export interface Database {
           id?: string
           provider_id?: string
           student_id?: string
-          day_of_week?: number
-          start_time?: string
-          end_time?: string
+          day_of_week?: number | null
+          start_time?: string | null
+          end_time?: string | null
           service_type?: string
           assigned_to_sea_id?: string | null
           assigned_to_specialist_id?: string | null
