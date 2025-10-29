@@ -1,5 +1,6 @@
 import type { TimeSlot, SchedulingContext } from './types/scheduling-types';
 import type { Student, ScheduleSession } from './types/scheduling-data';
+import type { ScheduledSession } from '../utils/session-helpers';
 import type { 
   DistributionStrategy, 
   DistributionConfig, 
@@ -83,7 +84,7 @@ export class SessionDistributor {
     availableSlots: TimeSlot[],
     targetGrade: string,
     studentGradeMap: Map<string, string>,
-    existingSessions: ScheduleSession[]
+    existingSessions: ScheduledSession[]
   ): TimeSlot[] {
     const startTime = performance.now();
     this.performanceMetrics.gradeGroupingAttempts++;
@@ -451,7 +452,7 @@ export class SessionDistributor {
     slots: TimeSlot[],
     targetGrade: string,
     studentGradeMap: Map<string, string>,
-    existingSessions: ScheduleSession[]
+    existingSessions: ScheduledSession[]
   ): SlotScore[] {
     return slots.map(slot => {
       let gradeAlignment = 0;
@@ -531,7 +532,7 @@ export class SessionDistributor {
     slots: TimeSlot[],
     targetGrade: string,
     studentGradeMap: Map<string, string>,
-    existingSessions: ScheduleSession[]
+    existingSessions: ScheduledSession[]
   ): number {
     let totalScore = 0;
     let slotCount = 0;

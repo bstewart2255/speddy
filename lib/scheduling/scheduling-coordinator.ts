@@ -3,6 +3,7 @@ import { SchedulingDataManager } from './scheduling-data-manager';
 import { ConstraintValidator } from './constraint-validator';
 import { SessionDistributor } from './session-distributor';
 import { SchedulingEngine, SchedulingEngineConfig } from './scheduling-engine';
+import type { ScheduledSession } from '../utils/session-helpers';
 import type {
   TimeSlot,
   SchedulingContext,
@@ -326,10 +327,13 @@ export class SchedulingCoordinator {
    */
   private async buildSchedulingContext(): Promise<SchedulingContext> {
     console.log('[Coordinator] Building scheduling context...');
-    
+
     // Get data from data manager
     const workDays = this.dataManager.getProviderWorkDays(this.schoolSite);
-    const existingSessions = this.dataManager.getExistingSessions();
+    // Filter to only include scheduled sessions (with non-null day/time fields)
+    const existingSessions = this.dataManager.getExistingSessions().filter(
+      (s): s is ScheduledSession => s.day_of_week !== null && s.start_time !== null && s.end_time !== null
+    );
     
     // Get bell schedules for all grades
     const bellSchedules: BellSchedule[] = [];
@@ -451,8 +455,17 @@ export class SchedulingCoordinator {
     sessions: Omit<ScheduleSession, 'id' | 'created_at' | 'updated_at'>[]
   ): void {
     if (!this.context) return;
-    
-    for (const session of sessions) {
+
+    // Filter to only process sessions with scheduled times
+    const scheduledSessions = sessions.filter(s =>
+      s.day_of_week !== null && s.start_time !== null && s.end_time !== null
+    ) as (Omit<ScheduleSession, 'id' | 'created_at' | 'updated_at'> & {
+      day_of_week: number;
+      start_time: string;
+      end_time: string;
+    })[];
+
+    for (const session of scheduledSessions) {
       // Update capacity for affected slots
       const sessionStartMinutes = this.timeToMinutes(session.start_time);
       const sessionEndMinutes = this.timeToMinutes(session.end_time);

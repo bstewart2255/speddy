@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
+import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
 import type {
   Student,
   ScheduleSession,
@@ -32,7 +33,7 @@ interface SchedulingContext {
   workDays: number[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
-  existingSessions: ScheduleSession[];
+  existingSessions: ScheduledSession[]; // Only scheduled sessions (with non-null day/time fields)
   validSlots: Map<string, TimeSlot>;
   schoolHours: Array<{  // Add this
     day_of_week: number;
@@ -124,9 +125,9 @@ export class OptimizedScheduler {
     
     // Get work days from data manager
     const workDays = this.dataManager.getProviderWorkDays(schoolSite);
-    
-    // Get all existing sessions
-    const existingSessions = this.dataManager.getExistingSessions();
+
+    // Get all existing sessions (filter to only scheduled sessions with non-null day/time fields)
+    const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions());
     
     // Get bell schedules for all grades
     const bellSchedules: BellSchedule[] = [];
@@ -267,7 +268,7 @@ export class OptimizedScheduler {
       workDays,
       bellSchedules: preloadedData.bellSchedules || [],
       specialActivities: preloadedData.specialActivities || [],
-      existingSessions: preloadedData.existingSessions || [],
+      existingSessions: filterScheduledSessions(preloadedData.existingSessions || []),
       validSlots: new Map(),
       schoolHours: preloadedData.schoolHours || [],
       studentGradeMap: new Map(),
@@ -1043,7 +1044,16 @@ export class OptimizedScheduler {
   private updateContextWithSessions(
     sessions: Omit<ScheduleSession, "id" | "created_at" | "updated_at">[],
   ) {
-    for (const session of sessions) {
+    // Filter to only scheduled sessions (defensive check, though scheduler should only create scheduled sessions)
+    const scheduledSessions = sessions.filter(s =>
+      s.day_of_week !== null && s.start_time !== null && s.end_time !== null
+    ) as (Omit<ScheduleSession, "id" | "created_at" | "updated_at"> & {
+      day_of_week: number;
+      start_time: string;
+      end_time: string;
+    })[];
+
+    for (const session of scheduledSessions) {
       // Update capacity for ALL time slots affected by this session
       const sessionStartMinutes = this.timeToMinutes(session.start_time);
       const sessionEndMinutes = this.timeToMinutes(session.end_time);

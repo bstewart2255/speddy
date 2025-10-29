@@ -1,4 +1,5 @@
 import type { Student, ScheduleSession, BellSchedule, SpecialActivity } from './scheduling-data';
+import type { ScheduledSession } from '../../utils/session-helpers';
 
 export interface TimeSlot {
   dayOfWeek: number;
@@ -14,7 +15,7 @@ export interface SchedulingContext {
   workDays: number[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
-  existingSessions: ScheduleSession[];
+  existingSessions: ScheduledSession[]; // Only scheduled sessions (with non-null day/time fields)
   validSlots: Map<string, TimeSlot>;
   schoolHours: Array<{
     day_of_week: number;

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { getSchoolHours } from '../supabase/queries/school-hours';
-import { filterScheduledSessions } from '../utils/session-helpers';
+import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
 
 /**
  * Utility class used to automatically generate schedule sessions for students.
@@ -176,7 +176,7 @@ export class AutoScheduler {
       return data || [];
     }
 
-    private async getExistingSessions(): Promise<ScheduleSession[]> {
+    private async getExistingSessions(): Promise<ScheduledSession[]> {
       const { data } = await this.supabase
         .from('schedule_sessions')
         .select('*')
@@ -240,7 +240,7 @@ export class AutoScheduler {
     student: Student,
     duration: number,
     slotsNeeded: number,
-    existingSessions: ScheduleSession[],
+    existingSessions: ScheduledSession[],
     bellSchedules: BellSchedule[],
     specialActivities: SpecialActivity[]
   ): Promise<ScheduleSlot[]> {
@@ -357,7 +357,7 @@ export class AutoScheduler {
   }
 
   /** Returns a map of day_of_week to count of sessions. */
-  private countSessionsByDay(sessions: ScheduleSession[]): Record<number, number> {
+  private countSessionsByDay(sessions: ScheduledSession[]): Record<number, number> {
     const counts: Record<number, number> = {};
     sessions.forEach(session => {
       counts[session.day_of_week] = (counts[session.day_of_week] || 0) + 1;
@@ -378,7 +378,7 @@ export class AutoScheduler {
     startTime: string,
     endTime: string,
     duration: number,
-    existingSessions: ScheduleSession[],
+    existingSessions: ScheduledSession[],
     bellSchedules: BellSchedule[],
     specialActivities: SpecialActivity[],
     scheduledForThisStudent: ScheduleSlot[] = []

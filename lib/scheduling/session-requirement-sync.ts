@@ -133,8 +133,13 @@ async function updateSessionDurations(
   sessions: ScheduleSession[],
   newMinutesPerSession: number
 ): Promise<void> {
+  // Filter to only include sessions with start times (scheduled sessions)
+  const scheduledSessions = sessions.filter(
+    (s): s is ScheduleSession & { start_time: string } => s.start_time !== null
+  );
+
   // Update each session's end_time
-  const updates = sessions.map(async (session) => {
+  const updates = scheduledSessions.map(async (session) => {
     const newEndTime = addMinutesToTime(session.start_time, newMinutesPerSession);
 
     const update: SessionUpdate = {

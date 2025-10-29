@@ -1,14 +1,15 @@
-import type { 
-  TimeSlot, 
+import type {
+  TimeSlot,
   SchedulingContext,
-  AvailabilitySlot 
+  AvailabilitySlot
 } from './types/scheduling-types';
-import type { 
-  Student, 
-  ScheduleSession, 
-  BellSchedule, 
-  SpecialActivity 
+import type {
+  Student,
+  ScheduleSession,
+  BellSchedule,
+  SpecialActivity
 } from './types/scheduling-data';
+import type { ScheduledSession } from '../utils/session-helpers';
 import type { 
   ValidationResult, 
   ValidationError, 
@@ -157,7 +158,7 @@ export class ConstraintValidator {
    */
   validateConsecutiveSessionLimits(
     slot: TimeSlot,
-    existingSessions: ScheduleSession[],
+    existingSessions: ScheduledSession[],
     student: Student
   ): ValidationResult {
     const errors: ValidationError[] = [];
@@ -225,7 +226,7 @@ export class ConstraintValidator {
    */
   validateBreakRequirements(
     slot: TimeSlot,
-    existingSessions: ScheduleSession[],
+    existingSessions: ScheduledSession[],
     student: Student
   ): ValidationResult {
     const errors: ValidationError[] = [];
@@ -450,7 +451,7 @@ export class ConstraintValidator {
    */
   validateConcurrentSessionLimits(
     slot: TimeSlot,
-    existingSessions: ScheduleSession[],
+    existingSessions: ScheduledSession[],
     maxConcurrent: number
   ): ValidationResult {
     const errors: ValidationError[] = [];
@@ -489,7 +490,7 @@ export class ConstraintValidator {
   validateSessionOverlap(
     slot: TimeSlot,
     student: Student,
-    existingSessions: ScheduleSession[]
+    existingSessions: ScheduledSession[]
   ): ValidationResult {
     const errors: ValidationError[] = [];
     

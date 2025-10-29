@@ -359,9 +359,15 @@ export class SchedulingEngine {
   ): number {
     let totalScore = 0;
     const targetGrade = student.grade_level.trim();
-    
+
+    // Defensive: ensure we only process scheduled sessions
+    const scheduledSessions = context.existingSessions.filter(
+      (s): s is typeof s & { start_time: string; end_time: string; day_of_week: number } =>
+        s.start_time !== null && s.end_time !== null && s.day_of_week !== null
+    );
+
     for (const slot of slots) {
-      const overlappingSessions = context.existingSessions.filter(session =>
+      const overlappingSessions = scheduledSessions.filter(session =>
         session.day_of_week === slot.dayOfWeek &&
         this.hasTimeOverlap(
           slot.startTime,
