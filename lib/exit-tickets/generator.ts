@@ -120,7 +120,7 @@ Important:
 
   try {
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-haiku-4-5',
       max_tokens: 2000,
       system: 'You are a helpful educational assistant that creates brief assessments for students based on their IEP goals. Always respond with valid JSON.',
       messages: [

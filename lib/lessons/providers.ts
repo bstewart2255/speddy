@@ -68,7 +68,8 @@ const MODEL_MAX_TOKENS: Record<string, number> = {
   'gpt-4-turbo-preview': 128000,  // Context window
   'gpt-4': 8192,  // Legacy model
   'gpt-3.5-turbo': 16384,  // Updated context window
-  'claude-3-5-sonnet-20241022': 200000,  // Context window
+  'claude-haiku-4-5': 200000,  // Context window (Oct 2025 release)
+  'claude-3-5-sonnet-20241022': 200000,  // Context window (deprecated)
   'claude-3-opus-20240229': 200000,  // Context window
   'claude-3-sonnet-20240229': 200000,  // Context window
   'claude-3-haiku-20240307': 200000  // Context window
@@ -426,7 +427,7 @@ export class AnthropicProvider implements AIProvider {
   private maxTokens: number;
   private lastGenerationMetadata: GenerationMetadata | null = null;
 
-  constructor(apiKey: string, model: string = 'claude-3-5-sonnet-20241022') {
+  constructor(apiKey: string, model: string = 'claude-haiku-4-5') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     
@@ -696,7 +697,7 @@ export function createAIProvider(): AIProvider {
       if (!process.env.ANTHROPIC_API_KEY) {
         throw new Error('ANTHROPIC_API_KEY is required for Anthropic provider');
       }
-      const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
+      const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
       return new AnthropicProvider(process.env.ANTHROPIC_API_KEY, anthropicModel);
     }
     
