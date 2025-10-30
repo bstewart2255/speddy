@@ -54,20 +54,25 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
   const students = studentsResult.data || [];
   if (!Array.isArray(students) || students.length === 0) return 0;
 
+  // Get student IDs from the already-filtered students list
+  const studentIds = students.map(s => s.id);
+
   // Get current scheduled sessions count per student
+  // IMPORTANT: Only fetch sessions for students at THIS school to avoid cross-school contamination
   const sessionsPerf = measurePerformanceWithAlerts('fetch_sessions_for_unscheduled_count', 'database');
   const sessionsResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select('student_id')
-        .eq('provider_id', user.id);
+        .in('student_id', studentIds);
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_sessions_for_unscheduled_count', 
-      userId: user.id 
+    {
+      operation: 'fetch_sessions_for_unscheduled_count',
+      userId: user.id,
+      schoolSite
     }
   );
   sessionsPerf.end({ success: !sessionsResult.error });

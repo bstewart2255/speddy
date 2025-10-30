@@ -96,16 +96,19 @@ Continue?`;
       }
 
       // Filter students for the current school if specified
-      const studentsForCurrentSchool = currentSchool 
+      const studentsForCurrentSchool = currentSchool
         ? allStudents.filter(student => student.school_site === currentSchool.school_site)
         : allStudents;
 
+      // Get student IDs for this school to filter sessions
+      const studentIds = studentsForCurrentSchool.map(s => s.id);
+
       // Get existing sessions to determine which students need scheduling
-      // IMPORTANT: We select all fields to ensure accurate counting and prevent duplicate sessions
+      // IMPORTANT: Only fetch sessions for students at THIS school to avoid cross-school contamination
       const { data: existingSessions } = await supabase
         .from('schedule_sessions')
         .select('*')
-        .eq('provider_id', user.id);
+        .in('student_id', studentIds);
 
       // Count sessions per student
       const sessionCounts = existingSessions?.reduce((acc, session) => {
