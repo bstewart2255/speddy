@@ -12,8 +12,8 @@ export interface CrossGradeSkill {
 
 export function getSkillsForGradeTransition(currentGrade: string): CrossGradeSkill[] {
   const skills: CrossGradeSkill[] = [];
-  
-  const gradeOrder = ['K', '1', '2', '3', '4', '5'];
+
+  const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5'];
   const currentGradeIndex = gradeOrder.indexOf(currentGrade);
   
   if (currentGradeIndex === -1) {
@@ -127,7 +127,7 @@ export function getSkillsByIds(skillIds: string[]): CrossGradeSkill[] {
 
 export function getSuggestedSkillCombinations(currentGrade: string): { label: string; skills: string[] }[] {
   const suggestions: { label: string; skills: string[] }[] = [];
-  const gradeOrder = ['K', '1', '2', '3', '4', '5'];
+  const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5'];
   const currentGradeIndex = gradeOrder.indexOf(currentGrade);
   
   if (currentGradeIndex === -1) {
