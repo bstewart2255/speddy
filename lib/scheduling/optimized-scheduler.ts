@@ -196,8 +196,9 @@ export class OptimizedScheduler {
     this.log(`Initializing scheduling context for ${schoolSite}...`);
     this.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
-    // Initialize the data manager if not already initialized
-    if (!this.dataManager.isInitialized()) {
+    // Initialize the data manager if not already initialized for this school
+    // This ensures we reload data when switching between schools
+    if (!this.dataManager.isInitializedForSchool(schoolSite, schoolDistrict)) {
       // Use empty string as fallback for backward compatibility
       await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', undefined);
     }
@@ -325,14 +326,10 @@ export class OptimizedScheduler {
         };
 
         // Check existing sessions to determine current capacity
-        // Get student IDs for the current school to filter sessions
-        const schoolStudentIds = new Set(Array.from(context.studentGradeMap.keys()));
-
         const overlappingSessions = context.existingSessions.filter(
           (session) =>
             session.day_of_week === day &&
-            this.timesOverlap(startTime, session.start_time, session.end_time) &&
-            schoolStudentIds.has(session.student_id), // Only count sessions for students at THIS school
+            this.timesOverlap(startTime, session.start_time, session.end_time),
         );
 
         slot.capacity -= overlappingSessions.length;

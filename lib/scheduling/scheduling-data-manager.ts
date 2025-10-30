@@ -107,6 +107,15 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   public isInitialized(): boolean {
     return this.initialized;
   }
+
+  /**
+   * Check if the data manager is initialized for a specific school
+   */
+  public isInitializedForSchool(schoolSite: string, schoolDistrict?: string): boolean {
+    return this.initialized &&
+           this.schoolSite === schoolSite &&
+           this.schoolDistrict === (schoolDistrict || this.schoolDistrict);
+  }
   
   /**
    * Load all scheduling data in optimized batch queries
