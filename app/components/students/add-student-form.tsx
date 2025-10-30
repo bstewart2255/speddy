@@ -81,6 +81,7 @@
           value={formData.grade_level}
           onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
           options={[
+            { value: 'TK', label: 'Transitional Kindergarten' },
             { value: 'K', label: 'Kindergarten' },
             { value: '1', label: '1st Grade' },
             { value: '2', label: '2nd Grade' },

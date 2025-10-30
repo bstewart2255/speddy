@@ -148,7 +148,7 @@ export async function createStudent(studentData: {
         day_of_week: null,
         start_time: null,
         end_time: null,
-        minutes_per_session: studentData.minutes_per_session,
+        service_type: 'resource',
         status: 'active' as const,
         delivered_by: 'provider' as const,
       }));

@@ -222,6 +222,7 @@ export default function StudentsPage() {
 
       setShowAddForm(false);
       fetchStudents();
+      checkUnscheduledSessions();
     } catch (error) {
       console.error('Error creating student:', error);
       alert(error.message || 'Failed to add student');
@@ -303,7 +304,7 @@ export default function StudentsPage() {
                 variant="secondary"
                 onClick={() => setShowBulkImportSection(!showBulkImportSection)}
               >
-                Bulk Import Students
+                SEIS Upload
               </Button>
               <AIUploadButton
                 uploadType="students"
@@ -342,7 +343,7 @@ export default function StudentsPage() {
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
-                  <CardTitle>Bulk Import Students from SEIS Report</CardTitle>
+                  <CardTitle>SEIS Upload</CardTitle>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -434,13 +435,14 @@ export default function StudentsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Grade Level*
                     </label>
-                    <select 
+                    <select
                       required
                       value={formData.grade_level}
                       onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">Select grade</option>
+                      <option value="TK">TK</option>
                       <option value="K">K</option>
                       <option value="1">1</option>
                       <option value="2">2</option>
@@ -592,8 +594,8 @@ export default function StudentsPage() {
                   .sort((a, b) => {
                     if (!sortByGrade) return 0;
 
-                    // Define grade order (K comes first, then 1-5)
-                    const gradeOrder = ['K', '1', '2', '3', '4', '5'];
+                    // Define grade order (TK comes first, then K, then 1-5)
+                    const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5'];
                     const aIndex = gradeOrder.indexOf(a.grade_level);
                     const bIndex = gradeOrder.indexOf(b.grade_level);
 
