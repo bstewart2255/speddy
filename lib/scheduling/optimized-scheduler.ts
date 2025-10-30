@@ -325,10 +325,14 @@ export class OptimizedScheduler {
         };
 
         // Check existing sessions to determine current capacity
+        // Get student IDs for the current school to filter sessions
+        const schoolStudentIds = new Set(Array.from(context.studentGradeMap.keys()));
+
         const overlappingSessions = context.existingSessions.filter(
           (session) =>
             session.day_of_week === day &&
-            this.timesOverlap(startTime, session.start_time, session.end_time),
+            this.timesOverlap(startTime, session.start_time, session.end_time) &&
+            schoolStudentIds.has(session.student_id), // Only count sessions for students at THIS school
         );
 
         slot.capacity -= overlappingSessions.length;
