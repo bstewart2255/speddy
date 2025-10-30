@@ -18,6 +18,7 @@ interface ScheduleControlsProps {
 }
 
 const GRADE_COLORS = [
+  { grade: 'TK', colorClass: 'bg-pink-400', displayName: 'TK' },
   { grade: 'K', colorClass: 'bg-purple-400', displayName: 'K' },
   { grade: '1', colorClass: 'bg-sky-400', displayName: '1st' },
   { grade: '2', colorClass: 'bg-cyan-400', displayName: '2nd' },
