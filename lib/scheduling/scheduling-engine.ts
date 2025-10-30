@@ -77,7 +77,10 @@ export class SchedulingEngine {
         context
       );
 
-      const sessionsNeeded = student.sessions_per_week || 0;
+      // Calculate REMAINING sessions needed (not total sessions_per_week)
+      const existingSessionsForStudent = context.existingSessions
+        .filter(s => s.student_id === student.id).length;
+      const sessionsNeeded = Math.max(0, (student.sessions_per_week || 0) - existingSessionsForStudent);
       
       if (validSlots.length < sessionsNeeded) {
         result.errors.push(
@@ -261,8 +264,9 @@ export class SchedulingEngine {
     context: SchedulingContext
   ): TimeSlot[] {
     this.performanceMetrics.optimizationRuns++;
-    
-    const sessionsNeeded = student.sessions_per_week || 0;
+
+    // Use the number of slots passed in (already filtered to correct count)
+    const sessionsNeeded = slots.length;
     
     // Score each slot combination
     const scoredCombinations = this.generateSlotCombinations(

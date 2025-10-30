@@ -108,7 +108,9 @@ export class AutoScheduler {
           this.getExistingSessions()
         ]);
 
-        const sessionsNeeded = student.sessions_per_week;
+        // Calculate REMAINING sessions needed (not total sessions_per_week)
+        const existingSessionsForStudent = existingSessions.filter(s => s.student_id === student.id).length;
+        const sessionsNeeded = Math.max(0, student.sessions_per_week - existingSessionsForStudent);
         const sessionDuration = student.minutes_per_session;
 
         // Find the best slots for this student
