@@ -3,16 +3,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClient } from '@/lib/supabase/client';
-import { DraggableSessionBox } from '@/app/components/session/draggable-session-box';
-import { SessionDetailsPopup } from '@/app/components/session/session-details-popup';
-import { sessionUpdateService } from '@/lib/services/session-update-service';
-import { useSessionSync } from '@/lib/hooks/use-session-sync';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
 import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ScheduleSession } from '@/src/types/database';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
+import { GroupDetailsModal } from '@/app/components/modals/group-details-modal';
+import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
 
 interface Holiday {
   date: string;
@@ -84,14 +82,15 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
-  
-  // Drag and drop state
-  const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
-  const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
-  
-  // Session details popup state
+
+  // Modal state for groups and sessions
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupName, setSelectedGroupName] = useState<string>('');
+  const [selectedGroupSessions, setSelectedGroupSessions] = useState<ScheduleSession[]>([]);
+
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<{
     id: string;
@@ -99,11 +98,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     grade_level: string;
     teacher_name?: string;
   } | null>(null);
-  const [assignedToInfo, setAssignedToInfo] = useState<{
-    full_name: string;
-    role: string;
-  } | null>(null);
-  const [showDetailsPopup, setShowDetailsPopup] = useState(false);
 
   // Reset to 'all' if the selected school is not filterable
   React.useEffect(() => {
@@ -314,20 +308,31 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     };
   }, [viewMode, weekStart, selectedSchoolFilter, filterableSchools.length, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school filter changes
 
-  // Use session sync hook for real-time updates
-  const { isConnected, lastSync, optimisticUpdate, forceRefresh } = useSessionSync({
-    sessions: sessions,
-    setSessions: setSessions,
-    providerId: currentUser?.id || undefined,
-    showToast
-  });
-
   // Helper functions
   const getDayIndex = (session: any): number => {
     // The session already has day_of_week from database (1 = Monday, 5 = Friday)
     // Return it adjusted for 0-based array indexing
     return session.day_of_week - 1; // Returns 0-4 for Monday-Friday
   };
+
+  // Helper function to aggregate sessions into groups and individual blocks
+  const aggregateSessionsForDisplay = useCallback((sessions: ScheduleSession[]) => {
+    const groups = new Map<string, ScheduleSession[]>();
+    const ungroupedSessions: ScheduleSession[] = [];
+
+    sessions.forEach(session => {
+      if (session.group_id) {
+        if (!groups.has(session.group_id)) {
+          groups.set(session.group_id, []);
+        }
+        groups.get(session.group_id)!.push(session);
+      } else {
+        ungroupedSessions.push(session);
+      }
+    });
+
+    return { groups, ungroupedSessions };
+  }, []);
 
   const getTimeSlotIndex = (timeString: string) => {
     if (!timeString) return -1;
@@ -365,206 +370,26 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return { isHoliday: !!holiday, name: holiday?.name };
   };
 
-  // Drag and drop handlers
-  const canEditSession = useCallback((session: any) => {
-    if (!currentUser) return false;
-    
-    // Provider can edit their own sessions
-    if (session.provider_id === currentUser.id) {
-      // If it's an SEA session, only the supervising provider can drag it
-      if (session.delivered_by === 'sea') {
-        return true; // Provider supervises SEA sessions
-      }
-      // Regular provider sessions
-      return session.delivered_by === 'provider';
-    }
-    
-    return false;
-  }, [currentUser]);
+  // Modal handlers for groups and sessions
+  const handleOpenGroupModal = useCallback((groupId: string, groupName: string, sessions: ScheduleSession[]) => {
+    setSelectedGroupId(groupId);
+    setSelectedGroupName(groupName);
+    setSelectedGroupSessions(sessions);
+    setGroupModalOpen(true);
+  }, []);
 
-  // Handle session click to show details
-  const handleSessionClick = useCallback(async (
-    session: ScheduleSession, 
-    student: { id: string; initials: string; grade_level: string; teacher_name?: string }
-  ) => {
+  const handleOpenSessionModal = useCallback((session: ScheduleSession, student: { id: string; initials: string; grade_level: string; teacher_name?: string }) => {
     setSelectedSession(session);
     setSelectedStudent(student);
-    
-    // Fetch assigned to info if there's an assigned SEA or specialist
-    if (session.assigned_to_sea_id || session.assigned_to_specialist_id) {
-      const supabase = createClient();
-      const assignedId = session.assigned_to_sea_id || session.assigned_to_specialist_id;
-      
-      const { data: assignedUser } = await supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', assignedId)
-        .single();
-      
-      setAssignedToInfo(assignedUser);
-    } else {
-      setAssignedToInfo(null);
-    }
-    
-    setShowDetailsPopup(true);
+    setSessionModalOpen(true);
   }, []);
 
-  // Handle popup close and refresh sessions if updated
-  const handlePopupClose = useCallback(() => {
-    setShowDetailsPopup(false);
-    setSelectedSession(null);
-    setSelectedStudent(null);
-    setAssignedToInfo(null);
-  }, []);
-
-  const handleSessionUpdate = useCallback(async () => {
-    // Use forceRefresh to maintain filters and ordering
-    await forceRefresh();
-  }, [forceRefresh]);
-
-  // Helper functions for time conversion (must be defined before use)
-  const timeToMinutes = useCallback((time: string): number => {
+  const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-  }, []);
-
-  const addMinutesToTime = useCallback((time: string, minutesToAdd: number): string => {
-    const totalMinutes = timeToMinutes(time) + minutesToAdd;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  }, [timeToMinutes]);
-
-  // Check for conflicts after a session is moved
-  const checkSessionConflicts = useCallback(async (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) return;
-
-    // Only check conflicts for scheduled sessions (with non-null day/time fields)
-    if (!isScheduledSession(session)) {
-      setSessionConflicts(prev => ({
-        ...prev,
-        [sessionId]: false
-      }));
-      return;
-    }
-
-    const validation = await sessionUpdateService.validateSessionMove({
-      session,
-      targetDay: session.day_of_week,
-      targetStartTime: session.start_time,
-      targetEndTime: session.end_time,
-      studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time)
-    });
-
-    setSessionConflicts(prev => ({
-      ...prev,
-      [sessionId]: !validation.valid
-    }));
-  }, [sessions, timeToMinutes]);
-
-  const handleDragStart = useCallback((session: any, event: React.DragEvent) => {
-    setDraggedSession(session);
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedSession(null);
-    setDropTarget(null);
-  }, []);
-
-  const handleDragOver = useCallback((event: React.DragEvent, slotKey: string) => {
-    if (!draggedSession) return;
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    setDropTarget(slotKey);
-  }, [draggedSession]);
-
-  const handleDragLeave = useCallback(() => {
-    setDropTarget(null);
-  }, []);
-
-  const handleDrop = useCallback(async (event: React.DragEvent, slotKey: string, targetTime: string) => {
-    event.preventDefault();
-
-    if (!draggedSession) return;
-
-    // Only allow dropping scheduled sessions
-    if (!isScheduledSession(draggedSession)) {
-      handleDragEnd();
-      return;
-    }
-
-    // Store the scheduled session with narrowed type
-    const scheduledSession = draggedSession;
-
-    // Calculate new times
-    const duration = timeToMinutes(scheduledSession.end_time) - timeToMinutes(scheduledSession.start_time);
-    const hour = parseInt(targetTime.split(':')[0]);
-    const isPM = targetTime.includes('PM');
-    const adjustedHour = isPM && hour !== 12 ? hour + 12 : (hour === 12 && !isPM ? 0 : hour);
-    const formattedStartTime = `${adjustedHour.toString().padStart(2, '0')}:${targetTime.split(':')[1].split(' ')[0]}:00`;
-    const newEndTime = addMinutesToTime(formattedStartTime, duration);
-
-    // Check if this is actually a move (not dropping on the same slot)
-    if (scheduledSession.start_time === formattedStartTime) {
-      handleDragEnd();
-      return;
-    }
-
-    // Apply optimistic update immediately for smooth UX
-    optimisticUpdate(scheduledSession.id, {
-      start_time: formattedStartTime,
-      end_time: newEndTime
-    });
-
-    try {
-      // Perform the update without validation blocking
-      const result = await sessionUpdateService.updateSessionTime(
-        scheduledSession.id,
-        scheduledSession.day_of_week,
-        formattedStartTime,
-        newEndTime
-      );
-
-      if (!result.success) {
-        console.error('Failed to move session:', result.error);
-        // Revert optimistic update on failure
-        optimisticUpdate(scheduledSession.id, {
-          start_time: scheduledSession.start_time,
-          end_time: scheduledSession.end_time
-        });
-      } else if (result.hasConflicts && result.conflicts) {
-        // Show warning dialog for conflicts
-        const conflictMessages = result.conflicts.map(c => `- ${c.description}`).join('\n');
-        const confirmMessage = `Warning: This placement has conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`;
-
-        if (!confirm(confirmMessage)) {
-          // User cancelled - revert the optimistic update and the database change
-          optimisticUpdate(scheduledSession.id, {
-            start_time: scheduledSession.start_time,
-            end_time: scheduledSession.end_time
-          });
-
-          // Revert the database change
-          await sessionUpdateService.updateSessionTime(
-            scheduledSession.id,
-            scheduledSession.day_of_week,
-            scheduledSession.start_time,
-            scheduledSession.end_time
-          );
-        }
-      }
-
-      // Check conflicts ONLY for the moved session
-      await checkSessionConflicts(scheduledSession.id);
-
-    } catch (error) {
-      console.error('Error during session move:', error);
-    } finally {
-      handleDragEnd();
-    }
-  }, [draggedSession, handleDragEnd, optimisticUpdate, checkSessionConflicts, timeToMinutes, addMinutesToTime]);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  };
 
   // Group sessions by day and time
   const sessionsByDayTime = React.useMemo(() => {
@@ -686,233 +511,283 @@ return (
 
               <div className="grid grid-cols-2 divide-x divide-gray-200">
                 {/* Morning */}
-                <div className="p-2">
-                  <div className="text-xs font-medium text-gray-600 mb-1">Morning</div>
-                  {MORNING_SLOTS.map((time, slotIndex) => {
-                    const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
-                    const sessionKey = `${dayIndex}-${timeIndex}`;
-                    const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
+                <div className="p-2 space-y-2">
+                  <div className="text-xs font-medium text-gray-600 mb-2">Morning</div>
+                  {(() => {
+                    const holidayCheck = isHoliday(currentDate);
+                    if (holidayCheck.isHoliday) {
+                      return <div className="text-center text-red-600 font-medium text-sm py-4">Holiday - {holidayCheck.name}</div>;
+                    }
 
-                    return (
-                      <div
-                        key={time}
-                        className={cn(
-                          "text-xs mb-1 p-1 rounded transition-colors",
-                          dropTarget === sessionKey && "ring-2 ring-blue-400 bg-blue-50"
-                        )}
-                        onDragOver={(e) => handleDragOver(e, sessionKey)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, sessionKey, time)}
-                      >
-                        <div className="flex items-center min-h-[24px]">
-                          <span className="text-gray-500 flex-shrink-0">{time}:</span>
-                          <span className="ml-1 flex items-center flex-wrap">
-                          {(() => {
-                            const holidayCheck = isHoliday(currentDate);
-                            if (holidayCheck.isHoliday) {
-                              return <span className="text-red-600 font-medium">Holiday!</span>;
-                            }
-                            
-                            // Check for calendar events at this time
-                            const dateStr = format(currentDate, 'yyyy-MM-dd');
-                            const timeEvents = calendarEvents.filter(event => {
-                              if (event.date !== dateStr) return false;
-                              if (event.all_day) return true;
-                              if (!event.start_time) return false;
-                              
-                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
-                              return eventTimeIndex === timeIndex;
-                            });
-                            
-                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
-                              // Show preview if this is the drop target
-                              if (dropTarget === sessionKey && draggedSession) {
-                                return (
-                                  <span className="text-blue-600 text-xs italic">
-                                    Moving {students[draggedSession.student_id]?.initials || 'session'} here
-                                  </span>
-                                );
-                              }
-                              return <span className="text-gray-400">-</span>;
-                            }
-                            // Display both sessions and calendar events
-                            const allItems = [...sessionsInSlot];
-                            
-                            return (
-                              <>
-                                {timeEvents.map((event) => (
-                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
-                                    style={{
-                                      backgroundColor: 
-                                        event.event_type === 'meeting' ? '#DBEAFE' : 
-                                        event.event_type === 'assessment' ? '#FEF3C7' :
-                                        event.event_type === 'activity' ? '#D1FAE5' :
-                                        '#F3F4F6',
-                                      color:
-                                        event.event_type === 'meeting' ? '#1E40AF' : 
-                                        event.event_type === 'assessment' ? '#92400E' :
-                                        event.event_type === 'activity' ? '#065F46' :
-                                        '#374151'
-                                    }}
-                                    title={event.description || event.title}
-                                  >
-                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
-                                  </span>
-                                ))}
-                                {sessionsInSlot.map((session) => {
-                                  const studentData = {
-                                    initials: students[session.student_id]?.initials || 'S',
-                                    grade_level: students[session.student_id]?.grade_level || '',
-                                    id: session.student_id,
-                                    teacher_name: students[session.student_id]?.teacher_name
-                                  };
-                                  return (
-                                    <DraggableSessionBox
-                                      key={session.id}
-                                      session={session}
-                                      student={studentData}
-                                      isSeaSession={session.delivered_by === 'sea'}
-                                      canEdit={canEditSession(session)}
-                                      onDragStart={handleDragStart}
-                                      onDragEnd={handleDragEnd}
-                                      onClick={() => handleSessionClick(session, studentData)}
-                                      size="small"
-                                      variant="pill"
-                                      hasConflict={sessionConflicts[session.id] || false}
-                                    />
-                                  );
-                                })}
-                              </>
-                            );
-                          })()}
-                        </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                    // Get all morning sessions for this day
+                    const morningSessions: ScheduleSession[] = [];
+                    MORNING_SLOTS.forEach((time) => {
+                      const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
+                      const sessionKey = `${dayIndex}-${timeIndex}`;
+                      const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
+                      morningSessions.push(...sessionsInSlot);
+                    });
+
+                    // Filter to only scheduled sessions
+                    const scheduledMorningSessions = morningSessions.filter(isScheduledSession);
+
+                    if (scheduledMorningSessions.length === 0) {
+                      return <div className="text-center text-gray-400 text-sm py-4">No sessions</div>;
+                    }
+
+                    // Aggregate into groups and individual sessions
+                    const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledMorningSessions);
+                    const allBlocks: Array<{ type: 'group' | 'session', data: any }> = [];
+
+                    // Add groups
+                    groups.forEach((groupSessions, groupId) => {
+                      const firstSession = groupSessions[0];
+                      if (firstSession && firstSession.start_time && firstSession.end_time) {
+                        allBlocks.push({
+                          type: 'group',
+                          data: {
+                            groupId,
+                            groupName: firstSession.group_name || 'Unnamed Group',
+                            sessions: groupSessions,
+                            earliestStart: groupSessions.reduce((min, s) =>
+                              s.start_time! < min ? s.start_time! : min, firstSession.start_time),
+                            latestEnd: groupSessions.reduce((max, s) =>
+                              s.end_time! > max ? s.end_time! : max, firstSession.end_time)
+                          }
+                        });
+                      }
+                    });
+
+                    // Add ungrouped sessions
+                    ungroupedSessions.forEach(session => {
+                      allBlocks.push({ type: 'session', data: session });
+                    });
+
+                    // Sort by start time
+                    allBlocks.sort((a, b) => {
+                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.start_time;
+                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.start_time;
+                      return aTime.localeCompare(bTime);
+                    });
+
+                    return allBlocks.map((block, idx) => {
+                      if (block.type === 'group') {
+                        const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
+                        const studentInitials = groupSessions
+                          .map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
+                          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+                          .join(', ');
+
+                        return (
+                          <button
+                            key={`group-${groupId}-${idx}`}
+                            type="button"
+                            onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
+                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-gradient-to-r from-blue-50 to-purple-50"
+                            aria-label={`Open group ${groupName} details`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                              <div className="text-xs text-blue-700">{groupSessions.length} sessions</div>
+                            </div>
+                            <div className="font-medium text-gray-900">
+                              {formatTime(earliestStart)} - {formatTime(latestEnd)}
+                            </div>
+                            <div className="text-gray-700 mt-1">
+                              Students: {studentInitials}
+                            </div>
+                          </button>
+                        );
+                      } else {
+                        const session = block.data;
+                        const studentData = {
+                          id: session.student_id,
+                          initials: students[session.student_id]?.initials || '?',
+                          grade_level: students[session.student_id]?.grade_level || '',
+                          teacher_name: students[session.student_id]?.teacher_name
+                        };
+
+                        return (
+                          <button
+                            key={`session-${session.id}`}
+                            type="button"
+                            onClick={() => handleOpenSessionModal(session, studentData)}
+                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-white"
+                            aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
+                          >
+                            <div className="font-medium text-gray-900">
+                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            </div>
+                            <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
+                              {studentData.initials}
+                              {session.delivered_by === 'sea' && (
+                                <span className="ml-1 text-xs">(SEA)</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      }
+                    });
+                  })()}
                 </div>
 
                 {/* Afternoon */}
-                <div className="p-2">
-                  <div className="text-xs font-medium text-gray-600 mb-1">Afternoon</div>
-                  {AFTERNOON_SLOTS.map((time, slotIndex) => {
-                    const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
-                    const sessionKey = `${dayIndex}-${timeIndex}`;
-                    const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
+                <div className="p-2 space-y-2">
+                  <div className="text-xs font-medium text-gray-600 mb-2">Afternoon</div>
+                  {(() => {
+                    const holidayCheck = isHoliday(currentDate);
+                    if (holidayCheck.isHoliday) {
+                      return <div className="text-center text-red-600 font-medium text-sm py-4">Holiday - {holidayCheck.name}</div>;
+                    }
 
-                    return (
-                      <div
-                        key={time}
-                        className={cn(
-                          "text-xs mb-1 p-1 rounded transition-colors",
-                          dropTarget === sessionKey && "ring-2 ring-blue-400 bg-blue-50"
-                        )}
-                        onDragOver={(e) => handleDragOver(e, sessionKey)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, sessionKey, time)}
-                      >
-                        <div className="flex items-center min-h-[24px]">
-                          <span className="text-gray-500 flex-shrink-0">{time}:</span>
-                          <span className="ml-1 flex items-center flex-wrap">
-                          {(() => {
-                            const holidayCheck = isHoliday(currentDate);
-                            if (holidayCheck.isHoliday) {
-                              return <span className="text-red-600 font-medium">Holiday!</span>;
-                            }
-                            
-                            // Check for calendar events at this time
-                            const dateStr = format(currentDate, 'yyyy-MM-dd');
-                            const timeEvents = calendarEvents.filter(event => {
-                              if (event.date !== dateStr) return false;
-                              if (event.all_day) return true;
-                              if (!event.start_time) return false;
-                              
-                              const eventTimeIndex = getTimeSlotIndex(event.start_time);
-                              return eventTimeIndex === timeIndex;
-                            });
-                            
-                            if (sessionsInSlot.length === 0 && timeEvents.length === 0) {
-                              // Show preview if this is the drop target
-                              if (dropTarget === sessionKey && draggedSession) {
-                                return (
-                                  <span className="text-blue-600 text-xs italic">
-                                    Moving {students[draggedSession.student_id]?.initials || 'session'} here
-                                  </span>
-                                );
-                              }
-                              return <span className="text-gray-400">-</span>;
-                            }
-                            // Display both sessions and calendar events
-                            const allItems = [...sessionsInSlot];
-                            
-                            return (
-                              <>
-                                {timeEvents.map((event) => (
-                                  <span key={`event-${event.id}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs mr-1 mb-1"
-                                    style={{
-                                      backgroundColor: 
-                                        event.event_type === 'meeting' ? '#DBEAFE' : 
-                                        event.event_type === 'assessment' ? '#FEF3C7' :
-                                        event.event_type === 'activity' ? '#D1FAE5' :
-                                        '#F3F4F6',
-                                      color:
-                                        event.event_type === 'meeting' ? '#1E40AF' : 
-                                        event.event_type === 'assessment' ? '#92400E' :
-                                        event.event_type === 'activity' ? '#065F46' :
-                                        '#374151'
-                                    }}
-                                    title={event.description || event.title}
-                                  >
-                                    {event.title.length > 20 ? event.title.slice(0, 20) + '...' : event.title}
-                                  </span>
-                                ))}
-                                {sessionsInSlot.map((session) => {
-                                  const studentData = {
-                                    initials: students[session.student_id]?.initials || 'S',
-                                    grade_level: students[session.student_id]?.grade_level || '',
-                                    id: session.student_id,
-                                    teacher_name: students[session.student_id]?.teacher_name
-                                  };
-                                  return (
-                                    <DraggableSessionBox
-                                      key={session.id}
-                                      session={session}
-                                      student={studentData}
-                                      isSeaSession={session.delivered_by === 'sea'}
-                                      canEdit={canEditSession(session)}
-                                      onDragStart={handleDragStart}
-                                      onDragEnd={handleDragEnd}
-                                      onClick={() => handleSessionClick(session, studentData)}
-                                      size="small"
-                                      variant="pill"
-                                      hasConflict={sessionConflicts[session.id] || false}
-                                    />
-                                  );
-                                })}
-                              </>
-                            );
-                          })()}
-                        </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                    // Get all afternoon sessions for this day
+                    const afternoonSessions: ScheduleSession[] = [];
+                    AFTERNOON_SLOTS.forEach((time) => {
+                      const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
+                      const sessionKey = `${dayIndex}-${timeIndex}`;
+                      const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
+                      afternoonSessions.push(...sessionsInSlot);
+                    });
+
+                    // Filter to only scheduled sessions
+                    const scheduledAfternoonSessions = afternoonSessions.filter(isScheduledSession);
+
+                    if (scheduledAfternoonSessions.length === 0) {
+                      return <div className="text-center text-gray-400 text-sm py-4">No sessions</div>;
+                    }
+
+                    // Aggregate into groups and individual sessions
+                    const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledAfternoonSessions);
+                    const allBlocks: Array<{ type: 'group' | 'session', data: any }> = [];
+
+                    // Add groups
+                    groups.forEach((groupSessions, groupId) => {
+                      const firstSession = groupSessions[0];
+                      if (firstSession && firstSession.start_time && firstSession.end_time) {
+                        allBlocks.push({
+                          type: 'group',
+                          data: {
+                            groupId,
+                            groupName: firstSession.group_name || 'Unnamed Group',
+                            sessions: groupSessions,
+                            earliestStart: groupSessions.reduce((min, s) =>
+                              s.start_time! < min ? s.start_time! : min, firstSession.start_time),
+                            latestEnd: groupSessions.reduce((max, s) =>
+                              s.end_time! > max ? s.end_time! : max, firstSession.end_time)
+                          }
+                        });
+                      }
+                    });
+
+                    // Add ungrouped sessions
+                    ungroupedSessions.forEach(session => {
+                      allBlocks.push({ type: 'session', data: session });
+                    });
+
+                    // Sort by start time
+                    allBlocks.sort((a, b) => {
+                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.start_time;
+                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.start_time;
+                      return aTime.localeCompare(bTime);
+                    });
+
+                    return allBlocks.map((block, idx) => {
+                      if (block.type === 'group') {
+                        const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
+                        const studentInitials = groupSessions
+                          .map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
+                          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+                          .join(', ');
+
+                        return (
+                          <button
+                            key={`group-${groupId}-${idx}`}
+                            type="button"
+                            onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
+                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-gradient-to-r from-blue-50 to-purple-50"
+                            aria-label={`Open group ${groupName} details`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                              <div className="text-xs text-blue-700">{groupSessions.length} sessions</div>
+                            </div>
+                            <div className="font-medium text-gray-900">
+                              {formatTime(earliestStart)} - {formatTime(latestEnd)}
+                            </div>
+                            <div className="text-gray-700 mt-1">
+                              Students: {studentInitials}
+                            </div>
+                          </button>
+                        );
+                      } else {
+                        const session = block.data;
+                        const studentData = {
+                          id: session.student_id,
+                          initials: students[session.student_id]?.initials || '?',
+                          grade_level: students[session.student_id]?.grade_level || '',
+                          teacher_name: students[session.student_id]?.teacher_name
+                        };
+
+                        return (
+                          <button
+                            key={`session-${session.id}`}
+                            type="button"
+                            onClick={() => handleOpenSessionModal(session, studentData)}
+                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-white"
+                            aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
+                          >
+                            <div className="font-medium text-gray-900">
+                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            </div>
+                            <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
+                              {studentData.initials}
+                              {session.delivered_by === 'sea' && (
+                                <span className="ml-1 text-xs">(SEA)</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      }
+                    });
+                  })()}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-      
-      {/* Session Details Popup */}
-      {showDetailsPopup && selectedSession && selectedStudent && (
-        <SessionDetailsPopup
+
+      {/* Group Details Modal */}
+      {selectedGroupId && (
+        <GroupDetailsModal
+          isOpen={groupModalOpen}
+          onClose={() => {
+            setGroupModalOpen(false);
+            setSelectedGroupId(null);
+            setSelectedGroupName('');
+            setSelectedGroupSessions([]);
+          }}
+          groupId={selectedGroupId}
+          groupName={selectedGroupName}
+          sessions={selectedGroupSessions}
+          students={new Map(Object.entries(students))}
+        />
+      )}
+
+      {/* Session Details Modal */}
+      {selectedSession && sessionModalOpen && selectedStudent && (
+        <SessionDetailsModal
+          isOpen={sessionModalOpen}
+          onClose={() => {
+            setSessionModalOpen(false);
+            setSelectedSession(null);
+            setSelectedStudent(null);
+          }}
           session={selectedSession}
-          student={selectedStudent}
-          assignedTo={assignedToInfo}
-          isOpen={showDetailsPopup}
-          onClose={handlePopupClose}
-          onUpdate={handleSessionUpdate}
+          student={{
+            initials: selectedStudent.initials,
+            grade_level: selectedStudent.grade_level || '',
+          }}
         />
       )}
     </div>
