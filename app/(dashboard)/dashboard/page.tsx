@@ -9,7 +9,6 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card'
 import { Button } from '../../components/ui/button';
 import { TodoWidget } from '../../components/todo-widget';
 import { WeeklyView } from '../../components/weekly-view';
-import { GroupSessionsWidget } from "../../../app/components/group-sessions-widget";
 import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
 import { ToastProvider } from '../../contexts/toast-context';
 
@@ -83,19 +82,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <WeeklyView viewMode="provider" />
 
-            {/* Two column layout with different behavior */}
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Left column - Todo widget can expand */}
-              <div>
-                <TodoWidget />
-              </div>
-              
-
-              {/* Right column - Fixed height widgets */}
-              <div className="space-y-4">
-                <GroupSessionsWidget />
-              </div>
-            </div>
+            <TodoWidget />
           </div>
         </div>
       </div>
