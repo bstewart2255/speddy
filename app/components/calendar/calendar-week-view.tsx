@@ -20,6 +20,7 @@ import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
+import { Printer } from "lucide-react";
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
@@ -37,6 +38,7 @@ interface CalendarWeekViewProps {
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
+  onExportPDF?: () => void;
 }
 
 
@@ -48,7 +50,8 @@ export function CalendarWeekView({
   holidays = [], // Add holiday feature
   calendarEvents = [],
   onAddEvent,
-  onEventClick
+  onEventClick,
+  onExportPDF
   }: CalendarWeekViewProps) {
   // Get school context for filtering lessons
   const { currentSchool } = useSchool();
@@ -1696,40 +1699,65 @@ export function CalendarWeekView({
     <div className="w-full">
       {/* View Mode Toggle - Hidden for SEA users */}
       {userProfile?.role !== 'sea' && (
-        <div className="mb-4 flex gap-2 items-center">
-          <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
+        <div className="mb-4 flex gap-2 items-center justify-between">
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
+            <button
+              onClick={() => setViewMode('my-sessions')}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                viewMode === 'my-sessions'
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              My Sessions
+            </button>
+            <button
+              onClick={() => setViewMode('specialist')}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                viewMode === 'specialist'
+                  ? "bg-purple-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              Assigned to Specialist
+            </button>
+            <button
+              onClick={() => setViewMode('sea')}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                viewMode === 'sea'
+                  ? "bg-green-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              Assigned to SEA
+            </button>
+          </div>
+          {onExportPDF && (
+            <button
+              onClick={onExportPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              title="Export Week to PDF"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="text-sm font-medium">Export PDF</span>
+            </button>
+          )}
+        </div>
+      )}
+      {/* For SEA users, show the export button on its own row */}
+      {userProfile?.role === 'sea' && onExportPDF && (
+        <div className="mb-4 flex justify-end">
           <button
-            onClick={() => setViewMode('my-sessions')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-              viewMode === 'my-sessions'
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            )}
+            onClick={onExportPDF}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            title="Export Week to PDF"
           >
-            My Sessions
-          </button>
-          <button
-            onClick={() => setViewMode('specialist')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-              viewMode === 'specialist'
-                ? "bg-purple-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            )}
-          >
-            Assigned to Specialist
-          </button>
-          <button
-            onClick={() => setViewMode('sea')}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-              viewMode === 'sea'
-                ? "bg-green-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            )}
-          >
-            Assigned to SEA
+            <Printer className="w-4 h-4" />
+            <span className="text-sm font-medium">Export PDF</span>
           </button>
         </div>
       )}
