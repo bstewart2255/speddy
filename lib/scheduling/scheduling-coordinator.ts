@@ -435,7 +435,7 @@ export class SchedulingCoordinator {
           session.day_of_week === day &&
           this.timesOverlap(startTime, session.start_time, session.end_time)
         );
-        
+
         slot.capacity -= overlappingSessions.length;
         
         if (slot.capacity > 0) {

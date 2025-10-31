@@ -281,7 +281,10 @@ export class SessionDistributor {
     context: DistributionContext
   ): DistributionResult {
     const strategy = this.getDistributionStrategy(student, availableSlots);
-    const sessionsNeeded = student.sessions_per_week || 0;
+
+    // Calculate REMAINING sessions needed (not total sessions_per_week)
+    const existingSessionsForStudent = context.existingSessions.get(student.id)?.length || 0;
+    const sessionsNeeded = Math.max(0, (student.sessions_per_week || 0) - existingSessionsForStudent);
     let distributedSlots: TimeSlot[] = [];
     
     switch (strategy) {

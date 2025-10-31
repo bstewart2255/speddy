@@ -196,8 +196,9 @@ export class OptimizedScheduler {
     this.log(`Initializing scheduling context for ${schoolSite}...`);
     this.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
-    // Initialize the data manager if not already initialized
-    if (!this.dataManager.isInitialized()) {
+    // Initialize the data manager if not already initialized for this school
+    // This ensures we reload data when switching between schools
+    if (!this.dataManager.isInitializedForSchool(schoolSite, schoolDistrict)) {
       // Use empty string as fallback for backward compatibility
       await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', undefined);
     }
@@ -561,11 +562,14 @@ export class OptimizedScheduler {
       return result;
     }
 
-    const sessionsNeeded = student.sessions_per_week || 0;
+    // Calculate REMAINING sessions needed (not total sessions_per_week)
+    const existingSessionsForStudent = this.context!.existingSessions
+      .filter(s => s.student_id === student.id).length;
+    const sessionsNeeded = Math.max(0, (student.sessions_per_week || 0) - existingSessionsForStudent);
     const duration = student.minutes_per_session || 30;
 
     this.log(
-      `\nScheduling ${student.initials}: ${sessionsNeeded} sessions x ${duration}min`,
+      `\nScheduling ${student.initials}: ${sessionsNeeded} sessions x ${duration}min (${existingSessionsForStudent} already scheduled)`,
     );
     this.log("Context available?", !!this.context);
     this.log("Valid slots in context:", this.context?.validSlots.size);
