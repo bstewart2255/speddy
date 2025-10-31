@@ -9,7 +9,6 @@ import { CalendarMonthView } from "../../../components/calendar/calendar-month-v
 import { CalendarEventModal } from "../../../components/calendar/calendar-event-modal";
 import { useSchool } from "../../../components/providers/school-context";
 import { ToastProvider } from "../../../contexts/toast-context";
-import { Printer } from "lucide-react";
 import { exportWeekToPDF } from "@/lib/utils/export-week-to-pdf";
 import type { Database } from "../../../../src/types/database";
 
@@ -592,32 +591,19 @@ export default function CalendarPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (currentView === 'day') handleNextDay();
-                    else if (currentView === 'week') handleNextWeek();
-                    else if (currentView === 'month') handleNextMonth();
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Next"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-
-                {currentView === 'week' && (
-                  <button
-                    onClick={handleExportWeekToPDF}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    title="Export Week to PDF"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span className="text-sm font-medium">Export PDF</span>
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={() => {
+                  if (currentView === 'day') handleNextDay();
+                  else if (currentView === 'week') handleNextWeek();
+                  else if (currentView === 'month') handleNextMonth();
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Next"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
 
             {currentView === 'day' && (
@@ -636,8 +622,8 @@ export default function CalendarPage() {
             )}
             {currentView === 'week' && (
               <ToastProvider>
-                <CalendarWeekView 
-                  sessions={sessions} 
+                <CalendarWeekView
+                  sessions={sessions}
                   students={students}
                   onSessionClick={handleSessionClick}
                   weekOffset={weekOffset}
@@ -645,6 +631,7 @@ export default function CalendarPage() {
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
+                  onExportPDF={handleExportWeekToPDF}
                 />
               </ToastProvider>
             )}
