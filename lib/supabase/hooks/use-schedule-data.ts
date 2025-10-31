@@ -290,51 +290,84 @@ export function useScheduleData() {
               .select('provider_id, profiles!provider_schools_provider_id_fkey(id, full_name, role)')
               .eq('school_id', currentSchool.school_id);
 
-            if (primaryError) {
-              console.error('[useScheduleData] Error fetching primary school specialists:', primaryError);
-            }
-            if (multiError) {
-              console.error('[useScheduleData] Error fetching multi-school specialists:', multiError);
-            }
-
-            // Merge results and deduplicate
-            const specialistMap = new Map();
-
-            // Add primary school specialists
-            if (primarySchoolSpecialists) {
-              primarySchoolSpecialists.forEach(s => {
-                if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role)) {
-                  specialistMap.set(s.id, {
-                    id: s.id,
-                    full_name: s.full_name,
-                    role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
-                  });
-                }
+            // Check for critical errors - if either query fails completely, log and skip
+            // We need both queries to succeed for complete data
+            if (primaryError || multiError) {
+              console.error('[useScheduleData] Error fetching specialists:', {
+                primaryError: primaryError ? {
+                  message: primaryError.message,
+                  code: primaryError.code,
+                  details: primaryError.details
+                } : null,
+                multiError: multiError ? {
+                  message: multiError.message,
+                  code: multiError.code,
+                  details: multiError.details
+                } : null
               });
+
+              // Only proceed if we have at least one successful query
+              // This prevents showing incomplete data
+              if (primaryError && multiError) {
+                console.warn('[useScheduleData] Both specialist queries failed - no specialists will be shown');
+                otherSpecialists = [];
+              }
             }
 
-            // Add multi-school specialists
-            if (multiSchoolData) {
-              multiSchoolData.forEach(item => {
-                const profile = item.profiles as any;
-                if (profile &&
-                    ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role) &&
-                    profile.id !== user.id) {
-                  specialistMap.set(profile.id, {
-                    id: profile.id,
-                    full_name: profile.full_name,
-                    role: profile.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
-                  });
-                }
-              });
+            // Merge results and deduplicate only if we have valid data
+            if (!primaryError || !multiError) {
+              const specialistMap = new Map<string, { id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>();
+
+              // Add primary school specialists
+              if (primarySchoolSpecialists && !primaryError) {
+                primarySchoolSpecialists.forEach(s => {
+                  if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role)) {
+                    specialistMap.set(s.id, {
+                      id: s.id,
+                      full_name: s.full_name,
+                      role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                    });
+                  }
+                });
+              }
+
+              // Add multi-school specialists with proper type checking
+              if (multiSchoolData && !multiError) {
+                multiSchoolData.forEach(item => {
+                  // Type-safe access to nested profile data
+                  // Supabase returns foreign key joins as nested objects
+                  const profile = item.profiles;
+
+                  // Check if profile exists and has required fields
+                  if (profile &&
+                      typeof profile === 'object' &&
+                      'id' in profile &&
+                      'full_name' in profile &&
+                      'role' in profile) {
+                    const { id, full_name, role } = profile as { id: string; full_name: string; role: string };
+
+                    // Validate role and exclude current user
+                    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(role) &&
+                        id !== user.id) {
+                      specialistMap.set(id, {
+                        id,
+                        full_name,
+                        role: role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                      });
+                    }
+                  }
+                });
+              }
+
+              // Convert to array and sort
+              otherSpecialists = Array.from(specialistMap.values()).sort((a, b) =>
+                a.full_name.localeCompare(b.full_name)
+              );
+
+              const dataSource = !primaryError && !multiError ? 'both queries' :
+                                 primaryError ? 'multi-school query only' : 'primary school query only';
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}) using ${dataSource}: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
             }
-
-            // Convert to array and sort
-            otherSpecialists = Array.from(specialistMap.values()).sort((a, b) =>
-              a.full_name.localeCompare(b.full_name)
-            );
-
-            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
           } else {
             // Legacy schools without school_id - fallback to old logic
             const { data: specialistsData, error: specialistsError } = await supabase
