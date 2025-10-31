@@ -5,7 +5,6 @@ import { format, startOfWeek, addDays, isWeekend, parse } from "date-fns";
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
-import { SchoolFilterToggle } from '@/app/components/school-filter-toggle';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ScheduleSession } from '@/src/types/database';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
@@ -47,20 +46,28 @@ interface WeeklyViewProps {
   viewMode: 'provider' | 'sea';
 }
 
+// Type definitions for session blocks
+interface GroupBlockData {
+  groupId: string;
+  groupName: string;
+  sessions: ScheduleSession[];
+  earliestStart: string;
+  latestEnd: string;
+}
+
+interface SessionBlockData {
+  session: ScheduleSession;
+}
+
+type SessionBlock =
+  | { type: 'group'; data: GroupBlockData }
+  | { type: 'session'; data: SessionBlockData };
+
 export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const { showToast } = useToast();
   const schoolContext = useSchool();
-  const availableSchools = schoolContext.availableSchools;
+  const currentSchool = schoolContext.currentSchool;
   const worksAtMultipleSchools = schoolContext.worksAtMultipleSchools;
-  
-  // Filter schools to only include those with valid school_id for database queries
-  const filterableSchools = React.useMemo(() => {
-    return availableSchools.filter(school => 
-      school.school_id && 
-      school.school_id.trim() !== '' &&
-      !school.school_id.startsWith('MOCK_') // Exclude mock schools that won't work in DB queries
-    );
-  }, [availableSchools]);
   
   // Memoize weekStart to prevent infinite re-renders
   const weekStart = React.useMemo(() => {
@@ -81,7 +88,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [showToggle, setShowToggle] = useState<boolean>(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
 
   // Modal state for groups and sessions
@@ -98,18 +104,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     grade_level: string;
     teacher_name?: string;
   } | null>(null);
-
-  // Reset to 'all' if the selected school is not filterable
-  React.useEffect(() => {
-    if (selectedSchoolFilter !== 'all' && filterableSchools.length > 0) {
-      const isValidSelection = filterableSchools.some(
-        school => school.school_id === selectedSchoolFilter
-      );
-      if (!isValidSelection) {
-        setSelectedSchoolFilter('all');
-      }
-    }
-  }, [selectedSchoolFilter, filterableSchools]);  
 
   React.useEffect(() => {
     let isMounted = true;
@@ -152,10 +146,9 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         // Fetch schedule sessions based on view mode
         // Only join students table if we need to filter by school
-        // Also check that we have filterable schools
-        const needsStudentJoin = selectedSchoolFilter !== 'all' && 
-                                worksAtMultipleSchools && 
-                                filterableSchools.length > 0;
+        const needsStudentJoin = currentSchool &&
+                                worksAtMultipleSchools &&
+                                currentSchool.school_id;
         
         let sessionQuery;
         if (needsStudentJoin) {
@@ -212,8 +205,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
         
         // Apply school filter if a specific school is selected
-        if (needsStudentJoin) {
-          sessionQuery = sessionQuery.eq('students.school_id', selectedSchoolFilter);
+        if (needsStudentJoin && currentSchool?.school_id) {
+          sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
         }
 
         const { data: sessionData, error: sessionError } = await sessionQuery;
@@ -308,7 +301,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, selectedSchoolFilter, filterableSchools.length, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school filter changes
+  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school changes
 
   // Helper functions
   const getDayIndex = (session: any): number => {
@@ -386,8 +379,46 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     setSessionModalOpen(true);
   }, []);
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':').map(Number);
+  // Helper function to calculate time range with null safety
+  const getGroupTimeRange = useCallback((groupSessions: ScheduleSession[]) => {
+    const validSessions = groupSessions.filter(s => s.start_time && s.end_time);
+    if (validSessions.length === 0) {
+      return { earliestStart: '', latestEnd: '' };
+    }
+
+    const earliestStart = validSessions.reduce((min, s) =>
+      s.start_time && s.start_time < min ? s.start_time : min,
+      validSessions[0].start_time!
+    );
+
+    const latestEnd = validSessions.reduce((max, s) =>
+      s.end_time && s.end_time > max ? s.end_time : max,
+      validSessions[0].end_time!
+    );
+
+    return { earliestStart, latestEnd };
+  }, []);
+
+  // Helper function to get unique student initials with Set for better performance
+  const getUniqueStudentInitials = useCallback((groupSessions: ScheduleSession[]) => {
+    const initialsSet = new Set(
+      groupSessions.map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
+    );
+    return Array.from(initialsSet).join(', ');
+  }, [students]);
+
+  const formatTime = (time: string | null | undefined) => {
+    if (!time || typeof time !== 'string') {
+      return '--:-- --';
+    }
+    const parts = time.split(':');
+    if (parts.length < 2) {
+      return '--:-- --';
+    }
+    const [hours, minutes] = parts.map(Number);
+    if (isNaN(hours) || isNaN(minutes)) {
+      return '--:-- --';
+    }
     const ampm = hours >= 12 ? 'PM' : 'AM';
     const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
@@ -480,16 +511,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
 return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <div className="mb-4 flex justify-between items-center">
+      <div className="mb-4">
         <h2 className="text-lg font-semibold">
           Today's Schedule
         </h2>
-        <SchoolFilterToggle
-          selectedSchool={selectedSchoolFilter}
-          availableSchools={filterableSchools}
-          worksAtMultiple={worksAtMultipleSchools}
-          onSchoolChange={setSelectedSchoolFilter}
-        />
       </div>
 
       <div className="space-y-4">
@@ -539,22 +564,21 @@ return (
 
                     // Aggregate into groups and individual sessions
                     const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledMorningSessions);
-                    const allBlocks: Array<{ type: 'group' | 'session', data: any }> = [];
+                    const allBlocks: SessionBlock[] = [];
 
                     // Add groups
                     groups.forEach((groupSessions, groupId) => {
                       const firstSession = groupSessions[0];
                       if (firstSession && firstSession.start_time && firstSession.end_time) {
+                        const { earliestStart, latestEnd } = getGroupTimeRange(groupSessions);
                         allBlocks.push({
                           type: 'group',
                           data: {
                             groupId,
                             groupName: firstSession.group_name || 'Unnamed Group',
                             sessions: groupSessions,
-                            earliestStart: groupSessions.reduce((min, s) =>
-                              s.start_time! < min ? s.start_time! : min, firstSession.start_time),
-                            latestEnd: groupSessions.reduce((max, s) =>
-                              s.end_time! > max ? s.end_time! : max, firstSession.end_time)
+                            earliestStart,
+                            latestEnd
                           }
                         });
                       }
@@ -562,23 +586,20 @@ return (
 
                     // Add ungrouped sessions
                     ungroupedSessions.forEach(session => {
-                      allBlocks.push({ type: 'session', data: session });
+                      allBlocks.push({ type: 'session', data: { session } });
                     });
 
                     // Sort by start time
                     allBlocks.sort((a, b) => {
-                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.start_time;
-                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.start_time;
-                      return aTime.localeCompare(bTime);
+                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.session.start_time;
+                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.session.start_time;
+                      return (aTime || '').localeCompare(bTime || '');
                     });
 
                     return allBlocks.map((block, idx) => {
                       if (block.type === 'group') {
                         const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
-                        const studentInitials = groupSessions
-                          .map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
-                          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
-                          .join(', ');
+                        const studentInitials = getUniqueStudentInitials(groupSessions);
 
                         return (
                           <button
@@ -601,7 +622,7 @@ return (
                           </button>
                         );
                       } else {
-                        const session = block.data;
+                        const session = block.data.session;
                         const studentData = {
                           id: session.student_id,
                           initials: students[session.student_id]?.initials || '?',
@@ -660,22 +681,21 @@ return (
 
                     // Aggregate into groups and individual sessions
                     const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledAfternoonSessions);
-                    const allBlocks: Array<{ type: 'group' | 'session', data: any }> = [];
+                    const allBlocks: SessionBlock[] = [];
 
                     // Add groups
                     groups.forEach((groupSessions, groupId) => {
                       const firstSession = groupSessions[0];
                       if (firstSession && firstSession.start_time && firstSession.end_time) {
+                        const { earliestStart, latestEnd } = getGroupTimeRange(groupSessions);
                         allBlocks.push({
                           type: 'group',
                           data: {
                             groupId,
                             groupName: firstSession.group_name || 'Unnamed Group',
                             sessions: groupSessions,
-                            earliestStart: groupSessions.reduce((min, s) =>
-                              s.start_time! < min ? s.start_time! : min, firstSession.start_time),
-                            latestEnd: groupSessions.reduce((max, s) =>
-                              s.end_time! > max ? s.end_time! : max, firstSession.end_time)
+                            earliestStart,
+                            latestEnd
                           }
                         });
                       }
@@ -683,23 +703,20 @@ return (
 
                     // Add ungrouped sessions
                     ungroupedSessions.forEach(session => {
-                      allBlocks.push({ type: 'session', data: session });
+                      allBlocks.push({ type: 'session', data: { session } });
                     });
 
                     // Sort by start time
                     allBlocks.sort((a, b) => {
-                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.start_time;
-                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.start_time;
-                      return aTime.localeCompare(bTime);
+                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.session.start_time;
+                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.session.start_time;
+                      return (aTime || '').localeCompare(bTime || '');
                     });
 
                     return allBlocks.map((block, idx) => {
                       if (block.type === 'group') {
                         const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
-                        const studentInitials = groupSessions
-                          .map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
-                          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
-                          .join(', ');
+                        const studentInitials = getUniqueStudentInitials(groupSessions);
 
                         return (
                           <button
@@ -722,7 +739,7 @@ return (
                           </button>
                         );
                       } else {
-                        const session = block.data;
+                        const session = block.data.session;
                         const studentData = {
                           id: session.student_id,
                           initials: students[session.student_id]?.initials || '?',
