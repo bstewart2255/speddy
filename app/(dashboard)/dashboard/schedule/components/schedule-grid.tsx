@@ -426,12 +426,11 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         session.delivered_by === 'sea' ? 'border-2 border-orange-400' :
                         session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
 
-                      // Add conflict styling with patterns for accessibility
-                      // Using both border thickness and distinctive patterns
+                      // Add conflict styling - subtle background tint only (no border)
                       const conflictClass = isConflict
-                        ? 'border-4 border-red-600 bg-red-100 shadow-[inset_0_0_0_2px_rgba(220,38,38,0.3)]'
+                        ? 'bg-red-100 shadow-[inset_0_0_0_2px_rgba(220,38,38,0.3)]'
                         : isNeedsAttention
-                          ? 'border-4 border-yellow-600 shadow-[inset_0_0_0_2px_rgba(202,138,4,0.3)]'
+                          ? 'shadow-[inset_0_0_0_2px_rgba(202,138,4,0.3)]'
                           : '';
 
                       const columnIndex = sessionColumns.get(session.id) ?? 0;
@@ -477,7 +476,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                               </div>
                             )}
                             {hasConflict && (
-                              <div className="absolute -top-1 -left-1 w-4 h-4 flex items-center justify-center">
+                              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 flex items-center justify-center">
                                 <ExclamationTriangleIcon
                                   className={`w-4 h-4 ${isConflict ? 'text-red-600' : 'text-yellow-600'}`}
                                 />

@@ -482,6 +482,7 @@ export default function SchedulePage() {
             draggedSessionId={draggedSession?.id || null}
             isDragOver={isUnscheduledPanelDragOver}
             isDragOverHeader={isUnscheduledHeaderDragOver}
+            onSessionClick={openSessionPopup}
           />
 
           {/* Footer */}

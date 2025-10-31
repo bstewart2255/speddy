@@ -19,6 +19,7 @@ interface UnscheduledSessionsPanelProps {
   draggedSessionId: string | null;
   isDragOver: boolean;
   isDragOverHeader: boolean;
+  onSessionClick?: (session: ScheduleSession, triggerRect: DOMRect) => void;
 }
 
 export function UnscheduledSessionsPanel({
@@ -35,6 +36,7 @@ export function UnscheduledSessionsPanel({
   draggedSessionId,
   isDragOver,
   isDragOverHeader,
+  onSessionClick,
 }: UnscheduledSessionsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -142,6 +144,7 @@ export function UnscheduledSessionsPanel({
                       onDragStart={onDragStart}
                       onDragEnd={onDragEnd}
                       draggedSessionId={draggedSessionId}
+                      onSessionClick={onSessionClick}
                     />
                   );
                 })}

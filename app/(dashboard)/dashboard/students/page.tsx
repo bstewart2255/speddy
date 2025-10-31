@@ -274,6 +274,19 @@ export default function StudentsPage() {
     });
   };
 
+  // Calculate total sessions and minutes across all students
+  const totals = useMemo(() => {
+    return students.reduce((acc, student) => {
+      const sessions = student.sessions_per_week || 0;
+      const minutes = student.minutes_per_session || 0;
+
+      return {
+        totalSessions: acc.totalSessions + sessions,
+        totalMinutes: acc.totalMinutes + (sessions * minutes)
+      };
+    }, { totalSessions: 0, totalMinutes: 0 });
+  }, [students]);
+
   if (loading || schoolLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -710,6 +723,19 @@ export default function StudentsPage() {
                     </TableActionCell>
                   </TableRow>
                 ))}
+
+                {/* Total Summary Row */}
+                {students.length > 0 && (
+                  <tr className="bg-gray-50 font-semibold border-t-2 border-gray-300">
+                    <td colSpan={3} className="px-4 py-3 text-right text-gray-900">
+                      Total Caseload:
+                    </td>
+                    <td className="px-4 py-3 text-gray-900">
+                      {totals.totalSessions} sessions/week, {totals.totalMinutes.toLocaleString()} min/week
+                    </td>
+                    <td className="px-4 py-3"></td>
+                  </tr>
+                )}
               </TableBody>
             </Table>
           </CardBody>

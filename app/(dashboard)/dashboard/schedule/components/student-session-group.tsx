@@ -20,6 +20,7 @@ interface StudentSessionGroupProps {
   onDragStart: (e: React.DragEvent, session: ScheduleSession) => void;
   onDragEnd: () => void;
   draggedSessionId: string | null;
+  onSessionClick?: (session: ScheduleSession, triggerRect: DOMRect) => void;
 }
 
 export function StudentSessionGroup({
@@ -28,6 +29,7 @@ export function StudentSessionGroup({
   onDragStart,
   onDragEnd,
   draggedSessionId,
+  onSessionClick,
 }: StudentSessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -94,8 +96,14 @@ export function StudentSessionGroup({
                   draggable
                   onDragStart={(e) => onDragStart(e, session)}
                   onDragEnd={onDragEnd}
+                  onClick={(e) => {
+                    if (onSessionClick) {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      onSessionClick(session, rect);
+                    }
+                  }}
                   className={`relative ${gradeColor} text-white rounded shadow-sm transition-all hover:shadow-md ${assignmentClass} ${conflictClass} ${
-                    draggedSessionId === session.id ? 'opacity-50 cursor-grabbing' : 'cursor-grab'
+                    draggedSessionId === session.id ? 'opacity-50 cursor-grabbing' : 'cursor-grab hover:cursor-pointer'
                   }`}
                   style={{
                     width: '60px',

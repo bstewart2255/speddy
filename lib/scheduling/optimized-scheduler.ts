@@ -470,10 +470,47 @@ export class OptimizedScheduler {
       this.log(`  ${s.initials}: ${sessions} sessions × ${minutes}min = ${totalMinutes} total minutes`);
     });
 
+    // CRITICAL: Fetch all unscheduled sessions for these students BEFORE scheduling
+    // This ensures we UPDATE existing sessions instead of creating duplicates
+    const studentIds = sortedStudents.map(s => s.id);
+    this.log(`Fetching unscheduled sessions for ${studentIds.length} students...`);
+
+    const { data: unscheduledSessions, error: fetchError } = await this.supabase
+      .from('schedule_sessions')
+      .select('id, student_id')
+      .in('student_id', studentIds)
+      .is('day_of_week', null)
+      .is('start_time', null)
+      .is('end_time', null)
+      .order('created_at', { ascending: true }); // Oldest first
+
+    this.performanceMetrics.totalQueries++;
+
+    if (fetchError) {
+      this.log(`Error fetching unscheduled sessions: ${fetchError.message}`);
+      results.errors.push(`Failed to fetch unscheduled sessions: ${fetchError.message}`);
+      return results;
+    }
+
+    // Create a map of student_id -> array of unscheduled session IDs
+    const unscheduledSessionsByStudent = new Map<string, string[]>();
+    (unscheduledSessions || []).forEach(session => {
+      if (!unscheduledSessionsByStudent.has(session.student_id)) {
+        unscheduledSessionsByStudent.set(session.student_id, []);
+      }
+      unscheduledSessionsByStudent.get(session.student_id)!.push(session.id);
+    });
+
+    this.log(`Found ${unscheduledSessions?.length || 0} unscheduled sessions to update`);
+
     const allScheduledSessions: Omit<
       ScheduleSession,
       "id" | "created_at" | "updated_at"
     >[] = [];
+
+    // Track sessions to UPDATE (with IDs) vs INSERT (without IDs)
+    const sessionsToUpdate: Array<{ id: string; updates: any }> = [];
+    const sessionsToInsert: Omit<ScheduleSession, "id" | "created_at" | "updated_at">[] = [];
 
     for (const student of sortedStudents) {
       this.log(
@@ -484,7 +521,37 @@ export class OptimizedScheduler {
 
       if (result.success) {
         results.totalScheduled++;
-        allScheduledSessions.push(...result.scheduledSessions);
+
+        // Get unscheduled session IDs for this student
+        const unscheduledIds = unscheduledSessionsByStudent.get(student.id) || [];
+
+        // Match scheduled sessions with existing unscheduled sessions
+        result.scheduledSessions.forEach((scheduledSession, index) => {
+          if (index < unscheduledIds.length) {
+            // Update existing unscheduled session with all scheduling and assignment fields
+            const sessionId = unscheduledIds[index];
+            sessionsToUpdate.push({
+              id: sessionId,
+              updates: {
+                day_of_week: scheduledSession.day_of_week,
+                start_time: scheduledSession.start_time,
+                end_time: scheduledSession.end_time,
+                provider_id: scheduledSession.provider_id,
+                service_type: scheduledSession.service_type,
+                assigned_to_sea_id: scheduledSession.assigned_to_sea_id,
+                assigned_to_specialist_id: scheduledSession.assigned_to_specialist_id,
+                delivered_by: scheduledSession.delivered_by,
+                status: 'active',
+                conflict_reason: null
+              }
+            });
+            this.log(`  Will UPDATE existing session ${sessionId} for ${student.initials}`);
+          } else {
+            // No unscheduled session available, need to insert new one
+            sessionsToInsert.push(scheduledSession);
+            this.log(`  Will INSERT new session for ${student.initials} (no unscheduled session available)`);
+          }
+        });
 
         // Update context with newly scheduled sessions
         this.updateContextWithSessions(result.scheduledSessions);
@@ -495,17 +562,41 @@ export class OptimizedScheduler {
       }
     }
 
-    // Save all sessions at once
-    if (allScheduledSessions.length > 0) {
-      const { error } = await this.supabase
-        .from("schedule_sessions")
-        .insert(allScheduledSessions);
-        
-      this.performanceMetrics.totalQueries++; // Count the insert query
+    // Perform batch UPDATE for existing unscheduled sessions
+    if (sessionsToUpdate.length > 0) {
+      this.log(`Updating ${sessionsToUpdate.length} existing unscheduled sessions...`);
 
-      if (error) {
-        results.errors.push(`Failed to save sessions: ${error.message}`);
-        this.context.cacheMetadata.fetchErrors.push(error.message);
+      for (const sessionUpdate of sessionsToUpdate) {
+        const { error: updateError } = await this.supabase
+          .from('schedule_sessions')
+          .update(sessionUpdate.updates)
+          .eq('id', sessionUpdate.id);
+
+        if (updateError) {
+          this.log(`Error updating session ${sessionUpdate.id}: ${updateError.message}`);
+          results.errors.push(`Failed to update session: ${updateError.message}`);
+        }
+      }
+
+      this.performanceMetrics.totalQueries += sessionsToUpdate.length;
+      this.log(`Successfully updated ${sessionsToUpdate.length} sessions`);
+    }
+
+    // Perform batch INSERT only for sessions without existing unscheduled counterparts
+    if (sessionsToInsert.length > 0) {
+      this.log(`Inserting ${sessionsToInsert.length} new sessions (edge case - missing unscheduled sessions)...`);
+
+      const { error: insertError } = await this.supabase
+        .from("schedule_sessions")
+        .insert(sessionsToInsert);
+
+      this.performanceMetrics.totalQueries++;
+
+      if (insertError) {
+        results.errors.push(`Failed to insert sessions: ${insertError.message}`);
+        this.context.cacheMetadata.fetchErrors.push(insertError.message);
+      } else {
+        this.log(`Successfully inserted ${sessionsToInsert.length} sessions`);
       }
     }
     

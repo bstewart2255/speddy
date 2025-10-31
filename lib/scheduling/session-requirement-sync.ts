@@ -55,7 +55,51 @@ export async function updateExistingSessionsForStudent(
     }
 
     if (!existingSessions || existingSessions.length === 0) {
-      // No sessions to update
+      // No existing sessions - might need to create initial unscheduled sessions
+      // This handles the case where a student was created without scheduling requirements
+      // and is now being updated to add them
+      if (newRequirements.sessions_per_week && newRequirements.sessions_per_week > 0) {
+        // Need to get the provider_id and student info to create sessions
+        const { data: student, error: studentErr } = await supabase
+          .from('students')
+          .select('provider_id')
+          .eq('id', studentId)
+          .single();
+
+        if (studentErr || !student) {
+          console.error('Error fetching student for session creation:', studentErr);
+          return { success: false, error: studentErr?.message || 'Student not found' };
+        }
+
+        // Create initial unscheduled sessions
+        console.log(`Creating ${newRequirements.sessions_per_week} initial unscheduled sessions for student ${studentId}`);
+
+        const newUnscheduledSessions = Array.from(
+          { length: newRequirements.sessions_per_week },
+          () => ({
+            student_id: studentId,
+            provider_id: student.provider_id,
+            day_of_week: null,
+            start_time: null,
+            end_time: null,
+            service_type: 'resource',
+            status: 'active' as const,
+            delivered_by: 'provider' as const,
+          })
+        );
+
+        const { error: insertErr } = await supabase
+          .from('schedule_sessions')
+          .insert(newUnscheduledSessions);
+
+        if (insertErr) {
+          console.error('Failed to create initial unscheduled sessions:', insertErr);
+          return { success: false, error: insertErr.message };
+        }
+
+        console.log(`Successfully created ${newRequirements.sessions_per_week} initial unscheduled sessions`);
+      }
+
       return { success: true };
     }
 
@@ -74,10 +118,17 @@ export async function updateExistingSessionsForStudent(
 
     // Step 3: Adjust session count if sessions_per_week changed
     if (countChanged && newRequirements.sessions_per_week != null) {
+      // Get provider_id from any existing session (they all have the same provider)
+      const providerId = existingSessions[0]?.provider_id;
+
+      // Only count non-completed sessions to match the invariant
+      const activeSessionCount = existingSessions.filter(s => !s.is_completed).length;
+
       await adjustSessionCount(
         supabase,
         studentId,
-        existingSessions.length,
+        providerId,
+        activeSessionCount,
         newRequirements.sessions_per_week
       );
     }
@@ -162,50 +213,113 @@ async function updateSessionDurations(
 }
 
 /**
- * Adjusts the number of sessions by deleting excess ones
+ * Adjusts the number of sessions by deleting excess ones or creating missing ones
  */
 async function adjustSessionCount(
   supabase: ReturnType<typeof createClient<Database>>,
   studentId: string,
+  providerId: string | undefined,
   currentCount: number,
   targetCount: number
 ): Promise<void> {
-  if (currentCount <= targetCount) {
-    // Nothing to delete (either same or need more sessions)
+  if (currentCount === targetCount) {
+    // Count is already correct
     return;
   }
 
-  // Need to delete excess sessions
-  const excessCount = currentCount - targetCount;
+  if (currentCount > targetCount) {
+    // Need to delete excess sessions
+    console.log(`Deleting ${currentCount - targetCount} excess sessions for student ${studentId}`);
 
-  // Get sessions sorted by day and time, but only active (not completed) sessions
-  const { data: sessions, error: listErr } = await supabase
-    .from('schedule_sessions')
-    .select('id')
-    .eq('student_id', studentId)
-    .eq('is_completed', false)
-    .order('day_of_week', { ascending: true })
-    .order('start_time', { ascending: true });
-
-  if (listErr) {
-    throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
-  }
-
-  if (!sessions) return;
-
-  // Keep the earliest sessions, delete the rest
-  const sessionsToDelete = sessions.slice(targetCount);
-
-  if (sessionsToDelete.length > 0) {
-    const deleteIds = sessionsToDelete.map(s => s.id);
-    const { error: delErr } = await supabase
+    // Get all active sessions with their scheduling fields
+    const { data: sessions, error: listErr } = await supabase
       .from('schedule_sessions')
-      .delete()
-      .in('id', deleteIds);
+      .select('id, day_of_week, start_time, created_at')
+      .eq('student_id', studentId)
+      .eq('is_completed', false);
 
-    if (delErr) {
-      throw new Error(`Failed to delete excess sessions: ${delErr.message}`);
+    if (listErr) {
+      throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
     }
+
+    if (!sessions) return;
+
+    // Sort sessions to prioritize deleting unscheduled ones first, then latest scheduled ones
+    // This matches the migration logic and preserves already-scheduled sessions when possible
+    const sortedSessions = [...sessions].sort((a, b) => {
+      // Unscheduled sessions (day_of_week IS NULL) come first
+      const aIsUnscheduled = a.day_of_week === null ? 0 : 1;
+      const bIsUnscheduled = b.day_of_week === null ? 0 : 1;
+
+      if (aIsUnscheduled !== bIsUnscheduled) {
+        return aIsUnscheduled - bIsUnscheduled;
+      }
+
+      // Among scheduled sessions, prioritize deleting later days
+      if (a.day_of_week !== b.day_of_week) {
+        if (a.day_of_week === null) return 1;
+        if (b.day_of_week === null) return -1;
+        return b.day_of_week - a.day_of_week;
+      }
+
+      // Among same day, prioritize deleting later times
+      if (a.start_time !== b.start_time) {
+        if (a.start_time === null) return 1;
+        if (b.start_time === null) return -1;
+        return b.start_time.localeCompare(a.start_time);
+      }
+
+      // Finally, by creation date (newer first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    // Take the number of sessions we need to delete (prioritizing unscheduled)
+    const excessCount = currentCount - targetCount;
+    const sessionsToDelete = sortedSessions.slice(0, excessCount);
+
+    if (sessionsToDelete.length > 0) {
+      const deleteIds = sessionsToDelete.map(s => s.id);
+      const { error: delErr } = await supabase
+        .from('schedule_sessions')
+        .delete()
+        .in('id', deleteIds);
+
+      if (delErr) {
+        throw new Error(`Failed to delete excess sessions: ${delErr.message}`);
+      }
+
+      console.log(`Successfully deleted ${sessionsToDelete.length} excess sessions`);
+    }
+  } else {
+    // Need to create additional unscheduled sessions
+    const sessionsToCreate = targetCount - currentCount;
+    console.log(`Creating ${sessionsToCreate} new unscheduled sessions for student ${studentId}`);
+
+    if (!providerId) {
+      throw new Error('Cannot create new sessions without provider_id');
+    }
+
+    // Create unscheduled session records (with null day/time fields)
+    const newUnscheduledSessions = Array.from({ length: sessionsToCreate }, () => ({
+      student_id: studentId,
+      provider_id: providerId,
+      day_of_week: null,
+      start_time: null,
+      end_time: null,
+      service_type: 'resource',
+      status: 'active' as const,
+      delivered_by: 'provider' as const,
+    }));
+
+    const { error: insertErr } = await supabase
+      .from('schedule_sessions')
+      .insert(newUnscheduledSessions);
+
+    if (insertErr) {
+      throw new Error(`Failed to create new unscheduled sessions: ${insertErr.message}`);
+    }
+
+    console.log(`Successfully created ${sessionsToCreate} new unscheduled sessions`);
   }
 }
 
