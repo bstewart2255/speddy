@@ -54,11 +54,11 @@ export function exportWeekToPDF(data: WeekData) {
         @media print {
           @page {
             size: landscape;
-            margin: 0.5in;
+            margin: 0.4in;
           }
           body {
             margin: 0;
-            padding: 0;
+            padding: 0 !important;
           }
         }
 
@@ -69,61 +69,60 @@ export function exportWeekToPDF(data: WeekData) {
 
         h1 {
           text-align: center;
-          margin: 0 0 20px 0;
-          font-size: 24px;
+          margin: 0 0 12px 0;
+          font-size: 18px;
         }
 
         .week-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
-          gap: 12px;
-          margin-bottom: 20px;
+          gap: 8px;
+          margin-bottom: 10px;
         }
 
         .day-column {
           border: 1px solid #333;
-          min-height: 400px;
         }
 
         .day-header {
           background-color: #f0f0f0;
-          padding: 10px;
+          padding: 6px;
           text-align: center;
           font-weight: bold;
           border-bottom: 2px solid #333;
-          font-size: 14px;
+          font-size: 12px;
         }
 
         .day-content {
-          padding: 8px;
+          padding: 6px;
         }
 
         .session-item {
-          margin-bottom: 8px;
+          margin-bottom: 5px;
           page-break-inside: avoid;
         }
 
         .session-time {
           font-weight: bold;
-          font-size: 11px;
+          font-size: 10px;
           color: #333;
         }
 
         .session-student {
-          font-size: 12px;
+          font-size: 11px;
           margin-top: 2px;
         }
 
         .group-session {
           background-color: #f5f5f5;
-          padding: 6px;
+          padding: 4px;
           border-radius: 4px;
-          margin-bottom: 8px;
+          margin-bottom: 5px;
           page-break-inside: avoid;
         }
 
         .group-name {
-          font-size: 12px;
+          font-size: 11px;
           margin-top: 2px;
         }
 
@@ -144,7 +143,7 @@ export function exportWeekToPDF(data: WeekData) {
           text-align: center;
           color: #666;
           font-size: 10px;
-          margin-top: 20px;
+          margin-top: 10px;
         }
       </style>
     </head>
