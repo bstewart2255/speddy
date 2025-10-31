@@ -121,11 +121,14 @@ export async function updateExistingSessionsForStudent(
       // Get provider_id from any existing session (they all have the same provider)
       const providerId = existingSessions[0]?.provider_id;
 
+      // Only count non-completed sessions to match the invariant
+      const activeSessionCount = existingSessions.filter(s => !s.is_completed).length;
+
       await adjustSessionCount(
         supabase,
         studentId,
         providerId,
-        existingSessions.length,
+        activeSessionCount,
         newRequirements.sessions_per_week
       );
     }
@@ -228,14 +231,12 @@ async function adjustSessionCount(
     // Need to delete excess sessions
     console.log(`Deleting ${currentCount - targetCount} excess sessions for student ${studentId}`);
 
-    // Get sessions sorted by day and time, but only active (not completed) sessions
+    // Get all active sessions with their scheduling fields
     const { data: sessions, error: listErr } = await supabase
       .from('schedule_sessions')
-      .select('id')
+      .select('id, day_of_week, start_time, created_at')
       .eq('student_id', studentId)
-      .eq('is_completed', false)
-      .order('day_of_week', { ascending: true })
-      .order('start_time', { ascending: true });
+      .eq('is_completed', false);
 
     if (listErr) {
       throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
@@ -243,8 +244,38 @@ async function adjustSessionCount(
 
     if (!sessions) return;
 
-    // Keep the earliest sessions, delete the rest
-    const sessionsToDelete = sessions.slice(targetCount);
+    // Sort sessions to prioritize deleting unscheduled ones first, then latest scheduled ones
+    // This matches the migration logic and preserves already-scheduled sessions when possible
+    const sortedSessions = [...sessions].sort((a, b) => {
+      // Unscheduled sessions (day_of_week IS NULL) come first
+      const aIsUnscheduled = a.day_of_week === null ? 0 : 1;
+      const bIsUnscheduled = b.day_of_week === null ? 0 : 1;
+
+      if (aIsUnscheduled !== bIsUnscheduled) {
+        return aIsUnscheduled - bIsUnscheduled;
+      }
+
+      // Among scheduled sessions, prioritize deleting later days
+      if (a.day_of_week !== b.day_of_week) {
+        if (a.day_of_week === null) return 1;
+        if (b.day_of_week === null) return -1;
+        return b.day_of_week - a.day_of_week;
+      }
+
+      // Among same day, prioritize deleting later times
+      if (a.start_time !== b.start_time) {
+        if (a.start_time === null) return 1;
+        if (b.start_time === null) return -1;
+        return b.start_time.localeCompare(a.start_time);
+      }
+
+      // Finally, by creation date (newer first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    // Take the number of sessions we need to delete (prioritizing unscheduled)
+    const excessCount = currentCount - targetCount;
+    const sessionsToDelete = sortedSessions.slice(0, excessCount);
 
     if (sessionsToDelete.length > 0) {
       const deleteIds = sessionsToDelete.map(s => s.id);

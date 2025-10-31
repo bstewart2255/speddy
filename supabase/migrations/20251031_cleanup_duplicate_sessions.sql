@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION cleanup_duplicate_sessions_for_student(
 ) AS $$
 DECLARE
   v_current_count integer;
+  v_deleted_count integer;
   v_sessions_to_delete uuid[];
 BEGIN
   -- Get current total session count
@@ -28,7 +29,7 @@ BEGIN
   END IF;
 
   -- Calculate how many to delete
-  deleted_count := v_current_count - p_target_count;
+  v_deleted_count := v_current_count - p_target_count;
 
   -- Select sessions to delete (prioritize unscheduled first, then scheduled by day/time)
   -- This preserves already-scheduled sessions when possible
@@ -46,7 +47,7 @@ BEGIN
       day_of_week DESC NULLS FIRST,
       start_time DESC NULLS FIRST,
       created_at DESC
-    LIMIT deleted_count
+    LIMIT v_deleted_count
   ) sessions_to_remove;
 
   -- Delete the selected sessions
@@ -54,9 +55,7 @@ BEGIN
   WHERE id = ANY(v_sessions_to_delete);
 
   -- Return results
-  session_ids_deleted := v_sessions_to_delete;
-
-  RETURN QUERY SELECT deleted_count, session_ids_deleted;
+  RETURN QUERY SELECT v_deleted_count, v_sessions_to_delete;
 END;
 $$ LANGUAGE plpgsql;
 

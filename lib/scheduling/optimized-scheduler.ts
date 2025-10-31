@@ -528,7 +528,7 @@ export class OptimizedScheduler {
         // Match scheduled sessions with existing unscheduled sessions
         result.scheduledSessions.forEach((scheduledSession, index) => {
           if (index < unscheduledIds.length) {
-            // Update existing unscheduled session
+            // Update existing unscheduled session with all scheduling and assignment fields
             const sessionId = unscheduledIds[index];
             sessionsToUpdate.push({
               id: sessionId,
@@ -536,6 +536,11 @@ export class OptimizedScheduler {
                 day_of_week: scheduledSession.day_of_week,
                 start_time: scheduledSession.start_time,
                 end_time: scheduledSession.end_time,
+                provider_id: scheduledSession.provider_id,
+                service_type: scheduledSession.service_type,
+                assigned_to_sea_id: scheduledSession.assigned_to_sea_id,
+                assigned_to_specialist_id: scheduledSession.assigned_to_specialist_id,
+                delivered_by: scheduledSession.delivered_by,
                 status: 'active',
                 conflict_reason: null
               }
