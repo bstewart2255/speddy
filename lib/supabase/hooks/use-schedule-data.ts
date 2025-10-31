@@ -382,13 +382,12 @@ export function useScheduleData() {
             if (specialistsError) {
               console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
             } else if (specialistsData) {
-              otherSpecialists = specialistsData
-                .filter(s => ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role))
-                .map(specialist => ({
-                  id: specialist.id,
-                  full_name: specialist.full_name,
-                  role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
-                }));
+              // Roles are already filtered by the query, map directly
+              otherSpecialists = specialistsData.map(specialist => ({
+                id: specialist.id,
+                full_name: specialist.full_name ?? '',
+                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+              }));
 
               console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
             }
