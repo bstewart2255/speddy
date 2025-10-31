@@ -179,6 +179,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
               outside_schedule_conflict,
               completed_at,
               completed_by,
+              group_id,
+              group_name,
               students!inner(
                 id,
                 school_id
@@ -191,7 +193,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         } else {
           sessionQuery = supabase
             .from("schedule_sessions")
-            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, provider_id, service_type, session_date, session_notes, is_completed, student_absent, outside_schedule_conflict, completed_at, completed_by")
+            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, provider_id, service_type, session_date, session_notes, is_completed, student_absent, outside_schedule_conflict, completed_at, completed_by, group_id, group_name")
             .gte("day_of_week", 1)
             .lte("day_of_week", 5)
             .order("day_of_week")
@@ -505,7 +507,7 @@ return (
 
           return (
             <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400' : 'border-gray-200'}`}>
-              <div className="px-3 py-2 font-medium text-sm bg-gray-50">
+              <div className="px-3 py-2 font-medium text-sm bg-gray-50 rounded-t-lg">
                 {format(currentDate, 'EEEE, MMM d')}
               </div>
 
