@@ -161,8 +161,10 @@ export const ScheduleGrid = memo(function ScheduleGrid({
       case 'sea':
         return allSessions.filter(s => s.delivered_by === 'sea');
       case 'specialist':
-        return allSessions.filter(s => s.delivered_by === 'specialist');
+        // Show only sessions owned by current user that they've assigned to other specialists
+        return allSessions.filter(s => s.provider_id === currentUserId && s.delivered_by === 'specialist');
       case 'assigned':
+        // Show only sessions assigned TO the current user by other specialists
         return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
       default:
         return allSessions;

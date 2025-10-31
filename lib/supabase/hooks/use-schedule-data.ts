@@ -269,41 +269,128 @@ export function useScheduleData() {
 
           // Get other specialists (resource, speech, ot, counseling, specialist) from the CURRENT school only
           console.log('[useScheduleData] Fetching other specialists for current school:', currentSchool.school_id || currentSchool.school_site);
-          
-          // Direct query with proper school filtering
-          // NOTE: The RPC function get_available_specialists doesn't properly filter by the currently selected school
-          // for users who work at multiple schools, so we use a direct query instead
-          let specialistsQuery = supabase
-            .from('profiles')
-            .select('id, full_name, role')
-            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])  // All specialist roles
-            .neq('id', user.id);  // Exclude self
-          
-          // Filter by current school
+
+          // Fetch specialists who work at the current school
+          // This needs to check BOTH:
+          // 1. Specialists whose primary school matches (profiles.school_id)
+          // 2. Specialists who work at multiple schools and have this school in provider_schools
+
           if (currentSchool.school_id) {
-            specialistsQuery = specialistsQuery.eq('school_id', currentSchool.school_id);
+            // Query 1: Get specialists where this is their primary school
+            const { data: primarySchoolSpecialists, error: primaryError } = await supabase
+              .from('profiles')
+              .select('id, full_name, role')
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+              .neq('id', user.id)
+              .eq('school_id', currentSchool.school_id);
+
+            // Query 2: Get specialists who work at this school via provider_schools (multi-school staff)
+            const { data: multiSchoolData, error: multiError } = await supabase
+              .from('provider_schools')
+              .select('provider_id, profiles!provider_schools_provider_id_fkey(id, full_name, role)')
+              .eq('school_id', currentSchool.school_id);
+
+            // Check for critical errors - if either query fails completely, log and skip
+            // We need both queries to succeed for complete data
+            if (primaryError || multiError) {
+              console.error('[useScheduleData] Error fetching specialists:', {
+                primaryError: primaryError ? {
+                  message: primaryError.message,
+                  code: primaryError.code,
+                  details: primaryError.details
+                } : null,
+                multiError: multiError ? {
+                  message: multiError.message,
+                  code: multiError.code,
+                  details: multiError.details
+                } : null
+              });
+
+              // Only proceed if we have at least one successful query
+              // This prevents showing incomplete data
+              if (primaryError && multiError) {
+                console.warn('[useScheduleData] Both specialist queries failed - no specialists will be shown');
+                otherSpecialists = [];
+              }
+            }
+
+            // Merge results and deduplicate only if we have valid data
+            if (!primaryError || !multiError) {
+              const specialistMap = new Map<string, { id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>();
+
+              // Add primary school specialists
+              if (primarySchoolSpecialists && !primaryError) {
+                primarySchoolSpecialists.forEach(s => {
+                  if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role)) {
+                    specialistMap.set(s.id, {
+                      id: s.id,
+                      full_name: s.full_name,
+                      role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                    });
+                  }
+                });
+              }
+
+              // Add multi-school specialists with proper type checking
+              if (multiSchoolData && !multiError) {
+                multiSchoolData.forEach(item => {
+                  // Type-safe access to nested profile data
+                  // Supabase returns foreign key joins as nested objects
+                  const profile = item.profiles;
+
+                  // Check if profile exists and has required fields
+                  if (profile &&
+                      typeof profile === 'object' &&
+                      'id' in profile &&
+                      'full_name' in profile &&
+                      'role' in profile) {
+                    const { id, full_name, role } = profile as { id: string; full_name: string; role: string };
+
+                    // Validate role and exclude current user
+                    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(role) &&
+                        id !== user.id) {
+                      specialistMap.set(id, {
+                        id,
+                        full_name,
+                        role: role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                      });
+                    }
+                  }
+                });
+              }
+
+              // Convert to array and sort
+              otherSpecialists = Array.from(specialistMap.values()).sort((a, b) =>
+                a.full_name.localeCompare(b.full_name)
+              );
+
+              const dataSource = !primaryError && !multiError ? 'both queries' :
+                                 primaryError ? 'multi-school query only' : 'primary school query only';
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}) using ${dataSource}: ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+            }
           } else {
-            // Legacy schools without school_id
-            specialistsQuery = specialistsQuery
+            // Legacy schools without school_id - fallback to old logic
+            const { data: specialistsData, error: specialistsError } = await supabase
+              .from('profiles')
+              .select('id, full_name, role')
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+              .neq('id', user.id)
               .eq('school_site', currentSchool.school_site)
-              .eq('school_district', currentSchool.school_district);
-          }
-          
-          const { data: specialistsData, error: specialistsError } = await specialistsQuery.order('full_name', { ascending: true });
-          
-          if (specialistsError) {
-            console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
-          } else if (specialistsData) {
-            // Type narrowing for role field
-            otherSpecialists = specialistsData
-              .filter(s => ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(s.role))
-              .map(specialist => ({
+              .eq('school_district', currentSchool.school_district)
+              .order('full_name', { ascending: true });
+
+            if (specialistsError) {
+              console.error('[useScheduleData] Error fetching other specialists:', specialistsError);
+            } else if (specialistsData) {
+              // Roles are already filtered by the query, map directly
+              otherSpecialists = specialistsData.map(specialist => ({
                 id: specialist.id,
-                full_name: specialist.full_name,
+                full_name: specialist.full_name ?? '',
                 role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
               }));
-            
-            console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id || currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+
+              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
+            }
           }
         } catch (error) {
           console.error('[useScheduleData] Exception fetching SEA profiles or specialists:', error);
