@@ -58,8 +58,17 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
     }
   };
 
-  const handleKeepUnscheduled = () => {
-    // Just close the modal and refresh
+  const handleKeepUnscheduled = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Finalize the snapshot with whatever sessions were successfully scheduled
+    // so the user can undo the auto-scheduled ones even if they skip manual placement
+    if (user) {
+      await saveScheduledSessionIds(user.id);
+    }
+
+    // Close the modal and refresh
     setShowManualPlacementModal(false);
     if (onComplete) {
       onComplete();
@@ -188,7 +197,7 @@ Continue?`;
       }
     } catch (error) {
       if (debug) console.error('Error scheduling sessions:', error);
-      alert('Failed to schedule sessions: ' + error.message);
+      alert('Failed to schedule sessions: ' + (error as Error).message);
     } finally {
       setIsProcessing(false);
     }

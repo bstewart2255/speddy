@@ -65,7 +65,7 @@ Continue?`;
 
       // Unschedule only the sessions that were scheduled during the operation
       // Set their day_of_week, start_time, and end_time to null
-      const { error: updateError } = await supabase
+      const { data: updatedSessions, error: updateError } = await supabase
         .from('schedule_sessions')
         .update({
           day_of_week: null,
@@ -75,11 +75,19 @@ Continue?`;
           conflict_reason: null
         })
         .in('id', lastSnapshot.scheduledSessionIds)
-        .eq('provider_id', user.id);
+        .eq('provider_id', user.id)
+        .select();
 
       if (updateError) throw updateError;
 
-      alert(`Successfully unscheduled ${lastSnapshot.scheduledSessionIds.length} session${lastSnapshot.scheduledSessionIds.length !== 1 ? 's' : ''}!`);
+      const actualUnscheduled = updatedSessions?.length || 0;
+      const expectedCount = lastSnapshot.scheduledSessionIds.length;
+
+      if (actualUnscheduled < expectedCount) {
+        alert(`Partially unscheduled: ${actualUnscheduled} of ${expectedCount} session${expectedCount !== 1 ? 's' : ''}.\n\nSome sessions may have been manually deleted.`);
+      } else {
+        alert(`Successfully unscheduled ${actualUnscheduled} session${actualUnscheduled !== 1 ? 's' : ''}!`);
+      }
 
       // Clear the snapshot after successful undo
       localStorage.removeItem('scheduleSnapshot');
@@ -100,8 +108,9 @@ Continue?`;
     }
   };
 
-  // Don't show the button if there's no snapshot
-  if (!lastSnapshot) {
+  // Don't show the button if there's no snapshot or no sessions to undo
+  // (handles old snapshot format gracefully)
+  if (!lastSnapshot || !lastSnapshot.scheduledSessionIds || lastSnapshot.scheduledSessionIds.length === 0) {
     return null;
   }
 
