@@ -180,13 +180,37 @@ export class SchedulingCoordinator {
 
     // Fetch existing unscheduled sessions for students being scheduled
     const studentIds = students.map(s => s.id);
-    const { data: unscheduledSessions } = await this.supabase
+    const { data: unscheduledSessions, error: fetchError } = await this.supabase
       .from('schedule_sessions')
       .select('*')
       .in('student_id', studentIds)
       .is('day_of_week', null)
       .is('start_time', null)
       .is('end_time', null);
+
+    // Handle database query failure immediately
+    if (fetchError) {
+      const errorMessage = `Failed to fetch unscheduled sessions: ${fetchError.message}`;
+      console.error(`[Coordinator] ${errorMessage}`, {
+        studentIds,
+        error: fetchError
+      });
+
+      const elapsed = performance.now() - startTime;
+      return {
+        totalScheduled: 0,
+        totalFailed: students.length,
+        errors: [errorMessage],
+        scheduledSessions: [],
+        unscheduledStudents: students,
+        metrics: {
+          totalTime: elapsed,
+          averageTimePerStudent: elapsed / students.length,
+          cacheHits: this.performanceMetrics.cacheHits,
+          queryCount: this.performanceMetrics.totalQueries
+        }
+      };
+    }
 
     // Group unscheduled sessions by student_id for easy lookup
     const unscheduledByStudent = new Map<string, any[]>();
