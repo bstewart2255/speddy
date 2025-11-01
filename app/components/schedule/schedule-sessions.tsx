@@ -76,7 +76,7 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
   };
 
   const handleScheduleSessions = async () => {
-    if (unscheduledPanelCount === 0) return;
+    if (unscheduledCount === 0 && unscheduledPanelCount === 0) return;
 
     const confirmMessage = `This will schedule ${unscheduledCount} new session${unscheduledCount !== 1 ? 's' : ''}.
 
@@ -207,10 +207,10 @@ Continue?`;
     <>
       <Button
         onClick={handleScheduleSessions}
-        disabled={isProcessing || unscheduledPanelCount === 0}
-        variant={unscheduledPanelCount > 0 ? "primary" : "secondary"}
-        className={unscheduledPanelCount === 0 ? "opacity-50 cursor-not-allowed" : ""}
-        title={unscheduledPanelCount === 0 ? "No unscheduled sessions" : `Schedule ${unscheduledPanelCount} unscheduled session${unscheduledPanelCount !== 1 ? 's' : ''}`}
+        disabled={isProcessing || (unscheduledCount === 0 && unscheduledPanelCount === 0)}
+        variant={(unscheduledCount > 0 || unscheduledPanelCount > 0) ? "primary" : "secondary"}
+        className={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "opacity-50 cursor-not-allowed" : ""}
+        title={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "No unscheduled sessions" : `Schedule ${unscheduledCount} unscheduled session${unscheduledCount !== 1 ? 's' : ''}`}
       >
         {isProcessing ? 'Scheduling...' : 'Schedule Sessions'}
       </Button>
