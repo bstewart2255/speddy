@@ -174,15 +174,60 @@ export class SchedulingCoordinator {
     if (!this.context) {
       throw new Error('Coordinator not initialized. Call initialize() first.');
     }
-    
+
     const startTime = performance.now();
     console.log(`[Coordinator] Starting batch scheduling for ${students.length} students`);
-    
+
+    // Fetch existing unscheduled sessions for students being scheduled
+    const studentIds = students.map(s => s.id);
+    const { data: unscheduledSessions, error: fetchError } = await this.supabase
+      .from('schedule_sessions')
+      .select('*')
+      .in('student_id', studentIds)
+      .is('day_of_week', null)
+      .is('start_time', null)
+      .is('end_time', null);
+
+    // Handle database query failure immediately
+    if (fetchError) {
+      const errorMessage = `Failed to fetch unscheduled sessions: ${fetchError.message}`;
+      console.error(`[Coordinator] ${errorMessage}`, {
+        studentIds,
+        error: fetchError
+      });
+
+      const elapsed = performance.now() - startTime;
+      return {
+        totalScheduled: 0,
+        totalFailed: students.length,
+        errors: [errorMessage],
+        scheduledSessions: [],
+        unscheduledStudents: students,
+        metrics: {
+          totalTime: elapsed,
+          averageTimePerStudent: elapsed / students.length,
+          cacheHits: this.performanceMetrics.cacheHits,
+          queryCount: this.performanceMetrics.totalQueries
+        }
+      };
+    }
+
+    // Group unscheduled sessions by student_id for easy lookup
+    const unscheduledByStudent = new Map<string, any[]>();
+    (unscheduledSessions || []).forEach(session => {
+      if (!unscheduledByStudent.has(session.student_id)) {
+        unscheduledByStudent.set(session.student_id, []);
+      }
+      unscheduledByStudent.get(session.student_id)!.push(session);
+    });
+
+    console.log(`[Coordinator] Found ${unscheduledSessions?.length || 0} unscheduled sessions to update`);
+
     // Populate student grade map
     students.forEach(student => {
       this.context!.studentGradeMap.set(student.id, student.grade_level.trim());
     });
-    
+
     // Optimize scheduling order
     const orderedStudents = this.engine.optimizeScheduleOrder(students);
     
@@ -200,30 +245,79 @@ export class SchedulingCoordinator {
       }
     };
     
+    // Collect sessions to update (existing unscheduled sessions with new times)
+    const sessionsToUpdate: Array<{ id: string; day_of_week: number; start_time: string; end_time: string }> = [];
+
     // Schedule each student
     for (const student of orderedStudents) {
       const schedulingResult = await this.scheduleStudent(student);
-      
+
       if (schedulingResult.success) {
         result.totalScheduled++;
-        result.scheduledSessions.push(...schedulingResult.scheduledSessions);
+
+        // Match auto-scheduler results to existing unscheduled sessions
+        const unscheduled = unscheduledByStudent.get(student.id) || [];
+
+        schedulingResult.scheduledSessions.forEach((scheduledSlot, index) => {
+          if (index < unscheduled.length) {
+            // Update existing unscheduled session with new times
+            const existingSession = unscheduled[index];
+            sessionsToUpdate.push({
+              id: existingSession.id,
+              day_of_week: scheduledSlot.day_of_week!,
+              start_time: scheduledSlot.start_time!,
+              end_time: scheduledSlot.end_time!
+            });
+
+            // CRITICAL: Add the full session object to result.scheduledSessions
+            // This is needed for context updates and provider info mapping
+            result.scheduledSessions.push({
+              ...scheduledSlot,
+              // Preserve fields from existing session
+              status: existingSession.status || 'active',
+              student_id: existingSession.student_id,
+              provider_id: existingSession.provider_id,
+              service_type: existingSession.service_type,
+              assigned_to_sea_id: existingSession.assigned_to_sea_id,
+              assigned_to_specialist_id: existingSession.assigned_to_specialist_id,
+              delivered_by: existingSession.delivered_by
+            });
+          } else {
+            // This shouldn't happen if session sync is working correctly
+            console.error(`[Coordinator] No unscheduled session to update for student ${student.id} slot ${index}`);
+            result.errors.push(`Session sync error: No unscheduled session available for ${student.initials || student.id}`);
+          }
+        });
+
+        // Update context with newly scheduled sessions so subsequent students see correct capacity
+        this.updateContextWithSessions(schedulingResult.scheduledSessions);
       } else {
         result.totalFailed++;
         result.unscheduledStudents.push(...schedulingResult.unscheduledStudents);
         result.errors.push(...schedulingResult.errors);
       }
     }
-    
-    // Save all sessions to database
-    if (result.scheduledSessions.length > 0) {
-      const { error } = await this.supabase
-        .from('schedule_sessions')
-        .insert(result.scheduledSessions);
-      
-      this.performanceMetrics.totalQueries++;
-      
-      if (error) {
-        result.errors.push(`Failed to save sessions: ${error.message}`);
+
+    // Update all sessions with new scheduling times
+    if (sessionsToUpdate.length > 0) {
+      console.log(`[Coordinator] Updating ${sessionsToUpdate.length} sessions with scheduling times`);
+
+      for (const update of sessionsToUpdate) {
+        const { error } = await this.supabase
+          .from('schedule_sessions')
+          .update({
+            day_of_week: update.day_of_week,
+            start_time: update.start_time,
+            end_time: update.end_time
+          })
+          .eq('id', update.id);
+
+        this.performanceMetrics.totalQueries++;
+
+        if (error) {
+          console.error(`[Coordinator] Failed to update session ${update.id}:`, error);
+          result.errors.push(`Failed to schedule session ${update.id}: ${error.message}`);
+        }
       }
     }
     
