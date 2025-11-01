@@ -174,15 +174,36 @@ export class SchedulingCoordinator {
     if (!this.context) {
       throw new Error('Coordinator not initialized. Call initialize() first.');
     }
-    
+
     const startTime = performance.now();
     console.log(`[Coordinator] Starting batch scheduling for ${students.length} students`);
-    
+
+    // Fetch existing unscheduled sessions for students being scheduled
+    const studentIds = students.map(s => s.id);
+    const { data: unscheduledSessions } = await this.supabase
+      .from('schedule_sessions')
+      .select('*')
+      .in('student_id', studentIds)
+      .is('day_of_week', null)
+      .is('start_time', null)
+      .is('end_time', null);
+
+    // Group unscheduled sessions by student_id for easy lookup
+    const unscheduledByStudent = new Map<string, any[]>();
+    (unscheduledSessions || []).forEach(session => {
+      if (!unscheduledByStudent.has(session.student_id)) {
+        unscheduledByStudent.set(session.student_id, []);
+      }
+      unscheduledByStudent.get(session.student_id)!.push(session);
+    });
+
+    console.log(`[Coordinator] Found ${unscheduledSessions?.length || 0} unscheduled sessions to update`);
+
     // Populate student grade map
     students.forEach(student => {
       this.context!.studentGradeMap.set(student.id, student.grade_level.trim());
     });
-    
+
     // Optimize scheduling order
     const orderedStudents = this.engine.optimizeScheduleOrder(students);
     
@@ -200,30 +221,62 @@ export class SchedulingCoordinator {
       }
     };
     
+    // Collect sessions to update (existing unscheduled sessions with new times)
+    const sessionsToUpdate: Array<{ id: string; day_of_week: number; start_time: string; end_time: string }> = [];
+
     // Schedule each student
     for (const student of orderedStudents) {
       const schedulingResult = await this.scheduleStudent(student);
-      
+
       if (schedulingResult.success) {
         result.totalScheduled++;
-        result.scheduledSessions.push(...schedulingResult.scheduledSessions);
+
+        // Match auto-scheduler results to existing unscheduled sessions
+        const unscheduled = unscheduledByStudent.get(student.id) || [];
+
+        schedulingResult.scheduledSessions.forEach((scheduledSlot, index) => {
+          if (index < unscheduled.length) {
+            // Update existing unscheduled session with new times
+            const existingSession = unscheduled[index];
+            sessionsToUpdate.push({
+              id: existingSession.id,
+              day_of_week: scheduledSlot.day_of_week!,
+              start_time: scheduledSlot.start_time!,
+              end_time: scheduledSlot.end_time!
+            });
+          } else {
+            // This shouldn't happen if session sync is working correctly
+            console.error(`[Coordinator] No unscheduled session to update for student ${student.id} slot ${index}`);
+            result.errors.push(`Session sync error: No unscheduled session available for ${student.initials || student.id}`);
+          }
+        });
       } else {
         result.totalFailed++;
         result.unscheduledStudents.push(...schedulingResult.unscheduledStudents);
         result.errors.push(...schedulingResult.errors);
       }
     }
-    
-    // Save all sessions to database
-    if (result.scheduledSessions.length > 0) {
-      const { error } = await this.supabase
-        .from('schedule_sessions')
-        .insert(result.scheduledSessions);
-      
-      this.performanceMetrics.totalQueries++;
-      
-      if (error) {
-        result.errors.push(`Failed to save sessions: ${error.message}`);
+
+    // Update all sessions with new scheduling times
+    if (sessionsToUpdate.length > 0) {
+      console.log(`[Coordinator] Updating ${sessionsToUpdate.length} sessions with scheduling times`);
+
+      for (const update of sessionsToUpdate) {
+        const { error } = await this.supabase
+          .from('schedule_sessions')
+          .update({
+            day_of_week: update.day_of_week,
+            start_time: update.start_time,
+            end_time: update.end_time
+          })
+          .eq('id', update.id);
+
+        this.performanceMetrics.totalQueries++;
+
+        if (error) {
+          console.error(`[Coordinator] Failed to update session ${update.id}:`, error);
+          result.errors.push(`Failed to schedule session ${update.id}: ${error.message}`);
+        }
       }
     }
     
