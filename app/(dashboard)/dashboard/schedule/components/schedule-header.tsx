@@ -6,6 +6,7 @@ import { UndoSchedule } from '../../../../components/schedule/undo-schedule';
 
 interface ScheduleHeaderProps {
   unscheduledCount: number;
+  unscheduledPanelCount: number;
   currentSchool: {
     school_site: string;
     school_district: string;
@@ -13,10 +14,11 @@ interface ScheduleHeaderProps {
   onScheduleComplete: () => void;
 }
 
-export function ScheduleHeader({ 
-  unscheduledCount, 
-  currentSchool, 
-  onScheduleComplete 
+export function ScheduleHeader({
+  unscheduledCount,
+  unscheduledPanelCount,
+  currentSchool,
+  onScheduleComplete
 }: ScheduleHeaderProps) {
   return (
     <div className="mb-8">
@@ -34,6 +36,7 @@ export function ScheduleHeader({
             onComplete={onScheduleComplete}
             currentSchool={currentSchool}
             unscheduledCount={unscheduledCount}
+            unscheduledPanelCount={unscheduledPanelCount}
           />
           <UndoSchedule onComplete={onScheduleComplete} />
         </div>
