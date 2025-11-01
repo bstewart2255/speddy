@@ -244,12 +244,29 @@ export class SchedulingCoordinator {
               start_time: scheduledSlot.start_time!,
               end_time: scheduledSlot.end_time!
             });
+
+            // CRITICAL: Add the full session object to result.scheduledSessions
+            // This is needed for context updates and provider info mapping
+            result.scheduledSessions.push({
+              ...scheduledSlot,
+              // Preserve fields from existing session
+              status: existingSession.status || 'active',
+              student_id: existingSession.student_id,
+              provider_id: existingSession.provider_id,
+              service_type: existingSession.service_type,
+              assigned_to_sea_id: existingSession.assigned_to_sea_id,
+              assigned_to_specialist_id: existingSession.assigned_to_specialist_id,
+              delivered_by: existingSession.delivered_by
+            });
           } else {
             // This shouldn't happen if session sync is working correctly
             console.error(`[Coordinator] No unscheduled session to update for student ${student.id} slot ${index}`);
             result.errors.push(`Session sync error: No unscheduled session available for ${student.initials || student.id}`);
           }
         });
+
+        // Update context with newly scheduled sessions so subsequent students see correct capacity
+        this.updateContextWithSessions(schedulingResult.scheduledSessions);
       } else {
         result.totalFailed++;
         result.unscheduledStudents.push(...schedulingResult.unscheduledStudents);
