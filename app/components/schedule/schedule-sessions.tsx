@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
-import { saveScheduleSnapshot } from './undo-schedule';
+import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
 import { ManualPlacementModal } from './manual-placement-modal';
 
 interface ScheduleSessionsProps {
@@ -14,9 +14,10 @@ interface ScheduleSessionsProps {
     school_district: string;
   } | null;
   unscheduledCount: number;
+  unscheduledPanelCount: number;
 }
 
-export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }: ScheduleSessionsProps) {
+export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, unscheduledPanelCount }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showManualPlacementModal, setShowManualPlacementModal] = useState(false);
   const [unplacedStudents, setUnplacedStudents] = useState<any[]>([]);
@@ -29,21 +30,28 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }
   const handlePlaceAnyway = async () => {
     setIsPlacingManually(true);
     try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const result = await placeSessionsManually(unplacedStudents);
-      
+
       if (result.success) {
+        // Finalize the snapshot with the newly scheduled session IDs
+        await saveScheduledSessionIds(user.id);
+
         alert(`Successfully placed ${result.placedSessions.length} session${result.placedSessions.length !== 1 ? 's' : ''}. Please review the schedule for any conflicts that need manual adjustment.`);
       } else {
         alert(`Failed to place sessions: ${result.errors.join(', ')}`);
       }
-      
+
       // Call onComplete callback if provided
       if (onComplete) {
         onComplete();
       }
     } catch (error) {
       console.error('Error placing sessions manually:', error);
-      alert('Failed to place sessions manually: ' + error.message);
+      alert('Failed to place sessions manually: ' + (error as Error).message);
     } finally {
       setIsPlacingManually(false);
       setShowManualPlacementModal(false);
@@ -59,9 +67,9 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount }
   };
 
   const handleScheduleSessions = async () => {
-    if (unscheduledCount === 0) return;
+    if (unscheduledPanelCount === 0) return;
 
-    const confirmMessage = `This will schedule ${unscheduledCount} new session${unscheduledCount !== 1 ? 's' : ''}. 
+    const confirmMessage = `This will schedule ${unscheduledCount} new session${unscheduledCount !== 1 ? 's' : ''}.
 
 These are sessions that have never been scheduled before.
 
@@ -156,16 +164,22 @@ Continue?`;
 
       // Check if all sessions were successfully scheduled
       if (results.totalFailed > 0 && results.canManuallyPlace) {
-        // Show manual placement modal
+        // Show manual placement modal (snapshot will be finalized after manual placement)
         setUnplacedStudents(results.unplacedStudents || []);
         setShowManualPlacementModal(true);
       } else if (results.totalFailed > 0) {
+        // Finalize the snapshot with whatever sessions were successfully scheduled
+        await saveScheduledSessionIds(user.id);
+
         alert(`Scheduling partially complete.\n\nScheduled: ${results.totalScheduled} students\nFailed: ${results.totalFailed} students\n\nThe system couldn't place all sessions due to conflicts. You may need to:\n- Adjust the number of sessions per student\n- Modify bell schedules or special activities\n\nErrors:\n${results.errors.slice(0, 5).join('\n')}`);
         // Call onComplete callback if provided
         if (onComplete) {
           onComplete();
         }
       } else {
+        // Finalize the snapshot with the newly scheduled session IDs
+        await saveScheduledSessionIds(user.id);
+
         alert(`Successfully scheduled ${results.totalScheduled} students!`);
         // Call onComplete callback if provided
         if (onComplete) {
@@ -184,10 +198,10 @@ Continue?`;
     <>
       <Button
         onClick={handleScheduleSessions}
-        disabled={isProcessing || unscheduledCount === 0}
-        variant={unscheduledCount > 0 ? "primary" : "secondary"}
-        className={unscheduledCount === 0 ? "opacity-50 cursor-not-allowed" : ""}
-        title={unscheduledCount === 0 ? "No sessions to schedule" : `Schedule ${unscheduledCount} session${unscheduledCount !== 1 ? 's' : ''}`}
+        disabled={isProcessing || unscheduledPanelCount === 0}
+        variant={unscheduledPanelCount > 0 ? "primary" : "secondary"}
+        className={unscheduledPanelCount === 0 ? "opacity-50 cursor-not-allowed" : ""}
+        title={unscheduledPanelCount === 0 ? "No unscheduled sessions" : `Schedule ${unscheduledPanelCount} unscheduled session${unscheduledPanelCount !== 1 ? 's' : ''}`}
       >
         {isProcessing ? 'Scheduling...' : 'Schedule Sessions'}
       </Button>

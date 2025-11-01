@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
-import { saveScheduleSnapshot } from './undo-schedule';
+import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
 
 interface ScheduleNewSessionsProps {
   onComplete?: () => void;
@@ -87,6 +87,9 @@ Continue?`;
 
       // Schedule only these students
       const results = await scheduleBatchStudents(studentsNeedingScheduling);
+
+      // Finalize the snapshot with the newly scheduled session IDs
+      await saveScheduledSessionIds(user.id);
 
       alert(`Scheduling complete!\n\nScheduled: ${results.totalScheduled} students\nFailed: ${results.totalFailed} students${
         results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''
