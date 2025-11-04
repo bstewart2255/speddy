@@ -194,7 +194,7 @@ export class ManualPlacementService {
   ): Promise<PlacementResult> {
     try {
       const validation = await this.validateManualPlacement(studentId, providerId, timeSlot);
-      
+
       if (!validation.valid && !options.ignoreConflicts) {
         return {
           studentId,
@@ -203,22 +203,65 @@ export class ManualPlacementService {
         };
       }
 
-      const { data, error } = await this.supabase
+      // Try to find an existing unscheduled session for this student and provider
+      const { data: unscheduledSessions } = await this.supabase
         .from('schedule_sessions')
-        .insert({
-          student_id: studentId,
-          provider_id: providerId,
-          day_of_week: timeSlot.day,
-          start_time: timeSlot.startTime,
-          end_time: timeSlot.endTime,
-          service_type: 'provider',
-          delivered_by: 'provider',
-          manually_placed: true,
-          group_id: null,
-          group_name: null
-        })
-        .select()
-        .single();
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('provider_id', providerId)
+        .is('day_of_week', null)
+        .is('start_time', null)
+        .is('end_time', null)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      let data;
+      let error;
+
+      if (unscheduledSessions && unscheduledSessions.length > 0) {
+        // UPDATE existing unscheduled session
+        const sessionId = unscheduledSessions[0].id;
+        const updateResult = await this.supabase
+          .from('schedule_sessions')
+          .update({
+            day_of_week: timeSlot.day,
+            start_time: timeSlot.startTime,
+            end_time: timeSlot.endTime,
+            provider_id: providerId,
+            service_type: 'provider',
+            delivered_by: 'provider',
+            manually_placed: true,
+            status: 'active',
+            conflict_reason: null
+          })
+          .eq('id', sessionId)
+          .select()
+          .single();
+
+        data = updateResult.data;
+        error = updateResult.error;
+      } else {
+        // No unscheduled session available - INSERT new one (rare edge case)
+        const insertResult = await this.supabase
+          .from('schedule_sessions')
+          .insert({
+            student_id: studentId,
+            provider_id: providerId,
+            day_of_week: timeSlot.day,
+            start_time: timeSlot.startTime,
+            end_time: timeSlot.endTime,
+            service_type: 'provider',
+            delivered_by: 'provider',
+            manually_placed: true,
+            group_id: null,
+            group_name: null
+          })
+          .select()
+          .single();
+
+        data = insertResult.data;
+        error = insertResult.error;
+      }
 
       if (error) {
         return {

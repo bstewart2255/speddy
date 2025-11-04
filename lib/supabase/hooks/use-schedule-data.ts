@@ -103,13 +103,22 @@ export function useScheduleData() {
         schoolHoursData,
         unscheduledCountData
       ] = await Promise.all([
-        // Students query
-        supabase
-          .from('students')
-          .select('*')
-          .eq('provider_id', user.id)
-          .eq('school_site', currentSchool.school_site)
-          .eq('school_district', currentSchool.school_district),
+        // Students query - Using school_id if available (normalized), else legacy fields
+        (() => {
+          let query = supabase
+            .from('students')
+            .select('*')
+            .eq('provider_id', user.id);
+          if (currentSchool.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          } else {
+            // Legacy schools without school_id
+            query = query
+              .eq('school_site', currentSchool.school_site)
+              .eq('school_district', currentSchool.school_district);
+          }
+          return query;
+        })(),
         
         // Bell schedules query - Using school_id
         (() => {
@@ -137,9 +146,9 @@ export function useScheduleData() {
         
         // School hours
         getSchoolHours(currentSchool),
-        
+
         // Unscheduled count
-        getUnscheduledSessionsCount(currentSchool.school_site)
+        getUnscheduledSessionsCount(currentSchool)
       ]);
 
       // Fetch sessions based on students
@@ -605,9 +614,9 @@ export function useScheduleData() {
 
   const refreshUnscheduledCount = useCallback(async () => {
     if (!currentSchool) return;
-    
+
     try {
-      const count = await getUnscheduledSessionsCount(currentSchool.school_site);
+      const count = await getUnscheduledSessionsCount(currentSchool);
       setData(prev => ({ ...prev, unscheduledCount: count }));
     } catch (error) {
       console.error('[useScheduleData] Error refreshing unscheduled count:', error);

@@ -22,14 +22,14 @@ export class SessionDistributor {
   constructor(config?: Partial<DistributionConfig>) {
     this.config = {
       strategy: config?.strategy || 'two-pass',
-      maxSessionsPerSlot: config?.maxSessionsPerSlot || 6,
+      maxSessionsPerSlot: config?.maxSessionsPerSlot || 8,
       maxSessionsPerDay: config?.maxSessionsPerDay || 2,
       preferMorning: config?.preferMorning || false,
       preferAfternoon: config?.preferAfternoon || false,
       gradeGroupingEnabled: config?.gradeGroupingEnabled !== false,
       twoPassEnabled: config?.twoPassEnabled !== false,
       firstPassLimit: config?.firstPassLimit || 3,
-      secondPassLimit: config?.secondPassLimit || 6
+      secondPassLimit: config?.secondPassLimit || 8
     };
   }
 

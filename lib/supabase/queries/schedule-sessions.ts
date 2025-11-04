@@ -8,8 +8,20 @@ import type { Database } from '../../../src/types/database';
  *
  * Combines the required sessions_per_week for each student with the number of
  * sessions already scheduled to return the remaining count.
+ *
+ * @param school - School information for filtering. district_id is included for
+ *                 type compatibility with school objects but is not used in filtering.
+ *                 School identification uses either school_id (normalized) or the
+ *                 combination of school_site + school_district (legacy).
  */
-export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
+export async function getUnscheduledSessionsCount(
+  school: {
+    school_id?: string | null;
+    district_id?: string | null; // Included for type compatibility, not used in filtering
+    school_site?: string | null;
+    school_district?: string | null;
+  } | null
+) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -32,73 +44,76 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
         .select('id, sessions_per_week')
         .eq('provider_id', user.id);
 
-      // Filter by school if provided
-      if (schoolSite) {
-        studentsQuery = studentsQuery.eq('school_site', schoolSite);
+      // Filter by school using normalized fields (school_id) if available,
+      // otherwise fall back to legacy fields (school_site + school_district)
+      if (school) {
+        if (school.school_id) {
+          studentsQuery = studentsQuery.eq('school_id', school.school_id);
+        } else if (school.school_site && school.school_district) {
+          // Legacy schools without school_id
+          studentsQuery = studentsQuery
+            .eq('school_site', school.school_site)
+            .eq('school_district', school.school_district);
+        } else if (school.school_site || school.school_district) {
+          // Incomplete school data - don't filter to prevent incorrect results
+          console.warn('[getUnscheduledSessionsCount] Incomplete school data provided:', {
+            school_id: school.school_id,
+            school_site: school.school_site,
+            school_district: school.school_district
+          });
+          throw new Error('Incomplete school data: both school_site and school_district are required when school_id is not available');
+        }
       }
 
       const { data, error } = await studentsQuery;
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_students_for_unscheduled_count', 
+    {
+      operation: 'fetch_students_for_unscheduled_count',
       userId: user.id,
-      schoolSite 
+      schoolId: school?.school_id,
+      schoolSite: school?.school_site
     }
   );
   studentsPerf.end({ success: !studentsResult.error });
 
   if (studentsResult.error) throw studentsResult.error;
-  
+
   const students = studentsResult.data || [];
   if (!Array.isArray(students) || students.length === 0) return 0;
 
   // Get student IDs from the already-filtered students list
   const studentIds = students.map(s => s.id);
 
-  // Get current scheduled sessions count per student
+  // Get current UNSCHEDULED sessions (day_of_week, start_time, end_time are null)
   // IMPORTANT: Only fetch sessions for students at THIS school to avoid cross-school contamination
-  const sessionsPerf = measurePerformanceWithAlerts('fetch_sessions_for_unscheduled_count', 'database');
+  const sessionsPerf = measurePerformanceWithAlerts('fetch_unscheduled_sessions_count', 'database');
   const sessionsResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
-        .select('student_id')
-        .in('student_id', studentIds);
+        .select('id')
+        .in('student_id', studentIds)
+        .is('day_of_week', null)
+        .is('start_time', null)
+        .is('end_time', null);
       if (error) throw error;
       return data;
     },
     {
-      operation: 'fetch_sessions_for_unscheduled_count',
+      operation: 'fetch_unscheduled_sessions_count',
       userId: user.id,
-      schoolSite
+      schoolId: school?.school_id,
+      schoolSite: school?.school_site
     }
   );
   sessionsPerf.end({ success: !sessionsResult.error });
 
   if (sessionsResult.error) throw sessionsResult.error;
-  
-  const sessions = sessionsResult.data || [];
 
-  // Count sessions per student
-  const sessionCounts = new Map<string, number>();
-  if (Array.isArray(sessions)) {
-    sessions.forEach(session => {
-      const count = sessionCounts.get(session.student_id) || 0;
-      sessionCounts.set(session.student_id, count + 1);
-    });
-  }
+  const unscheduledSessions = sessionsResult.data || [];
 
-  // Calculate total unscheduled sessions
-  let unscheduledCount = 0;
-  if (Array.isArray(students)) {
-    students.forEach(student => {
-      const currentSessions = sessionCounts.get(student.id) || 0;
-      const needed = student.sessions_per_week - currentSessions;
-      if (needed > 0) unscheduledCount += needed;
-    });
-  }
-
-  return unscheduledCount;
+  // Return the count of actual unscheduled sessions
+  return Array.isArray(unscheduledSessions) ? unscheduledSessions.length : 0;
 }

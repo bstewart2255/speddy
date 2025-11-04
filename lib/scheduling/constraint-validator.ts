@@ -82,7 +82,7 @@ export class ConstraintValidator {
     const concurrentResult = this.validateConcurrentSessionLimits(
       slot,
       context.existingSessions,
-      6 // Default max concurrent sessions
+      8 // Default max concurrent sessions
     );
     checkedConstraints.push('concurrent_sessions');
     if (!concurrentResult.isValid) {

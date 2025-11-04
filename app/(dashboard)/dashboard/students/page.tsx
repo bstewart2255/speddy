@@ -95,7 +95,7 @@ export default function StudentsPage() {
         setUnscheduledCount(0);
         return;
       }
-      const count = await getUnscheduledSessionsCount(currentSchool.school_site);
+      const count = await getUnscheduledSessionsCount(currentSchool);
       setUnscheduledCount(count);
     } catch (error) {
       console.error('Error checking unscheduled sessions:', error);

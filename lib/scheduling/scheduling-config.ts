@@ -13,7 +13,7 @@ export interface SchedulingConfig {
 
   // Visual settings
   pixelsPerHour: number;  // Default: 120 (2px per minute)
-  maxConcurrentSessions: number;  // Max sessions at same time (default: 6)
+  maxConcurrentSessions: number;  // Max sessions at same time (default: 8)
   
   // Scheduling constraints (Phase 3 additions)
   maxConsecutiveMinutes: number;  // Max consecutive session time without break
@@ -48,7 +48,7 @@ export const DEFAULT_SCHEDULING_CONFIG: SchedulingConfig = {
   maxSessionsPerDay: 2,
   minTimeBetweenSessions: 30,
   pixelsPerHour: 120,
-  maxConcurrentSessions: 6,
+  maxConcurrentSessions: 8,
   
   // Scheduling constraints
   maxConsecutiveMinutes: 60,
@@ -63,7 +63,7 @@ export const DEFAULT_SCHEDULING_CONFIG: SchedulingConfig = {
   // Two-pass distribution
   twoPassEnabled: true,
   firstPassLimit: 3,
-  secondPassLimit: 6,
+  secondPassLimit: 8,
   
   // Grade grouping
   gradeGroupingEnabled: true,
