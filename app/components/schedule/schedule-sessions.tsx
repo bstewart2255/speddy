@@ -120,21 +120,25 @@ Continue?`;
       // Get student IDs for this school to filter sessions
       const studentIds = studentsForCurrentSchool.map(s => s.id);
 
-      // Get existing sessions to determine which students need scheduling
-      // IMPORTANT: Only fetch sessions for students at THIS school to avoid cross-school contamination
+      // Get existing SCHEDULED sessions to determine which students need scheduling
+      // IMPORTANT: Only count sessions that are already scheduled (day_of_week IS NOT NULL)
+      // Unscheduled sessions (day_of_week IS NULL) don't count as "scheduled"
       const { data: existingSessions } = await supabase
         .from('schedule_sessions')
         .select('*')
-        .in('student_id', studentIds);
+        .in('student_id', studentIds)
+        .not('day_of_week', 'is', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null);
 
-      // Count sessions per student
+      // Count SCHEDULED sessions per student
       const sessionCounts = existingSessions?.reduce((acc, session) => {
         acc[session.student_id] = (acc[session.student_id] || 0) + 1;
         return acc;
       }, {} as Record<string, number>) || {};
 
       // Filter students who need scheduling
-        const studentsNeedingScheduling = studentsForCurrentSchool.filter(student => {
+      const studentsNeedingScheduling = studentsForCurrentSchool.filter(student => {
         const currentSessions = sessionCounts[student.id] || 0;
         return currentSessions < student.sessions_per_week;
       });

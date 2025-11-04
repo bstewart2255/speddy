@@ -53,10 +53,10 @@ export interface DistributionContext {
 
 export const DEFAULT_DISTRIBUTION_CONFIG: DistributionConfig = {
   strategy: 'two-pass',
-  maxSessionsPerSlot: 6,
+  maxSessionsPerSlot: 8,
   maxSessionsPerDay: 2,
   gradeGroupingEnabled: true,
   twoPassEnabled: true,
   firstPassLimit: 3,
-  secondPassLimit: 6
+  secondPassLimit: 8
 };

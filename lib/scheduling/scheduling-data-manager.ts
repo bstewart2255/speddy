@@ -641,7 +641,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
   
   /**
-   * Check if a time slot is available (respecting 6 concurrent session limit)
+   * Check if a time slot is available (respecting 8 concurrent session limit)
    */
   public isSlotAvailable(
     day: number,
@@ -650,7 +650,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     schoolSite: string
   ): boolean {
     const capacity = this.getSlotCapacity(day, startTime);
-    return capacity < 6; // Respect the 6 concurrent session limit
+    return capacity < 8; // Respect the 8 concurrent session limit
   }
   
   /**

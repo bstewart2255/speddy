@@ -251,10 +251,10 @@ export class OptimizedScheduler {
       teacherMap.get(activity.day_of_week)!.push(activity);
     }
     
-    // Build provider availability map
+    // Build provider availability map for all weekdays
     const providerKey = `${this.providerId}-${schoolSite}`;
     providerAvailability.set(providerKey, new Map());
-    for (const day of workDays) {
+    for (const day of [1, 2, 3, 4, 5]) {
       const slots: AvailabilitySlot[] = [{
         dayOfWeek: day,
         startTime: '08:00',
@@ -312,8 +312,8 @@ export class OptimizedScheduler {
     let totalSlots = 0;
     let validSlots = 0;
 
-    // Only check days when provider works at this school
-    for (const day of context.workDays) {
+    // Check all weekdays (Monday=1 through Friday=5)
+    for (const day of [1, 2, 3, 4, 5]) {
       for (const startTime of timeSlots) {
         totalSlots++;
         const slot: TimeSlot = {
@@ -321,7 +321,7 @@ export class OptimizedScheduler {
           startTime,
           endTime: "", // Will be set based on session duration
           available: true,
-          capacity: 6, // Updated to 6 as per new rules
+          capacity: 8, // Updated to 8 as per new rules
           conflicts: [],
         };
 
@@ -477,7 +477,7 @@ export class OptimizedScheduler {
 
     const { data: unscheduledSessions, error: fetchError } = await this.supabase
       .from('schedule_sessions')
-      .select('id, student_id')
+      .select('id, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, service_type')
       .in('student_id', studentIds)
       .is('day_of_week', null)
       .is('start_time', null)
@@ -492,13 +492,20 @@ export class OptimizedScheduler {
       return results;
     }
 
-    // Create a map of student_id -> array of unscheduled session IDs
-    const unscheduledSessionsByStudent = new Map<string, string[]>();
+    // Create a map of student_id -> array of unscheduled session objects
+    const unscheduledSessionsByStudent = new Map<string, Array<{
+      id: string;
+      student_id: string;
+      delivered_by: string | null;
+      assigned_to_sea_id: string | null;
+      assigned_to_specialist_id: string | null;
+      service_type: string | null;
+    }>>();
     (unscheduledSessions || []).forEach(session => {
       if (!unscheduledSessionsByStudent.has(session.student_id)) {
         unscheduledSessionsByStudent.set(session.student_id, []);
       }
-      unscheduledSessionsByStudent.get(session.student_id)!.push(session.id);
+      unscheduledSessionsByStudent.get(session.student_id)!.push(session);
     });
 
     this.log(`Found ${unscheduledSessions?.length || 0} unscheduled sessions to update`);
@@ -519,33 +526,41 @@ export class OptimizedScheduler {
 
       const result = this.scheduleStudent(student);
 
-      if (result.success) {
-        results.totalScheduled++;
+      // Get unscheduled session objects for this student
+      const unscheduledSessions = unscheduledSessionsByStudent.get(student.id) || [];
 
-        // Get unscheduled session IDs for this student
-        const unscheduledIds = unscheduledSessionsByStudent.get(student.id) || [];
-
+      // Process ANY scheduled sessions found (even partial success)
+      if (result.scheduledSessions.length > 0) {
         // Match scheduled sessions with existing unscheduled sessions
         result.scheduledSessions.forEach((scheduledSession, index) => {
-          if (index < unscheduledIds.length) {
-            // Update existing unscheduled session with all scheduling and assignment fields
-            const sessionId = unscheduledIds[index];
+          if (index < unscheduledSessions.length) {
+            // Update existing unscheduled session
+            const existingSession = unscheduledSessions[index];
+
+            // Preserve existing assignments AS A SET if they exist, otherwise use new ones
+            // This ensures the assignment fields remain consistent with the database constraint
+            const hasExistingAssignment = existingSession.delivered_by !== null;
+            const delivered_by = hasExistingAssignment ? existingSession.delivered_by : scheduledSession.delivered_by;
+            const assigned_to_sea_id = hasExistingAssignment ? existingSession.assigned_to_sea_id : scheduledSession.assigned_to_sea_id;
+            const assigned_to_specialist_id = hasExistingAssignment ? existingSession.assigned_to_specialist_id : scheduledSession.assigned_to_specialist_id;
+            const service_type = hasExistingAssignment ? existingSession.service_type : scheduledSession.service_type;
+
             sessionsToUpdate.push({
-              id: sessionId,
+              id: existingSession.id,
               updates: {
                 day_of_week: scheduledSession.day_of_week,
                 start_time: scheduledSession.start_time,
                 end_time: scheduledSession.end_time,
                 provider_id: scheduledSession.provider_id,
-                service_type: scheduledSession.service_type,
-                assigned_to_sea_id: scheduledSession.assigned_to_sea_id,
-                assigned_to_specialist_id: scheduledSession.assigned_to_specialist_id,
-                delivered_by: scheduledSession.delivered_by,
+                service_type: service_type,
+                assigned_to_sea_id: assigned_to_sea_id,
+                assigned_to_specialist_id: assigned_to_specialist_id,
+                delivered_by: delivered_by,
                 status: 'active',
                 conflict_reason: null
               }
             });
-            this.log(`  Will UPDATE existing session ${sessionId} for ${student.initials}`);
+            this.log(`  Will UPDATE existing session ${existingSession.id} for ${student.initials}${hasExistingAssignment ? ` (preserving ${existingSession.delivered_by} assignment)` : ''}`);
           } else {
             // No unscheduled session available, need to insert new one
             sessionsToInsert.push(scheduledSession);
@@ -555,6 +570,11 @@ export class OptimizedScheduler {
 
         // Update context with newly scheduled sessions
         this.updateContextWithSessions(result.scheduledSessions);
+      }
+
+      // Track success/failure based on whether ALL sessions were scheduled
+      if (result.success) {
+        results.totalScheduled++;
       } else {
         results.totalFailed++;
         results.errors.push(...result.errors);
@@ -566,6 +586,9 @@ export class OptimizedScheduler {
     if (sessionsToUpdate.length > 0) {
       this.log(`Updating ${sessionsToUpdate.length} existing unscheduled sessions...`);
 
+      let updateSuccessCount = 0;
+      let updateFailCount = 0;
+
       for (const sessionUpdate of sessionsToUpdate) {
         const { error: updateError } = await this.supabase
           .from('schedule_sessions')
@@ -573,13 +596,16 @@ export class OptimizedScheduler {
           .eq('id', sessionUpdate.id);
 
         if (updateError) {
+          updateFailCount++;
           this.log(`Error updating session ${sessionUpdate.id}: ${updateError.message}`);
           results.errors.push(`Failed to update session: ${updateError.message}`);
+        } else {
+          updateSuccessCount++;
         }
       }
 
       this.performanceMetrics.totalQueries += sessionsToUpdate.length;
-      this.log(`Successfully updated ${sessionsToUpdate.length} sessions`);
+      this.log(`Successfully updated ${updateSuccessCount} sessions (${updateFailCount} failed)`);
     }
 
     // Perform batch INSERT only for sessions without existing unscheduled counterparts
@@ -732,13 +758,10 @@ export class OptimizedScheduler {
 
     const foundSlots: TimeSlot[] = [];
 
-    // Validate that we only check work days for this school
-    const validWorkDays = this.context!.workDays.filter(day => day >= 1 && day <= 5);
+    // Use all weekdays (Monday=1 through Friday=5)
+    const validWorkDays = [1, 2, 3, 4, 5];
 
-    if (validWorkDays.length === 0) {
-      this.log(`❌ No valid work days found for ${this.context!.schoolSite}`);
-      return [];
-    }
+    // No need to check if validWorkDays is empty since we're using all weekdays
 
     // Sort days to distribute sessions evenly when possible
     const sortedDays = [...validWorkDays].sort((a, b) => {
@@ -756,15 +779,15 @@ export class OptimizedScheduler {
     this.log("\n=== FIRST PASS: Distribute with max 3 sessions per slot ===");
     foundSlots.push(...this.findSlotsWithCapacityLimit(student, duration, slotsNeeded, sortedDays, 3));
 
-    // Second pass: If we need more slots, allow up to 6 sessions per slot
+    // Second pass: If we need more slots, allow up to 8 sessions per slot
     if (foundSlots.length < slotsNeeded) {
-      this.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 6 per slot ===`);
+      this.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 8 per slot ===`);
       const additionalSlots = this.findSlotsWithCapacityLimit(
-        student, 
-        duration, 
-        slotsNeeded - foundSlots.length, 
-        sortedDays, 
-        6,
+        student,
+        duration,
+        slotsNeeded - foundSlots.length,
+        sortedDays,
+        8,
         foundSlots // Pass existing slots to avoid duplicates
       );
       foundSlots.push(...additionalSlots);

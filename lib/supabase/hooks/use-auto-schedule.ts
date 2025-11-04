@@ -79,7 +79,7 @@ export function useAutoSchedule(debug: boolean = false) {
       canManuallyPlace: false,
       availableSlots: undefined
     };
-    
+
     let lastSchool: string | null = null;
 
     try {
