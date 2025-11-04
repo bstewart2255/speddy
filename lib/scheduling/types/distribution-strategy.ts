@@ -1,10 +1,10 @@
 import type { TimeSlot } from '../types/scheduling-types';
 import type { Student } from './scheduling-data';
 
-export type DistributionStrategy = 
+export type DistributionStrategy =
   | 'even'           // Distribute sessions evenly across available days
   | 'grade-grouped'  // Group students by grade level
-  | 'two-pass'       // Two-pass distribution (3 max first, then 6)
+  | 'two-pass'       // Two-pass distribution (3 max first, then 8)
   | 'compact'        // Group sessions together
   | 'spread';        // Maximize gaps between sessions
 

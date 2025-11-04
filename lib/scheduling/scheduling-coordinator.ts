@@ -54,7 +54,7 @@ export class SchedulingCoordinator {
   private schoolSite: string = '';
   
   private constraints: SchedulingConstraints = {
-    maxConcurrentSessions: 6,
+    maxConcurrentSessions: 8,
     maxConsecutiveMinutes: 60,
     minBreakMinutes: 30,
     schoolEndTime: '15:00',

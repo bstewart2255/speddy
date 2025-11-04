@@ -13,7 +13,7 @@ export interface SchedulingConfig {
 
   // Visual settings
   pixelsPerHour: number;  // Default: 120 (2px per minute)
-  maxConcurrentSessions: number;  // Max sessions at same time (default: 6)
+  maxConcurrentSessions: number;  // Max sessions at same time (default: 8)
   
   // Scheduling constraints (Phase 3 additions)
   maxConsecutiveMinutes: number;  // Max consecutive session time without break

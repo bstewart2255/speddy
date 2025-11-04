@@ -90,7 +90,7 @@ export interface SchedulingDataManagerInterface {
   getExistingSessions(day?: number, timeRange?: TimeRange): ScheduleSession[];
   getSessionsByStudent(studentId: string): ScheduleSession[];
   
-  // Slot availability (respect existing 6 concurrent session limit)
+  // Slot availability (respect existing 8 concurrent session limit)
   isSlotAvailable(day: number, startTime: string, endTime: string, schoolSite: string): boolean;
   getSlotCapacity(day: number, startTime: string): number;
   

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types/database';
+import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
@@ -418,7 +419,7 @@ export class SessionUpdateService {
   }
 
   /**
-   * Check concurrent session limit (max 6)
+   * Check concurrent session limit (max 8)
    */
   private async checkConcurrentSessionLimit(
     providerId: string,
@@ -433,7 +434,9 @@ export class SessionUpdateService {
       .eq('provider_id', providerId)
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
-      .is('session_date', null); // Only check template sessions
+      .is('session_date', null) // Only check template sessions
+      .not('start_time', 'is', null) // Only check scheduled sessions
+      .not('end_time', 'is', null);
 
     if (!sessions) {
       return null;
@@ -457,10 +460,11 @@ export class SessionUpdateService {
       maxConcurrent = Math.max(maxConcurrent, concurrent);
     }
 
-    if (maxConcurrent >= 6) {
+    const limit = DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions;
+    if (maxConcurrent >= limit) {
       return {
         type: 'rule_violation',
-        description: 'Maximum concurrent session limit (6) would be exceeded',
+        description: `Maximum concurrent session limit (${limit}) would be exceeded`,
         conflictingItem: { maxConcurrent: maxConcurrent + 1 }
       };
     }
@@ -486,7 +490,9 @@ export class SessionUpdateService {
       .eq('student_id', studentId)
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
-      .is('session_date', null)
+      .is('session_date', null) // Only check template sessions
+      .not('start_time', 'is', null) // Only check scheduled sessions
+      .not('end_time', 'is', null)
       .order('start_time');
 
     if (!sessions || sessions.length === 0) {
@@ -536,7 +542,9 @@ export class SessionUpdateService {
       .eq('student_id', studentId)
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
-      .is('session_date', null)
+      .is('session_date', null) // Only check template sessions
+      .not('start_time', 'is', null) // Only check scheduled sessions
+      .not('end_time', 'is', null)
       .order('start_time');
 
     if (!sessions || sessions.length === 0) {
@@ -587,7 +595,9 @@ export class SessionUpdateService {
       .eq('student_id', studentId)
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
-      .is('session_date', null);
+      .is('session_date', null) // Only check template sessions
+      .not('start_time', 'is', null) // Only check scheduled sessions
+      .not('end_time', 'is', null);
 
     if (sessions) {
       for (const session of sessions) {

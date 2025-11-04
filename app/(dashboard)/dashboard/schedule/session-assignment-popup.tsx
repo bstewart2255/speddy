@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
 import type { Database, ScheduleSession, Student } from '@/src/types/database';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
 type ScheduleSessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];
 
@@ -186,6 +187,33 @@ export function SessionAssignmentPopup({
           )}
         </p>
       </div>
+
+      {/* Conflict Warning Section */}
+      {(session.status === 'conflict' || session.status === 'needs_attention') && (
+        <div className={`mb-3 flex items-start gap-3 p-3 rounded-lg border ${
+          session.status === 'conflict'
+            ? 'bg-red-50 border-red-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <ExclamationTriangleIcon className={`h-5 w-5 flex-shrink-0 ${
+            session.status === 'conflict' ? 'text-red-600' : 'text-yellow-600'
+          }`} />
+          <div>
+            <p className={`text-sm font-medium ${
+              session.status === 'conflict' ? 'text-red-800' : 'text-yellow-800'
+            }`}>
+              {session.status === 'conflict' ? 'Scheduling Conflict' : 'Needs Attention'}
+            </p>
+            {session.conflict_reason && (
+              <p className={`text-sm mt-1 ${
+                session.status === 'conflict' ? 'text-red-700' : 'text-yellow-700'
+              }`}>
+                {session.conflict_reason}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mb-3">
         <p className="text-xs font-medium text-gray-500 mb-2">ASSIGN TO</p>

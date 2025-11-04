@@ -9,7 +9,14 @@ import type { Database } from '../../../src/types/database';
  * Combines the required sessions_per_week for each student with the number of
  * sessions already scheduled to return the remaining count.
  */
-export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
+export async function getUnscheduledSessionsCount(
+  school: {
+    school_id?: string | null;
+    district_id?: string | null;
+    school_site?: string | null;
+    school_district?: string | null;
+  } | null
+) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
@@ -32,25 +39,34 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
         .select('id, sessions_per_week')
         .eq('provider_id', user.id);
 
-      // Filter by school if provided
-      if (schoolSite) {
-        studentsQuery = studentsQuery.eq('school_site', schoolSite);
+      // Filter by school using normalized fields (school_id) if available,
+      // otherwise fall back to legacy fields (school_site + school_district)
+      if (school) {
+        if (school.school_id) {
+          studentsQuery = studentsQuery.eq('school_id', school.school_id);
+        } else if (school.school_site && school.school_district) {
+          // Legacy schools without school_id
+          studentsQuery = studentsQuery
+            .eq('school_site', school.school_site)
+            .eq('school_district', school.school_district);
+        }
       }
 
       const { data, error } = await studentsQuery;
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_students_for_unscheduled_count', 
+    {
+      operation: 'fetch_students_for_unscheduled_count',
       userId: user.id,
-      schoolSite 
+      schoolId: school?.school_id,
+      schoolSite: school?.school_site
     }
   );
   studentsPerf.end({ success: !studentsResult.error });
 
   if (studentsResult.error) throw studentsResult.error;
-  
+
   const students = studentsResult.data || [];
   if (!Array.isArray(students) || students.length === 0) return 0;
 
@@ -75,7 +91,8 @@ export async function getUnscheduledSessionsCount(schoolSite?: string | null) {
     {
       operation: 'fetch_unscheduled_sessions_count',
       userId: user.id,
-      schoolSite
+      schoolId: school?.school_id,
+      schoolSite: school?.school_site
     }
   );
   sessionsPerf.end({ success: !sessionsResult.error });
