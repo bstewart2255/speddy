@@ -8,11 +8,16 @@ import type { Database } from '../../../src/types/database';
  *
  * Combines the required sessions_per_week for each student with the number of
  * sessions already scheduled to return the remaining count.
+ *
+ * @param school - School information for filtering. district_id is included for
+ *                 type compatibility with school objects but is not used in filtering.
+ *                 School identification uses either school_id (normalized) or the
+ *                 combination of school_site + school_district (legacy).
  */
 export async function getUnscheduledSessionsCount(
   school: {
     school_id?: string | null;
-    district_id?: string | null;
+    district_id?: string | null; // Included for type compatibility, not used in filtering
     school_site?: string | null;
     school_district?: string | null;
   } | null
@@ -49,6 +54,14 @@ export async function getUnscheduledSessionsCount(
           studentsQuery = studentsQuery
             .eq('school_site', school.school_site)
             .eq('school_district', school.school_district);
+        } else if (school.school_site || school.school_district) {
+          // Incomplete school data - don't filter to prevent incorrect results
+          console.warn('[getUnscheduledSessionsCount] Incomplete school data provided:', {
+            school_id: school.school_id,
+            school_site: school.school_site,
+            school_district: school.school_district
+          });
+          throw new Error('Incomplete school data: both school_site and school_district are required when school_id is not available');
         }
       }
 

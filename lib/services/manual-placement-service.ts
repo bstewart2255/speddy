@@ -203,11 +203,12 @@ export class ManualPlacementService {
         };
       }
 
-      // Try to find an existing unscheduled session for this student
+      // Try to find an existing unscheduled session for this student and provider
       const { data: unscheduledSessions } = await this.supabase
         .from('schedule_sessions')
         .select('id')
         .eq('student_id', studentId)
+        .eq('provider_id', providerId)
         .is('day_of_week', null)
         .is('start_time', null)
         .is('end_time', null)

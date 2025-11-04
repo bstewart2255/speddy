@@ -539,7 +539,11 @@ export class OptimizedScheduler {
 
             // Preserve existing assignments AS A SET if they exist, otherwise use new ones
             // This ensures the assignment fields remain consistent with the database constraint
-            const hasExistingAssignment = existingSession.delivered_by !== null;
+            // Check all assignment fields, not just delivered_by
+            const hasExistingAssignment =
+              existingSession.delivered_by !== null ||
+              existingSession.assigned_to_sea_id !== null ||
+              existingSession.assigned_to_specialist_id !== null;
             const delivered_by = hasExistingAssignment ? existingSession.delivered_by : scheduledSession.delivered_by;
             const assigned_to_sea_id = hasExistingAssignment ? existingSession.assigned_to_sea_id : scheduledSession.assigned_to_sea_id;
             const assigned_to_specialist_id = hasExistingAssignment ? existingSession.assigned_to_specialist_id : scheduledSession.assigned_to_specialist_id;
@@ -758,10 +762,14 @@ export class OptimizedScheduler {
 
     const foundSlots: TimeSlot[] = [];
 
-    // Use all weekdays (Monday=1 through Friday=5)
-    const validWorkDays = [1, 2, 3, 4, 5];
+    // Use provider's actual work days at this school to prevent cross-school conflicts
+    let validWorkDays = this.context!.workDays;
 
-    // No need to check if validWorkDays is empty since we're using all weekdays
+    // If no work days configured, fall back to all weekdays as a safety measure
+    if (!validWorkDays || validWorkDays.length === 0) {
+      this.log('WARNING: No work days configured for provider at this school, using all weekdays as fallback');
+      validWorkDays = [1, 2, 3, 4, 5];
+    }
 
     // Sort days to distribute sessions evenly when possible
     const sortedDays = [...validWorkDays].sort((a, b) => {
