@@ -39,7 +39,6 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [newDocType, setNewDocType] = useState<'file' | 'link'>('link');
   const [newDocTitle, setNewDocTitle] = useState('');
-  const [newDocContent, setNewDocContent] = useState('');
   const [newDocUrl, setNewDocUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -359,7 +358,6 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
               onClick={() => {
                 setAdding(false);
                 setNewDocTitle('');
-                setNewDocContent('');
                 setNewDocUrl('');
                 setSelectedFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';

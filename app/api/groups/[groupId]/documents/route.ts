@@ -117,6 +117,26 @@ export async function POST(
     }
     userId = user.id;
 
+    // Verify user has access to this group BEFORE processing any file uploads
+    const { data: groupSessions, error: accessError } = await supabase
+      .from('schedule_sessions')
+      .select('id')
+      .eq('group_id', groupId)
+      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
+      .limit(1);
+
+    if (accessError || !groupSessions || groupSessions.length === 0) {
+      log.warn('User does not have access to group', {
+        userId,
+        groupId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Access denied' },
+        { status: 403 }
+      );
+    }
+
     // Detect content type
     const contentType = request.headers.get('content-type') || '';
     const isFormData = contentType.includes('multipart/form-data');
@@ -158,7 +178,7 @@ export async function POST(
 
       // Upload to Supabase Storage
       const uploadPerf = measurePerformanceWithAlerts('upload_group_document_storage', 'storage');
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('group-documents')
         .upload(storagePath, buffer, {
           contentType: file.type,
@@ -260,26 +280,6 @@ export async function POST(
       title,
       document_type
     });
-
-    // Verify user has access to this group
-    const { data: groupSessions, error: accessError } = await supabase
-      .from('schedule_sessions')
-      .select('id')
-      .eq('group_id', groupId)
-      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-      .limit(1);
-
-    if (accessError || !groupSessions || groupSessions.length === 0) {
-      log.warn('User does not have access to group', {
-        userId,
-        groupId
-      });
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      );
-    }
 
     // Create the document
     const createPerf = measurePerformanceWithAlerts('create_group_document_db', 'database');

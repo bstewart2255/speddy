@@ -31,7 +31,10 @@ export const SUPPORTED_DOCUMENT_TYPES = {
 export const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 // Blocked file extensions for security
-const BLOCKED_EXTENSIONS = ['.exe', '.dll', '.sh', '.bat', '.cmd', '.com', '.scr', '.vbs', '.js', '.msi'];
+const BLOCKED_EXTENSIONS = [
+  '.exe', '.dll', '.sh', '.bat', '.cmd', '.com', '.scr', '.vbs', '.js', '.msi',
+  '.jar', '.app', '.deb', '.rpm', '.apk', '.ps1', '.vb', '.wsf'
+];
 
 /**
  * Validate a file for upload
