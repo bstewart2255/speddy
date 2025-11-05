@@ -171,11 +171,13 @@ export async function POST(
         log.error('Error uploading file to storage', uploadError, {
           userId,
           groupId,
-          filename: file.name
+          filename: file.name,
+          errorMessage: uploadError.message,
+          errorDetails: uploadError
         });
         perf.end({ success: false });
         return NextResponse.json(
-          { error: 'Failed to upload file' },
+          { error: `Failed to upload file: ${uploadError.message}` },
           { status: 500 }
         );
       }
