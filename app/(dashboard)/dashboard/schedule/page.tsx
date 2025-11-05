@@ -494,7 +494,7 @@ export default function SchedulePage() {
             {/* Legend for assignment indicators */}
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-orange-400"></div>
+                <div className="w-4 h-4 bg-gray-400 rounded border-2 border-green-600"></div>
                 <span>SEA Assigned</span>
               </div>
               <div className="flex items-center gap-1">
