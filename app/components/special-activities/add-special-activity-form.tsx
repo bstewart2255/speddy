@@ -29,6 +29,12 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
     e.preventDefault();
     setError('');
 
+    // Validate school is selected
+    if (!currentSchool?.school_id) {
+      setError('No school selected. Please select a school before adding a special activity.');
+      return;
+    }
+
     if (!teacherName || !activityName || !startTime || !endTime) {
       setError('All fields are required');
       return;
@@ -54,7 +60,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
         end_time: endTime,
-        school_id: currentSchool?.school_id
+        school_id: currentSchool.school_id
       });
 
       if (insertError) throw insertError;
@@ -63,14 +69,13 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
       const resolver = new ConflictResolver(user.user.id);
       const insertedActivity = {
         teacher_name: teacherName,
-        activity_name: activityName,
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
         end_time: endTime,
-        school_id: currentSchool?.school_id
+        school_id: currentSchool.school_id
       };
 
-      const result = await resolver.resolveSpecialActivityConflicts(insertedActivity as any);
+      const result = await resolver.resolveSpecialActivityConflicts(insertedActivity);
 
       if (result.resolved > 0 || result.failed > 0) {
         alert(`Special activity added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);

@@ -7,6 +7,10 @@ type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];
 
+// Subset of fields needed for conflict resolution
+type BellScheduleConflictData = Pick<BellSchedule, 'grade_level' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'>;
+type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'>;
+
 export class ConflictResolver {
   private supabase;
   private providerId: string;
@@ -17,8 +21,14 @@ export class ConflictResolver {
   }
 
   // Check and resolve conflicts after bell schedule changes
-  async resolveBellScheduleConflicts(newBellSchedule: BellSchedule) {
+  async resolveBellScheduleConflicts(newBellSchedule: BellScheduleConflictData) {
     try {
+      // Validate school_id is present to prevent cross-school conflicts
+      if (!newBellSchedule.school_id) {
+        console.warn('resolveBellScheduleConflicts called without school_id - skipping conflict resolution');
+        return { resolved: 0, failed: 0 };
+      }
+
       // Find all sessions that conflict with the new bell schedule
       // Only check sessions for students from the same school
       const { data: allSessions } = await this.supabase
@@ -51,8 +61,14 @@ export class ConflictResolver {
   }
 
   // Check and resolve conflicts after special activity changes
-  async resolveSpecialActivityConflicts(newActivity: SpecialActivity) {
+  async resolveSpecialActivityConflicts(newActivity: SpecialActivityConflictData) {
     try {
+      // Validate school_id is present to prevent cross-school conflicts
+      if (!newActivity.school_id) {
+        console.warn('resolveSpecialActivityConflicts called without school_id - skipping conflict resolution');
+        return { resolved: 0, failed: 0 };
+      }
+
       // Find all sessions that conflict with the new special activity
       // Only check sessions for students from the same school
       const { data: allSessions } = await this.supabase
