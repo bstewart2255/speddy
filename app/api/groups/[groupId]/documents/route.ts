@@ -159,7 +159,7 @@ export async function POST(
       // Upload to Supabase Storage
       const uploadPerf = measurePerformanceWithAlerts('upload_group_document_storage', 'storage');
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('group-documents')
+        .from('GROUP-DOCUMENTS')
         .upload(storagePath, buffer, {
           contentType: file.type,
           cacheControl: '3600',
