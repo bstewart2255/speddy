@@ -284,3 +284,27 @@ function subtractOneGrade(grade: string): string {
 
   return lower === 0 ? 'K' : lower.toString();
 }
+
+/**
+ * Check if students have any IEP goals matching the subject
+ * Returns true if at least one goal keyword matches, false otherwise
+ */
+export function hasMatchingGoals(students: Student[], subject: 'ela' | 'math'): boolean {
+  const allGoals = students.flatMap(s => s.iepGoals || []);
+
+  if (allGoals.length === 0) {
+    return false;
+  }
+
+  const combinedText = allGoals.join(' ').toLowerCase();
+  const benchmarks = subject === 'ela' ? ELA_BENCHMARKS : MATH_BENCHMARKS;
+
+  // Check if any benchmark keyword is found in the goals
+  for (const keyword of Object.keys(benchmarks)) {
+    if (combinedText.includes(keyword)) {
+      return true;
+    }
+  }
+
+  return false;
+}

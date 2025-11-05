@@ -5,7 +5,7 @@ import { generateLessonPlan } from '@/lib/lessons/lesson-plan-generator';
 import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
-import { determineContentLevel } from '@/lib/lessons/ability-detector';
+import { determineContentLevel, hasMatchingGoals } from '@/lib/lessons/ability-detector';
 import { withAuth } from '@/lib/api/with-auth';
 
 export const runtime = 'nodejs';
@@ -146,6 +146,29 @@ export async function POST(request: NextRequest) {
         });
 
         console.log(`[V2 API] Fetched ${students.length} students with IEP data`);
+      }
+    }
+
+    // Validate that students have matching goals for the subject (when no grade is provided)
+    if (students && students.length > 0 && !body.grade) {
+      // Check if any student has IEP goals
+      const hasAnyGoals = students.some(s => s.iepGoals && s.iepGoals.length > 0);
+
+      if (hasAnyGoals) {
+        // Check if any goals match the subject type
+        const hasMatching = hasMatchingGoals(students, body.subjectType);
+
+        if (!hasMatching) {
+          const subjectName = body.subjectType === 'ela' ? 'ELA/Reading' : 'Math';
+          const studentWord = students.length === 1 ? 'student doesn\'t' : 'students don\'t';
+
+          return NextResponse.json(
+            {
+              error: `Cannot generate ${subjectName} lesson. The selected ${studentWord} have any ${subjectName} goals in their IEP. Please either:\n• Select a grade level to generate a standard lesson\n• Choose students with ${subjectName} goals\n• Generate a lesson for a different subject that matches their IEP goals`
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
