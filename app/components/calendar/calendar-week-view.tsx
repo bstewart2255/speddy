@@ -144,7 +144,7 @@ export function CalendarWeekView({
   // Note: selectedSession is already declared above for notes modal, reusing it here
 
   // State for assignment view mode
-  type ViewMode = 'my-sessions' | 'specialist' | 'sea';
+  type ViewMode = 'my-sessions' | 'all-sessions' | 'specialist' | 'sea' | 'assigned-to-me';
   const [viewMode, setViewMode] = useState<ViewMode>('my-sessions');
 
   const supabase = createClient<Database>();
@@ -238,7 +238,21 @@ export function CalendarWeekView({
       let filteredSessions = weekSessions;
 
       if (viewMode === 'my-sessions') {
-        // Show all sessions owned by the user OR assigned to them
+        // Show ONLY sessions I would actually fulfill
+        // This includes:
+        // 1. Sessions I own as provider that are NOT assigned to anyone else
+        // 2. Sessions assigned TO me as a specialist (from another provider)
+        // 3. Sessions assigned TO me as a SEA (from another provider)
+        filteredSessions = weekSessions.filter(s =>
+          // My own sessions that aren't assigned out
+          (s.provider_id === user.id && !s.assigned_to_specialist_id && !s.assigned_to_sea_id) ||
+          // Sessions assigned to me as specialist
+          s.assigned_to_specialist_id === user.id ||
+          // Sessions assigned to me as SEA
+          s.assigned_to_sea_id === user.id
+        );
+      } else if (viewMode === 'all-sessions') {
+        // Show ALL sessions I have visibility to
         // This includes:
         // 1. Sessions I own as provider (regardless of who delivers)
         // 2. Sessions assigned TO me as a specialist
@@ -250,7 +264,6 @@ export function CalendarWeekView({
         );
       } else if (viewMode === 'specialist') {
         // Show ONLY MY students that I (as provider) delegated to other specialists
-        // Note: Sessions assigned TO me appear in "My Sessions" view via SessionGenerator
         filteredSessions = weekSessions.filter(s =>
           s.provider_id === user.id &&
           s.assigned_to_specialist_id !== null &&
@@ -258,11 +271,16 @@ export function CalendarWeekView({
         );
       } else if (viewMode === 'sea') {
         // Show ONLY MY students that I (as provider) delegated to other SEAs
-        // Note: Sessions assigned TO me appear in "My Sessions" view via SessionGenerator
         filteredSessions = weekSessions.filter(s =>
           s.provider_id === user.id &&
           s.assigned_to_sea_id !== null &&
           s.assigned_to_sea_id !== user.id
+        );
+      } else if (viewMode === 'assigned-to-me') {
+        // Show ONLY sessions that were assigned TO me by another specialist
+        filteredSessions = weekSessions.filter(s =>
+          s.assigned_to_specialist_id === user.id &&
+          s.provider_id !== user.id
         );
       }
 
@@ -661,6 +679,59 @@ export function CalendarWeekView({
     });
 
     return { groups, ungroupedSessions };
+  };
+
+  // Helper function to determine session background color based on assignment
+  const getSessionColor = (session: ScheduleSession): string => {
+    if (!currentUser) return 'bg-white';
+
+    // Priority order: Assigned to Me > Assigned to SEA > Assigned to Specialist > My Sessions
+
+    // Assigned to Me - light blue
+    if (session.assigned_to_specialist_id === currentUser.id && session.provider_id !== currentUser.id) {
+      return 'bg-blue-50';
+    }
+
+    // Assigned to SEA - light green
+    if (session.assigned_to_sea_id !== null) {
+      return 'bg-green-50';
+    }
+
+    // Assigned to Specialist - light purple
+    if (session.assigned_to_specialist_id !== null) {
+      return 'bg-purple-50';
+    }
+
+    // My Sessions (provider, not assigned out) - white background
+    return 'bg-white';
+  };
+
+  // Helper function to determine group session gradient color based on sessions
+  const getGroupColor = (sessions: ScheduleSession[]): string => {
+    if (!currentUser || sessions.length === 0) return 'bg-gradient-to-r from-blue-50 to-purple-50';
+
+    // Check if any session is assigned to me from another specialist
+    const hasAssignedToMe = sessions.some(s =>
+      s.assigned_to_specialist_id === currentUser.id && s.provider_id !== currentUser.id
+    );
+    if (hasAssignedToMe) {
+      return 'bg-gradient-to-r from-blue-100 to-blue-50';
+    }
+
+    // Check if any session is assigned to SEA
+    const hasAssignedToSEA = sessions.some(s => s.assigned_to_sea_id !== null);
+    if (hasAssignedToSEA) {
+      return 'bg-gradient-to-r from-green-100 to-green-50';
+    }
+
+    // Check if any session is assigned to specialist
+    const hasAssignedToSpecialist = sessions.some(s => s.assigned_to_specialist_id !== null);
+    if (hasAssignedToSpecialist) {
+      return 'bg-gradient-to-r from-purple-100 to-purple-50';
+    }
+
+    // Default: My Sessions
+    return 'bg-gradient-to-r from-blue-50 to-purple-50';
   };
 
   // Handler for opening group details modal
@@ -1703,6 +1774,17 @@ export function CalendarWeekView({
           <div className="flex gap-2 items-center">
             <span className="text-sm font-medium text-gray-700 mr-2">View:</span>
             <button
+              onClick={() => setViewMode('all-sessions')}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                viewMode === 'all-sessions'
+                  ? "bg-indigo-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              All Sessions
+            </button>
+            <button
               onClick={() => setViewMode('my-sessions')}
               className={cn(
                 "px-4 py-2 rounded-md text-sm font-medium transition-colors",
@@ -1734,6 +1816,17 @@ export function CalendarWeekView({
               )}
             >
               Assigned to SEA
+            </button>
+            <button
+              onClick={() => setViewMode('assigned-to-me')}
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                viewMode === 'assigned-to-me'
+                  ? "bg-sky-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              Assigned to Me
             </button>
           </div>
           {onExportPDF && (
@@ -1925,9 +2018,7 @@ export function CalendarWeekView({
                                 onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
                                 className={cn(
                                   "w-full text-left border-2 border-blue-300 rounded-lg p-3 text-xs hover:border-blue-400 transition-colors",
-                                  viewMode === 'my-sessions' && "bg-gradient-to-r from-blue-50 to-purple-50",
-                                  viewMode === 'specialist' && "bg-gradient-to-r from-purple-100 to-purple-50",
-                                  viewMode === 'sea' && "bg-gradient-to-r from-green-100 to-green-50"
+                                  getGroupColor(groupSessions)
                                 )}
                                 aria-label={`Open group ${groupName} details`}
                               >
@@ -1954,20 +2045,15 @@ export function CalendarWeekView({
                                 onClick={() => handleOpenSessionModal(session)}
                                 className={cn(
                                   "w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors",
-                                  viewMode === 'my-sessions' && "bg-white",
-                                  viewMode === 'specialist' && "bg-purple-50",
-                                  viewMode === 'sea' && "bg-green-50"
+                                  getSessionColor(session)
                                 )}
                                 aria-label={`Open session for ${student?.initials || 'student'} at ${formatTime(session.start_time)}`}
                               >
                                 <div className="font-medium text-gray-900">
                                   {formatTime(session.start_time)}
                                 </div>
-                                <div className={session.delivered_by === 'sea' ? 'text-green-600' : 'text-gray-700'}>
+                                <div className="text-gray-700">
                                   {student?.initials || '?'}
-                                  {session.delivered_by === 'sea' && (
-                                    <div className="text-green-600 text-xs">SEA</div>
-                                  )}
                                 </div>
                               </button>
                             </div>
