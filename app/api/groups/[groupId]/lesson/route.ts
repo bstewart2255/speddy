@@ -186,6 +186,7 @@ export async function POST(
       const result = await supabase
         .from('lessons')
         .update({
+          lesson_date: new Date().toISOString().split('T')[0],
           title: title || null,
           content,
           lesson_source: lesson_source || 'manual',
@@ -213,6 +214,7 @@ export async function POST(
         .insert({
           provider_id: userId,
           group_id: groupId,
+          lesson_date: new Date().toISOString().split('T')[0],
           title: title || null,
           content,
           lesson_source: lesson_source || 'manual',

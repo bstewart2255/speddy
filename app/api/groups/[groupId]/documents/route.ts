@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
 
 // GET - Fetch all documents for a group
 export async function GET(
@@ -116,63 +117,128 @@ export async function POST(
     }
     userId = user.id;
 
-    const body = await request.json();
-    const { title, document_type, content, url, file_path } = body;
+    // Detect content type
+    const contentType = request.headers.get('content-type') || '';
+    const isFormData = contentType.includes('multipart/form-data');
 
-    // Validate required fields
-    if (!title || !document_type) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Title and document_type are required' },
-        { status: 400 }
-      );
-    }
+    let title, document_type, content, url, file_path, mime_type, file_size, original_filename;
 
-    // Validate document_type
-    if (!['pdf', 'link', 'note'].includes(document_type)) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Invalid document_type. Must be one of: pdf, link, note' },
-        { status: 400 }
-      );
-    }
+    if (isFormData) {
+      // Handle file upload
+      const formData = await request.formData();
+      const file = formData.get('file') as File | null;
+      title = formData.get('title') as string | null;
+      document_type = formData.get('document_type') as string | null;
 
-    // Per-type validations
-    if (document_type === 'note' && !content) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'content is required for notes' }, { status: 400 });
-    }
-    if (document_type === 'link') {
-      if (!url) {
+      if (!file) {
         perf.end({ success: false });
-        return NextResponse.json({ error: 'url is required for links' }, { status: 400 });
+        return NextResponse.json({ error: 'File is required' }, { status: 400 });
       }
-      try {
-        const u = new URL(url);
-        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+
+      if (!title) {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      }
+
+      // Validate file
+      const validation = validateDocumentFile(file);
+      if (!validation.valid) {
+        perf.end({ success: false });
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+
+      // Generate safe filename
+      const timestamp = Date.now();
+      const safeFilename = generateSafeFilename(file.name);
+      const storagePath = `groups/${groupId}/${timestamp}-${safeFilename}`;
+
+      // Convert file to buffer
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      // Upload to Supabase Storage
+      const uploadPerf = measurePerformanceWithAlerts('upload_group_document_storage', 'storage');
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('group-documents')
+        .upload(storagePath, buffer, {
+          contentType: file.type,
+          cacheControl: '3600',
+          upsert: false
+        });
+      uploadPerf.end({ success: !uploadError });
+
+      if (uploadError) {
+        log.error('Error uploading file to storage', uploadError, {
+          userId,
+          groupId,
+          filename: file.name
+        });
+        perf.end({ success: false });
+        return NextResponse.json(
+          { error: 'Failed to upload file' },
+          { status: 500 }
+        );
+      }
+
+      file_path = storagePath;
+      mime_type = file.type;
+      file_size = file.size;
+      original_filename = file.name;
+      document_type = 'file';
+
+      log.info('File uploaded successfully', {
+        userId,
+        groupId,
+        file_path,
+        mime_type,
+        file_size
+      });
+    } else {
+      // Handle JSON request (links)
+      const body = await request.json();
+      title = body.title;
+      document_type = body.document_type;
+      content = body.content;
+      url = body.url;
+      file_path = body.file_path;
+
+      // Validate required fields
+      if (!title || !document_type) {
+        perf.end({ success: false });
+        return NextResponse.json(
+          { error: 'Title and document_type are required' },
+          { status: 400 }
+        );
+      }
+
+      // Validate document_type
+      if (!['pdf', 'link', 'note', 'file'].includes(document_type)) {
+        perf.end({ success: false });
+        return NextResponse.json(
+          { error: 'Invalid document_type. Must be one of: pdf, link, note, file' },
+          { status: 400 }
+        );
+      }
+
+      // Per-type validations
+      if (document_type === 'note' && !content) {
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'content is required for notes' }, { status: 400 });
+      }
+      if (document_type === 'link') {
+        if (!url) {
           perf.end({ success: false });
-          return NextResponse.json({ error: 'Only http(s) URLs are allowed' }, { status: 400 });
+          return NextResponse.json({ error: 'url is required for links' }, { status: 400 });
         }
-      } catch {
-        perf.end({ success: false });
-        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-      }
-    }
-    if (document_type === 'pdf') {
-      if (!file_path && !url) {
-        perf.end({ success: false });
-        return NextResponse.json({ error: 'Either file_path or url is required for PDFs' }, { status: 400 });
-      }
-      if (url) {
         try {
           const u = new URL(url);
           if (u.protocol !== 'http:' && u.protocol !== 'https:') {
             perf.end({ success: false });
-            return NextResponse.json({ error: 'Only http(s) URLs are allowed for PDF URLs' }, { status: 400 });
+            return NextResponse.json({ error: 'Only http(s) URLs are allowed' }, { status: 400 });
           }
         } catch {
           perf.end({ success: false });
-          return NextResponse.json({ error: 'Invalid URL for PDF' }, { status: 400 });
+          return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
         }
       }
     }
@@ -215,6 +281,9 @@ export async function POST(
         content: content || null,
         url: url || null,
         file_path: file_path || null,
+        mime_type: mime_type || null,
+        file_size: file_size || null,
+        original_filename: original_filename || null,
         created_by: userId
       })
       .select('*')
