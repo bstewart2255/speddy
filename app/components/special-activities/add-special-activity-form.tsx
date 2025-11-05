@@ -66,7 +66,8 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
         activity_name: activityName,
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
-        end_time: endTime
+        end_time: endTime,
+        school_id: currentSchool?.school_id
       };
 
       const result = await resolver.resolveSpecialActivityConflicts(insertedActivity as any);
