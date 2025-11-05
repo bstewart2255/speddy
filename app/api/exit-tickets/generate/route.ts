@@ -27,11 +27,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Get user's profile for context
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id, school_id, district_id, state_id, role')
         .eq('id', userId)
         .single();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: profileError.message },
+          { status: 500 }
+        );
+      }
 
       if (!profile) {
         return NextResponse.json(
@@ -58,7 +66,7 @@ export async function POST(request: NextRequest) {
         .in('id', studentIds);
 
       // Only filter by provider_id for non-SEA users
-      if (profile.role !== 'sea') {
+      if (profile?.role !== 'sea') {
         studentsQuery = studentsQuery.eq('provider_id', userId);
       }
 

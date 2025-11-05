@@ -39,11 +39,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Get user's role to determine filtering
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
         .single();
+
+      if (profileError || !profile) {
+        console.error('Profile fetch error:', profileError);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: profileError?.message },
+          { status: 500 }
+        );
+      }
 
       // Fetch student data with IEP goals
       // For SEAs, rely on RLS to filter students via assigned sessions

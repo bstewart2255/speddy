@@ -11,9 +11,9 @@ USING (
   EXISTS (
     SELECT 1
     FROM schedule_sessions ss
-    INNER JOIN profiles p ON p.id = auth.uid()
+    INNER JOIN profiles p ON p.id = (SELECT auth.uid())
     WHERE ss.student_id = student_details.student_id
-      AND ss.assigned_to_sea_id = auth.uid()
+      AND ss.assigned_to_sea_id = (SELECT auth.uid())
       AND ss.delivered_by = 'sea'
       AND p.role = 'sea'
   )
@@ -22,9 +22,9 @@ WITH CHECK (
   EXISTS (
     SELECT 1
     FROM schedule_sessions ss
-    INNER JOIN profiles p ON p.id = auth.uid()
+    INNER JOIN profiles p ON p.id = (SELECT auth.uid())
     WHERE ss.student_id = student_details.student_id
-      AND ss.assigned_to_sea_id = auth.uid()
+      AND ss.assigned_to_sea_id = (SELECT auth.uid())
       AND ss.delivered_by = 'sea'
       AND p.role = 'sea'
   )
@@ -40,11 +40,32 @@ WITH CHECK (
   EXISTS (
     SELECT 1
     FROM schedule_sessions ss
-    INNER JOIN profiles p ON p.id = auth.uid()
+    INNER JOIN profiles p ON p.id = (SELECT auth.uid())
     WHERE ss.student_id = exit_tickets.student_id
-      AND ss.assigned_to_sea_id = auth.uid()
+      AND ss.assigned_to_sea_id = (SELECT auth.uid())
       AND ss.delivered_by = 'sea'
       AND p.role = 'sea'
-      AND exit_tickets.provider_id = auth.uid()
+      AND exit_tickets.provider_id = (SELECT auth.uid())
+  )
+);
+
+-- Allow SEAs to view exit tickets for their assigned students
+-- This allows SEAs to see the exit tickets they created
+CREATE POLICY "SEAs can view exit tickets for assigned students"
+ON exit_tickets
+FOR SELECT
+USING (
+  -- SEAs can view tickets they created (where they are the provider)
+  exit_tickets.provider_id = (SELECT auth.uid())
+  OR
+  -- SEAs can view tickets for students assigned to them
+  EXISTS (
+    SELECT 1
+    FROM schedule_sessions ss
+    INNER JOIN profiles p ON p.id = (SELECT auth.uid())
+    WHERE ss.student_id = exit_tickets.student_id
+      AND ss.assigned_to_sea_id = (SELECT auth.uid())
+      AND ss.delivered_by = 'sea'
+      AND p.role = 'sea'
   )
 );
