@@ -6,6 +6,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import type { ScheduleSession, Student } from '@/src/types/database';
 
 const GRADE_COLOR_MAP: { [key: string]: string } = {
+  TK: 'bg-pink-400 hover:bg-pink-500',
   K: 'bg-purple-400 hover:bg-purple-500',
   '1': 'bg-sky-400 hover:bg-sky-500',
   '2': 'bg-cyan-400 hover:bg-cyan-500',

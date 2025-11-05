@@ -247,8 +247,8 @@ async function adjustSessionCount(
     // Sort sessions to prioritize deletion:
     // 1. Completed unscheduled sessions first (these are orphans that shouldn't exist)
     // 2. Active unscheduled sessions next
-    // 3. Active scheduled sessions (preserve these when possible)
-    // 4. Completed scheduled sessions (these are legitimate completed sessions)
+    // 3. Active scheduled sessions (by day/time to preserve earlier slots)
+    // Note: We preserve completed scheduled sessions (valid history)
     const sortedSessions = [...sessions].sort((a, b) => {
       const aIsUnscheduled = a.day_of_week === null;
       const bIsUnscheduled = b.day_of_week === null;
@@ -261,14 +261,22 @@ async function adjustSessionCount(
       if (aIsUnscheduled && !a.is_completed && !(bIsUnscheduled && !b.is_completed)) return -1;
       if (bIsUnscheduled && !b.is_completed && !(aIsUnscheduled && !a.is_completed)) return 1;
 
-      // Priority 3: Among scheduled sessions, prioritize deleting later days
+      // Priority 3: Active scheduled sessions - delete later days/times first
+      // Skip completed scheduled sessions (they're preserved)
+      const aIsActiveScheduled = !aIsUnscheduled && !a.is_completed;
+      const bIsActiveScheduled = !bIsUnscheduled && !b.is_completed;
+
+      if (aIsActiveScheduled && !bIsActiveScheduled) return -1;
+      if (bIsActiveScheduled && !aIsActiveScheduled) return 1;
+
+      // Among active scheduled sessions, prioritize deleting later days
       if (a.day_of_week !== b.day_of_week) {
         if (a.day_of_week === null) return 1;
         if (b.day_of_week === null) return -1;
         return b.day_of_week - a.day_of_week;
       }
 
-      // Priority 4: Among same day, prioritize deleting later times
+      // Among same day, prioritize deleting later times
       if (a.start_time !== b.start_time) {
         if (a.start_time === null) return 1;
         if (b.start_time === null) return -1;
@@ -279,9 +287,34 @@ async function adjustSessionCount(
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    // Take the number of sessions we need to delete
+    // Build deletion list: remove orphaned completed sessions + exactly excessCount active sessions
     const excessCount = currentCount - targetCount;
-    const sessionsToDelete = sortedSessions.slice(0, excessCount);
+    const sessionsToDelete: typeof sortedSessions = [];
+    let remainingActiveToRemove = excessCount;
+
+    for (const session of sortedSessions) {
+      const isCompletedOrphan = session.day_of_week === null && session.is_completed;
+
+      // Stop if we've removed enough active sessions and there are no more orphans
+      if (remainingActiveToRemove <= 0 && !isCompletedOrphan) {
+        break;
+      }
+
+      sessionsToDelete.push(session);
+
+      // Decrement counter only for active sessions
+      if (!session.is_completed) {
+        remainingActiveToRemove -= 1;
+      }
+    }
+
+    // Verify we found enough active sessions to remove
+    if (remainingActiveToRemove > 0) {
+      throw new Error(
+        `Expected to remove ${excessCount} active sessions but only found ${excessCount - remainingActiveToRemove}. ` +
+        `This indicates a data inconsistency for student ${studentId}.`
+      );
+    }
 
     if (sessionsToDelete.length > 0) {
       const deleteIds = sessionsToDelete.map(s => s.id);

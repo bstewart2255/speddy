@@ -7,6 +7,10 @@
 
 BEGIN;
 
+-- Drop old RLS policy from 20251003 that calls permission function with old signature
+-- This policy is redundant as permission validation is now handled by trigger
+DROP POLICY IF EXISTS "Users can update schedule sessions" ON schedule_sessions;
+
 -- Update the permission function to check based on student's school
 CREATE OR REPLACE FUNCTION can_assign_sea_to_session(
   provider_id UUID,
@@ -161,5 +165,22 @@ COMMENT ON FUNCTION validate_session_assignment_permissions IS
 Runs with SECURITY DEFINER to bypass RLS and prevent recursion.
 Only validates when assignment fields are actually changing.
 Passes session_id to permission checks for multi-school support.';
+
+-- Drop and recreate the trigger to ensure it uses the updated function
+DROP TRIGGER IF EXISTS trg_validate_session_assignment_permissions ON schedule_sessions;
+
+CREATE TRIGGER trg_validate_session_assignment_permissions
+  BEFORE UPDATE ON schedule_sessions
+  FOR EACH ROW
+  WHEN (
+    -- Only fire when assignment fields are changing
+    NEW.assigned_to_sea_id IS DISTINCT FROM OLD.assigned_to_sea_id
+    OR NEW.assigned_to_specialist_id IS DISTINCT FROM OLD.assigned_to_specialist_id
+  )
+  EXECUTE FUNCTION validate_session_assignment_permissions();
+
+COMMENT ON TRIGGER trg_validate_session_assignment_permissions ON schedule_sessions IS
+'Validates SEA and specialist assignment permissions before update.
+Only fires when assignment fields change to minimize overhead.';
 
 COMMIT;
