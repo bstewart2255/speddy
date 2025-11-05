@@ -49,6 +49,13 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Validate school is selected
+      if (!currentSchool?.school_id) {
+        setError('No school selected. Please select a school before adding a bell schedule.');
+        setSubmitting(false);
+        return;
+      }
+
       // Validate at least one day is selected
       if (selectedDays.length === 0) {
         setError('Please select at least one day');
@@ -78,7 +85,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             start_time: startTime,
             end_time: endTime,
             period_name: subject.trim(),
-            school_id: currentSchool?.school_id,
+            school_id: currentSchool.school_id,
           };
 
           const { error: insertError } = await supabase
@@ -99,10 +106,10 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             start_time: startTime,
             end_time: endTime,
             period_name: subject.trim(),
-            school_id: currentSchool?.school_id
+            school_id: currentSchool.school_id
           };
 
-          const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
+          const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
           totalResolved += result.resolved;
           totalFailed += result.failed;
         } catch (err) {

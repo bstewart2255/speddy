@@ -163,32 +163,34 @@ export class AutoScheduler {
      * Helper methods to fetch data
      */
     private async getBellSchedules(schoolId?: string | null): Promise<BellSchedule[]> {
-      let query = this.supabase
-        .from('bell_schedules')
-        .select('*')
-        .eq('provider_id', this.providerId);
-
-      // Filter by school_id if provided to prevent cross-school conflicts
-      if (schoolId) {
-        query = query.eq('school_id', schoolId);
+      // Fail fast if school_id is not provided to prevent cross-school conflicts
+      if (!schoolId) {
+        console.warn('getBellSchedules called without schoolId - returning empty to prevent cross-school conflicts');
+        return [];
       }
 
-      const { data } = await query;
+      const { data } = await this.supabase
+        .from('bell_schedules')
+        .select('*')
+        .eq('provider_id', this.providerId)
+        .eq('school_id', schoolId);
+
       return data || [];
     }
 
     private async getSpecialActivities(schoolId?: string | null): Promise<SpecialActivity[]> {
-      let query = this.supabase
-        .from('special_activities')
-        .select('*')
-        .eq('provider_id', this.providerId);
-
-      // Filter by school_id if provided to prevent cross-school conflicts
-      if (schoolId) {
-        query = query.eq('school_id', schoolId);
+      // Fail fast if school_id is not provided to prevent cross-school conflicts
+      if (!schoolId) {
+        console.warn('getSpecialActivities called without schoolId - returning empty to prevent cross-school conflicts');
+        return [];
       }
 
-      const { data } = await query;
+      const { data } = await this.supabase
+        .from('special_activities')
+        .select('*')
+        .eq('provider_id', this.providerId)
+        .eq('school_id', schoolId);
+
       return data || [];
     }
 

@@ -341,7 +341,7 @@ export class SessionUpdateService {
       .eq('id', studentId)
       .single();
 
-    if (!student) {
+    if (!student || !student.school_id) {
       return null;
     }
 
@@ -393,7 +393,7 @@ export class SessionUpdateService {
       .eq('id', studentId)
       .single();
 
-    if (!student || !student.teacher_name) {
+    if (!student || !student.teacher_name || !student.school_id) {
       return null;
     }
 
