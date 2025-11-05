@@ -334,10 +334,10 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    // Get student information to determine grade level
+    // Get student information to determine grade level and school
     const { data: student } = await this.supabase
       .from('students')
-      .select('grade_level')
+      .select('grade_level, school_id')
       .eq('id', studentId)
       .single();
 
@@ -347,11 +347,13 @@ export class SessionUpdateService {
 
     // Check if session overlaps with bell schedule periods
     // Note: Bell schedules can have comma-separated grade levels like "1,2,3"
+    // Only check bell schedules from the same school as the student
     const { data: bellSchedules } = await this.supabase
       .from('bell_schedules')
       .select('*')
       .eq('provider_id', providerId)
-      .eq('day_of_week', day);
+      .eq('day_of_week', day)
+      .eq('school_id', student.school_id);
 
     if (bellSchedules) {
       for (const schedule of bellSchedules) {
@@ -384,10 +386,10 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    // Get student's teacher information
+    // Get student's teacher and school information
     const { data: student } = await this.supabase
       .from('students')
-      .select('teacher_name')
+      .select('teacher_name, school_id')
       .eq('id', studentId)
       .single();
 
@@ -395,13 +397,14 @@ export class SessionUpdateService {
       return null;
     }
 
-    // Only check special activities for this student's teacher
+    // Only check special activities for this student's teacher and school
     const { data: activities } = await this.supabase
       .from('special_activities')
       .select('*')
       .eq('provider_id', providerId)
       .eq('teacher_name', student.teacher_name)
-      .eq('day_of_week', day);
+      .eq('day_of_week', day)
+      .eq('school_id', student.school_id);
 
     if (activities) {
       for (const activity of activities) {

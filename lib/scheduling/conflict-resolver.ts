@@ -20,10 +20,12 @@ export class ConflictResolver {
   async resolveBellScheduleConflicts(newBellSchedule: BellSchedule) {
     try {
       // Find all sessions that conflict with the new bell schedule
+      // Only check sessions for students from the same school
       const { data: allSessions } = await this.supabase
         .from('schedule_sessions')
         .select('*, students!inner(*)')
-        .eq('provider_id', this.providerId);
+        .eq('provider_id', this.providerId)
+        .eq('students.school_id', newBellSchedule.school_id);
 
       if (!allSessions) return { resolved: 0, failed: 0 };
 
@@ -52,10 +54,12 @@ export class ConflictResolver {
   async resolveSpecialActivityConflicts(newActivity: SpecialActivity) {
     try {
       // Find all sessions that conflict with the new special activity
+      // Only check sessions for students from the same school
       const { data: allSessions } = await this.supabase
         .from('schedule_sessions')
         .select('*, students!inner(*)')
-        .eq('provider_id', this.providerId);
+        .eq('provider_id', this.providerId)
+        .eq('students.school_id', newActivity.school_id);
 
       if (!allSessions) return { resolved: 0, failed: 0 };
 

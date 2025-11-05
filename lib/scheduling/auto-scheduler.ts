@@ -101,10 +101,10 @@ export class AutoScheduler {
           return result;
         }
 
-        // Get current data
+        // Get current data (filter by student's school to prevent cross-school conflicts)
         const [bellSchedules, specialActivities, existingSessions] = await Promise.all([
-          this.getBellSchedules(),
-          this.getSpecialActivities(),
+          this.getBellSchedules(student.school_id),
+          this.getSpecialActivities(student.school_id),
           this.getExistingSessions()
         ]);
 
@@ -162,19 +162,33 @@ export class AutoScheduler {
     /**
      * Helper methods to fetch data
      */
-    private async getBellSchedules(): Promise<BellSchedule[]> {
-      const { data } = await this.supabase
+    private async getBellSchedules(schoolId?: string | null): Promise<BellSchedule[]> {
+      let query = this.supabase
         .from('bell_schedules')
         .select('*')
         .eq('provider_id', this.providerId);
+
+      // Filter by school_id if provided to prevent cross-school conflicts
+      if (schoolId) {
+        query = query.eq('school_id', schoolId);
+      }
+
+      const { data } = await query;
       return data || [];
     }
 
-    private async getSpecialActivities(): Promise<SpecialActivity[]> {
-      const { data } = await this.supabase
+    private async getSpecialActivities(schoolId?: string | null): Promise<SpecialActivity[]> {
+      let query = this.supabase
         .from('special_activities')
         .select('*')
         .eq('provider_id', this.providerId);
+
+      // Filter by school_id if provided to prevent cross-school conflicts
+      if (schoolId) {
+        query = query.eq('school_id', schoolId);
+      }
+
+      const { data } = await query;
       return data || [];
     }
 

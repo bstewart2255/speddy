@@ -98,7 +98,8 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             day_of_week: dayId,
             start_time: startTime,
             end_time: endTime,
-            period_name: subject.trim()
+            period_name: subject.trim(),
+            school_id: currentSchool?.school_id
           };
 
           const result = await resolver.resolveBellScheduleConflicts(insertedSchedule as any);
