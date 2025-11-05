@@ -66,7 +66,7 @@ BEGIN
         provider_works_at_school := EXISTS (
           SELECT 1
           FROM provider_schools ps
-          WHERE ps.provider_id = can_assign_sea_to_session.provider_id
+          WHERE ps.provider_id = provider_id
           AND ps.school_id = student_school_id
         );
       END IF;
@@ -80,7 +80,7 @@ BEGIN
         sea_works_at_school := EXISTS (
           SELECT 1
           FROM provider_schools ps
-          WHERE ps.provider_id = can_assign_sea_to_session.sea_id
+          WHERE ps.provider_id = sea_id
           AND ps.school_id = student_school_id
         );
       END IF;
