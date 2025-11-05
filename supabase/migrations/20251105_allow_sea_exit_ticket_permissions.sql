@@ -2,6 +2,11 @@
 -- Issue: SEAs cannot update student_details rotation tracking or insert exit_tickets
 -- Solution: Add targeted RLS policies for SEA permissions
 
+-- Drop existing policies if they exist (in case of re-running migration)
+DROP POLICY IF EXISTS "SEAs can update exit ticket rotation for assigned students" ON student_details;
+DROP POLICY IF EXISTS "SEAs can create exit tickets for assigned students" ON exit_tickets;
+DROP POLICY IF EXISTS "SEAs can view exit tickets for assigned students" ON exit_tickets;
+
 -- Allow SEAs to UPDATE last_exit_ticket_goal_index in student_details for assigned students
 -- This is needed when generating exit tickets to track which goal was used
 CREATE POLICY "SEAs can update exit ticket rotation for assigned students"
