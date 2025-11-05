@@ -64,6 +64,7 @@ interface ScheduleGridProps {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 const GRADE_COLOR_MAP: { [key: string]: string } = {
+  TK: 'bg-pink-400 hover:bg-pink-500',
   K: 'bg-purple-400 hover:bg-purple-500',
   '1': 'bg-sky-400 hover:bg-sky-500',
   '2': 'bg-cyan-400 hover:bg-cyan-500',
@@ -425,7 +426,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                           : 'bg-gray-400';
 
                       const assignmentClass =
-                        session.delivered_by === 'sea' ? 'border-2 border-orange-400' :
+                        session.delivered_by === 'sea' ? 'border-2 border-green-600' :
                         session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
 
                       // Add conflict styling - subtle background tint only (no border)
@@ -471,11 +472,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             <div className="font-medium text-[10px]">{student?.initials}</div>
                             {height > 40 && (
                               <div className="text-[9px] opacity-90">{student?.minutes_per_session}m</div>
-                            )}
-                            {session.delivered_by === 'sea' && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
-                                <span className="text-[8px] font-bold text-white">S</span>
-                              </div>
                             )}
                             {hasConflict && (
                               <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 flex items-center justify-center">

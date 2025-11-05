@@ -6,6 +6,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import type { ScheduleSession, Student } from '@/src/types/database';
 
 const GRADE_COLOR_MAP: { [key: string]: string } = {
+  TK: 'bg-pink-400 hover:bg-pink-500',
   K: 'bg-purple-400 hover:bg-purple-500',
   '1': 'bg-sky-400 hover:bg-sky-500',
   '2': 'bg-cyan-400 hover:bg-cyan-500',
@@ -81,7 +82,7 @@ export function StudentSessionGroup({
               const isConflict = session.status === 'conflict';
 
               const assignmentClass =
-                session.delivered_by === 'sea' ? 'border-2 border-orange-400' :
+                session.delivered_by === 'sea' ? 'border-2 border-green-600' :
                 session.delivered_by === 'specialist' ? 'border-2 border-purple-400' : '';
 
               const conflictClass = isConflict
@@ -115,18 +116,6 @@ export function StudentSessionGroup({
                   <div className="flex flex-col h-full relative overflow-hidden items-center justify-center">
                     <div className="font-medium text-xs">{student.initials}</div>
                     <div className="text-[10px] opacity-90">{student.minutes_per_session}m</div>
-
-                    {/* Assignment indicator */}
-                    {session.delivered_by === 'sea' && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
-                        <span className="text-[8px] font-bold text-white">S</span>
-                      </div>
-                    )}
-                    {session.delivered_by === 'specialist' && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center">
-                        <span className="text-[8px] font-bold text-white">P</span>
-                      </div>
-                    )}
 
                     {/* Conflict indicator */}
                     {hasConflict && (

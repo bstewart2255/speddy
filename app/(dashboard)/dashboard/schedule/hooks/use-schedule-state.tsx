@@ -26,7 +26,7 @@ export interface ScheduleUIState {
 export function useScheduleState() {
   // Filter states
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(
-    new Set(['K', '1', '2', '3', '4', '5'])
+    new Set(['TK', 'K', '1', '2', '3', '4', '5'])
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
