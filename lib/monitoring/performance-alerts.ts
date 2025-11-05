@@ -17,6 +17,10 @@ export const PERFORMANCE_THRESHOLDS = {
   render: {
     warning: 100,   // 100ms
     critical: 500   // 500ms
+  },
+  storage: {
+    warning: 2000,  // 2 seconds
+    critical: 10000 // 10 seconds
   }
 } as const;
 

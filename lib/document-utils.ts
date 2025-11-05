@@ -139,7 +139,7 @@ export function getMimeTypeFromExtension(filename: string): string | null {
   const extension = getFileExtension(filename).toLowerCase();
 
   for (const [mimeType, extensions] of Object.entries(SUPPORTED_DOCUMENT_TYPES)) {
-    if (extensions.includes(extension)) {
+    if ((extensions as readonly string[]).includes(extension)) {
       return mimeType;
     }
   }
