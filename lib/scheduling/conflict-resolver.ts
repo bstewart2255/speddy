@@ -8,7 +8,7 @@ type SpecialActivity = Database['public']['Tables']['special_activities']['Row']
 type Student = Database['public']['Tables']['students']['Row'];
 
 // Subset of fields needed for conflict resolution
-type BellScheduleConflictData = Pick<BellSchedule, 'grade_level' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'>;
+type BellScheduleConflictData = Pick<BellSchedule, 'grade_level' | 'day_of_week' | 'start_time' | 'end_time' | 'period_name' | 'school_id'>;
 type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'>;
 
 export class ConflictResolver {

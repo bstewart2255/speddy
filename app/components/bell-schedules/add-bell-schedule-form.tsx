@@ -85,7 +85,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             start_time: startTime,
             end_time: endTime,
             period_name: subject.trim(),
-            school_id: currentSchool?.school_id,
+            school_id: currentSchool.school_id,
           };
 
           const { error: insertError } = await supabase
@@ -105,6 +105,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             day_of_week: dayId,
             start_time: startTime,
             end_time: endTime,
+            period_name: subject.trim(),
             school_id: currentSchool.school_id
           };
 
