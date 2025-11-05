@@ -55,6 +55,10 @@ export function GroupLessonPanel({
         }
       }
     } catch (error) {
+      // Ignore abort errors - expected during cleanup
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       console.error('Error fetching lesson:', error);
       showToast('Failed to load lesson', 'error');
     } finally {

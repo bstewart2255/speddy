@@ -172,13 +172,14 @@ export async function POST(
     // Check if a lesson already exists for this group
     const { data: existingLesson } = await supabase
       .from('lessons')
-      .select('id')
+      .select('id, lesson_date')
       .eq('group_id', groupId)
       .limit(1)
       .maybeSingle();
 
     let data;
     let error;
+    const today = new Date().toISOString().split('T')[0];
 
     if (existingLesson) {
       // Update existing lesson
@@ -186,6 +187,7 @@ export async function POST(
       const result = await supabase
         .from('lessons')
         .update({
+          lesson_date: existingLesson.lesson_date ?? today,
           title: title || null,
           content,
           lesson_source: lesson_source || 'manual',
@@ -213,6 +215,7 @@ export async function POST(
         .insert({
           provider_id: userId,
           group_id: groupId,
+          lesson_date: today,
           title: title || null,
           content,
           lesson_source: lesson_source || 'manual',
