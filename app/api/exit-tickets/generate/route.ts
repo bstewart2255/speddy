@@ -27,11 +27,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Get user's profile for context
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, school_id, district_id, state_id')
+        .select('id, school_id, district_id, state_id, role')
         .eq('id', userId)
         .single();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        return NextResponse.json(
+          { error: 'Failed to fetch user profile', details: profileError.message },
+          { status: 500 }
+        );
+      }
 
       if (!profile) {
         return NextResponse.json(
@@ -41,7 +49,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Fetch students with their IEP goals and last used index
-      const { data: students, error: studentsError } = await supabase
+      // For SEAs, rely on RLS to filter students via assigned sessions
+      // For providers, filter by provider_id
+      let studentsQuery = supabase
         .from('students')
         .select(`
           id,
@@ -53,8 +63,14 @@ export async function POST(request: NextRequest) {
             last_exit_ticket_goal_index
           )
         `)
-        .in('id', studentIds)
-        .eq('provider_id', userId);
+        .in('id', studentIds);
+
+      // Only filter by provider_id for non-SEA users
+      if (profile?.role !== 'sea') {
+        studentsQuery = studentsQuery.eq('provider_id', userId);
+      }
+
+      const { data: students, error: studentsError } = await studentsQuery;
 
       if (studentsError) {
         console.error('Error fetching students:', studentsError);
@@ -147,10 +163,18 @@ export async function POST(request: NextRequest) {
 
       // Update rotation indexes for all students
       for (const update of rotationUpdates) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('student_details')
           .update({ last_exit_ticket_goal_index: update.nextIndex })
           .eq('student_id', update.studentId);
+
+        if (updateError) {
+          console.error(`Failed to update rotation for student ${update.studentId}:`, updateError);
+          // Log RLS errors specifically to help diagnose permission issues
+          if (updateError.code === '42501' || updateError.message?.includes('policy')) {
+            console.error('RLS Policy Error: User may not have permission to update student_details');
+          }
+        }
       }
 
       if (tickets.length === 0) {
