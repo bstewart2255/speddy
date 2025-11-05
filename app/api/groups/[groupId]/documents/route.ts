@@ -165,7 +165,12 @@ export async function POST(
           cacheControl: '3600',
           upsert: false
         });
-      uploadPerf.end({ success: !uploadError });
+
+      try {
+        uploadPerf.end({ success: !uploadError });
+      } catch (perfError) {
+        console.error('Performance monitoring error (non-critical):', perfError);
+      }
 
       if (uploadError) {
         log.error('Error uploading file to storage', uploadError, {
@@ -175,7 +180,11 @@ export async function POST(
           errorMessage: uploadError.message,
           errorDetails: uploadError
         });
-        perf.end({ success: false });
+        try {
+          perf.end({ success: false });
+        } catch (perfError) {
+          console.error('Performance monitoring error (non-critical):', perfError);
+        }
         return NextResponse.json(
           { error: `Failed to upload file: ${uploadError.message}` },
           { status: 500 }
