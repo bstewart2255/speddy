@@ -38,12 +38,27 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Get user's role to determine filtering
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
       // Fetch student data with IEP goals
-      const { data: studentsData, error: dbError } = await supabase
+      // For SEAs, rely on RLS to filter students via assigned sessions
+      // For providers, filter by provider_id
+      let studentsQuery = supabase
         .from('students')
         .select('id, initials, grade_level, student_details(iep_goals)')
-        .eq('provider_id', userId)
         .in('id', studentIds);
+
+      // Only filter by provider_id for non-SEA users
+      if (profile?.role !== 'sea') {
+        studentsQuery = studentsQuery.eq('provider_id', userId);
+      }
+
+      const { data: studentsData, error: dbError } = await studentsQuery;
 
       if (dbError) {
         console.error('Database error:', dbError);
