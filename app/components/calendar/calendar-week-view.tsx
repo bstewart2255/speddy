@@ -706,32 +706,55 @@ export function CalendarWeekView({
     return 'bg-white';
   };
 
-  // Helper function to determine group session gradient color based on sessions
+  // Helper function to determine group session solid color based on sessions
   const getGroupColor = (sessions: ScheduleSession[]): string => {
-    if (!currentUser || sessions.length === 0) return 'bg-gradient-to-r from-blue-50 to-purple-50';
+    if (!currentUser || sessions.length === 0) return 'bg-gray-50';
 
     // Check if any session is assigned to me from another specialist
     const hasAssignedToMe = sessions.some(s =>
       s.assigned_to_specialist_id === currentUser.id && s.provider_id !== currentUser.id
     );
     if (hasAssignedToMe) {
-      return 'bg-gradient-to-r from-blue-100 to-blue-50';
+      return 'bg-blue-100';
     }
 
     // Check if any session is assigned to SEA
     const hasAssignedToSEA = sessions.some(s => s.assigned_to_sea_id !== null);
     if (hasAssignedToSEA) {
-      return 'bg-gradient-to-r from-green-100 to-green-50';
+      return 'bg-green-100';
     }
 
     // Check if any session is assigned to specialist
     const hasAssignedToSpecialist = sessions.some(s => s.assigned_to_specialist_id !== null);
     if (hasAssignedToSpecialist) {
-      return 'bg-gradient-to-r from-purple-100 to-purple-50';
+      return 'bg-purple-100';
     }
 
-    // Default: My Sessions
-    return 'bg-gradient-to-r from-blue-50 to-purple-50';
+    // Default: My Sessions (not assigned out)
+    return 'bg-gray-50';
+  };
+
+  // Helper function to get individual session assignment indicator colors
+  const getSessionIndicatorColor = (session: ScheduleSession): { bg: string; text: string } => {
+    if (!currentUser) return { bg: 'bg-gray-200', text: 'text-gray-700' };
+
+    // Assigned to Me (from another specialist) - Blue
+    if (session.assigned_to_specialist_id === currentUser.id && session.provider_id !== currentUser.id) {
+      return { bg: 'bg-blue-200', text: 'text-blue-900' };
+    }
+
+    // Assigned to SEA - Green
+    if (session.assigned_to_sea_id !== null) {
+      return { bg: 'bg-green-200', text: 'text-green-900' };
+    }
+
+    // Assigned to Specialist - Purple
+    if (session.assigned_to_specialist_id !== null) {
+      return { bg: 'bg-purple-200', text: 'text-purple-900' };
+    }
+
+    // Not assigned (provider's own session) - Gray
+    return { bg: 'bg-gray-200', text: 'text-gray-700' };
   };
 
   // Handler for opening group details modal
@@ -2006,10 +2029,15 @@ export function CalendarWeekView({
                       return allBlocks.map((block, idx) => {
                         if (block.type === 'group') {
                           const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
-                          const studentInitials = groupSessions
-                            .map(s => allStudents.get(s.student_id)?.initials || '?')
-                            .filter((v, i, a) => a.indexOf(v) === i) // unique
-                            .join(', ');
+
+                          // Get unique students with their session assignment info
+                          const uniqueStudentSessions = groupSessions.reduce((acc, session) => {
+                            const studentId = session.student_id;
+                            if (!acc.some(s => s.student_id === studentId)) {
+                              acc.push(session);
+                            }
+                            return acc;
+                          }, [] as ScheduleSession[]);
 
                           return (
                             <div key={`group-${groupId}`} className="mb-2">
@@ -2029,8 +2057,25 @@ export function CalendarWeekView({
                                 <div className="font-medium text-gray-900">
                                   {formatTime(earliestStart)} - {formatTime(latestEnd)}
                                 </div>
-                                <div className="text-gray-700 mt-1">
-                                  Students: {studentInitials}
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  <span className="text-gray-700 text-xs">Students:</span>
+                                  {uniqueStudentSessions.map((session, sidx) => {
+                                    const student = allStudents.get(session.student_id);
+                                    const colors = getSessionIndicatorColor(session);
+                                    return (
+                                      <span
+                                        key={`${groupId}-student-${sidx}`}
+                                        className={cn(
+                                          "inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-medium",
+                                          colors.bg,
+                                          colors.text
+                                        )}
+                                        title={`Student: ${student?.initials || '?'}`}
+                                      >
+                                        {student?.initials || '?'}
+                                      </span>
+                                    );
+                                  })}
                                 </div>
                               </button>
                             </div>
