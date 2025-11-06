@@ -288,12 +288,23 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private async fetchExistingSessions(): Promise<ScheduleSession[]> {
     // First, fetch students for this school to get their IDs
-    const { data: students, error: studentError } = await this.supabase
+    // Prioritize school_id (normalized) over legacy school_site/school_district fields
+    let studentQuery = this.supabase
       .from('students')
       .select('id')
-      .eq('provider_id', this.providerId!)
-      .eq('school_site', this.schoolSite!)
-      .eq('school_district', this.schoolDistrict!);
+      .eq('provider_id', this.providerId!);
+
+    if (this.schoolId) {
+      // Use normalized school_id when available
+      studentQuery = studentQuery.eq('school_id', this.schoolId);
+    } else {
+      // Fallback to legacy fields for schools not yet migrated
+      studentQuery = studentQuery
+        .eq('school_site', this.schoolSite!)
+        .eq('school_district', this.schoolDistrict!);
+    }
+
+    const { data: students, error: studentError } = await studentQuery;
 
     if (studentError) {
       this.cacheMetadata.fetchErrors.push(`Students fetch: ${studentError.message}`);
@@ -329,12 +340,21 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
         if (assignedSessionStudentIds.length > 0) {
           // Fetch students from assigned sessions to check their school
-          const { data: assignedStudentsCheck } = await this.supabase
+          // Prioritize school_id over legacy fields
+          let assignedStudentsQuery = this.supabase
             .from('students')
             .select('id')
-            .in('id', assignedSessionStudentIds)
-            .eq('school_site', this.schoolSite!)
-            .eq('school_district', this.schoolDistrict!);
+            .in('id', assignedSessionStudentIds);
+
+          if (this.schoolId) {
+            assignedStudentsQuery = assignedStudentsQuery.eq('school_id', this.schoolId);
+          } else {
+            assignedStudentsQuery = assignedStudentsQuery
+              .eq('school_site', this.schoolSite!)
+              .eq('school_district', this.schoolDistrict!);
+          }
+
+          const { data: assignedStudentsCheck } = await assignedStudentsQuery;
 
           const validAssignedStudentIds = assignedStudentsCheck?.map(s => s.id) || [];
 
