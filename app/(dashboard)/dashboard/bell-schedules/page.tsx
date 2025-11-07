@@ -212,7 +212,7 @@ export default function BellSchedulesPage() {
 
         {/* School Start & End Times Section */}
         <div className="mb-8">
-          <CollapsibleCard title="School Start & End Times" defaultOpen={true}>
+          <CollapsibleCard title="School Start & End Times" defaultOpen={false}>
             <SchoolHoursForm onSuccess={() => {
               // Optionally refresh any data if needed
               console.log('School hours saved successfully');

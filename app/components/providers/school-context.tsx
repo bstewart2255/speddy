@@ -3,6 +3,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { buildSchoolFilter, getSchoolDisplayName, isUserMigrated, getSchoolKey } from '@/lib/school-helpers';
+import { getCurrentDayOfWeek } from '@/lib/helpers/day-of-week';
+import { getSchoolsForDay } from '@/lib/supabase/queries/user-site-schedules';
 
 export interface SchoolInfo {
   // Structured data (preferred)
@@ -244,26 +246,70 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           
           setAvailableSchools(enrichedSchools);
 
-          // Check for saved school preference with user-scoped key
-          const savedSchoolData = localStorage.getItem(`selectedSchool:${user.id}`);
+          // Priority order for school selection:
+          // 1. Manual selection from current session (sessionStorage)
+          // 2. Day-based school (if weekday and exactly one school for today)
+          // 3. Primary school
+          // 4. First available school
+
           let schoolToSet: SchoolInfo | undefined = undefined;
 
-          if (savedSchoolData) {
+          // Priority 1: Check for manual selection in current session
+          const sessionSchoolData = sessionStorage.getItem(`selectedSchool:${user.id}`);
+          if (sessionSchoolData) {
             try {
-              const saved = JSON.parse(savedSchoolData);
-              
-              // Only use the school_id from saved data to find the actual school
+              const saved = JSON.parse(sessionSchoolData);
               if (saved.school_id) {
                 schoolToSet = enrichedSchools.find(s => s.school_id === saved.school_id);
+                if (schoolToSet) {
+                  console.log('[SchoolContext] Using manual school selection from session:', schoolToSet.display_name);
+                }
               }
             } catch (e) {
-              console.error('Error parsing saved school:', e);
+              console.error('[SchoolContext] Error parsing session school:', e);
             }
           }
 
-          // Use the best available school as fallback
+          // Priority 2: Day-based automatic selection
+          if (!schoolToSet) {
+            const currentDay = getCurrentDayOfWeek();
+            console.log('[SchoolContext] Current day of week:', currentDay);
+
+            if (currentDay > 0 && currentDay <= 5) {
+              // Weekday - check for scheduled school
+              try {
+                const schoolsForToday = await getSchoolsForDay(user.id, currentDay);
+                console.log('[SchoolContext] Schools scheduled for today:', schoolsForToday);
+
+                if (schoolsForToday.length === 1) {
+                  // Exactly one school scheduled for today
+                  const todaySchoolData = schoolsForToday[0] as any;
+                  if (todaySchoolData && typeof todaySchoolData === 'object') {
+                    schoolToSet = enrichedSchools.find(s =>
+                      s.school_id === todaySchoolData.school_id ||
+                      (s.school_site === todaySchoolData.school_site && s.school_district === todaySchoolData.school_district)
+                    );
+                    if (schoolToSet) {
+                      console.log('[SchoolContext] Auto-selected school for today:', schoolToSet.display_name);
+                    }
+                  }
+                } else if (schoolsForToday.length > 1) {
+                  console.log('[SchoolContext] Multiple schools scheduled for today, falling back to primary');
+                } else {
+                  console.log('[SchoolContext] No schools scheduled for today, falling back to primary');
+                }
+              } catch (e) {
+                console.error('[SchoolContext] Error fetching schools for day:', e);
+              }
+            } else {
+              console.log('[SchoolContext] Weekend - falling back to primary school');
+            }
+          }
+
+          // Priority 3 & 4: Primary school or first available
           if (!schoolToSet) {
             schoolToSet = enrichedSchools.find(s => s.is_primary) || enrichedSchools[0];
+            console.log('[SchoolContext] Using fallback school:', schoolToSet?.display_name);
           }
 
           setCurrentSchoolState(schoolToSet || null);
@@ -312,15 +358,17 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     fetchProviderSchools();
   }, [fetchProviderSchools]);
 
-  // Persist school selection with user-scoped key and minimal data
+  // Persist manual school selection in session (not localStorage)
+  // This ensures day-based auto-selection happens on each new session/login
   useEffect(() => {
     if (currentSchool && !loading && userId) {
-      // Store only minimal identifiers to prevent PII leakage
+      // Store only minimal identifiers in sessionStorage
+      // This persists manual selections within a session but resets on new login
       const minimalData = {
         school_id: currentSchool.school_id || null,
         cached_at: new Date().toISOString(),
       };
-      localStorage.setItem(`selectedSchool:${userId}`, JSON.stringify(minimalData));
+      sessionStorage.setItem(`selectedSchool:${userId}`, JSON.stringify(minimalData));
     }
   }, [currentSchool, loading, userId]);
 
