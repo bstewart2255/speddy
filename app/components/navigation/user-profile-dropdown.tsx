@@ -197,6 +197,7 @@ export default function UserProfileDropdown({ user }: { user: User }) {
               Settings
             </button>
             {/* Only show billing link for non-SEA users */}
+            {/* HIDDEN: Billing & Subscription
             {profile && profile.role !== 'sea' && (
               <button
                 onClick={() => router.push('/billing')}
@@ -205,8 +206,10 @@ export default function UserProfileDropdown({ user }: { user: User }) {
                 Billing & Subscription
               </button>
             )}
-            
-            {/* Referral Code Section - Only for teachers */}
+            */}
+
+            {/* HIDDEN: Referral Code Section - Only for teachers */}
+            {/*
             {referralInfo && (
               <>
                 <div className="border-t border-gray-200 my-1"></div>
@@ -244,7 +247,8 @@ export default function UserProfileDropdown({ user }: { user: User }) {
                 </div>
               </>
             )}
-            
+            */}
+
             <div className="border-t border-gray-200 my-1"></div>
             <button
               onClick={handleSignOut}
