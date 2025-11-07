@@ -71,21 +71,62 @@ export const LEGACY_TYPE_MAPPINGS: Record<string, QuestionType> = {
 
 /**
  * Normalize a question type string to the standard enum value
+ * @param type - The type string to normalize
+ * @param content - Optional question content for smart type detection
  */
-export function normalizeQuestionType(type: string): QuestionType {
+export function normalizeQuestionType(type: string, content?: string): QuestionType {
   // First try direct enum match
   if (Object.values(QuestionType).includes(type as QuestionType)) {
-    return type as QuestionType;
+    const normalizedType = type as QuestionType;
+
+    // Apply content-based corrections if content is provided
+    if (content) {
+      return applyContentBasedCorrections(normalizedType, content);
+    }
+
+    return normalizedType;
   }
 
   // Then try legacy mapping
   if (type in LEGACY_TYPE_MAPPINGS) {
-    return LEGACY_TYPE_MAPPINGS[type];
+    const normalizedType = LEGACY_TYPE_MAPPINGS[type];
+
+    // Apply content-based corrections if content is provided
+    if (content) {
+      return applyContentBasedCorrections(normalizedType, content);
+    }
+
+    return normalizedType;
   }
 
   // Default to short answer if unknown
   console.warn(`Unknown question type: ${type}, defaulting to short-answer`);
   return QuestionType.SHORT_ANSWER;
+}
+
+/**
+ * Apply content-based type corrections to fix common AI misclassifications
+ */
+function applyContentBasedCorrections(type: QuestionType, content: string): QuestionType {
+  // Priority 1: Oral/verbal tasks should be observations (no written answer)
+  // This catches "read out loud", "count aloud", "tell the teacher", etc.
+  if ((type === QuestionType.SHORT_ANSWER || type === QuestionType.LONG_ANSWER) && isOralTask(content)) {
+    return QuestionType.OBSERVATION;
+  }
+
+  // Priority 2: Reading-only tasks should be observations (no written answer)
+  // This catches "read the passage" without any follow-up questions
+  if ((type === QuestionType.SHORT_ANSWER || type === QuestionType.LONG_ANSWER) && isReadingOnlyTask(content)) {
+    return QuestionType.OBSERVATION;
+  }
+
+  // Priority 3: Math problems should have work space instead of lines
+  // This catches word problems that AI marked as short_answer
+  if (type === QuestionType.SHORT_ANSWER && isMathProblem(content)) {
+    return QuestionType.MATH_WORK;
+  }
+
+  return type;
 }
 
 /**
@@ -311,6 +352,149 @@ export function isNumberSequenceTask(content: string): boolean {
   ];
 
   return patterns.some(pattern => pattern.test(content));
+}
+
+/**
+ * Detect if content is a math problem based on keywords and patterns
+ */
+export function isMathProblem(content: string): boolean {
+  const contentLower = content.toLowerCase();
+
+  // Math operation keywords
+  const mathKeywords = [
+    'solve', 'calculate', 'add', 'subtract', 'multiply', 'divide',
+    'sum', 'difference', 'product', 'quotient', 'total', 'remainder',
+    'equation', 'expression', 'how many', 'how much',
+  ];
+
+  // Check for math keywords
+  const hasMathKeyword = mathKeywords.some(keyword => contentLower.includes(keyword));
+
+  // Check for numbers with math operators (e.g., "5 + 3", "10 - 2")
+  const hasMathExpression = /\d+\s*[+\-×÷=<>]\s*\d+/.test(content);
+
+  // Check for word problem patterns with numbers
+  const hasNumbersWithContext = /\d+/.test(content) && (
+    /apples|books|students|dollars|cents|minutes|hours|feet|inches/.test(contentLower)
+  );
+
+  return hasMathKeyword || hasMathExpression || hasNumbersWithContext;
+}
+
+/**
+ * Detect if task requires oral/verbal performance (should be observation type)
+ */
+export function isOralTask(content: string): boolean {
+  const contentLower = content.toLowerCase();
+
+  const oralPatterns = [
+    /\b(read|say|count|recite|speak|tell)\s+(out\s+)?loud(ly)?/i,
+    /\bread\s+aloud/i,
+    /\bcount\s+(from|to|forward|backward)/i,
+    /teacher\s+will\s+(observe|listen|watch)/i,
+    /\bdemonstrate\s+(by|to|for)/i,
+    /\bshow\s+the\s+teacher/i,
+    /\bverbally/i,
+    /\borally/i,
+  ];
+
+  return oralPatterns.some(pattern => pattern.test(content));
+}
+
+/**
+ * Detect if task is reading-only without written response
+ */
+export function isReadingOnlyTask(content: string): boolean {
+  const contentLower = content.toLowerCase();
+
+  // Must mention reading
+  const hasReadingInstruction = /\b(read|look at|review)\s+(the\s+)?(passage|text|story|paragraph)/i.test(content);
+
+  if (!hasReadingInstruction) {
+    return false;
+  }
+
+  // Should NOT ask for written output
+  const asksForWriting = /(write|list|explain|describe|answer|complete|fill)/i.test(contentLower);
+
+  // Should NOT ask questions
+  const asksQuestions = /(\?|what|how|why|when|where|who|which)/i.test(contentLower);
+
+  return hasReadingInstruction && !asksForWriting && !asksQuestions;
+}
+
+/**
+ * Format multiple computation problems that are crammed on one line
+ *
+ * Detects patterns like "5+8=____6-4=____8x3=____" and adds line breaks
+ * between each problem for better readability.
+ *
+ * @param content - The question text to format
+ * @returns Formatted text with line breaks between computation problems
+ */
+export function formatMultipleComputationProblems(content: string): string {
+  // Pattern to match computation problems: number operator number = blanks
+  // Matches: 5+8=____, 12 + 3 = ____, 4×5=_____, etc.
+  const computationPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g;
+
+  // Find all computation problems in the content
+  const problems = content.match(computationPattern);
+
+  // If we found multiple problems, check if they're adjacent (no line breaks between them)
+  if (problems && problems.length > 1) {
+    // Check if problems are crammed together (minimal spacing, no line breaks)
+    const crammedPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)\s*(\d+\s*[+\-×÷x*\/])/g;
+
+    if (crammedPattern.test(content)) {
+      // Insert line break before each problem that follows another
+      // This handles: ____6-4 -> ____\n6-4
+      let formatted = content.replace(
+        /(_+)\s*(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
+        '$1\n$2'
+      );
+
+      return formatted;
+    }
+  }
+
+  return content;
+}
+
+/**
+ * Remove spatial references from question content
+ *
+ * TODO: Review these replacements for accuracy and edge cases.
+ * This is a heuristic approach that removes references to layout positioning
+ * (above, below, following, etc.) which may not match actual rendering.
+ *
+ * @param content - The question text to clean
+ * @returns Cleaned text with spatial references removed
+ */
+export function removeSpatialReferences(content: string): string {
+  let cleaned = content;
+
+  // Replace "the [element] below" with just "the [element]"
+  cleaned = cleaned.replace(/\b(the\s+(?:passage|text|story|paragraph|image|diagram|table|chart))\s+below\b/gi, '$1');
+
+  // Replace "the [element] above" with just "the [element]"
+  cleaned = cleaned.replace(/\b(the\s+(?:passage|text|story|paragraph|image|diagram|table|chart))\s+above\b/gi, '$1');
+
+  // Replace "shown below" or "provided below" with nothing
+  cleaned = cleaned.replace(/\s*(?:shown|provided|given)\s+below\b/gi, '');
+
+  // Replace "shown above" or "provided above" with nothing
+  cleaned = cleaned.replace(/\s*(?:shown|provided|given)\s+above\b/gi, '');
+
+  // Replace "in the text below" with "in the text"
+  cleaned = cleaned.replace(/\bin\s+the\s+(?:text|passage)\s+below\b/gi, 'in the $1');
+
+  // Replace "in the text above" with "in the text"
+  cleaned = cleaned.replace(/\bin\s+the\s+(?:text|passage)\s+above\b/gi, 'in the $1');
+
+  // Clean up any double spaces created by replacements
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  return cleaned;
 }
 
 /**
