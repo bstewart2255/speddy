@@ -51,13 +51,14 @@ export async function GET(
       );
     }
 
-    // Fetch documents for the group
+    // Fetch documents for the group from unified documents table
     const fetchPerf = measurePerformanceWithAlerts('fetch_group_documents_db', 'database');
     const { data: documents, error } = await supabase
-      .from('group_documents')
+      .from('documents')
       .select('*')
-      .eq('group_id', groupId)
-      .order('created_at', { ascending: false });
+      .eq('documentable_type', 'group')
+      .eq('documentable_id', groupId)
+      .order('created_at', { ascending: false});
     fetchPerf.end({ success: !error, count: documents?.length || 0 });
 
     if (error) {
@@ -176,10 +177,10 @@ export async function POST(
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // Upload to Supabase Storage
+      // Upload to unified Supabase Storage bucket
       const uploadPerf = measurePerformanceWithAlerts('upload_group_document_storage', 'storage');
       const { error: uploadError } = await supabase.storage
-        .from('group-documents')
+        .from('documents')
         .upload(storagePath, buffer, {
           contentType: file.type,
           cacheControl: '3600',
@@ -281,12 +282,13 @@ export async function POST(
       document_type
     });
 
-    // Create the document
+    // Create the document in unified table
     const createPerf = measurePerformanceWithAlerts('create_group_document_db', 'database');
     const { data, error } = await supabase
-      .from('group_documents')
+      .from('documents')
       .insert({
-        group_id: groupId,
+        documentable_type: 'group',
+        documentable_id: groupId,
         title,
         document_type,
         content: content || null,
@@ -398,13 +400,14 @@ export async function PUT(
     }
     if (file_path !== undefined) updateData.file_path = file_path;
 
-    // Update the document (RLS will ensure user owns it)
+    // Update the document in unified table (RLS will ensure user owns it)
     const updatePerf = measurePerformanceWithAlerts('update_group_document_db', 'database');
     const { data, error } = await supabase
-      .from('group_documents')
+      .from('documents')
       .update(updateData)
       .eq('id', documentId)
-      .eq('group_id', groupId)
+      .eq('documentable_type', 'group')
+      .eq('documentable_id', groupId)
       .eq('created_by', userId) // Ensure user owns the document
       .select('*')
       .single();
@@ -493,13 +496,14 @@ export async function DELETE(
       documentId
     });
 
-    // Delete the document (RLS will ensure user owns it)
+    // Delete the document from unified table (RLS will ensure user owns it)
     const deletePerf = measurePerformanceWithAlerts('delete_group_document_db', 'database');
     const { error } = await supabase
-      .from('group_documents')
+      .from('documents')
       .delete()
       .eq('id', documentId)
-      .eq('group_id', groupId)
+      .eq('documentable_type', 'group')
+      .eq('documentable_id', groupId)
       .eq('created_by', userId); // Ensure user owns the document
     deletePerf.end({ success: !error });
 

@@ -14,9 +14,10 @@ import type { Database } from '../../../src/types/database';
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type Lesson = Database['public']['Tables']['lessons']['Row'];
 
-interface GroupDocument {
+interface Document {
   id: string;
-  group_id: string;
+  documentable_type: 'group' | 'session';
+  documentable_id: string;
   title: string;
   document_type: 'pdf' | 'link' | 'note' | 'file';
   content?: string | null;
@@ -57,7 +58,7 @@ export function GroupDetailsModal({
   const [content, setContent] = useState('');
 
   // Documents state
-  const [documents, setDocuments] = useState<GroupDocument[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -65,6 +66,7 @@ export function GroupDetailsModal({
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocUrl, setNewDocUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   // Add escape key handler and body scroll prevention
   useEffect(() => {
@@ -344,6 +346,46 @@ export function GroupDetailsModal({
     }
   };
 
+  const handleDocumentClick = async (doc: Document) => {
+    // Links open directly (handled by <a> tag)
+    if (doc.document_type === 'link') {
+      return;
+    }
+
+    // Files need to fetch download URL
+    if (doc.document_type === 'file') {
+      setDownloadingDocId(doc.id);
+      try {
+        const response = await fetch(`/api/documents/${doc.id}/download`);
+
+        if (!response.ok) {
+          throw new Error('Failed to get download URL');
+        }
+
+        const data = await response.json();
+
+        if (data.type === 'file' && data.url) {
+          // Open in new tab or trigger download
+          const link = document.createElement('a');
+          link.href = data.url;
+          link.download = data.filename || 'download';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          showToast('Download started', 'success');
+        }
+      } catch (error) {
+        console.error('Error downloading document:', error);
+        showToast('Failed to download document', 'error');
+      } finally {
+        setDownloadingDocId(null);
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   const formatTime = (time: string | null) => {
@@ -378,9 +420,9 @@ export function GroupDetailsModal({
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
           {/* Fixed Section: Session Details */}
-          <div className="p-6 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Sessions in this group</h3>
-            <div className="space-y-3">
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Sessions in this group</h3>
+            <div className="flex flex-wrap gap-2">
               {sessions.length === 0 ? (
                 <p className="text-gray-500 text-sm">No sessions in this group</p>
               ) : (
@@ -389,43 +431,40 @@ export function GroupDetailsModal({
                   return (
                     <div
                       key={session.id}
-                      className="bg-white rounded-lg p-4 border border-gray-200"
+                      className="bg-white rounded-md px-3 py-2 border border-gray-200 text-xs flex items-center gap-2"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                          </div>
-                          <div className="text-sm font-semibold text-gray-900">
-                            {student?.initials || '?'}
-                          </div>
-                          {student?.grade_level && (
-                            <div className="text-xs text-gray-500">
-                              Grade {student.grade_level}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            session.delivered_by === 'sea'
-                              ? 'bg-green-100 text-green-700'
-                              : session.delivered_by === 'specialist'
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {session.delivered_by === 'sea'
-                              ? 'SEA'
-                              : session.delivered_by === 'specialist'
-                                ? 'Specialist'
-                                : 'Provider'}
-                          </span>
-                        </div>
-                      </div>
-                      {session.service_type && (
-                        <div className="mt-2 text-xs text-gray-600">
-                          Service: {session.service_type}
-                        </div>
+                      <span className="font-medium text-gray-900">
+                        {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                      </span>
+                      <span className="text-gray-400">•</span>
+                      <span className="font-semibold text-gray-900">
+                        {student?.initials || '?'}
+                      </span>
+                      {student?.grade_level && (
+                        <>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-600">Gr {student.grade_level}</span>
+                        </>
                       )}
+                      {session.service_type && (
+                        <>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-600">{session.service_type}</span>
+                        </>
+                      )}
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        session.delivered_by === 'sea'
+                          ? 'bg-green-100 text-green-700'
+                          : session.delivered_by === 'specialist'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {session.delivered_by === 'sea'
+                          ? 'SEA'
+                          : session.delivered_by === 'specialist'
+                            ? 'Specialist'
+                            : 'Provider'}
+                      </span>
                     </div>
                   );
                 })
@@ -434,25 +473,27 @@ export function GroupDetailsModal({
           </div>
 
           {/* Fixed Section: Documents */}
-          <div className="p-6 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Documents</h3>
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-700">Documents</h3>
+              {/* Add Document Button */}
+              {!adding && (
+                <button
+                  onClick={() => setAdding(true)}
+                  className="py-1.5 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                >
+                  <span>+</span>
+                  <span>Add Document</span>
+                </button>
+              )}
+            </div>
 
             {loadingDocuments ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="text-gray-500">Loading documents...</div>
+              <div className="flex items-center justify-center py-4">
+                <div className="text-gray-500 text-sm">Loading documents...</div>
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Add Document Button */}
-                {!adding && (
-                  <button
-                    onClick={() => setAdding(true)}
-                    className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
-                  >
-                    <span>+</span>
-                    <span>Add Document</span>
-                  </button>
-                )}
+              <div className="space-y-3">
 
                 {/* Add Document Form */}
                 {adding && (
@@ -600,9 +641,9 @@ export function GroupDetailsModal({
 
                 {/* Documents List */}
                 <div className="space-y-2">
-                  {documents.length === 0 ? (
-                    <div className="text-center py-4 text-gray-500 bg-white rounded-lg border border-gray-200">
-                      <p className="text-sm">No documents attached yet</p>
+                  {documents.length === 0 && !adding ? (
+                    <div className="text-center py-3 text-gray-500 bg-white rounded-md border border-gray-200">
+                      <p className="text-xs">No documents attached yet</p>
                     </div>
                   ) : (
                     documents.map((doc) => {
@@ -616,30 +657,41 @@ export function GroupDetailsModal({
                         Icon = getDocumentIcon('application/octet-stream'); // Default file icon
                       }
 
+                      const isDownloading = downloadingDocId === doc.id;
+
                       return (
                         <div
                           key={doc.id}
-                          className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                          onClick={() => !isDownloading && doc.document_type === 'file' && handleDocumentClick(doc)}
+                          className={`bg-white border border-gray-200 rounded-md p-2.5 hover:border-gray-300 transition-colors ${
+                            doc.document_type === 'file' ? 'cursor-pointer hover:bg-gray-50' : ''
+                          } ${isDownloading ? 'opacity-60' : ''}`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start gap-3 flex-1">
-                              <Icon className="w-6 h-6 text-gray-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
+                              {isDownloading ? (
+                                <div className="w-4 h-4 flex-shrink-0 mt-0.5">
+                                  <svg className="animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                </div>
+                              ) : (
+                                <Icon className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
+                              )}
                               <div className="flex-1 min-w-0">
-                                <h5 className="font-medium text-gray-900 truncate">{doc.title}</h5>
+                                <h5 className="text-sm font-medium text-gray-900 truncate">
+                                  {doc.title}
+                                  {isDownloading && <span className="ml-2 text-xs text-gray-500">Downloading...</span>}
+                                </h5>
 
                                 {/* File info */}
                                 {doc.document_type === 'file' && (
-                                  <div className="mt-1 space-y-1">
-                                    <p className="text-sm text-gray-600">
-                                      {doc.original_filename && (
-                                        <span className="truncate block">{doc.original_filename}</span>
-                                      )}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {doc.mime_type && getFileTypeName(doc.mime_type)}
-                                      {doc.file_size && ` • ${formatFileSize(doc.file_size)}`}
-                                    </p>
-                                  </div>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {doc.mime_type && getFileTypeName(doc.mime_type)}
+                                    {doc.file_size && ` • ${formatFileSize(doc.file_size)}`}
+                                    <span className="ml-1 text-blue-600">• Click to download</span>
+                                  </p>
                                 )}
 
                                 {/* Link info */}
@@ -648,24 +700,24 @@ export function GroupDetailsModal({
                                     href={doc.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-sm text-blue-600 hover:text-blue-800 mt-1 inline-block truncate max-w-full"
+                                    className="text-xs text-blue-600 hover:text-blue-800 mt-0.5 inline-block truncate max-w-full"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     {doc.url}
                                   </a>
                                 )}
-
-                                <p className="text-xs text-gray-400 mt-1">
-                                  Added {new Date(doc.created_at).toLocaleDateString()}
-                                </p>
                               </div>
                             </div>
 
                             <button
-                              onClick={() => handleDeleteDocument(doc.id)}
-                              className="text-gray-400 hover:text-red-600 transition-colors ml-2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteDocument(doc.id);
+                              }}
+                              className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
                               title="Delete document"
                             >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                             </button>

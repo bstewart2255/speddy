@@ -52,12 +52,13 @@ export async function GET(
       );
     }
 
-    // Fetch documents for the session
+    // Fetch documents for the session from unified documents table
     const fetchPerf = measurePerformanceWithAlerts('fetch_session_documents_db', 'database');
     const { data: documents, error } = await supabase
-      .from('session_documents')
+      .from('documents')
       .select('*')
-      .eq('session_id', sessionId)
+      .eq('documentable_type', 'session')
+      .eq('documentable_id', sessionId)
       .order('created_at', { ascending: false });
     fetchPerf.end({ success: !error, count: documents?.length || 0 });
 
@@ -178,10 +179,10 @@ export async function POST(
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // Upload to Supabase Storage
+      // Upload to unified Supabase Storage bucket
       const uploadPerf = measurePerformanceWithAlerts('upload_session_document_storage', 'storage');
       const { error: uploadError } = await supabase.storage
-        .from('session-documents')
+        .from('documents')
         .upload(storagePath, buffer, {
           contentType: file.type,
           cacheControl: '3600',
@@ -283,12 +284,13 @@ export async function POST(
       document_type
     });
 
-    // Create the document
+    // Create the document in unified table
     const createPerf = measurePerformanceWithAlerts('create_session_document_db', 'database');
     const { data, error } = await supabase
-      .from('session_documents')
+      .from('documents')
       .insert({
-        session_id: sessionId,
+        documentable_type: 'session',
+        documentable_id: sessionId,
         title,
         document_type,
         content: content || null,
@@ -380,13 +382,14 @@ export async function DELETE(
       documentId
     });
 
-    // Delete the document (RLS will ensure user owns it)
+    // Delete the document from unified table (RLS will ensure user owns it)
     const deletePerf = measurePerformanceWithAlerts('delete_session_document_db', 'database');
     const { error } = await supabase
-      .from('session_documents')
+      .from('documents')
       .delete()
       .eq('id', documentId)
-      .eq('session_id', sessionId)
+      .eq('documentable_type', 'session')
+      .eq('documentable_id', sessionId)
       .eq('created_by', userId); // Ensure user owns the document
     deletePerf.end({ success: !error });
 
