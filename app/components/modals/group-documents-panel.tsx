@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import { Link as LinkIcon, Upload } from 'lucide-react';
 import {
@@ -42,14 +42,7 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
   const [newDocUrl, setNewDocUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // Fetch documents on mount
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchDocuments(controller.signal);
-    return () => controller.abort();
-  }, [groupId]);
-
-  const fetchDocuments = async (signal?: AbortSignal) => {
+  const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/groups/${groupId}/documents`, { signal });
@@ -67,7 +60,14 @@ export function GroupDocumentsPanel({ groupId }: GroupDocumentsPanelProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId, showToast]);
+
+  // Fetch documents on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchDocuments(controller.signal);
+    return () => controller.abort();
+  }, [fetchDocuments]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
