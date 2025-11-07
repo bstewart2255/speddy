@@ -105,6 +105,59 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     teacher_name?: string;
   } | null>(null);
 
+  // Helper function to determine session background color based on assignment
+  const getSessionColor = (session: ScheduleSession): string => {
+    if (!currentUser) return 'bg-white';
+
+    // Priority order: Assigned to Me > Assigned to SEA > Assigned to Specialist > My Sessions
+
+    // Assigned to Me - light blue
+    if (session.assigned_to_specialist_id === currentUser.id && session.provider_id !== currentUser.id) {
+      return 'bg-blue-50';
+    }
+
+    // Assigned to SEA - light green
+    if (session.assigned_to_sea_id !== null) {
+      return 'bg-green-50';
+    }
+
+    // Assigned to Specialist - light purple
+    if (session.assigned_to_specialist_id !== null) {
+      return 'bg-purple-50';
+    }
+
+    // My Sessions (provider, not assigned out) - white background
+    return 'bg-white';
+  };
+
+  // Helper function to determine group session solid color based on sessions
+  const getGroupColor = (sessions: ScheduleSession[]): string => {
+    if (!currentUser || sessions.length === 0) return 'bg-gray-50';
+
+    // Check if any session is assigned to me from another specialist
+    const hasAssignedToMe = sessions.some(s =>
+      s.assigned_to_specialist_id === currentUser.id && s.provider_id !== currentUser.id
+    );
+    if (hasAssignedToMe) {
+      return 'bg-blue-100';
+    }
+
+    // Check if any session is assigned to SEA
+    const hasAssignedToSEA = sessions.some(s => s.assigned_to_sea_id !== null);
+    if (hasAssignedToSEA) {
+      return 'bg-green-100';
+    }
+
+    // Check if any session is assigned to specialist
+    const hasAssignedToSpecialist = sessions.some(s => s.assigned_to_specialist_id !== null);
+    if (hasAssignedToSpecialist) {
+      return 'bg-purple-100';
+    }
+
+    // Default: My Sessions (not assigned out)
+    return 'bg-gray-50';
+  };
+
   React.useEffect(() => {
     let isMounted = true;
     const supabase = createClient();
@@ -606,7 +659,7 @@ return (
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-gradient-to-r from-blue-50 to-purple-50"
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getGroupColor(groupSessions)}`}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -635,7 +688,7 @@ return (
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-white"
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getSessionColor(session)}`}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
@@ -723,7 +776,7 @@ return (
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-gradient-to-r from-blue-50 to-purple-50"
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getGroupColor(groupSessions)}`}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -752,7 +805,7 @@ return (
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className="w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors bg-white"
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getSessionColor(session)}`}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
