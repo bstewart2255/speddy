@@ -11,6 +11,7 @@ import {
   calculateLineCount,
   normalizeQuestionType,
   isNumberSequenceTask,
+  cleanQuestionContent,
 } from './question-types';
 import { escapeHtml } from './print-styles';
 
@@ -51,7 +52,10 @@ export function QuestionRenderer({
   showNumber = true,
   className = '',
 }: QuestionRendererProps) {
-  const type = normalizeQuestionType(question.type);
+  // Clean and normalize question content
+  const cleanedContent = cleanQuestionContent(question.content);
+
+  const type = normalizeQuestionType(question.type, cleanedContent);
   const format = QUESTION_FORMATS[type];
 
   // Don't render teacher-only content in student view
@@ -60,7 +64,7 @@ export function QuestionRenderer({
   }
 
   const shouldShowNumber = showNumber && format.showNumber && questionNumber !== undefined;
-  const lineCount = calculateLineCount(type, question.content, question.blankLines);
+  const lineCount = calculateLineCount(type, cleanedContent, question.blankLines);
 
   return (
     <div className={`question-item ${format.cssClass} ${className}`}>
@@ -70,7 +74,7 @@ export function QuestionRenderer({
           {shouldShowNumber && (
             <span className="question-number font-bold mr-2">{questionNumber}.</span>
           )}
-          <span className="question-text">{question.content}</span>
+          <span className="question-text whitespace-pre-line">{cleanedContent}</span>
         </div>
       )}
 
@@ -89,7 +93,7 @@ export function QuestionRenderer({
 
       {type === QuestionType.MATH_WORK && (
         <>
-          {isNumberSequenceTask(question.content) ? (
+          {isNumberSequenceTask(cleanedContent) ? (
             <AnswerLines count={Math.min(lineCount, 8)} />
           ) : (
             <MathWorkSpace />
@@ -201,7 +205,10 @@ export function generateQuestionHTML(
   questionNumber?: number,
   showNumber: boolean = true
 ): string {
-  const type = normalizeQuestionType(question.type);
+  // Clean and normalize question content
+  const cleanedContent = cleanQuestionContent(question.content);
+
+  const type = normalizeQuestionType(question.type, cleanedContent);
   const format = QUESTION_FORMATS[type];
 
   // Don't render teacher-only content
@@ -210,7 +217,7 @@ export function generateQuestionHTML(
   }
 
   const shouldShowNumber = showNumber && format.showNumber && questionNumber !== undefined;
-  const lineCount = calculateLineCount(type, question.content, question.blankLines);
+  const lineCount = calculateLineCount(type, cleanedContent, question.blankLines);
 
   let html = `<div class="question-item ${format.cssClass}">`;
 
@@ -220,7 +227,9 @@ export function generateQuestionHTML(
     if (shouldShowNumber) {
       html += `<span class="question-number">${questionNumber}.</span> `;
     }
-    html += `<span class="question-text">${escapeHtml(question.content)}</span>`;
+    // Convert line breaks to <br> tags for HTML display
+    const contentWithBreaks = escapeHtml(cleanedContent).replace(/\n/g, '<br>');
+    html += `<span class="question-text">${contentWithBreaks}</span>`;
     html += '</div>';
   }
 
@@ -249,7 +258,7 @@ export function generateQuestionHTML(
   } else if (type === QuestionType.VISUAL_MATH) {
     html += '<div class="work-space compact"></div>';
   } else if (type === QuestionType.MATH_WORK) {
-    if (isNumberSequenceTask(question.content)) {
+    if (isNumberSequenceTask(cleanedContent)) {
       for (let i = 0; i < Math.min(lineCount, 8); i++) {
         html += '<div class="answer-line"></div>';
       }
