@@ -37,8 +37,32 @@ BEGIN
   FROM profiles p
   WHERE p.id = current_user_id;
 
+  -- Return empty if user not found
+  IF user_school_id IS NULL AND user_school_district IS NULL THEN
+    RETURN;
+  END IF;
+
   -- If filter_school_id is provided, filter to that specific school only
   IF filter_school_id IS NOT NULL THEN
+    -- SECURITY: Verify user has access to the requested school
+    IF user_works_multiple_schools = true THEN
+      -- For multi-school users, verify the filter_school_id is in their provider_schools
+      IF NOT EXISTS (
+        SELECT 1
+        FROM provider_schools ps
+        WHERE ps.provider_id = current_user_id
+          AND ps.school_id = filter_school_id
+      ) THEN
+        -- User doesn't have access to this school
+        RETURN;
+      END IF;
+    ELSE
+      -- For single-school users, verify filter_school_id matches their primary school
+      IF user_school_id != filter_school_id THEN
+        -- User doesn't have access to this school
+        RETURN;
+      END IF;
+    END IF;
     RETURN QUERY
     SELECT DISTINCT
       p.id,
@@ -113,7 +137,13 @@ BEGIN
         SELECT 1
         FROM provider_schools ps
         WHERE ps.provider_id = p.id
-          AND ps.school_id = user_school_id
+          AND (
+            -- Match by school_id if available
+            (user_school_id IS NOT NULL AND ps.school_id = user_school_id)
+            OR
+            -- Fallback to school_district + school_site for legacy schools
+            (user_school_id IS NULL AND ps.school_district = user_school_district AND ps.school_site = user_school_site)
+          )
       ))
     )
     AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist')
@@ -128,3 +158,6 @@ COMMENT ON FUNCTION get_available_specialists(UUID, VARCHAR) IS
 When filter_school_id is provided: Returns specialists at that specific school only (for UI filtering).
 When filter_school_id is NULL: Returns specialists at ALL user''s schools (for permission checking).
 Supports both school_id (migrated schools) and school_district+school_site (legacy schools) matching.';
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION get_available_specialists(UUID, VARCHAR) TO authenticated;
