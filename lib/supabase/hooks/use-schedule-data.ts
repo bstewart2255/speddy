@@ -282,7 +282,10 @@ export function useScheduleData() {
           // Use the database function to get specialists, which handles both primary and secondary schools
           if (currentSchool.school_id) {
             const { data: specialists, error: specialistsError } = await supabase
-              .rpc('get_available_specialists', { current_user_id: user.id });
+              .rpc('get_available_specialists', {
+                current_user_id: user.id,
+                filter_school_id: currentSchool.school_id
+              });
 
             if (specialistsError) {
               console.error('[useScheduleData] Error fetching specialists:', {
