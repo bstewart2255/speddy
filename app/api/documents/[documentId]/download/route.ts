@@ -108,11 +108,41 @@ export async function GET(
         type: 'link',
         url: document.url
       });
-    } else if (document.document_type === 'file' && document.file_path) {
-      // For files, generate signed URL from storage
-      const { data: signedUrlData, error: urlError } = await supabase.storage
+    } else if ((document.document_type === 'file' || document.document_type === 'pdf') && document.file_path) {
+      // For files and legacy PDFs, generate signed URL from storage
+      // Try new unified bucket first
+      let { data: signedUrlData, error: urlError } = await supabase.storage
         .from('documents')
         .createSignedUrl(document.file_path, 3600); // 1 hour expiry
+
+      // If file not found and path doesn't have new prefix, try legacy bucket
+      if (urlError && !document.file_path.startsWith('groups/') && !document.file_path.startsWith('sessions/')) {
+        log.info('File not found in unified bucket, trying legacy bucket', {
+          userId,
+          documentId,
+          filePath: document.file_path,
+          documentableType: document.documentable_type
+        });
+
+        // Determine which legacy bucket to use
+        const legacyBucket = document.documentable_type === 'group' ? 'group-documents' : 'session-documents';
+
+        // Try legacy bucket
+        const legacyResult = await supabase.storage
+          .from(legacyBucket)
+          .createSignedUrl(document.file_path, 3600);
+
+        signedUrlData = legacyResult.data;
+        urlError = legacyResult.error;
+
+        if (!urlError && signedUrlData) {
+          log.info('Successfully fetched from legacy bucket', {
+            userId,
+            documentId,
+            legacyBucket
+          });
+        }
+      }
 
       if (urlError || !signedUrlData) {
         log.error('Error generating signed URL', urlError, {

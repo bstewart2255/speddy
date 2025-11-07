@@ -9,6 +9,7 @@ import {
   formatFileSize,
   getFileTypeName
 } from '@/lib/document-utils';
+import { formatTime } from '@/lib/utils/time-options';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -49,7 +50,6 @@ export function SessionDetailsModal({
 
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
-  const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
@@ -106,7 +106,6 @@ export function SessionDetailsModal({
   // Initialize lesson and documents when modal opens
   useEffect(() => {
     if (isOpen) {
-      setLoading(false);
       // Reset form if no lesson exists
       if (!lesson) {
         setTitle('');
@@ -118,16 +117,7 @@ export function SessionDetailsModal({
       fetchDocuments(controller.signal);
       return () => controller.abort();
     }
-  }, [isOpen, lesson, fetchDocuments]);
-
-  const formatTime = (time: string | null) => {
-    if (!time) return "Unscheduled";
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  }, [isOpen, fetchDocuments]);
 
   const handleSaveLesson = async () => {
     if (!content.trim()) {
@@ -617,7 +607,7 @@ export function SessionDetailsModal({
                     documents.map((doc) => {
                       // Get the appropriate icon based on document type
                       let Icon;
-                      if (doc.document_type === 'file' && doc.mime_type) {
+                      if ((doc.document_type === 'file' || doc.document_type === 'pdf') && doc.mime_type) {
                         Icon = getDocumentIcon(doc.mime_type);
                       } else if (doc.document_type === 'link') {
                         Icon = LinkIcon;
@@ -630,9 +620,9 @@ export function SessionDetailsModal({
                       return (
                         <div
                           key={doc.id}
-                          onClick={() => !isDownloading && doc.document_type === 'file' && handleDocumentClick(doc)}
+                          onClick={() => !isDownloading && (doc.document_type === 'file' || doc.document_type === 'pdf') && handleDocumentClick(doc)}
                           className={`bg-white border border-gray-200 rounded-md p-2.5 hover:border-gray-300 transition-colors ${
-                            doc.document_type === 'file' ? 'cursor-pointer hover:bg-gray-50' : ''
+                            (doc.document_type === 'file' || doc.document_type === 'pdf') ? 'cursor-pointer hover:bg-gray-50' : ''
                           } ${isDownloading ? 'opacity-60' : ''}`}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -654,7 +644,7 @@ export function SessionDetailsModal({
                                 </h5>
 
                                 {/* File info */}
-                                {doc.document_type === 'file' && (
+                                {(doc.document_type === 'file' || doc.document_type === 'pdf') && (
                                   <p className="text-xs text-gray-500 mt-0.5">
                                     {doc.mime_type && getFileTypeName(doc.mime_type)}
                                     {doc.file_size && ` • ${formatFileSize(doc.file_size)}`}

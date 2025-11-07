@@ -69,6 +69,7 @@ CREATE POLICY "Users can view their session documents"
                 OR s.assigned_to_specialist_id = auth.uid()
                 OR s.assigned_to_sea_id = auth.uid()
             )
+            LIMIT 1
         )
     );
 
@@ -105,6 +106,7 @@ CREATE POLICY "Users can create documents for their sessions"
                 OR s.assigned_to_specialist_id = auth.uid()
                 OR s.assigned_to_sea_id = auth.uid()
             )
+            LIMIT 1
         )
         AND created_by = auth.uid()
     );

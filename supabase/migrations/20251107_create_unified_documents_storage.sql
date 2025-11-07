@@ -31,11 +31,36 @@ CREATE POLICY "Users can upload documents"
         bucket_id = 'documents'
         AND auth.role() = 'authenticated'
         AND (
-            -- Allow uploads to groups/ folder
-            (storage.foldername(name))[1] = 'groups'
-            OR
-            -- Allow uploads to sessions/ folder
-            (storage.foldername(name))[1] = 'sessions'
+            (
+                -- Allow uploads to groups/ folder if user has access to the group
+                (storage.foldername(name))[1] = 'groups'
+                AND EXISTS (
+                    SELECT 1
+                    FROM public.schedule_sessions s
+                    WHERE s.group_id = ((storage.foldername(name))[2])::uuid
+                      AND (
+                        s.provider_id = auth.uid()
+                        OR s.assigned_to_specialist_id = auth.uid()
+                        OR s.assigned_to_sea_id = auth.uid()
+                      )
+                    LIMIT 1
+                )
+            )
+            OR (
+                -- Allow uploads to sessions/ folder if user has access to the session
+                (storage.foldername(name))[1] = 'sessions'
+                AND EXISTS (
+                    SELECT 1
+                    FROM public.schedule_sessions s
+                    WHERE s.id = ((storage.foldername(name))[2])::uuid
+                      AND (
+                        s.provider_id = auth.uid()
+                        OR s.assigned_to_specialist_id = auth.uid()
+                        OR s.assigned_to_sea_id = auth.uid()
+                      )
+                    LIMIT 1
+                )
+            )
         )
     );
 
@@ -45,7 +70,41 @@ CREATE POLICY "Users can view documents"
     FOR SELECT
     USING (
         bucket_id = 'documents'
-        AND auth.role() = 'authenticated'
+        AND EXISTS (
+            SELECT 1
+            FROM public.documents d
+            WHERE d.file_path = name
+              AND (
+                (
+                  d.documentable_type = 'group'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM public.schedule_sessions s
+                    WHERE s.group_id = d.documentable_id
+                      AND (
+                        s.provider_id = auth.uid()
+                        OR s.assigned_to_specialist_id = auth.uid()
+                        OR s.assigned_to_sea_id = auth.uid()
+                      )
+                    LIMIT 1
+                  )
+                )
+                OR (
+                  d.documentable_type = 'session'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM public.schedule_sessions s
+                    WHERE s.id = d.documentable_id
+                      AND (
+                        s.provider_id = auth.uid()
+                        OR s.assigned_to_specialist_id = auth.uid()
+                        OR s.assigned_to_sea_id = auth.uid()
+                      )
+                    LIMIT 1
+                  )
+                )
+              )
+        )
     );
 
 -- Policy for deleting documents
@@ -54,5 +113,10 @@ CREATE POLICY "Users can delete documents"
     FOR DELETE
     USING (
         bucket_id = 'documents'
-        AND auth.role() = 'authenticated'
+        AND EXISTS (
+            SELECT 1
+            FROM public.documents d
+            WHERE d.file_path = name
+              AND d.created_by = auth.uid()
+        )
     );
