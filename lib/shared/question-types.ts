@@ -75,33 +75,26 @@ export const LEGACY_TYPE_MAPPINGS: Record<string, QuestionType> = {
  * @param content - Optional question content for smart type detection
  */
 export function normalizeQuestionType(type: string, content?: string): QuestionType {
+  let normalizedType: QuestionType | undefined;
+
   // First try direct enum match
   if (Object.values(QuestionType).includes(type as QuestionType)) {
-    const normalizedType = type as QuestionType;
-
-    // Apply content-based corrections if content is provided
-    if (content) {
-      return applyContentBasedCorrections(normalizedType, content);
-    }
-
-    return normalizedType;
+    normalizedType = type as QuestionType;
   }
 
-  // Then try legacy mapping
-  if (type in LEGACY_TYPE_MAPPINGS) {
-    const normalizedType = LEGACY_TYPE_MAPPINGS[type];
-
-    // Apply content-based corrections if content is provided
-    if (content) {
-      return applyContentBasedCorrections(normalizedType, content);
-    }
-
-    return normalizedType;
+  // Try legacy mapping if no direct match
+  if (!normalizedType && type in LEGACY_TYPE_MAPPINGS) {
+    normalizedType = LEGACY_TYPE_MAPPINGS[type];
   }
 
-  // Default to short answer if unknown
-  console.warn(`Unknown question type: ${type}, defaulting to short-answer`);
-  return QuestionType.SHORT_ANSWER;
+  // Default to short answer if still no match
+  if (!normalizedType) {
+    console.warn(`Unknown question type: ${type}, defaulting to short-answer`);
+    normalizedType = QuestionType.SHORT_ANSWER;
+  }
+
+  // Apply content-based corrections if content is provided
+  return content ? applyContentBasedCorrections(normalizedType, content) : normalizedType;
 }
 
 /**
@@ -443,7 +436,7 @@ export function formatMultipleComputationProblems(content: string): string {
   // If we found multiple problems, check if they're adjacent (no line breaks between them)
   if (problems && problems.length > 1) {
     // Check if problems are crammed together (minimal spacing, no line breaks)
-    const crammedPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)\s*(\d+\s*[+\-×÷x*\/])/g;
+    const crammedPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)\s*(\d+\s*[+\-×÷x*\/])/;
 
     if (crammedPattern.test(content)) {
       // Insert line break before each problem that follows another
@@ -458,6 +451,22 @@ export function formatMultipleComputationProblems(content: string): string {
   }
 
   return content;
+}
+
+/**
+ * Clean and normalize question content for rendering
+ *
+ * Applies all content cleaning transformations in the correct order:
+ * 1. Remove spatial references (above, below)
+ * 2. Format multiple computation problems
+ *
+ * @param content - The question text to clean
+ * @returns Cleaned and formatted question content
+ */
+export function cleanQuestionContent(content: string): string {
+  let cleaned = removeSpatialReferences(content);
+  cleaned = formatMultipleComputationProblems(cleaned);
+  return cleaned;
 }
 
 /**
@@ -486,10 +495,10 @@ export function removeSpatialReferences(content: string): string {
   cleaned = cleaned.replace(/\s*(?:shown|provided|given)\s+above\b/gi, '');
 
   // Replace "in the text below" with "in the text"
-  cleaned = cleaned.replace(/\bin\s+the\s+(?:text|passage)\s+below\b/gi, 'in the $1');
+  cleaned = cleaned.replace(/\bin\s+the\s+(text|passage)\s+below\b/gi, 'in the $1');
 
   // Replace "in the text above" with "in the text"
-  cleaned = cleaned.replace(/\bin\s+the\s+(?:text|passage)\s+above\b/gi, 'in the $1');
+  cleaned = cleaned.replace(/\bin\s+the\s+(text|passage)\s+above\b/gi, 'in the $1');
 
   // Clean up any double spaces created by replacements
   cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();

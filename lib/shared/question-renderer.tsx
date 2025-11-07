@@ -11,8 +11,7 @@ import {
   calculateLineCount,
   normalizeQuestionType,
   isNumberSequenceTask,
-  removeSpatialReferences,
-  formatMultipleComputationProblems,
+  cleanQuestionContent,
 } from './question-types';
 import { escapeHtml } from './print-styles';
 
@@ -53,11 +52,8 @@ export function QuestionRenderer({
   showNumber = true,
   className = '',
 }: QuestionRendererProps) {
-  // Clean spatial references from content
-  let cleanedContent = removeSpatialReferences(question.content);
-
-  // Format multiple computation problems on one line
-  cleanedContent = formatMultipleComputationProblems(cleanedContent);
+  // Clean and normalize question content
+  const cleanedContent = cleanQuestionContent(question.content);
 
   const type = normalizeQuestionType(question.type, cleanedContent);
   const format = QUESTION_FORMATS[type];
@@ -209,11 +205,8 @@ export function generateQuestionHTML(
   questionNumber?: number,
   showNumber: boolean = true
 ): string {
-  // Clean spatial references from content
-  let cleanedContent = removeSpatialReferences(question.content);
-
-  // Format multiple computation problems on one line
-  cleanedContent = formatMultipleComputationProblems(cleanedContent);
+  // Clean and normalize question content
+  const cleanedContent = cleanQuestionContent(question.content);
 
   const type = normalizeQuestionType(question.type, cleanedContent);
   const format = QUESTION_FORMATS[type];
