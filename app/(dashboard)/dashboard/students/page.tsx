@@ -725,7 +725,7 @@ export default function StudentsPage() {
                 ))}
 
                 {/* Total Summary Row */}
-                {students.length > 0 && (
+                {!isViewOnly && students.length > 0 && (
                   <tr className="bg-gray-50 font-semibold border-t-2 border-gray-300">
                     <td colSpan={3} className="px-4 py-3 text-right text-gray-900">
                       Total Caseload:
