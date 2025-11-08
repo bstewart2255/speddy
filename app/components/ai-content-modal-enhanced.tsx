@@ -2,8 +2,6 @@
 
 import * as React from "react";
 import { X, Printer, Save, Check, ChevronLeft, ChevronRight, Clock, Users, Target, BookOpen, Activity } from "lucide-react";
-// DEPRECATED: WorksheetGenerator fallback removed to simplify pipeline (Issue #268)
-// import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { formatTimeSlot } from '../../lib/utils/date-time';
 import { LessonContentHandler, getPrintableContent, isJsonLesson } from '../../lib/utils/lesson-content-handler';
 import {
@@ -254,32 +252,16 @@ export function AIContentModalEnhanced({
   };
 
   const generateWorksheetsForLesson = async (lesson: LessonContent) => {
-    console.log('[DEBUG] Starting worksheet generation for lesson:', {
-      timeSlot: lesson.timeSlot,
-      studentCount: lesson.students.length,
-      contentLength: lesson.content?.length
-    });
-
     // Generate worksheets for each student in the time slot
     for (const student of lesson.students) {
-      console.log('[DEBUG] Processing student:', student.initials, student.id);
-
       try {
         // Check for AI-generated content using shared utility
         const { studentMaterial, isValid, error } = findStudentWorksheetContent(lesson.content, student.id);
-        console.log('[DEBUG] Worksheet search result:', { isValid, error, hasStudentMaterial: !!studentMaterial });
 
         let aiMathWorksheetHtml: string | null = null;
         let aiElaWorksheetHtml: string | null = null;
 
         if (isValid && studentMaterial) {
-          console.log('Found AI-generated worksheet for student:', student.initials);
-          console.log('StudentMaterial structure:', {
-            hasWorksheet: !!studentMaterial.worksheet,
-            hasWorksheets: !!studentMaterial.worksheets,
-            worksheetKeys: studentMaterial.worksheets ? Object.keys(studentMaterial.worksheets) : [],
-          });
-          
           // Generate unique worksheet IDs and QR codes in parallel for better performance
           const mathWorksheetCode = generateWorksheetId(student.id, 'math');
           const elaWorksheetCode = generateWorksheetId(student.id, 'ela');
@@ -293,13 +275,6 @@ export function AIContentModalEnhanced({
           aiMathWorksheetHtml = mathHtml;
           aiElaWorksheetHtml = elaHtml;
 
-          console.log('[DEBUG] Worksheet HTML generation results:', {
-            mathHtmlLength: aiMathWorksheetHtml?.length || 0,
-            elaHtmlLength: aiElaWorksheetHtml?.length || 0,
-            hasMathHtml: !!aiMathWorksheetHtml,
-            hasElaHtml: !!aiElaWorksheetHtml
-          });
-
           if (!aiMathWorksheetHtml && !aiElaWorksheetHtml) {
             console.error('Failed to generate both worksheets despite valid data:', {
               studentId: student.id,
@@ -307,15 +282,12 @@ export function AIContentModalEnhanced({
               materialStructure: studentMaterial
             });
           }
-        } else {
-          console.log(`No AI worksheet for ${student.initials}: ${error || 'Unknown error'}`);
         }
-        
+
         // Print AI-generated worksheets if available, otherwise show explicit error
         if (aiMathWorksheetHtml || aiElaWorksheetHtml) {
           // Print math worksheet if available
           if (aiMathWorksheetHtml) {
-            console.log('[WORKSHEET] Printing Math worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiMathWorksheetHtml, `Math Worksheet - ${student.initials}`);
             await new Promise(resolve => setTimeout(resolve, 500)); // Small delay between prints
           } else {
@@ -326,7 +298,6 @@ export function AIContentModalEnhanced({
 
           // Print ELA worksheet if available
           if (aiElaWorksheetHtml) {
-            console.log('[WORKSHEET] Printing ELA worksheet HTML for:', student.initials);
             printHtmlWorksheet(aiElaWorksheetHtml, `ELA Worksheet - ${student.initials}`);
           } else {
             // EXPLICIT ERROR - No silent fallback
