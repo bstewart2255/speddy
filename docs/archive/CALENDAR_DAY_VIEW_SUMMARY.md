@@ -165,6 +165,7 @@ Two levels of filtering occur:
    - Assigned sessions excluded here
 
 2. **Display Layer** (CalendarDayView)
+
    ```typescript
    const filteredSessions = sessionsState.filter(s => students.has(s.student_id));
    ```

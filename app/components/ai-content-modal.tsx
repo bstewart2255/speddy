@@ -2,8 +2,6 @@
 
 import * as React from "react";
 import { X, Printer, Save, Check } from "lucide-react";
-// DEPRECATED: WorksheetGenerator fallback removed to simplify pipeline (Issue #268)
-// import { WorksheetGenerator } from '../../lib/worksheet-generator';
 import { LessonContentHandler, getPrintableContent } from '../../lib/utils/lesson-content-handler';
 import {
   generateWorksheetId,
@@ -189,13 +187,10 @@ export function AIContentModal({
 
   const handlePrintWorksheet = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
     try {
-      console.log('[WORKSHEET] Generating worksheet for:', { studentInitials, gradeLevel, subject });
-
       // Check for AI-generated content
       const { studentMaterial, isValid, error } = findStudentWorksheetContent(content, studentId);
 
       if (isValid && studentMaterial) {
-        console.log('[WORKSHEET] Found AI-generated content for:', studentInitials);
 
         // Generate unique worksheet ID
         const worksheetCode = generateWorksheetId(studentId, subject);
@@ -209,7 +204,6 @@ export function AIContentModal({
         );
 
         if (aiWorksheetHtml) {
-          console.log('[WORKSHEET] Successfully generated HTML worksheet');
           printHtmlWorksheet(
             aiWorksheetHtml,
             `${subject.toUpperCase()} Worksheet - ${studentInitials}`
@@ -260,8 +254,7 @@ export function AIContentModal({
           generateWorksheetData(student.id, student.initials, student.grade_level, 'ela')
         );
       }
-      
-      console.log(`Generating ${worksheetPromises.length} worksheets for ${students.length} students...`);
+
       const worksheetDataArray = await Promise.all(worksheetPromises);
       
       // Track failed generations
@@ -291,8 +284,6 @@ export function AIContentModal({
       // Create combined PDF or print each one
       await printMultipleWorksheets(validWorksheets);
 
-      console.log(`Successfully generated and printed ${validWorksheets.length} worksheets (${failedStudents.length} failed)`);
-      
     } catch (error) {
       console.error('Error generating all worksheets:', error);
       const message = error instanceof Error ? error.message : String(error);
@@ -306,8 +297,6 @@ export function AIContentModal({
   // Helper function to generate worksheet data
   const generateWorksheetData = async (studentId: string, studentInitials: string, gradeLevel: string, subject: 'math' | 'ela') => {
     try {
-      console.log('[WORKSHEET DATA] Generating for:', { studentInitials, subject });
-
       // Check for AI-generated content using shared utility
       const { studentMaterial, isValid, error } = findStudentWorksheetContent(content, studentId);
 
@@ -324,7 +313,6 @@ export function AIContentModal({
         );
 
         if (htmlContent) {
-          console.log('[WORKSHEET DATA] Successfully generated HTML content');
           // Return HTML content with a special marker
           return `html:${htmlContent}`;
         } else {
