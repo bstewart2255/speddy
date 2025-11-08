@@ -3,7 +3,6 @@
 import { WeeklyView } from "../../../components/weekly-view";
 import { TodoWidget } from "../../../components/todo-widget";
 import { ToastProvider } from "../../../contexts/toast-context";
-import { OnboardingNotifications } from "../../../components/onboarding/onboarding-notifications";
 
 export default function SEADashboard() {
   return (
@@ -14,9 +13,6 @@ export default function SEADashboard() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
           </div>
-
-          {/* Onboarding Notifications */}
-          <OnboardingNotifications />
 
           {/* Main Content Area */}
           <div className="space-y-4">
