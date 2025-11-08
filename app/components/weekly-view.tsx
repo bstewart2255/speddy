@@ -172,7 +172,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           setLoading(false);
           return;
         }
-        
+
         setCurrentUser(user);
 
         // Check if user is a Resource Specialist and has SEAs
@@ -182,15 +182,16 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           .eq('id', user.id)
           .single();
 
+        const userRole = profile?.role;
         let hasSEAs = false;
-        if (profile?.role === 'resource' && profile.school_site) {
+        if (userRole === 'resource' && profile?.school_site) {
           // Check if there are any SEAs at the same school
           const { data: seas, count: seaCount } = await supabase
             .from('profiles')
             .select('id', { count: 'exact', head: true })
             .eq('role', 'sea')
             .eq('school_site', profile.school_site);
-           
+
           hasSEAs = (seaCount || 0) > 0;
           setShowToggle(hasSEAs);
         } else {
@@ -202,7 +203,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         const needsStudentJoin = currentSchool &&
                                 worksAtMultipleSchools &&
                                 currentSchool.school_id;
-        
+
         let sessionQuery;
         if (needsStudentJoin) {
           sessionQuery = supabase
@@ -246,17 +247,23 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
             .order("start_time");
         }
 
-        if (hasSEAs && viewMode === 'sea') {
-          // Show sessions assigned to SEAs
+        // Determine session filtering based on user role and view mode
+        if (userRole === 'sea') {
+          // SEA users: Show sessions assigned to them
+          sessionQuery = sessionQuery
+            .not("assigned_to_sea_id", "is", null)
+            .eq("assigned_to_sea_id", user.id);
+        } else if (hasSEAs && viewMode === 'sea') {
+          // Provider viewing SEA sessions: Show sessions assigned to SEAs
           sessionQuery = sessionQuery
             .eq("provider_id", user.id)
             .eq("delivered_by", "sea");
         } else {
-          // Show all provider sessions (default behavior)
+          // Provider viewing their own sessions
           sessionQuery = sessionQuery
             .eq("provider_id", user.id);
         }
-        
+
         // Apply school filter if a specific school is selected
         if (needsStudentJoin && currentSchool?.school_id) {
           sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
