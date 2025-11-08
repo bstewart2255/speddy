@@ -250,7 +250,9 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         // Determine session filtering based on user role and view mode
         if (userRole === 'sea') {
           // SEA users: Show sessions assigned to them
-          sessionQuery = sessionQuery.eq("assigned_to_sea_id", user.id);
+          sessionQuery = sessionQuery
+            .not("assigned_to_sea_id", "is", null)
+            .eq("assigned_to_sea_id", user.id);
         } else if (hasSEAs && viewMode === 'sea') {
           // Provider viewing SEA sessions: Show sessions assigned to SEAs
           sessionQuery = sessionQuery

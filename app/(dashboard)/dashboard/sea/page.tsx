@@ -16,7 +16,7 @@ export default function SEADashboard() {
 
           {/* Main Content Area */}
           <div className="space-y-4">
-            <WeeklyView viewMode="provider" />
+            <WeeklyView viewMode="sea" />
 
             <TodoWidget />
           </div>
