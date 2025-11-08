@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import type { Database } from '../../../src/types/database';
 
@@ -26,14 +26,7 @@ export function GroupLessonPanel({
   const [subject, setSubject] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Fetch lesson on mount
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchLesson(controller.signal);
-    return () => controller.abort();
-  }, [groupId]);
-
-  const fetchLesson = async (signal?: AbortSignal) => {
+  const fetchLesson = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
@@ -64,7 +57,14 @@ export function GroupLessonPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId, showToast]);
+
+  // Fetch lesson on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchLesson(controller.signal);
+    return () => controller.abort();
+  }, [fetchLesson]);
 
   const handleSaveLesson = async () => {
     if (!content.trim()) {

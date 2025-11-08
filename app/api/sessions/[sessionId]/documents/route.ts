@@ -5,14 +5,14 @@ import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
 
-// GET - Fetch all documents for a group
+// GET - Fetch all documents for a session
 export async function GET(
   request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
+  props: { params: Promise<{ sessionId: string }> }
 ) {
-  const perf = measurePerformanceWithAlerts('get_group_documents', 'api');
+  const perf = measurePerformanceWithAlerts('get_session_documents', 'api');
   const params = await props.params;
-  const { groupId } = params;
+  const { sessionId } = params;
   let userId: string | undefined;
 
   try {
@@ -26,23 +26,24 @@ export async function GET(
     }
     userId = user.id;
 
-    log.info('Fetching group documents', {
+    log.info('Fetching session documents', {
       userId,
-      groupId
+      sessionId
     });
 
-    // Verify user has access to this group
-    const { data: groupSessions, error: accessError } = await supabase
+    // Verify user has access to this session
+    const { data: sessionData, error: accessError } = await supabase
       .from('schedule_sessions')
       .select('id')
-      .eq('group_id', groupId)
+      .eq('id', sessionId)
       .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-      .limit(1);
+      .limit(1)
+      .single();
 
-    if (accessError || !groupSessions || groupSessions.length === 0) {
-      log.warn('User does not have access to group', {
+    if (accessError || !sessionData) {
+      log.warn('User does not have access to session', {
         userId,
-        groupId
+        sessionId
       });
       perf.end({ success: false });
       return NextResponse.json(
@@ -51,20 +52,20 @@ export async function GET(
       );
     }
 
-    // Fetch documents for the group from unified documents table
-    const fetchPerf = measurePerformanceWithAlerts('fetch_group_documents_db', 'database');
+    // Fetch documents for the session from unified documents table
+    const fetchPerf = measurePerformanceWithAlerts('fetch_session_documents_db', 'database');
     const { data: documents, error } = await supabase
       .from('documents')
       .select('*')
-      .eq('documentable_type', 'group')
-      .eq('documentable_id', groupId)
-      .order('created_at', { ascending: false});
+      .eq('documentable_type', 'session')
+      .eq('documentable_id', sessionId)
+      .order('created_at', { ascending: false });
     fetchPerf.end({ success: !error, count: documents?.length || 0 });
 
     if (error) {
-      log.error('Error fetching group documents', error, {
+      log.error('Error fetching session documents', error, {
         userId,
-        groupId
+        sessionId
       });
       perf.end({ success: false });
       return NextResponse.json(
@@ -73,22 +74,22 @@ export async function GET(
       );
     }
 
-    log.info('Group documents fetched successfully', {
+    log.info('Session documents fetched successfully', {
       userId,
-      groupId,
+      sessionId,
       documentCount: documents?.length || 0
     });
 
-    track.event('group_documents_fetched', {
+    track.event('session_documents_fetched', {
       userId,
-      groupId,
+      sessionId,
       count: documents?.length || 0
     });
 
     perf.end({ success: true, count: documents?.length || 0 });
     return NextResponse.json({ documents: documents || [] });
   } catch (error) {
-    log.error('Error in get-group-documents route', error, { userId, groupId });
+    log.error('Error in get-session-documents route', error, { userId, sessionId });
     perf.end({ success: false });
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -97,14 +98,14 @@ export async function GET(
   }
 }
 
-// POST - Create a new document for a group
+// POST - Create a new document for a session
 export async function POST(
   request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
+  props: { params: Promise<{ sessionId: string }> }
 ) {
-  const perf = measurePerformanceWithAlerts('create_group_document', 'api');
+  const perf = measurePerformanceWithAlerts('create_session_document', 'api');
   const params = await props.params;
-  const { groupId } = params;
+  const { sessionId } = params;
   let userId: string | undefined;
 
   try {
@@ -118,18 +119,19 @@ export async function POST(
     }
     userId = user.id;
 
-    // Verify user has access to this group BEFORE processing any file uploads
-    const { data: groupSessions, error: accessError } = await supabase
+    // Verify user has access to this session BEFORE processing any file uploads
+    const { data: sessionData, error: accessError } = await supabase
       .from('schedule_sessions')
       .select('id')
-      .eq('group_id', groupId)
+      .eq('id', sessionId)
       .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-      .limit(1);
+      .limit(1)
+      .single();
 
-    if (accessError || !groupSessions || groupSessions.length === 0) {
-      log.warn('User does not have access to group', {
+    if (accessError || !sessionData) {
+      log.warn('User does not have access to session', {
         userId,
-        groupId
+        sessionId
       });
       perf.end({ success: false });
       return NextResponse.json(
@@ -171,14 +173,14 @@ export async function POST(
       // Generate safe filename
       const timestamp = Date.now();
       const safeFilename = generateSafeFilename(file.name);
-      const storagePath = `groups/${groupId}/${timestamp}-${safeFilename}`;
+      const storagePath = `sessions/${sessionId}/${timestamp}-${safeFilename}`;
 
       // Convert file to buffer
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
       // Upload to unified Supabase Storage bucket
-      const uploadPerf = measurePerformanceWithAlerts('upload_group_document_storage', 'storage');
+      const uploadPerf = measurePerformanceWithAlerts('upload_session_document_storage', 'storage');
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(storagePath, buffer, {
@@ -196,7 +198,7 @@ export async function POST(
       if (uploadError) {
         log.error('Error uploading file to storage', uploadError, {
           userId,
-          groupId,
+          sessionId,
           filename: file.name,
           errorMessage: uploadError.message,
           errorDetails: uploadError
@@ -220,7 +222,7 @@ export async function POST(
 
       log.info('File uploaded successfully', {
         userId,
-        groupId,
+        sessionId,
         file_path,
         mime_type,
         file_size
@@ -275,20 +277,20 @@ export async function POST(
       }
     }
 
-    log.info('Creating group document', {
+    log.info('Creating session document', {
       userId,
-      groupId,
+      sessionId,
       title,
       document_type
     });
 
     // Create the document in unified table
-    const createPerf = measurePerformanceWithAlerts('create_group_document_db', 'database');
+    const createPerf = measurePerformanceWithAlerts('create_session_document_db', 'database');
     const { data, error } = await supabase
       .from('documents')
       .insert({
-        documentable_type: 'group',
-        documentable_id: groupId,
+        documentable_type: 'session',
+        documentable_id: sessionId,
         title,
         document_type,
         content: content || null,
@@ -304,9 +306,9 @@ export async function POST(
     createPerf.end({ success: !error });
 
     if (error) {
-      log.error('Error creating group document', error, {
+      log.error('Error creating session document', error, {
         userId,
-        groupId,
+        sessionId,
         title
       });
       perf.end({ success: false });
@@ -316,16 +318,16 @@ export async function POST(
       );
     }
 
-    log.info('Group document created successfully', {
+    log.info('Session document created successfully', {
       userId,
-      groupId,
+      sessionId,
       documentId: data.id,
       title
     });
 
-    track.event('group_document_created', {
+    track.event('session_document_created', {
       userId,
-      groupId,
+      sessionId,
       documentId: data.id,
       document_type
     });
@@ -333,123 +335,7 @@ export async function POST(
     perf.end({ success: true, documentId: data.id });
     return NextResponse.json({ document: data }, { status: 201 });
   } catch (error) {
-    log.error('Error in create-group-document route', error, { userId, groupId });
-    perf.end({ success: false });
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT - Update an existing document
-export async function PUT(
-  request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
-) {
-  const perf = measurePerformanceWithAlerts('update_group_document', 'api');
-  const params = await props.params;
-  const { groupId } = params;
-  let userId: string | undefined;
-
-  try {
-    const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    const body = await request.json();
-    const { documentId, title, content, url, file_path } = body;
-
-    if (!documentId) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'documentId is required' },
-        { status: 400 }
-      );
-    }
-
-    log.info('Updating group document', {
-      userId,
-      groupId,
-      documentId,
-      title
-    });
-
-    // Build update object with only provided fields
-    const updateData: any = {};
-    if (title !== undefined) updateData.title = title;
-    if (content !== undefined) updateData.content = content;
-    if (url !== undefined) {
-      try {
-        const u = new URL(url);
-        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-          perf.end({ success: false });
-          return NextResponse.json({ error: 'Only http(s) URLs are allowed' }, { status: 400 });
-        }
-      } catch {
-        perf.end({ success: false });
-        return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-      }
-      updateData.url = url;
-    }
-    if (file_path !== undefined) updateData.file_path = file_path;
-
-    // Update the document in unified table (RLS will ensure user owns it)
-    const updatePerf = measurePerformanceWithAlerts('update_group_document_db', 'database');
-    const { data, error } = await supabase
-      .from('documents')
-      .update(updateData)
-      .eq('id', documentId)
-      .eq('documentable_type', 'group')
-      .eq('documentable_id', groupId)
-      .eq('created_by', userId) // Ensure user owns the document
-      .select('*')
-      .single();
-    updatePerf.end({ success: !error });
-
-    if (error) {
-      log.error('Error updating group document', error, {
-        userId,
-        groupId,
-        documentId
-      });
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Failed to update document' },
-        { status: 500 }
-      );
-    }
-
-    if (!data) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Document not found or access denied' },
-        { status: 404 }
-      );
-    }
-
-    log.info('Group document updated successfully', {
-      userId,
-      groupId,
-      documentId
-    });
-
-    track.event('group_document_updated', {
-      userId,
-      groupId,
-      documentId
-    });
-
-    perf.end({ success: true, documentId });
-    return NextResponse.json({ document: data });
-  } catch (error) {
-    log.error('Error in update-group-document route', error, { userId, groupId });
+    log.error('Error in create-session-document route', error, { userId, sessionId });
     perf.end({ success: false });
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -461,11 +347,11 @@ export async function PUT(
 // DELETE - Delete a document
 export async function DELETE(
   request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
+  props: { params: Promise<{ sessionId: string }> }
 ) {
-  const perf = measurePerformanceWithAlerts('delete_group_document', 'api');
+  const perf = measurePerformanceWithAlerts('delete_session_document', 'api');
   const params = await props.params;
-  const { groupId } = params;
+  const { sessionId } = params;
   let userId: string | undefined;
 
   try {
@@ -490,27 +376,27 @@ export async function DELETE(
       );
     }
 
-    log.info('Deleting group document', {
+    log.info('Deleting session document', {
       userId,
-      groupId,
+      sessionId,
       documentId
     });
 
     // Delete the document from unified table (RLS will ensure user owns it)
-    const deletePerf = measurePerformanceWithAlerts('delete_group_document_db', 'database');
+    const deletePerf = measurePerformanceWithAlerts('delete_session_document_db', 'database');
     const { error } = await supabase
       .from('documents')
       .delete()
       .eq('id', documentId)
-      .eq('documentable_type', 'group')
-      .eq('documentable_id', groupId)
+      .eq('documentable_type', 'session')
+      .eq('documentable_id', sessionId)
       .eq('created_by', userId); // Ensure user owns the document
     deletePerf.end({ success: !error });
 
     if (error) {
-      log.error('Error deleting group document', error, {
+      log.error('Error deleting session document', error, {
         userId,
-        groupId,
+        sessionId,
         documentId
       });
       perf.end({ success: false });
@@ -520,22 +406,22 @@ export async function DELETE(
       );
     }
 
-    log.info('Group document deleted successfully', {
+    log.info('Session document deleted successfully', {
       userId,
-      groupId,
+      sessionId,
       documentId
     });
 
-    track.event('group_document_deleted', {
+    track.event('session_document_deleted', {
       userId,
-      groupId,
+      sessionId,
       documentId
     });
 
     perf.end({ success: true, documentId });
     return NextResponse.json({ success: true });
   } catch (error) {
-    log.error('Error in delete-group-document route', error, { userId, groupId });
+    log.error('Error in delete-session-document route', error, { userId, sessionId });
     perf.end({ success: false });
     return NextResponse.json(
       { error: 'Internal server error' },

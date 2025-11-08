@@ -33,6 +33,20 @@ export const generateTimeOptions = (
 export const generateSchoolHoursTimeOptions = () => generateTimeOptions(6, 18, 5);
 
 /**
- * Generate time options for regular activities (7 AM to 3 PM)  
+ * Generate time options for regular activities (7 AM to 3 PM)
  */
 export const generateActivityTimeOptions = () => generateTimeOptions(7, 15, 5);
+
+/**
+ * Format a time string (HH:mm) to 12-hour format with AM/PM
+ * @param time - Time string in 24-hour format (HH:mm) or null
+ * @returns Formatted time string or "Unscheduled" if null
+ */
+export const formatTime = (time: string | null): string => {
+  if (!time) return "Unscheduled";
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
