@@ -14,6 +14,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../src/types/database';
 
+/**
+ * Formats a Date object as YYYY-MM-DD in local timezone
+ */
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -79,7 +89,7 @@ async function createInstancesFromTemplate(
       const instanceDate = new Date(today);
       instanceDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
 
-      const dateStr = instanceDate.toISOString().split('T')[0];
+      const dateStr = formatDateLocal(instanceDate);
       datesToCreate.push(dateStr);
     }
 
@@ -114,8 +124,7 @@ async function createInstancesFromTemplate(
       return {
         success: true,
         instancesCreated: 0,
-        instances: [],
-        error: 'All instances already exist'
+        instances: []
       };
     }
 
@@ -218,12 +227,14 @@ async function migrate() {
 
     if (result.success) {
       totalCreated += result.instancesCreated;
-      console.log(` ✓ Created ${result.instancesCreated} instances`);
-    } else if (result.error && !result.error.includes('already exist')) {
+      if (result.instancesCreated > 0) {
+        console.log(` ✓ Created ${result.instancesCreated} instances`);
+      } else {
+        console.log(` - Skipped (all instances already exist)`);
+      }
+    } else if (result.error) {
       errors.push(`Template ${template.id}: ${result.error}`);
       console.log(` ✗ Error: ${result.error}`);
-    } else {
-      console.log(` - Skipped (already exists)`);
     }
   }
 

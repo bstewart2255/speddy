@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/src/types/database';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
@@ -61,8 +62,8 @@ export async function createInstancesFromTemplate(
       const instanceDate = new Date(today);
       instanceDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
 
-      // Format as YYYY-MM-DD
-      const dateStr = instanceDate.toISOString().split('T')[0];
+      // Format as YYYY-MM-DD in local timezone
+      const dateStr = formatDateLocal(instanceDate);
       datesToCreate.push(dateStr);
     }
 
@@ -97,8 +98,7 @@ export async function createInstancesFromTemplate(
       return {
         success: true,
         instancesCreated: 0,
-        instances: [],
-        error: 'All instances already exist'
+        instances: []
       };
     }
 
@@ -181,15 +181,24 @@ export async function generateInstancesForAllTemplates(
     const errors: string[] = [];
     let totalCreated = 0;
 
-    // Generate instances for each template
-    for (const template of templates || []) {
-      const result = await createInstancesFromTemplate(template, weeksAhead);
+    // Generate instances for each template in batches for better performance
+    const BATCH_SIZE = 10;
+    const allTemplates = templates || [];
 
-      if (result.success) {
-        totalCreated += result.instancesCreated;
-      } else if (result.error && !result.error.includes('already exist')) {
-        errors.push(`Template ${template.id}: ${result.error}`);
-      }
+    for (let i = 0; i < allTemplates.length; i += BATCH_SIZE) {
+      const batch = allTemplates.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(template => createInstancesFromTemplate(template, weeksAhead))
+      );
+
+      results.forEach((result, idx) => {
+        const template = batch[idx];
+        if (result.success) {
+          totalCreated += result.instancesCreated;
+        } else if (result.error) {
+          errors.push(`Template ${template.id}: ${result.error}`);
+        }
+      });
     }
 
     return {

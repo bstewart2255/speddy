@@ -10,6 +10,7 @@ import { toDateKeyLocal } from '../../utils/date-helpers';
 import { useSchool } from '../providers/school-context';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { log } from '@/lib/monitoring/logger';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -131,8 +132,8 @@ export function CalendarDayView({
         return;
       }
 
-      // Format current date as YYYY-MM-DD
-      const dateStr = currentDate.toISOString().split('T')[0];
+      // Format current date as YYYY-MM-DD in local timezone
+      const dateStr = formatDateLocal(currentDate);
 
       // Get instances for this specific date
       const { data: sessions, error } = await supabase
@@ -477,7 +478,7 @@ export function CalendarDayView({
 
       // Reload sessions to reflect the grouped templates
       log.info('Reloading sessions for date', { currentDate });
-      const dateStr = currentDate.toISOString().split('T')[0];
+      const dateStr = formatDateLocal(currentDate);
       const { data: updatedSessions, error: reloadError } = await supabase
         .from('schedule_sessions')
         .select(`
@@ -574,7 +575,7 @@ export function CalendarDayView({
       }
 
       // Reload sessions to reflect the ungrouped session
-      const dateStr = currentDate.toISOString().split('T')[0];
+      const dateStr = formatDateLocal(currentDate);
       const { data: updatedSessions, error: reloadError } = await supabase
         .from('schedule_sessions')
         .select(`

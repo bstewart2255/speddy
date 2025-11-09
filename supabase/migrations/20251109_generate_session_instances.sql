@@ -89,6 +89,8 @@ INSERT INTO schedule_sessions (
   is_completed
 )
 SELECT * FROM new_instances
+-- Note: This relies on the 'unique_session_per_date' constraint
+-- which creates a unique index on (student_id, session_date, start_time)
 ON CONFLICT (student_id, session_date, start_time)
 DO NOTHING;
 
