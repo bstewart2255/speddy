@@ -174,11 +174,51 @@ export class SessionUpdateService {
         newEndTime
       });
 
+      // Generate instances if this is a template session being scheduled
+      // Only create instances if:
+      // 1. Session has no session_date (it's a template)
+      // 2. Session now has valid schedule (day_of_week, start_time, end_time)
+      // 3. Session wasn't already scheduled (changed from unscheduled to scheduled)
+      if (updatedSession.session_date === null &&
+          updatedSession.day_of_week !== null &&
+          updatedSession.start_time !== null &&
+          updatedSession.end_time !== null) {
+
+        // Check if this session was previously unscheduled
+        const wasUnscheduled = session.day_of_week === null ||
+                              session.start_time === null ||
+                              session.end_time === null;
+
+        if (wasUnscheduled) {
+          // This is a newly scheduled session - create instances via API
+          console.log('Creating instances for newly scheduled template:', sessionId);
+
+          // Create instances asynchronously (don't block the response)
+          fetch('/api/sessions/generate-instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId, weeksAhead: 8 })
+          })
+            .then(async (response) => {
+              if (response.ok) {
+                const data = await response.json();
+                console.log(`Created ${data.instancesCreated} instances for session ${sessionId}`);
+              } else {
+                const error = await response.json();
+                console.error(`Failed to create instances for session ${sessionId}:`, error.error);
+              }
+            })
+            .catch(err => {
+              console.error('Instance generation error:', err);
+            });
+        }
+      }
+
       // The database update will automatically trigger real-time events
       // No need to manually broadcast
 
-      const result: { 
-        success: boolean; 
+      const result: {
+        success: boolean;
         session?: ScheduleSession;
         conflicts?: ValidationResult['conflicts'];
         hasConflicts?: boolean;

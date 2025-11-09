@@ -87,7 +87,12 @@ export function SessionDetailsModal({
     setLoadingDocuments(true);
     try {
       const response = await fetch(`/api/sessions/${session.id}/documents`, { signal });
-      if (!response.ok) throw new Error('Failed to fetch documents');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('API Error:', response.status, errorData);
+        console.error('Error details:', errorData.details);
+        throw new Error(`${errorData.error}${errorData.details ? ': ' + errorData.details : ''}`);
+      }
 
       const data = await response.json();
       setDocuments(data.documents || []);
@@ -389,43 +394,36 @@ export function SessionDetailsModal({
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
           {/* Fixed Section: Session Details */}
-          <div className="p-6 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Session Information</h3>
-            <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3">
-              <div>
-                <span className="text-sm font-medium text-gray-700">Student:</span>
-                <span className="text-sm text-gray-900 ml-2">
-                  {student?.initials || '?'}
-                  {student?.grade_level && ` (Grade ${student.grade_level})`}
-                </span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-700">Time:</span>
-                <span className="text-sm text-gray-900 ml-2">
-                  {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                </span>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-700">Delivered By:</span>
-                <span className={`text-sm ml-2 px-2 py-1 rounded ${
-                  session.delivered_by === 'sea'
-                    ? 'bg-green-100 text-green-700'
-                    : session.delivered_by === 'specialist'
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {session.delivered_by === 'sea'
-                    ? 'SEA'
-                    : session.delivered_by === 'specialist'
-                      ? 'Specialist'
-                      : 'Provider'}
-                </span>
-              </div>
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Session Information</h3>
+            <div className="bg-white rounded-md px-3 py-2 border border-gray-200 text-xs flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-gray-900">
+                {student?.initials || '?'}
+                {student?.grade_level && ` (Grade ${student.grade_level})`}
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className="font-medium text-gray-900">
+                {formatTime(session.start_time)} - {formatTime(session.end_time)}
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className={`px-2 py-1 rounded ${
+                session.delivered_by === 'sea'
+                  ? 'bg-green-100 text-green-700'
+                  : session.delivered_by === 'specialist'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
+              }`}>
+                {session.delivered_by === 'sea'
+                  ? 'SEA'
+                  : session.delivered_by === 'specialist'
+                    ? 'Specialist'
+                    : 'Provider'}
+              </span>
               {session.service_type && (
-                <div>
-                  <span className="text-sm font-medium text-gray-700">Service Type:</span>
-                  <span className="text-sm text-gray-900 ml-2">{session.service_type}</span>
-                </div>
+                <>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-gray-900">{session.service_type}</span>
+                </>
               )}
             </div>
           </div>

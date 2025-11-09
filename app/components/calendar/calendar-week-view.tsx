@@ -1917,27 +1917,6 @@ export function CalendarWeekView({
               </div>
 
               <div className="p-2 min-h-[400px]">
-                {/* Manual Lessons Summary Button */}
-                {dayManualLessons.length > 0 && (
-                  <div className="mb-2">
-                    <button
-                      onClick={() => {
-                        if (dayManualLessons.length === 1) {
-                          setViewingManualLesson(dayManualLessons[0]);
-                          setShowManualLessonView(true);
-                        } else {
-                          // If multiple manual lessons, show first one or implement a list view modal
-                          setViewingManualLesson(dayManualLessons[0]);
-                          setShowManualLessonView(true);
-                        }
-                      }}
-                      className="w-full bg-green-100 hover:bg-green-200 text-green-800 font-medium py-2 px-3 rounded-md border border-green-300 text-sm"
-                    >
-                      Saved Manual Lesson
-                    </button>
-                  </div>
-                )}
-
                 {/* Calendar Events */}
                 {(() => {
                   const dayEvents = calendarEvents.filter(e => e.date === dateStr);

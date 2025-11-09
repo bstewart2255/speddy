@@ -145,7 +145,8 @@ export default function CalendarPage() {
 
       setProviderId(user.id);
 
-      // Fetch sessions filtered by current school
+      // Fetch session INSTANCES (not templates) filtered by current school
+      // Instances have actual session_date values
       // For SEAs: filter by assigned_to_sea_id, for others: filter by provider_id
       let sessionQuery = supabase
         .from('schedule_sessions')
@@ -157,7 +158,8 @@ export default function CalendarPage() {
             school_site,
             school_district
           )
-        `);
+        `)
+        .not('session_date', 'is', null); // Only fetch instances, not templates
 
       if (profile?.role === 'sea') {
         sessionQuery = sessionQuery
