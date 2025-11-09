@@ -269,6 +269,16 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
         }
 
+        // Calculate week date range for filtering instances
+        const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+        const weekEndStr = format(addDays(weekStart, 4), 'yyyy-MM-dd');
+
+        // Filter to show only instances (not templates) within the current week
+        sessionQuery = sessionQuery
+          .not('session_date', 'is', null)
+          .gte('session_date', weekStartStr)
+          .lte('session_date', weekEndStr);
+
         const { data: sessionData, error: sessionError } = await sessionQuery;
 
         if (sessionError) {
@@ -278,17 +288,15 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         }
 
         if (sessionData && isMounted) {
-          // Transform sessions to include calculated dates
+          // Transform sessions to include date field
           // Handle both with and without student joins
           const transformedSessions = sessionData.map((session: any) => {
             // Extract the core session data (removing nested students object if present)
             const { students, ...sessionCore } = session;
             return {
               ...sessionCore,
-              date: format(
-                addDays(weekStart, sessionCore.day_of_week - 1),
-                "yyyy-MM-dd",
-              ),
+              // Use session_date directly since we're only fetching instances
+              date: sessionCore.session_date,
             };
           });
 
@@ -329,11 +337,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
               setHolidays(holidayData);
             }
           }
-          
+
           // Fetch calendar events for the week
-          const weekStartStr = format(weekStart, 'yyyy-MM-dd');
-          const weekEndStr = format(addDays(weekStart, 4), 'yyyy-MM-dd');
-          
           const { data: eventsData } = await supabase
             .from('calendar_events')
             .select('*')

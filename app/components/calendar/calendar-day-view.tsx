@@ -3,7 +3,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
-import { SessionGenerator } from '@/lib/services/session-generator';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
@@ -11,6 +10,7 @@ import { toDateKeyLocal } from '../../utils/date-helpers';
 import { useSchool } from '../providers/school-context';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { log } from '@/lib/monitoring/logger';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -57,7 +57,6 @@ export function CalendarDayView({
   const [savingGroup, setSavingGroup] = useState(false);
 
   const supabase = useMemo(() => createClient<Database>(), []);
-  const sessionGenerator = useMemo(() => new SessionGenerator(), []);
 
   // Group color mapping (cycle through colors for different groups)
   const groupColors = [
@@ -133,22 +132,33 @@ export function CalendarDayView({
         return;
       }
 
-      // Get sessions for just this day with school filtering
-      const sessions = await sessionGenerator.getSessionsForDateRange(
-        user.id,
-        currentDate,
-        currentDate,
-        profile?.role
-      );
+      // Format current date as YYYY-MM-DD in local timezone
+      const dateStr = formatDateLocal(currentDate);
+
+      // Get instances for this specific date
+      const { data: sessions, error } = await supabase
+        .from('schedule_sessions')
+        .select(`
+          *,
+          students!inner(school_id, district_id, school_site, school_district)
+        `)
+        .not('session_date', 'is', null)
+        .eq('session_date', dateStr);
+
+      if (error) {
+        log.error('[CalendarDayView] Error fetching sessions', error);
+        setSessionsState([]);
+        return;
+      }
 
       // Filter sessions by current school if applicable
-      const filteredSessions = await filterSessionsBySchool(supabase, sessions, currentSchool);
+      const filteredSessions = await filterSessionsBySchool(supabase, sessions || [], currentSchool);
 
       setSessionsState(filteredSessions);
     };
 
     loadSessions();
-  }, [currentDate, currentSchool, sessionGenerator, supabase]);
+  }, [currentDate, currentSchool, supabase]);
 
   // Fetch student data for assigned sessions (students that aren't in the prop)
   React.useEffect(() => {
@@ -468,19 +478,29 @@ export function CalendarDayView({
 
       // Reload sessions to reflect the grouped templates
       log.info('Reloading sessions for date', { currentDate });
-      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
-        providerId,
-        currentDate,
-        currentDate,
-        userProfile?.role
-      );
+      const dateStr = formatDateLocal(currentDate);
+      const { data: updatedSessions, error: reloadError } = await supabase
+        .from('schedule_sessions')
+        .select(`
+          *,
+          students!inner(school_id, district_id, school_site, school_district)
+        `)
+        .not('session_date', 'is', null)
+        .eq('session_date', dateStr);
+
+      if (reloadError) {
+        log.error('[CalendarDayView] Error reloading sessions after grouping', reloadError);
+        showToast('Failed to reload sessions', 'error');
+        return;
+      }
+
       log.info('Reloaded sessions', {
-        sessionCount: updatedSessions.length,
-        sessionsWithGroups: updatedSessions.filter(s => s.group_id).length
+        sessionCount: updatedSessions?.length || 0,
+        sessionsWithGroups: updatedSessions?.filter(s => s.group_id).length || 0
       });
 
       // Filter by current school
-      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions || [], currentSchool);
 
       setSessionsState(filteredSessions);
 
@@ -555,15 +575,24 @@ export function CalendarDayView({
       }
 
       // Reload sessions to reflect the ungrouped session
-      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
-        providerId,
-        currentDate,
-        currentDate,
-        userProfile?.role
-      );
+      const dateStr = formatDateLocal(currentDate);
+      const { data: updatedSessions, error: reloadError } = await supabase
+        .from('schedule_sessions')
+        .select(`
+          *,
+          students!inner(school_id, district_id, school_site, school_district)
+        `)
+        .not('session_date', 'is', null)
+        .eq('session_date', dateStr);
+
+      if (reloadError) {
+        log.error('[CalendarDayView] Error reloading sessions after ungrouping', reloadError);
+        showToast('Failed to reload sessions', 'error');
+        return;
+      }
 
       // Filter by current school
-      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions || [], currentSchool);
 
       setSessionsState(filteredSessions);
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -26,24 +26,82 @@ export async function GET(
     }
     userId = user.id;
 
+    // Handle temporary session IDs (unsaved sessions)
+    if (sessionId.startsWith('temp-')) {
+      log.info('Temporary session - returning empty documents', {
+        userId,
+        sessionId
+      });
+      perf.end({ success: true, count: 0 });
+      return NextResponse.json({ documents: [] });
+    }
+
     log.info('Fetching session documents', {
       userId,
       sessionId
     });
 
-    // Verify user has access to this session
-    const { data: sessionData, error: accessError } = await supabase
-      .from('schedule_sessions')
-      .select('id')
-      .eq('id', sessionId)
-      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-      .limit(1)
-      .single();
+    // Verify user has access to this session using service client to bypass RLS
+    let sessionData;
+    let accessError;
+    try {
+      const serviceClient = createServiceClient();
+      const result = await serviceClient
+        .from('schedule_sessions')
+        .select('id, provider_id, assigned_to_specialist_id, assigned_to_sea_id')
+        .eq('id', sessionId);
+      sessionData = result.data;
+      accessError = result.error;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      log.error('Error creating service client or fetching session', { error: errorMessage, userId, sessionId });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Internal server error', details: errorMessage },
+        { status: 500 }
+      );
+    }
 
-    if (accessError || !sessionData) {
-      log.warn('User does not have access to session', {
+    if (accessError) {
+      log.error('Error fetching session', accessError, {
         userId,
         sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Database error', details: accessError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!sessionData || sessionData.length === 0) {
+      log.warn('Session not found', {
+        userId,
+        sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Session not found' },
+        { status: 404 }
+      );
+    }
+
+    const session = sessionData[0];
+
+    // Check if user has access to this session
+    const hasAccess = (
+      session.provider_id === userId ||
+      session.assigned_to_specialist_id === userId ||
+      session.assigned_to_sea_id === userId
+    );
+
+    if (!hasAccess) {
+      log.warn('User does not have access to session', {
+        userId,
+        sessionId,
+        provider_id: session.provider_id,
+        assigned_to_specialist_id: session.assigned_to_specialist_id,
+        assigned_to_sea_id: session.assigned_to_sea_id
       });
       perf.end({ success: false });
       return NextResponse.json(
@@ -52,9 +110,10 @@ export async function GET(
       );
     }
 
-    // Fetch documents for the session from unified documents table
+    // Fetch documents for the session using service client to bypass RLS
     const fetchPerf = measurePerformanceWithAlerts('fetch_session_documents_db', 'database');
-    const { data: documents, error } = await supabase
+    const serviceClient = createServiceClient();
+    const { data: documents, error } = await serviceClient
       .from('documents')
       .select('*')
       .eq('documentable_type', 'session')
@@ -119,19 +178,81 @@ export async function POST(
     }
     userId = user.id;
 
-    // Verify user has access to this session BEFORE processing any file uploads
-    const { data: sessionData, error: accessError } = await supabase
-      .from('schedule_sessions')
-      .select('id')
-      .eq('id', sessionId)
-      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-      .limit(1)
-      .single();
-
-    if (accessError || !sessionData) {
-      log.warn('User does not have access to session', {
+    // Handle temporary session IDs (unsaved sessions)
+    if (sessionId.startsWith('temp-')) {
+      log.warn('Cannot add documents to temporary session', {
         userId,
         sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Cannot add documents to unsaved sessions. Please save the session first.' },
+        { status: 400 }
+      );
+    }
+
+    // Verify user has access to this session BEFORE processing any file uploads
+    // Using service client to bypass RLS and do our own access checking
+    let sessionData;
+    let accessError;
+    try {
+      const serviceClient = createServiceClient();
+      const result = await serviceClient
+        .from('schedule_sessions')
+        .select('id, provider_id, assigned_to_specialist_id, assigned_to_sea_id')
+        .eq('id', sessionId);
+      sessionData = result.data;
+      accessError = result.error;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      log.error('Error creating service client or fetching session', { error: errorMessage, userId, sessionId });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Internal server error', details: errorMessage },
+        { status: 500 }
+      );
+    }
+
+    if (accessError) {
+      log.error('Error fetching session', accessError, {
+        userId,
+        sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Database error', details: accessError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!sessionData || sessionData.length === 0) {
+      log.warn('Session not found', {
+        userId,
+        sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Session not found' },
+        { status: 404 }
+      );
+    }
+
+    const session = sessionData[0];
+
+    // Check if user has access to this session
+    const hasAccess = (
+      session.provider_id === userId ||
+      session.assigned_to_specialist_id === userId ||
+      session.assigned_to_sea_id === userId
+    );
+
+    if (!hasAccess) {
+      log.warn('User does not have access to session', {
+        userId,
+        sessionId,
+        provider_id: session.provider_id,
+        assigned_to_specialist_id: session.assigned_to_specialist_id,
+        assigned_to_sea_id: session.assigned_to_sea_id
       });
       perf.end({ success: false });
       return NextResponse.json(
@@ -364,6 +485,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     userId = user.id;
+
+    // Handle temporary session IDs (unsaved sessions)
+    if (sessionId.startsWith('temp-')) {
+      log.warn('Cannot delete documents from temporary session', {
+        userId,
+        sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Cannot delete documents from unsaved sessions.' },
+        { status: 400 }
+      );
+    }
 
     const searchParams = request.nextUrl.searchParams;
     const documentId = searchParams.get('documentId');

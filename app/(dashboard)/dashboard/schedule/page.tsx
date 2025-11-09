@@ -361,9 +361,9 @@ export default function SchedulePage() {
     [providerRole, currentUserId, sessionFilter]
   );
 
-  // Count filtered sessions using the same logic as the grid
+  // Count filtered sessions using the same logic as the grid (templates only)
   const filteredSessionsCount = useMemo(
-    () => getFilteredSessions(sessions).length,
+    () => getFilteredSessions(sessions.filter(s => s.session_date === null)).length,
     [getFilteredSessions, sessions]
   );
 

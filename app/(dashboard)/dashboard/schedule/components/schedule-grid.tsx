@@ -178,9 +178,10 @@ export const ScheduleGrid = memo(function ScheduleGrid({
 
     DAYS.forEach((_, dayIndex) => {
       const dayNumber = dayIndex + 1;
-      // Filter for scheduled sessions only (with non-null times)
+      // Filter for templates only (session_date IS NULL) with scheduled times
       const daySessions = sessions.filter(s =>
         s.day_of_week === dayNumber &&
+        s.session_date === null &&
         s.start_time !== null &&
         s.end_time !== null
       );
@@ -269,7 +270,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
             </div>
             {DAYS.map((day, index) => {
               const dayNumber = index + 1;
-              const daySessionsCount = sessions.filter(s => s.day_of_week === dayNumber && isScheduledSession(s)).length;
+              const daySessionsCount = sessions.filter(s => s.day_of_week === dayNumber && s.session_date === null && isScheduledSession(s)).length;
 
               return (
                 <div
@@ -329,7 +330,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
             {DAYS.map((_, dayIndex) => {
               const dayNumber = dayIndex + 1;
               const daySessions = (() => {
-                const allDaySessions = sessions.filter(s => s.day_of_week === dayNumber);
+                // Filter for templates only (session_date IS NULL) and matching day
+                const allDaySessions = sessions.filter(s => s.day_of_week === dayNumber && s.session_date === null);
                 if (providerRole === 'sea' && currentUserId) {
                   return allDaySessions.filter(s => s.assigned_to_sea_id === currentUserId);
                 }
