@@ -13,16 +13,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../src/types/database';
-
-/**
- * Formats a Date object as YYYY-MM-DD in local timezone
- */
-function formatDateLocal(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { createInstancesFromTemplate } from '../lib/services/session-instance-generator';
+import type { ScheduleSession } from '../lib/services/session-instance-generator';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -31,150 +23,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Error: Missing required environment variables');
   console.error('Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
-}
-
-type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
-type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
-
-interface InstanceGenerationResult {
-  success: boolean;
-  instancesCreated: number;
-  instances?: ScheduleSession[];
-  error?: string;
-}
-
-/**
- * Generates dated session instances from a template session
- */
-async function createInstancesFromTemplate(
-  supabase: ReturnType<typeof createClient<Database>>,
-  templateSession: ScheduleSession,
-  weeksAhead: number = 8
-): Promise<InstanceGenerationResult> {
-  try {
-    // Validation: Ensure this is a valid template session
-    if (templateSession.session_date !== null) {
-      return {
-        success: false,
-        instancesCreated: 0,
-        error: 'Session already has a date - not a template'
-      };
-    }
-
-    if (!templateSession.day_of_week || !templateSession.start_time || !templateSession.end_time) {
-      return {
-        success: false,
-        instancesCreated: 0,
-        error: 'Template session must have day_of_week, start_time, and end_time'
-      };
-    }
-
-    // Generate dates for the next N weeks
-    const datesToCreate: string[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Find the next occurrence of the template's day_of_week
-    const targetDayOfWeek = templateSession.day_of_week;
-    const currentDayOfWeek = today.getDay();
-
-    // Calculate days until next occurrence (0-6)
-    let daysUntilTarget = targetDayOfWeek - currentDayOfWeek;
-    if (daysUntilTarget < 0) {
-      daysUntilTarget += 7;
-    }
-
-    // Generate dates for the next N weeks
-    for (let week = 0; week < weeksAhead; week++) {
-      const instanceDate = new Date(today);
-      instanceDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
-
-      const dateStr = formatDateLocal(instanceDate);
-      datesToCreate.push(dateStr);
-    }
-
-    // Check which instances already exist
-    const { data: existingInstances, error: checkError } = await supabase
-      .from('schedule_sessions')
-      .select('session_date')
-      .eq('student_id', templateSession.student_id)
-      .eq('provider_id', templateSession.provider_id)
-      .eq('service_type', templateSession.service_type)
-      .eq('day_of_week', templateSession.day_of_week)
-      .eq('start_time', templateSession.start_time)
-      .eq('end_time', templateSession.end_time)
-      .in('session_date', datesToCreate)
-      .not('session_date', 'is', null);
-
-    if (checkError) {
-      return {
-        success: false,
-        instancesCreated: 0,
-        error: `Failed to check existing instances: ${checkError.message}`
-      };
-    }
-
-    // Filter out dates that already have instances
-    const existingDates = new Set(
-      existingInstances?.map(inst => inst.session_date).filter(Boolean) || []
-    );
-    const datesToInsert = datesToCreate.filter(date => !existingDates.has(date));
-
-    if (datesToInsert.length === 0) {
-      return {
-        success: true,
-        instancesCreated: 0,
-        instances: []
-      };
-    }
-
-    // Create instance rows
-    const instancesToInsert: ScheduleSessionInsert[] = datesToInsert.map(date => ({
-      student_id: templateSession.student_id,
-      provider_id: templateSession.provider_id,
-      day_of_week: templateSession.day_of_week,
-      start_time: templateSession.start_time,
-      end_time: templateSession.end_time,
-      service_type: templateSession.service_type,
-      session_date: date,
-      delivered_by: templateSession.delivered_by,
-      assigned_to_specialist_id: templateSession.assigned_to_specialist_id,
-      assigned_to_sea_id: templateSession.assigned_to_sea_id,
-      manually_placed: templateSession.manually_placed,
-      group_id: templateSession.group_id,
-      group_name: templateSession.group_name,
-      status: templateSession.status,
-      student_absent: false,
-      outside_schedule_conflict: false,
-      is_completed: false
-    }));
-
-    // Insert instances
-    const { data: createdInstances, error: insertError } = await supabase
-      .from('schedule_sessions')
-      .insert(instancesToInsert)
-      .select();
-
-    if (insertError) {
-      return {
-        success: false,
-        instancesCreated: 0,
-        error: `Failed to create instances: ${insertError.message}`
-      };
-    }
-
-    return {
-      success: true,
-      instancesCreated: createdInstances?.length || 0,
-      instances: createdInstances || []
-    };
-  } catch (error) {
-    return {
-      success: false,
-      instancesCreated: 0,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
 }
 
 /**
@@ -223,7 +71,7 @@ async function migrate() {
 
     process.stdout.write(`${progress} Processing template ${template.id}...`);
 
-    const result = await createInstancesFromTemplate(supabase, template, weeksAhead);
+    const result = await createInstancesFromTemplate(template, weeksAhead, supabase);
 
     if (result.success) {
       totalCreated += result.instancesCreated;

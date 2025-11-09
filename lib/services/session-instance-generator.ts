@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/src/types/database';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
-type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
+export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+export type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
-interface InstanceGenerationResult {
+export interface InstanceGenerationResult {
   success: boolean;
   instancesCreated: number;
   instances?: ScheduleSession[];
@@ -16,14 +17,16 @@ interface InstanceGenerationResult {
  * Generates dated session instances from a template session
  * @param templateSession - The template session (with session_date = NULL)
  * @param weeksAhead - Number of weeks forward to generate instances
+ * @param supabaseClient - Optional Supabase client (creates one if not provided)
  * @returns Result with created instances
  */
 export async function createInstancesFromTemplate(
   templateSession: ScheduleSession,
-  weeksAhead: number = 8
+  weeksAhead: number = 8,
+  supabaseClient?: SupabaseClient<Database>
 ): Promise<InstanceGenerationResult> {
   try {
-    const supabase = await createClient();
+    const supabase = supabaseClient || await createClient();
 
     // Validation: Ensure this is a valid template session
     if (templateSession.session_date !== null) {
@@ -161,21 +164,36 @@ export async function generateInstancesForAllTemplates(
   try {
     const supabase = await createClient();
 
-    // Fetch all template sessions that are scheduled
-    const { data: templates, error: fetchError } = await supabase
-      .from('schedule_sessions')
-      .select('*')
-      .is('session_date', null)
-      .not('day_of_week', 'is', null)
-      .not('start_time', 'is', null)
-      .not('end_time', 'is', null);
+    // Fetch all template sessions that are scheduled with pagination
+    const allTemplates: ScheduleSession[] = [];
+    const PAGE_SIZE = 1000;
+    let from = 0;
 
-    if (fetchError) {
-      return {
-        total: 0,
-        created: 0,
-        errors: [`Failed to fetch templates: ${fetchError.message}`]
-      };
+    while (true) {
+      const { data, error } = await supabase
+        .from('schedule_sessions')
+        .select('*')
+        .is('session_date', null)
+        .not('day_of_week', 'is', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null)
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) {
+        return {
+          total: 0,
+          created: 0,
+          errors: [`Failed to fetch templates: ${error.message}`]
+        };
+      }
+
+      if (!data || data.length === 0) break;
+
+      allTemplates.push(...data);
+
+      if (data.length < PAGE_SIZE) break;
+
+      from += PAGE_SIZE;
     }
 
     const errors: string[] = [];
@@ -183,7 +201,6 @@ export async function generateInstancesForAllTemplates(
 
     // Generate instances for each template in batches for better performance
     const BATCH_SIZE = 10;
-    const allTemplates = templates || [];
 
     for (let i = 0; i < allTemplates.length; i += BATCH_SIZE) {
       const batch = allTemplates.slice(i, i + BATCH_SIZE);
@@ -202,7 +219,7 @@ export async function generateInstancesForAllTemplates(
     }
 
     return {
-      total: templates?.length || 0,
+      total: allTemplates.length,
       created: totalCreated,
       errors
     };
