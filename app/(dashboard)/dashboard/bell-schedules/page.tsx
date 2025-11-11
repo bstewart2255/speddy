@@ -151,11 +151,6 @@ export default function BellSchedulesPage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
               <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
-              {currentSchool && (
-                <p className="text-sm text-gray-500 mt-1">
-                  {currentSchool.display_name}
-                </p>
-              )}
             </div>
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">

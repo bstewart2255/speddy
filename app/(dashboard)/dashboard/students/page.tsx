@@ -319,10 +319,12 @@ export default function StudentsPage() {
               >
                 SEIS Upload
               </Button>
-              <AIUploadButton
-                uploadType="students"
-                onSuccess={fetchStudents}
-              />
+              <div className="hidden">
+                <AIUploadButton
+                  uploadType="students"
+                  onSuccess={fetchStudents}
+                />
+              </div>
               <Button
                 variant="primary"
                 onClick={() => setShowAddForm(true)}

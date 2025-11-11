@@ -529,14 +529,14 @@ export function StudentDetailsModal({
 
             {/* Areas of Need Tab */}
             {activeTab === 'areas' && (
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-[400px]">
               <div className="space-y-1">
                 <h3 className="font-medium text-gray-900">Areas of Need</h3>
                 <p className="text-sm text-gray-600">
                   Select the skills {student.initials} is currently working on. You can choose skills from different grade levels and trimesters.
                 </p>
               </div>
-  
+
               <AreasOfNeedDropdown
                 gradeLevel={studentInfo.grade_level}
                 selectedSkills={details.working_skills}

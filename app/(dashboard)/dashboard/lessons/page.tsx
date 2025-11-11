@@ -220,31 +220,6 @@ export default function LessonsPage() {
 
               {generatedContent ? (
                 <div className="space-y-6">
-                  {/* Metrics Banner */}
-                  <div className="border-l-4 border-green-500 bg-green-50 p-4 rounded">
-                    <h3 className="text-sm font-medium text-green-800 mb-2">
-                      Generation Successful ✓
-                    </h3>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-green-700">
-                      <div>
-                        <span className="font-medium">Tokens:</span>{' '}
-                        {generatedContent.metadata?.totalTokens || 'N/A'} total
-                        <span className="text-green-600 ml-1">
-                          ({generatedContent.metadata?.promptTokens || 0} prompt + {generatedContent.metadata?.completionTokens || 0} completion)
-                        </span>
-                        {generatedContent.metadata?.worksheetTokens && generatedContent.metadata?.lessonPlanTokens && (
-                          <div className="text-green-600 ml-1 mt-1">
-                            Breakdown: {generatedContent.metadata.worksheetTokens} worksheet + {generatedContent.metadata.lessonPlanTokens} lesson plan
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <span className="font-medium">Time:</span>{' '}
-                        {((generatedContent.metadata?.generationTime || 0) / 1000).toFixed(1)}s
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Content Display - Worksheet or Lesson Plan */}
                   {lessonPlanTab === 'worksheet' ? (
                     generatedContent.worksheet ? (

@@ -699,6 +699,9 @@ export interface Database {
           created_at: string
           due_date: string | null
           updated_at: string
+          school_id: string | null
+          district_id: string | null
+          state_id: string | null
         }
         Insert: {
           id?: string
@@ -708,6 +711,9 @@ export interface Database {
           created_at?: string
           due_date?: string | null
           updated_at?: string
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
         }
         Update: {
           id?: string
@@ -717,6 +723,9 @@ export interface Database {
           created_at?: string
           due_date?: string | null
           updated_at?: string
+          school_id?: string | null
+          district_id?: string | null
+          state_id?: string | null
         }
       },
       worksheets: {
