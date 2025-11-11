@@ -161,7 +161,9 @@ export async function POST(request: NextRequest) {
         rejected: results.filter(r => r.status === 'rejected').length
       });
 
-      results.forEach((result, index) => {
+      for (let index = 0; index < results.length; index++) {
+        const result = results[index];
+
         if (result.status === 'fulfilled') {
           console.log(`[Progress Check] Student ${index + 1} result:`, {
             success: result.value.success,
@@ -170,12 +172,37 @@ export async function POST(request: NextRequest) {
           });
 
           if (result.value.success) {
-            worksheets.push({
-              studentId: result.value.studentId,
-              studentInitials: result.value.studentInitials,
-              gradeLevel: result.value.gradeLevel,
-              iepGoals: result.value.iepGoals
-            });
+            // Save to database
+            const { data: savedCheck, error: saveError } = await supabase
+              .from('progress_checks')
+              .insert({
+                provider_id: userId,
+                student_id: result.value.studentId,
+                content: {
+                  studentId: result.value.studentId,
+                  studentInitials: result.value.studentInitials,
+                  gradeLevel: result.value.gradeLevel,
+                  iepGoals: result.value.iepGoals
+                }
+              })
+              .select('id')
+              .single();
+
+            if (saveError) {
+              console.error(`Error saving progress check for ${result.value.studentInitials}:`, saveError);
+              errors.push({
+                studentId: result.value.studentId,
+                error: 'Failed to save progress check'
+              });
+            } else {
+              worksheets.push({
+                id: savedCheck?.id,
+                studentId: result.value.studentId,
+                studentInitials: result.value.studentInitials,
+                gradeLevel: result.value.gradeLevel,
+                iepGoals: result.value.iepGoals
+              });
+            }
           } else {
             errors.push({
               studentId: result.value.studentId,
@@ -189,7 +216,7 @@ export async function POST(request: NextRequest) {
             error: result.reason?.message || 'Unknown error'
           });
         }
-      });
+      }
 
       console.log('[Progress Check] Final results:', {
         successCount: worksheets.length,

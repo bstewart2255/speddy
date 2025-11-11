@@ -12,6 +12,7 @@ import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
 import SavedWorksheets from './components/saved-worksheets';
 import ResultsTab from './components/results-tab';
+import ProgressCheckResultsTab from './components/progress-check-results-tab';
 
 // Type definition for teaching step
 type TeachingStep = {
@@ -47,6 +48,7 @@ interface GeneratedContent {
 export default function LessonsPage() {
   const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets'>('builder');
   const [exitTicketSubTab, setExitTicketSubTab] = useState<'create' | 'results'>('create');
+  const [progressCheckSubTab, setProgressCheckSubTab] = useState<'create' | 'results'>('create');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [lessonPlanTab, setLessonPlanTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
@@ -153,6 +155,38 @@ export default function LessonsPage() {
                   className={`
                     px-4 py-2 text-sm font-medium rounded-md transition-colors
                     ${exitTicketSubTab === 'results'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  Results
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-tabs for Progress Check */}
+          {activeTab === 'progress-check' && (
+            <div className="px-6 py-3 bg-gray-50">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setProgressCheckSubTab('create')}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${progressCheckSubTab === 'create'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  Create
+                </button>
+                <button
+                  onClick={() => setProgressCheckSubTab('results')}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${progressCheckSubTab === 'results'
                       ? 'bg-blue-100 text-blue-700'
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }
@@ -339,7 +373,8 @@ export default function LessonsPage() {
 
         {activeTab === 'progress-check' && (
           <div className="bg-white rounded-lg shadow p-6">
-            <ProgressCheck />
+            {progressCheckSubTab === 'create' && <ProgressCheck />}
+            {progressCheckSubTab === 'results' && <ProgressCheckResultsTab />}
           </div>
         )}
 
