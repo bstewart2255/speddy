@@ -61,9 +61,12 @@ export default function ProgressCheckResultsTab() {
   const [questionStates, setQuestionStates] = useState<Record<string, Record<string, QuestionResult>>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Fetch students on mount
+  // Fetch students on mount and when school changes
   useEffect(() => {
-    fetchStudents();
+    if (currentSchool) {
+      fetchStudents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);
 
   // Fetch checks when student or filter changes
@@ -80,23 +83,44 @@ export default function ProgressCheckResultsTab() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const role = await getUserRole(user.id);
-      if (!role) return;
+      if (!currentSchool) {
+        console.log('[Progress Check Results] No current school selected');
+        return;
+      }
 
-      const { data: studentsData } = await loadStudentsForUser(user.id, role);
-      if (!studentsData) return;
+      const userRole = await getUserRole(user.id);
+      if (!userRole) {
+        console.error('[Progress Check Results] Failed to get user role');
+        return;
+      }
 
-      // Only include students with IEP goals
-      const studentsWithGoals = studentsData.filter((student: any) => {
-        const details = Array.isArray(student.student_details)
-          ? student.student_details[0]
-          : student.student_details;
-        return details?.iep_goals && details.iep_goals.length > 0;
+      // Load students based on role with school context
+      const { data: studentsData, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: true
       });
 
+      if (error) {
+        console.error('[Progress Check Results] Error loading students:', error);
+        return;
+      }
+
+      if (!studentsData) return;
+
+      // Filter to only show students with IEP goals
+      const studentsWithGoals = studentsData.filter((student: any) => {
+        // Handle both formats: nested student_details or direct iep_goals
+        const studentDetails = Array.isArray(student.student_details)
+          ? student.student_details[0]
+          : student.student_details;
+        const iepGoals = student.iep_goals || studentDetails?.iep_goals || [];
+        return Array.isArray(iepGoals) && iepGoals.length > 0;
+      });
+
+      console.log(`[Progress Check Results] Found ${studentsWithGoals.length} students with IEP goals out of ${studentsData.length} total students`);
       setStudents(studentsWithGoals);
     } catch (error) {
-      console.error('Error fetching students:', error);
+      console.error('[Progress Check Results] Error fetching students:', error);
     } finally {
       setLoadingStudents(false);
     }
