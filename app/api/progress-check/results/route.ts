@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       const supabase = await createClient();
       const { searchParams } = new URL(req.url);
       const studentId = searchParams.get('student_id');
-      const status = searchParams.get('status'); // 'graded' or 'needs_grading'
+      const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
       if (!studentId) {
         return NextResponse.json(
@@ -176,6 +176,7 @@ export async function GET(request: NextRequest) {
           content,
           created_at,
           completed_at,
+          discarded_at,
           progress_check_results (
             id,
             iep_goal_index,
@@ -216,6 +217,7 @@ export async function GET(request: NextRequest) {
           content: check.content,
           created_at: check.created_at,
           completed_at: check.completed_at,
+          discarded_at: check.discarded_at,
           is_graded: Boolean(check.completed_at),
           results,
         };
@@ -224,10 +226,16 @@ export async function GET(request: NextRequest) {
       // Filter by status if provided
       let filteredChecks = transformedChecks;
       if (status === 'graded') {
-        filteredChecks = transformedChecks.filter(c => c.is_graded);
+        // Only show graded checks that are not discarded
+        filteredChecks = transformedChecks.filter(c => c.is_graded && !c.discarded_at);
       } else if (status === 'needs_grading') {
-        filteredChecks = transformedChecks.filter(c => !c.is_graded);
+        // Only show ungraded checks that are not discarded
+        filteredChecks = transformedChecks.filter(c => !c.is_graded && !c.discarded_at);
+      } else if (status === 'discarded') {
+        // Only show discarded checks
+        filteredChecks = transformedChecks.filter(c => !!c.discarded_at);
       }
+      // If status is 'all' or not provided, return all checks including discarded
 
       return NextResponse.json({
         success: true,

@@ -18,6 +18,7 @@ interface ExitTicketResult {
   iep_goal_text: string;
   content: any;
   created_at: string;
+  discarded_at: string | null;
   is_graded: boolean;
   result: {
     id: string;
@@ -36,7 +37,7 @@ export default function ResultsTab() {
   const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [saving, setSaving] = useState<string | null>(null); // Stores ticket ID being saved
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_grading' | 'graded'>('needs_grading');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_grading' | 'graded' | 'discarded'>('needs_grading');
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -174,6 +175,28 @@ export default function ResultsTab() {
     }
   };
 
+  const handleDiscard = async (ticketId: string, isDiscarded: boolean) => {
+    try {
+      const response = await fetch(`/api/exit-tickets/${ticketId}/discard`, {
+        method: 'PATCH',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccessMessage(data.message);
+        setTimeout(() => setSuccessMessage(null), 3000);
+        // Refresh tickets to show updated status
+        await fetchTickets();
+      } else {
+        alert('Failed to update ticket: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error updating ticket:', error);
+      alert('Failed to update ticket');
+    }
+  };
+
   const selectedStudent = students.find(s => s.id === selectedStudentId);
   const filteredTickets = tickets;
 
@@ -242,11 +265,12 @@ export default function ResultsTab() {
             <select
               id="status-filter"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'needs_grading' | 'graded')}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'needs_grading' | 'graded' | 'discarded')}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
               <option value="needs_grading">Needs Grading</option>
               <option value="graded">Graded</option>
+              <option value="discarded">Discarded</option>
               <option value="all">All</option>
             </select>
           </div>
@@ -283,7 +307,9 @@ export default function ResultsTab() {
           {filteredTickets.map((ticket) => (
             <div
               key={ticket.id}
-              className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
+              className={`bg-white border rounded-lg p-6 hover:shadow-md transition-shadow ${
+                ticket.discarded_at ? 'border-gray-300 bg-gray-50' : 'border-gray-200'
+              }`}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -291,7 +317,11 @@ export default function ResultsTab() {
                     <h3 className="text-lg font-semibold text-gray-900">
                       Exit Ticket
                     </h3>
-                    {ticket.is_graded ? (
+                    {ticket.discarded_at ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                        Discarded
+                      </span>
+                    ) : ticket.is_graded ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         Graded
                       </span>
@@ -301,15 +331,27 @@ export default function ResultsTab() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500">
-                    Generated: {new Date(ticket.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-gray-500">
+                      Generated: {new Date(ticket.created_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                    <button
+                      onClick={() => handleDiscard(ticket.id, !!ticket.discarded_at)}
+                      className={`text-xs font-medium ${
+                        ticket.discarded_at
+                          ? 'text-blue-600 hover:text-blue-800'
+                          : 'text-gray-600 hover:text-gray-800'
+                      }`}
+                    >
+                      {ticket.discarded_at ? 'Restore' : 'Discard'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
