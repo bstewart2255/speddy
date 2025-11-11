@@ -58,8 +58,10 @@ COMMENT ON FUNCTION public.update_exit_ticket_results_updated_at() IS
 DO $$
 DECLARE
   func_count INTEGER;
+  missing_count INTEGER;
 BEGIN
-  SELECT COUNT(*) INTO func_count
+  -- Check for functions missing search_path in their configuration
+  SELECT COUNT(*) INTO missing_count
   FROM pg_proc p
   JOIN pg_namespace n ON p.pronamespace = n.oid
   WHERE n.nspname = 'public'
@@ -71,11 +73,28 @@ BEGIN
       'update_exit_ticket_results_updated_at'
     )
     AND prosecdef = false  -- Not SECURITY DEFINER
-    AND proconfig IS NULL; -- No configuration (including search_path)
+    AND (proconfig IS NULL OR NOT (proconfig::text LIKE '%search_path%'));
 
-  IF func_count > 0 THEN
-    RAISE WARNING 'Some functions still do not have search_path set. Count: %', func_count;
+  -- Count functions with proper search_path configuration
+  SELECT COUNT(*) INTO func_count
+  FROM pg_proc p
+  JOIN pg_namespace n ON p.pronamespace = n.oid
+  WHERE n.nspname = 'public'
+    AND p.proname IN (
+      'auto_ungroup_on_delivered_by_change',
+      'forbid_provider_id_change',
+      'can_assign_sea_to_session',
+      'recalculate_session_end_time',
+      'update_exit_ticket_results_updated_at'
+    )
+    AND prosecdef = false
+    AND proconfig IS NOT NULL
+    AND proconfig::text LIKE '%search_path%';
+
+  IF missing_count > 0 THEN
+    RAISE WARNING 'Some functions do not have search_path configured. Count: %', missing_count;
   ELSE
-    RAISE NOTICE 'All targeted functions now have search_path configured.';
+    RAISE NOTICE 'Function search_path security fix completed successfully.';
+    RAISE NOTICE 'All % targeted functions now have search_path configured.', func_count;
   END IF;
 END $$;

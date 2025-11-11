@@ -5,8 +5,10 @@
 -- This migration wraps auth.uid() calls in SELECT subqueries to evaluate once per query
 -- instead of once per row, significantly improving performance at scale.
 --
+-- Note: Document SELECT and INSERT policies were consolidated in 20251111_consolidate_multiple_rls_policies.sql
+--
 -- Affected tables: holidays, saved_worksheets, students, student_details, documents,
--- exit_ticket_results, schedule_sessions (17 policies total)
+-- exit_ticket_results, schedule_sessions (13 policies total)
 
 -- ========================================
 -- Table: holidays (1 policy)
@@ -68,7 +70,7 @@ CREATE POLICY "SEAs can view students assigned to them" ON public.students
       FROM schedule_sessions ss
       JOIN profiles p ON p.id = (SELECT auth.uid())
       WHERE ss.student_id = students.id
-        AND ss.assigned_to_sea_id = (SELECT auth.uid())
+        AND ss.assigned_to_sea_id = p.id
         AND ss.delivered_by = 'sea'
         AND p.role = 'sea'
     )
@@ -88,7 +90,7 @@ CREATE POLICY "SEAs can view student details for assigned students" ON public.st
       FROM schedule_sessions ss
       JOIN profiles p ON p.id = (SELECT auth.uid())
       WHERE ss.student_id = student_details.student_id
-        AND ss.assigned_to_sea_id = (SELECT auth.uid())
+        AND ss.assigned_to_sea_id = p.id
         AND ss.delivered_by = 'sea'
         AND p.role = 'sea'
     )
@@ -96,85 +98,15 @@ CREATE POLICY "SEAs can view student details for assigned students" ON public.st
 
 
 -- ========================================
--- Table: documents (5 policies)
+-- Table: documents (3 policies)
+-- Note: SELECT and INSERT policies were consolidated in 20251111_consolidate_multiple_rls_policies.sql
+-- Only optimizing the remaining non-consolidated policies here
 -- ========================================
 
 DROP POLICY IF EXISTS "Users can delete their own documents" ON public.documents;
 CREATE POLICY "Users can delete their own documents" ON public.documents
   FOR DELETE
   USING (created_by = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users can view their group documents" ON public.documents;
-CREATE POLICY "Users can view their group documents" ON public.documents
-  FOR SELECT
-  USING (
-    documentable_type = 'group'
-    AND EXISTS (
-      SELECT 1
-      FROM schedule_sessions s
-      WHERE s.group_id = documents.documentable_id
-        AND (
-          s.provider_id = (SELECT auth.uid())
-          OR s.assigned_to_specialist_id = (SELECT auth.uid())
-          OR s.assigned_to_sea_id = (SELECT auth.uid())
-        )
-      LIMIT 1
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can view their session documents" ON public.documents;
-CREATE POLICY "Users can view their session documents" ON public.documents
-  FOR SELECT
-  USING (
-    documentable_type = 'session'
-    AND EXISTS (
-      SELECT 1
-      FROM schedule_sessions s
-      WHERE s.id = documents.documentable_id
-        AND (
-          s.provider_id = (SELECT auth.uid())
-          OR s.assigned_to_specialist_id = (SELECT auth.uid())
-          OR s.assigned_to_sea_id = (SELECT auth.uid())
-        )
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can create documents for their groups" ON public.documents;
-CREATE POLICY "Users can create documents for their groups" ON public.documents
-  FOR INSERT
-  WITH CHECK (
-    documentable_type = 'group'
-    AND EXISTS (
-      SELECT 1
-      FROM schedule_sessions s
-      WHERE s.group_id = documents.documentable_id
-        AND (
-          s.provider_id = (SELECT auth.uid())
-          OR s.assigned_to_specialist_id = (SELECT auth.uid())
-          OR s.assigned_to_sea_id = (SELECT auth.uid())
-        )
-      LIMIT 1
-    )
-    AND created_by = (SELECT auth.uid())
-  );
-
-DROP POLICY IF EXISTS "Users can create documents for their sessions" ON public.documents;
-CREATE POLICY "Users can create documents for their sessions" ON public.documents
-  FOR INSERT
-  WITH CHECK (
-    documentable_type = 'session'
-    AND EXISTS (
-      SELECT 1
-      FROM schedule_sessions s
-      WHERE s.id = documents.documentable_id
-        AND (
-          s.provider_id = (SELECT auth.uid())
-          OR s.assigned_to_specialist_id = (SELECT auth.uid())
-          OR s.assigned_to_sea_id = (SELECT auth.uid())
-        )
-    )
-    AND created_by = (SELECT auth.uid())
-  );
 
 DROP POLICY IF EXISTS "Users can update their own documents" ON public.documents;
 CREATE POLICY "Users can update their own documents" ON public.documents
@@ -194,11 +126,12 @@ CREATE POLICY "Users can create exit ticket results in their org" ON public.exit
     EXISTS (
       SELECT 1
       FROM students s
+      JOIN profiles p ON p.id = (SELECT auth.uid())
       WHERE s.id = exit_ticket_results.student_id
         AND (
-          s.school_id::text = (SELECT profiles.school_id FROM profiles WHERE profiles.id = (SELECT auth.uid()))::text
-          OR s.district_id::text = (SELECT profiles.district_id FROM profiles WHERE profiles.id = (SELECT auth.uid()))::text
-          OR s.state_id::text = (SELECT profiles.state_id FROM profiles WHERE profiles.id = (SELECT auth.uid()))::text
+          s.school_id::text = p.school_id::text
+          OR s.district_id::text = p.district_id::text
+          OR s.state_id::text = p.state_id::text
         )
     )
     AND graded_by = (SELECT auth.uid())

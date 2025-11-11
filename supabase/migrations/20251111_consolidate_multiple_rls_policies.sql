@@ -117,17 +117,19 @@ CREATE POLICY "Users can create exit tickets" ON public.exit_tickets
       )
     )
     OR
-    -- SEA can create for assigned students
+    -- SEA can create for assigned students (provider_id must match student's provider)
     (
       provider_id IS NOT NULL
       AND EXISTS (
         SELECT 1
         FROM schedule_sessions ss
         JOIN profiles p ON p.id = (SELECT auth.uid())
+        JOIN students s ON s.id = exit_tickets.student_id
         WHERE ss.student_id = exit_tickets.student_id
-          AND ss.assigned_to_sea_id = (SELECT auth.uid())
+          AND ss.assigned_to_sea_id = p.id
           AND ss.delivered_by = 'sea'
           AND p.role = 'sea'
+          AND exit_tickets.provider_id = s.provider_id
       )
     )
   );
@@ -148,7 +150,7 @@ CREATE POLICY "Users can view exit tickets" ON public.exit_tickets
       FROM schedule_sessions ss
       JOIN profiles p ON p.id = (SELECT auth.uid())
       WHERE ss.student_id = exit_tickets.student_id
-        AND ss.assigned_to_sea_id = (SELECT auth.uid())
+        AND ss.assigned_to_sea_id = p.id
         AND ss.delivered_by = 'sea'
         AND p.role = 'sea'
     )
@@ -181,7 +183,7 @@ CREATE POLICY "Users can view student details" ON public.student_details
       FROM schedule_sessions ss
       JOIN profiles p ON p.id = (SELECT auth.uid())
       WHERE ss.student_id = student_details.student_id
-        AND ss.assigned_to_sea_id = (SELECT auth.uid())
+        AND ss.assigned_to_sea_id = p.id
         AND ss.delivered_by = 'sea'
         AND p.role = 'sea'
     )

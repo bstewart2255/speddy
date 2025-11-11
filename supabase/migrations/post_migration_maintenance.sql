@@ -20,7 +20,11 @@ VACUUM ANALYZE public.documents;
 -- Update query planner statistics for tables with new indexes
 ANALYZE public.schedule_sessions;
 ANALYZE public.students;
+ANALYZE public.saved_worksheets;
 ANALYZE public.exit_tickets;
+ANALYZE public.exit_ticket_results;
+ANALYZE public.lessons;
+ANALYZE public.documents;
 ANALYZE public.profiles;
 ANALYZE public.bell_schedules;
 ANALYZE public.calendar_events;

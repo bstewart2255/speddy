@@ -263,14 +263,44 @@ DO $$
 DECLARE
   index_count INTEGER;
 BEGIN
-  -- Count newly created indexes
+  -- Count indexes created in this migration
   SELECT COUNT(*) INTO index_count
   FROM pg_indexes
   WHERE schemaname = 'public'
-    AND indexname LIKE 'idx_%_fkey' OR indexname LIKE 'idx_%_id';
+    AND (
+      indexname LIKE 'idx_schedule_sessions_%'
+      OR indexname LIKE 'idx_students_%'
+      OR indexname LIKE 'idx_lessons_%'
+      OR indexname LIKE 'idx_exit_tickets_%'
+      OR indexname LIKE 'idx_exit_ticket_results_%'
+      OR indexname LIKE 'idx_worksheets_%'
+      OR indexname LIKE 'idx_worksheet_submissions_%'
+      OR indexname LIKE 'idx_profiles_%'
+      OR indexname LIKE 'idx_bell_schedules_%'
+      OR indexname LIKE 'idx_calendar_events_%'
+      OR indexname LIKE 'idx_special_activities_%'
+      OR indexname LIKE 'idx_teachers_%'
+      OR indexname LIKE 'idx_provider_schools_%'
+      OR indexname LIKE 'idx_schools_%'
+      OR indexname LIKE 'idx_subscriptions_%'
+      OR indexname LIKE 'idx_referral_relationships_%'
+      OR indexname LIKE 'idx_subscription_pauses_%'
+      OR indexname LIKE 'idx_holidays_%'
+      OR indexname LIKE 'idx_analytics_events_%'
+      OR indexname LIKE 'idx_audit_logs_%'
+      OR indexname LIKE 'idx_team_members_%'
+      OR indexname LIKE 'idx_user_site_schedules_%'
+      OR indexname LIKE 'idx_schedule_share_requests_%'
+      OR indexname LIKE 'idx_progress_notifications_%'
+      OR indexname LIKE 'idx_iep_goal_progress_%'
+      OR indexname LIKE 'idx_lesson_adjustment_queue_%'
+      OR indexname LIKE 'idx_lesson_performance_history_%'
+      OR indexname LIKE 'idx_student_assessments_%'
+    );
 
   RAISE NOTICE 'Foreign key index optimization completed.';
-  RAISE NOTICE 'Total indexes in public schema: %', index_count;
+  RAISE NOTICE 'New indexes created: %', index_count;
+  RAISE NOTICE 'Expected: 62 indexes';
   RAISE NOTICE 'This should significantly improve JOIN performance and query execution times.';
   RAISE NOTICE 'Run ANALYZE on affected tables to update query planner statistics.';
 END $$;
