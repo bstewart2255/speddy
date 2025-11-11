@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon, DocumentTextIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import { ToastProvider } from '@/app/contexts/toast-context';
 import SampleLessonForm from './sample/sample-lesson-form';
 import WorksheetRenderer from './sample/worksheet-renderer';
@@ -11,6 +11,7 @@ import LessonBank from './components/lesson-bank';
 import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
 import SavedWorksheets from './components/saved-worksheets';
+import ResultsTab from './components/results-tab';
 
 // Type definition for teaching step
 type TeachingStep = {
@@ -44,7 +45,7 @@ interface GeneratedContent {
 }
 
 export default function LessonsPage() {
-  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets' | 'results'>('builder');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [lessonPlanTab, setLessonPlanTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
@@ -61,8 +62,8 @@ export default function LessonsPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Lessons</h1>
-              <p className="mt-2 text-gray-600">Create AI-generated worksheets and manage your lesson library</p>
+              <h1 className="text-3xl font-bold text-gray-900">Tools</h1>
+              <p className="mt-2 text-gray-600">Create AI-generated worksheets and track student progress</p>
             </div>
           </div>
         </div>
@@ -85,20 +86,20 @@ export default function LessonsPage() {
                 <BookOpenIcon className="w-5 h-5" />
                 AI Lesson Builder
               </button>
-              {/* <button
-                onClick={() => setActiveTab('bank')}
+              <button
+                onClick={() => setActiveTab('progress-check')}
                 className={`
                   flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
                   transition-colors duration-200 flex items-center justify-center gap-2
-                  ${activeTab === 'bank'
+                  ${activeTab === 'progress-check'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }
                 `}
               >
-                <FolderOpenIcon className="w-5 h-5" />
-                Lesson Bank
-              </button> */}
+                <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                Progress Check
+              </button>
               <button
                 onClick={() => setActiveTab('exit-tickets')}
                 className={`
@@ -114,18 +115,18 @@ export default function LessonsPage() {
                 Exit Tickets
               </button>
               <button
-                onClick={() => setActiveTab('progress-check')}
+                onClick={() => setActiveTab('results')}
                 className={`
                   flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
                   transition-colors duration-200 flex items-center justify-center gap-2
-                  ${activeTab === 'progress-check'
+                  ${activeTab === 'results'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }
                 `}
               >
-                <ClipboardDocumentCheckIcon className="w-5 h-5" />
-                Progress Check
+                <ChartBarIcon className="w-5 h-5" />
+                Results
               </button>
               <button
                 onClick={() => setActiveTab('saved-worksheets')}
@@ -350,6 +351,12 @@ export default function LessonsPage() {
         {activeTab === 'saved-worksheets' && (
           <div className="bg-white rounded-lg shadow p-6">
             <SavedWorksheets />
+          </div>
+        )}
+
+        {activeTab === 'results' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <ResultsTab />
           </div>
         )}
       </div>
