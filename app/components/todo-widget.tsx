@@ -7,7 +7,6 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/form'
 import type { Database } from '../../src/types/database'
 import { useSchool } from './providers/school-context'
-import { buildSchoolFilter } from '../../lib/school-helpers'
 
 type Todo = {
   id: string
@@ -65,44 +64,20 @@ export function TodoWidget() {
         .eq('user_id', user.id)
 
       // Filter by current school if available, OR include unassigned todos (NULL school_id)
-      if (currentSchool) {
-        // Fetch school-specific todos OR unassigned todos
-        const schoolQuery = buildSchoolFilter(
-          supabase.from('todos').select('*').eq('user_id', user.id),
-          currentSchool
-        )
-
-        const unassignedQuery = supabase
+      if (currentSchool && currentSchool.school_id) {
+        // Single query with OR condition for school-specific or unassigned todos
+        const { data, error } = await supabase
           .from('todos')
           .select('*')
           .eq('user_id', user.id)
-          .is('school_id', null)
+          .or(`school_id.eq.${currentSchool.school_id},school_id.is.null`)
+          .order('created_at', { ascending: false })
 
-        // Execute both queries
-        const [schoolResult, unassignedResult] = await Promise.all([
-          schoolQuery.order('created_at', { ascending: false }),
-          unassignedQuery.order('created_at', { ascending: false })
-        ])
-
-        if (schoolResult.error) {
-          console.error('Error fetching school todos:', schoolResult.error)
+        if (error) {
+          console.error('Error fetching todos:', error)
+        } else {
+          setTodos(data || [])
         }
-        if (unassignedResult.error) {
-          console.error('Error fetching unassigned todos:', unassignedResult.error)
-        }
-
-        // Combine and deduplicate results
-        const combined = [
-          ...(schoolResult.data || []),
-          ...(unassignedResult.data || [])
-        ]
-
-        // Remove duplicates by id
-        const uniqueTodos = Array.from(
-          new Map(combined.map(todo => [todo.id, todo])).values()
-        )
-
-        setTodos(uniqueTodos)
       } else {
         // No school context, fetch all user's todos
         const { data, error } = await query.order('created_at', { ascending: false })
