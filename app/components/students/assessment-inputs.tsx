@@ -584,18 +584,6 @@ export function AssessmentInputs({ assessment, onChange, readOnly = false }: Ass
           </div>
         </div>
       </AssessmentSection>
-
-      {/* Assessment Date */}
-      <FormGroup>
-        <Label htmlFor="assessment_date">Assessment Date</Label>
-        <Input
-          id="assessment_date"
-          type="date"
-          value={assessment.assessment_date ?? ''}
-          onChange={(e) => updateField('assessment_date', e.target.value)}
-          disabled={readOnly}
-        />
-      </FormGroup>
     </div>
   );
 }

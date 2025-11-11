@@ -122,7 +122,7 @@ export function AreasOfNeedDropdown({
       
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-96 overflow-hidden">
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-[500px] overflow-hidden">
           {/* Search Bar */}
           <div className="p-3 border-b">
             <input
@@ -162,7 +162,7 @@ export function AreasOfNeedDropdown({
           </div>
           
           {/* Content */}
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto">
             {activeTab === 'all' ? (
               <div className="p-2">
                 {Object.entries(groupedSkills).map(([gradeLabel, skills]) => (

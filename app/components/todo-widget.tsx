@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/form'
 import type { Database } from '../../src/types/database'
+import { useSchool } from './providers/school-context'
 
 type Todo = {
   id: string
@@ -14,6 +15,9 @@ type Todo = {
   completed: boolean
   created_at: string
   due_date?: string | null
+  school_id?: string | null
+  district_id?: string | null
+  state_id?: string | null
 }
 
 export function TodoWidget() {
@@ -21,30 +25,75 @@ export function TodoWidget() {
   const [newTask, setNewTask] = useState('')
   const [loading, setLoading] = useState(true)
   const [isAddingTask, setIsAddingTask] = useState(false)
+  const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false)
   const supabase = createClient<Database>()
+  const { currentSchool, loading: schoolLoading } = useSchool()
+
+  // Check if user works at multiple schools
+  useEffect(() => {
+    const checkMultipleSchools = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('works_at_multiple_schools')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        setWorksAtMultipleSchools(profile.works_at_multiple_schools)
+      }
+    }
+
+    checkMultipleSchools()
+  }, [supabase])
 
   const fetchTodos = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data, error } = await supabase
+      // Wait for school context to load
+      if (schoolLoading) return
+
+      // Build query for todos
+      let query = supabase
         .from('todos')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('Error fetching todos:', error)
+      // Filter by current school if available, OR include unassigned todos (NULL school_id)
+      if (currentSchool && currentSchool.school_id) {
+        // Single query with OR condition for school-specific or unassigned todos
+        const { data, error } = await supabase
+          .from('todos')
+          .select('*')
+          .eq('user_id', user.id)
+          .or(`school_id.eq.${currentSchool.school_id},school_id.is.null`)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error fetching todos:', error)
+        } else {
+          setTodos(data || [])
+        }
       } else {
-        setTodos(data || [])
+        // No school context, fetch all user's todos
+        const { data, error } = await query.order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error fetching todos:', error)
+        } else {
+          setTodos(data || [])
+        }
       }
     } catch (error) {
       console.error('Error:', error)
     } finally {
       setLoading(false)
     }
-  }, [supabase])
+  }, [supabase, currentSchool, schoolLoading])
 
   useEffect(() => {
     fetchTodos()
@@ -58,13 +107,23 @@ export function TodoWidget() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Build todo object with school identifiers if available
+      const newTodo: any = {
+        user_id: user.id,
+        task: newTask.trim(),
+        completed: false
+      }
+
+      // Add school identifiers if user is at a specific school
+      if (currentSchool) {
+        newTodo.school_id = currentSchool.school_id || null
+        newTodo.district_id = currentSchool.district_id || null
+        newTodo.state_id = currentSchool.state_id || null
+      }
+
       const { data, error } = await supabase
         .from('todos')
-        .insert([{
-          user_id: user.id,
-          task: newTask.trim(),
-          completed: false
-        }])
+        .insert([newTodo])
         .select()
         .single()
 
@@ -138,12 +197,19 @@ export function TodoWidget() {
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between w-full gap-4">
-          <CardTitle className="flex items-center gap-2 mb-0">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            To-Do List
-          </CardTitle>
+          <div className="flex flex-col">
+            <CardTitle className="flex items-center gap-2 mb-0">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              To-Do List
+            </CardTitle>
+            {worksAtMultipleSchools && currentSchool && (
+              <p className="text-xs text-gray-500 mt-1">
+                {currentSchool.display_name || currentSchool.school_site || 'Current School'}
+              </p>
+            )}
+          </div>
           <Button
             size="sm"
             variant="secondary"
