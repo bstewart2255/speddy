@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
@@ -62,59 +62,18 @@ export default function ProgressCheckResultsTab() {
   const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
   const [questionStates, setQuestionStates] = useState<Record<string, Record<string, QuestionResult>>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch students on mount and when school changes
+  // Cleanup success message timeout on unmount
   useEffect(() => {
-    if (currentSchool) {
-      fetchStudents();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSchool]);
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  const fetchChecks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/progress-check/results?student_id=${selectedStudentId}&status=${statusFilter}`
-      );
-
-      if (!response.ok) throw new Error('Failed to fetch progress checks');
-
-      const data = await response.json();
-      setChecks(data.checks || []);
-
-      // Initialize question states from existing results
-      const initialStates: Record<string, Record<string, QuestionResult>> = {};
-      data.checks.forEach((check: ProgressCheck) => {
-        const checkStates: Record<string, QuestionResult> = {};
-        check.results.forEach((result: any) => {
-          const key = `${result.iep_goal_index}-${result.question_index}`;
-          checkStates[key] = {
-            iep_goal_index: result.iep_goal_index,
-            question_index: result.question_index,
-            status: result.status,
-            notes: result.notes || undefined,
-          };
-        });
-        initialStates[check.id] = checkStates;
-      });
-      setQuestionStates(initialStates);
-
-    } catch (error) {
-      console.error('Error fetching progress checks:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStudentId, statusFilter]);
-
-  // Fetch checks when student or filter changes
-  useEffect(() => {
-    if (selectedStudentId) {
-      fetchChecks();
-    }
-  }, [selectedStudentId, fetchChecks]);
-
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
     setLoadingStudents(true);
     try {
       const supabase = createClient();
@@ -162,7 +121,57 @@ export default function ProgressCheckResultsTab() {
     } finally {
       setLoadingStudents(false);
     }
-  };
+  }, [currentSchool]);
+
+  // Fetch students on mount and when school changes
+  useEffect(() => {
+    if (currentSchool) {
+      fetchStudents();
+    }
+  }, [currentSchool, fetchStudents]);
+
+  const fetchChecks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/progress-check/results?student_id=${selectedStudentId}&status=${statusFilter}`
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch progress checks');
+
+      const data = await response.json();
+      setChecks(data.checks || []);
+
+      // Initialize question states from existing results
+      const initialStates: Record<string, Record<string, QuestionResult>> = {};
+      data.checks.forEach((check: ProgressCheck) => {
+        const checkStates: Record<string, QuestionResult> = {};
+        check.results.forEach((result: any) => {
+          const key = `${result.iep_goal_index}-${result.question_index}`;
+          checkStates[key] = {
+            iep_goal_index: result.iep_goal_index,
+            question_index: result.question_index,
+            status: result.status,
+            notes: result.notes || undefined,
+          };
+        });
+        initialStates[check.id] = checkStates;
+      });
+      setQuestionStates(initialStates);
+
+    } catch (error) {
+      console.error('Error fetching progress checks:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedStudentId, statusFilter]);
+
+  // Fetch checks when student or filter changes
+  useEffect(() => {
+    if (selectedStudentId) {
+      fetchChecks();
+    }
+  }, [selectedStudentId, fetchChecks]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => ({
@@ -253,7 +262,17 @@ export default function ProgressCheckResultsTab() {
       }
 
       setSuccessMessage('Results saved successfully!');
-      setTimeout(() => setSuccessMessage(null), 3000);
+
+      // Clear existing timeout if any
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+
+      // Set new timeout and store reference
+      successTimeoutRef.current = setTimeout(() => {
+        setSuccessMessage(null);
+        successTimeoutRef.current = null;
+      }, 3000);
 
       // Refresh checks
       await fetchChecks();

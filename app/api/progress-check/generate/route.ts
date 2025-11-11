@@ -198,13 +198,19 @@ export async function POST(request: NextRequest) {
                 studentId: result.value.studentId,
                 error: 'Failed to save progress check'
               });
-            } else {
+            } else if (savedCheck?.id) {
               worksheets.push({
-                id: savedCheck?.id,
+                id: savedCheck.id,
                 studentId: result.value.studentId,
                 studentInitials: result.value.studentInitials,
                 gradeLevel: result.value.gradeLevel,
                 iepGoals: result.value.iepGoals
+              });
+            } else {
+              console.error(`Progress check saved but no ID returned for ${result.value.studentInitials}`);
+              errors.push({
+                studentId: result.value.studentId,
+                error: 'Progress check saved but ID not returned'
               });
             }
           } else {

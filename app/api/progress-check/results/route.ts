@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Fetch the progress check to get student info
+      // Fetch the progress check to get student info and content
       const { data: progressCheck, error: checkError } = await supabase
         .from('progress_checks')
-        .select('id, student_id')
+        .select('id, student_id, content')
         .eq('id', progress_check_id)
         .single();
 
@@ -71,6 +71,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { error: 'Progress check not found' },
           { status: 404 }
+        );
+      }
+
+      // Validate that all questions are graded
+      const content = (progressCheck?.content ?? {}) as {
+        iepGoals?: Array<{ assessmentItems?: unknown[] }>;
+      };
+
+      const expectedKeys = new Set<string>();
+      content.iepGoals?.forEach((goal, goalIndex) => {
+        goal.assessmentItems?.forEach((_, questionIndex) => {
+          expectedKeys.add(`${goalIndex}-${questionIndex}`);
+        });
+      });
+
+      const submittedKeys = new Set(
+        results.map(result => `${result.iep_goal_index}-${result.question_index}`)
+      );
+
+      if (
+        expectedKeys.size === 0 ||
+        submittedKeys.size !== expectedKeys.size ||
+        [...expectedKeys].some(key => !submittedKeys.has(key))
+      ) {
+        return NextResponse.json(
+          { error: 'Incomplete grading', details: 'All questions must be graded before saving results.' },
+          { status: 400 }
         );
       }
 
@@ -189,7 +216,7 @@ export async function GET(request: NextRequest) {
           content: check.content,
           created_at: check.created_at,
           completed_at: check.completed_at,
-          is_graded: results.length > 0,
+          is_graded: Boolean(check.completed_at),
           results,
         };
       });
