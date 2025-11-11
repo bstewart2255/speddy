@@ -34,7 +34,7 @@ interface ProgressCheckContent {
 interface QuestionResult {
   iep_goal_index: number;
   question_index: number;
-  status: 'correct' | 'incorrect' | 'excluded';
+  status?: 'correct' | 'incorrect' | 'excluded';
   notes?: string;
 }
 
@@ -183,7 +183,7 @@ export default function ProgressCheckResultsTab() {
         [key]: {
           iep_goal_index: goalIndex,
           question_index: questionIndex,
-          status: updates.status || prev[checkId]?.[key]?.status || 'correct',
+          status: updates.status !== undefined ? updates.status : prev[checkId]?.[key]?.status,
           notes: updates.notes !== undefined ? updates.notes : prev[checkId]?.[key]?.notes,
         }
       }
@@ -195,8 +195,26 @@ export default function ProgressCheckResultsTab() {
     setSuccessMessage(null);
 
     try {
+      const check = checks.find(c => c.id === checkId);
+      if (!check) return;
+
+      // Count total questions
+      const totalQuestions = check.content.iepGoals.reduce((sum, goal) => sum + goal.assessmentItems.length, 0);
+
       const checkStates = questionStates[checkId] || {};
       const results = Object.values(checkStates);
+
+      // Validate: ensure all questions have a status selected
+      if (results.length < totalQuestions) {
+        alert(`Please grade all ${totalQuestions} questions before saving. You've only graded ${results.length}.`);
+        return;
+      }
+
+      const unansweredResults = results.filter(r => !r.status);
+      if (unansweredResults.length > 0) {
+        alert('Please select a status (Correct/Incorrect/Excluded) for all questions before saving.');
+        return;
+      }
 
       // Validate: ensure notes are provided for incorrect answers
       const invalidResults = results.filter(
@@ -208,12 +226,15 @@ export default function ProgressCheckResultsTab() {
         return;
       }
 
+      // Filter out any results without a status (safety check)
+      const validResults = results.filter(r => r.status) as Array<Required<QuestionResult>>;
+
       const response = await fetch('/api/progress-check/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           progress_check_id: checkId,
-          results,
+          results: validResults,
         }),
       });
 
@@ -360,7 +381,7 @@ export default function ProgressCheckResultsTab() {
 
                         {goal.assessmentItems.map((item, questionIndex) => {
                           const key = `${goalIndex}-${questionIndex}`;
-                          const state = checkStates[key] || { status: 'correct', notes: '' };
+                          const state = checkStates[key] || { notes: '' };
 
                           return (
                             <div key={questionIndex} className="ml-4 space-y-2 pb-4 border-b border-gray-200 last:border-b-0">
