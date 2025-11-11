@@ -149,7 +149,14 @@ export async function GET(request: NextRequest) {
         .eq('student_id', studentId)
         .order('created_at', { ascending: false });
 
+      console.log(`[API] Running query for student ${studentId} with status filter: ${status || 'none'}`);
+
       const { data: tickets, error: ticketsError } = await query;
+
+      console.log(`[API] Query result - tickets:`, tickets ? tickets.length : 0, 'error:', ticketsError);
+      if (tickets) {
+        console.log(`[API] Raw tickets data:`, JSON.stringify(tickets, null, 2));
+      }
 
       if (ticketsError) {
         console.error('Error fetching exit tickets:', ticketsError);
