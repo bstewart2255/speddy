@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { useToast } from '@/app/contexts/toast-context';
 
 interface Student {
   id: string;
@@ -50,6 +51,7 @@ interface ProgressCheck {
 
 export default function ProgressCheckResultsTab() {
   const { currentSchool } = useSchool();
+  const { showToast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [checks, setChecks] = useState<ProgressCheck[]>([]);
@@ -69,12 +71,48 @@ export default function ProgressCheckResultsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSchool]);
 
+  const fetchChecks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/progress-check/results?student_id=${selectedStudentId}&status=${statusFilter}`
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch progress checks');
+
+      const data = await response.json();
+      setChecks(data.checks || []);
+
+      // Initialize question states from existing results
+      const initialStates: Record<string, Record<string, QuestionResult>> = {};
+      data.checks.forEach((check: ProgressCheck) => {
+        const checkStates: Record<string, QuestionResult> = {};
+        check.results.forEach((result: any) => {
+          const key = `${result.iep_goal_index}-${result.question_index}`;
+          checkStates[key] = {
+            iep_goal_index: result.iep_goal_index,
+            question_index: result.question_index,
+            status: result.status,
+            notes: result.notes || undefined,
+          };
+        });
+        initialStates[check.id] = checkStates;
+      });
+      setQuestionStates(initialStates);
+
+    } catch (error) {
+      console.error('Error fetching progress checks:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedStudentId, statusFilter]);
+
   // Fetch checks when student or filter changes
   useEffect(() => {
     if (selectedStudentId) {
       fetchChecks();
     }
-  }, [selectedStudentId, statusFilter]);
+  }, [selectedStudentId, fetchChecks]);
 
   const fetchStudents = async () => {
     setLoadingStudents(true);
@@ -126,42 +164,6 @@ export default function ProgressCheckResultsTab() {
     }
   };
 
-  const fetchChecks = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/progress-check/results?student_id=${selectedStudentId}&status=${statusFilter}`
-      );
-
-      if (!response.ok) throw new Error('Failed to fetch progress checks');
-
-      const data = await response.json();
-      setChecks(data.checks || []);
-
-      // Initialize question states from existing results
-      const initialStates: Record<string, Record<string, QuestionResult>> = {};
-      data.checks.forEach((check: ProgressCheck) => {
-        const checkStates: Record<string, QuestionResult> = {};
-        check.results.forEach((result: any) => {
-          const key = `${result.iep_goal_index}-${result.question_index}`;
-          checkStates[key] = {
-            iep_goal_index: result.iep_goal_index,
-            question_index: result.question_index,
-            status: result.status,
-            notes: result.notes || undefined,
-          };
-        });
-        initialStates[check.id] = checkStates;
-      });
-      setQuestionStates(initialStates);
-
-    } catch (error) {
-      console.error('Error fetching progress checks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => ({
       ...prev,
@@ -190,6 +192,13 @@ export default function ProgressCheckResultsTab() {
     }));
   };
 
+  // Type guard for complete question results
+  const isCompleteQuestionResult = (r: QuestionResult): r is Required<QuestionResult> =>
+    r &&
+    typeof r.status === 'string' &&
+    typeof r.iep_goal_index !== 'undefined' &&
+    typeof r.question_index !== 'undefined';
+
   const saveResults = async (checkId: string) => {
     setSaving(checkId);
     setSuccessMessage(null);
@@ -206,13 +215,13 @@ export default function ProgressCheckResultsTab() {
 
       // Validate: ensure all questions have a status selected
       if (results.length < totalQuestions) {
-        alert(`Please grade all ${totalQuestions} questions before saving. You've only graded ${results.length}.`);
+        showToast(`Please grade all ${totalQuestions} questions before saving. You've only graded ${results.length}.`, 'error');
         return;
       }
 
       const unansweredResults = results.filter(r => !r.status);
       if (unansweredResults.length > 0) {
-        alert('Please select a status (Correct/Incorrect/Excluded) for all questions before saving.');
+        showToast('Please select a status (Correct/Incorrect/Excluded) for all questions before saving.', 'error');
         return;
       }
 
@@ -222,12 +231,12 @@ export default function ProgressCheckResultsTab() {
       );
 
       if (invalidResults.length > 0) {
-        alert('Please provide notes for all questions marked as incorrect.');
+        showToast('Please provide notes for all questions marked as incorrect.', 'error');
         return;
       }
 
-      // Filter out any results without a status (safety check)
-      const validResults = results.filter(r => r.status) as Array<Required<QuestionResult>>;
+      // Filter out any results without a status (safety check with type guard)
+      const validResults = results.filter(isCompleteQuestionResult);
 
       const response = await fetch('/api/progress-check/results', {
         method: 'POST',
@@ -250,7 +259,7 @@ export default function ProgressCheckResultsTab() {
       await fetchChecks();
     } catch (error) {
       console.error('Error saving results:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save results');
+      showToast(error instanceof Error ? error.message : 'Failed to save results', 'error');
     } finally {
       setSaving(null);
     }

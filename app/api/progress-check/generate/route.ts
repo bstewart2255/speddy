@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       // For providers, filter by provider_id
       let studentsQuery = supabase
         .from('students')
-        .select('id, initials, grade_level, student_details(iep_goals)')
+        .select('id, initials, grade_level, school_id, district_id, state_id, student_details(iep_goals)')
         .in('id', studentIds);
 
       // Only filter by provider_id for non-SEA users
@@ -173,11 +173,15 @@ export async function POST(request: NextRequest) {
 
           if (result.value.success) {
             // Save to database
+            const student = studentsData.find(s => s.id === result.value.studentId);
             const { data: savedCheck, error: saveError } = await supabase
               .from('progress_checks')
               .insert({
                 provider_id: userId,
                 student_id: result.value.studentId,
+                school_id: student?.school_id || null,
+                district_id: student?.district_id || null,
+                state_id: student?.state_id || null,
                 content: {
                   studentId: result.value.studentId,
                   studentInitials: result.value.studentInitials,
