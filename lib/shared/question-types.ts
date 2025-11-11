@@ -355,7 +355,7 @@ export function isMathProblem(content: string): boolean {
 
   // First check: If explicitly asking for written sentences/paragraphs, it's NOT a math problem
   // This prevents false positives from phrases like "Write 3-5 sentences" or "Write about how many..."
-  if (/write\s+\d+(-\d+)?\s+(sentence|paragraph)/i.test(content)) {
+  if (/write\s+\d+(-\d+)?\s+(sentences?|paragraphs?)/i.test(content)) {
     return false;
   }
 
