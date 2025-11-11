@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       const supabase = await createClient();
       const { searchParams } = new URL(req.url);
       const studentId = searchParams.get('student_id');
-      const status = searchParams.get('status'); // 'graded' or 'needs_grading'
+      const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
       if (!studentId) {
         return NextResponse.json(
@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
           iep_goal_text,
           content,
           created_at,
+          discarded_at,
           exit_ticket_results (
             id,
             rating,
@@ -183,6 +184,7 @@ export async function GET(request: NextRequest) {
           iep_goal_text: ticket.iep_goal_text,
           content: ticket.content,
           created_at: ticket.created_at,
+          discarded_at: ticket.discarded_at,
           is_graded: !!result,
           result: result ? {
             id: result.id,
@@ -197,10 +199,16 @@ export async function GET(request: NextRequest) {
       // Filter by status if provided
       let filteredTickets = transformedTickets;
       if (status === 'graded') {
-        filteredTickets = transformedTickets.filter(t => t.is_graded);
+        // Only show graded tickets that are not discarded
+        filteredTickets = transformedTickets.filter(t => t.is_graded && !t.discarded_at);
       } else if (status === 'needs_grading') {
-        filteredTickets = transformedTickets.filter(t => !t.is_graded);
+        // Only show ungraded tickets that are not discarded
+        filteredTickets = transformedTickets.filter(t => !t.is_graded && !t.discarded_at);
+      } else if (status === 'discarded') {
+        // Only show discarded tickets
+        filteredTickets = transformedTickets.filter(t => !!t.discarded_at);
       }
+      // If status is 'all' or not provided, return all tickets including discarded
 
       return NextResponse.json({
         success: true,

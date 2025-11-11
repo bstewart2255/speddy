@@ -45,6 +45,7 @@ interface ProgressCheck {
   content: ProgressCheckContent;
   created_at: string;
   completed_at: string | null;
+  discarded_at: string | null;
   is_graded: boolean;
   results: any[];
 }
@@ -58,7 +59,7 @@ export default function ProgressCheckResultsTab() {
   const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_grading' | 'graded'>('needs_grading');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_grading' | 'graded' | 'discarded'>('needs_grading');
   const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
   const [questionStates, setQuestionStates] = useState<Record<string, Record<string, QuestionResult>>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -284,6 +285,27 @@ export default function ProgressCheckResultsTab() {
     }
   };
 
+  const handleDiscard = async (checkId: string, isDiscarded: boolean) => {
+    try {
+      const response = await fetch(`/api/progress-check/${checkId}/discard`, {
+        method: 'PATCH',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(data.message, 'success');
+        // Refresh checks to show updated status
+        await fetchChecks();
+      } else {
+        showToast('Failed to update progress check: ' + data.error, 'error');
+      }
+    } catch (error) {
+      console.error('Error updating progress check:', error);
+      showToast('Failed to update progress check', 'error');
+    }
+  };
+
   if (loadingStudents) {
     return (
       <div className="text-center py-8">
@@ -340,6 +362,7 @@ export default function ProgressCheckResultsTab() {
           >
             <option value="needs_grading">Needs Grading</option>
             <option value="graded">Graded</option>
+            <option value="discarded">Discarded</option>
             <option value="all">All</option>
           </select>
         </div>
@@ -368,10 +391,17 @@ export default function ProgressCheckResultsTab() {
             const checkStates = questionStates[check.id] || {};
 
             return (
-              <div key={check.id} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div
+                key={check.id}
+                className={`border rounded-lg overflow-hidden ${
+                  check.discarded_at ? 'border-gray-300 bg-gray-50' : 'border-gray-200'
+                }`}
+              >
                 {/* Check Header */}
                 <div
-                  className="bg-gray-50 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                  className={`px-4 py-3 flex items-center justify-between cursor-pointer ${
+                    check.discarded_at ? 'bg-gray-100 hover:bg-gray-200' : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
                   onClick={() => toggleCheck(check.id)}
                 >
                   <div className="flex-1">
@@ -379,11 +409,28 @@ export default function ProgressCheckResultsTab() {
                       <span className="text-sm font-medium text-gray-900">
                         Progress Check - {new Date(check.created_at).toLocaleDateString()}
                       </span>
-                      {check.is_graded && (
+                      {check.discarded_at ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800">
+                          Discarded
+                        </span>
+                      ) : check.is_graded ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                           Graded
                         </span>
-                      )}
+                      ) : null}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDiscard(check.id, !!check.discarded_at);
+                        }}
+                        className={`ml-2 text-xs font-medium ${
+                          check.discarded_at
+                            ? 'text-blue-600 hover:text-blue-800'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                      >
+                        {check.discarded_at ? 'Restore' : 'Discard'}
+                      </button>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       {check.content.iepGoals.length} goal(s), {check.content.iepGoals.reduce((sum, g) => sum + g.assessmentItems.length, 0)} question(s)
