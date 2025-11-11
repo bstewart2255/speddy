@@ -31,8 +31,8 @@ export default function SampleLessonsPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">Page Not Available</h1>
           <p className="mt-2 text-gray-600">This page is only available in development mode.</p>
-          <Link href="/dashboard/lessons" className="mt-4 inline-block text-blue-600 hover:text-blue-800">
-            ← Back to Lessons
+          <Link href="/dashboard/tools" className="mt-4 inline-block text-blue-600 hover:text-blue-800">
+            ← Back to Tools
           </Link>
         </div>
       </div>
@@ -45,11 +45,11 @@ export default function SampleLessonsPage() {
         {/* Header with back link */}
         <div className="mb-8">
           <Link
-            href="/dashboard/lessons"
+            href="/dashboard/tools"
             className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeftIcon className="w-4 h-4 mr-1" />
-            Back to Lessons
+            Back to Tools
           </Link>
 
           <div className="flex items-center gap-3">

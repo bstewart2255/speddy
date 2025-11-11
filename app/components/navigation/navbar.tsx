@@ -71,7 +71,7 @@ export default function Navbar() {
         { name: 'Dashboard', href: '/dashboard/sea' },
         { name: 'Students', href: '/dashboard/students' },
         { name: 'Calendar', href: '/dashboard/calendar' },
-        { name: 'Tools', href: '/dashboard/lessons' },
+        { name: 'Tools', href: '/dashboard/tools' },
       ];
       
     } else if (role === 'resource') {
@@ -80,8 +80,8 @@ export default function Navbar() {
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
         { name: 'Calendar', href: '/dashboard/calendar' },
-        { 
-          name: 'Schedule', 
+        {
+          name: 'Schedule',
           href: '/dashboard/schedule',
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
@@ -89,7 +89,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
-        { name: 'Tools', href: '/dashboard/lessons' },
+        { name: 'Tools', href: '/dashboard/tools' },
       ];
     } else {
       // Other roles (speech, ot, counseling, specialist) see standard navigation
@@ -97,8 +97,8 @@ export default function Navbar() {
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
         { name: 'Calendar', href: '/dashboard/calendar' },
-        { 
-          name: 'Schedule', 
+        {
+          name: 'Schedule',
           href: '/dashboard/schedule',
           subItems: [
             { name: 'Main Schedule', href: '/dashboard/schedule' },
@@ -106,7 +106,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
-        { name: 'Tools', href: '/dashboard/lessons' },
+        { name: 'Tools', href: '/dashboard/tools' },
       ];
     }
   };
