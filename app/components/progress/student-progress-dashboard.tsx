@@ -7,6 +7,7 @@ import { ProgressChart } from './progress-chart';
 import { Download } from 'lucide-react';
 import { Database } from '../../../src/types/database';
 import { TrendingUp, TrendingDown, Minus, FileText, Target, Calendar } from 'lucide-react';
+import { calculateTrend, getTrendDescription, getTrendEmoji, type TrendDirection } from '@/lib/progress/calculate-trend';
 
 interface ProgressData {
   student: {
@@ -16,10 +17,13 @@ interface ProgressData {
   };
   iepGoals: Array<{
     goal: string;
-    target: number;
-    current: number;
-    trend: 'improving' | 'stable' | 'declining' | 'insufficient_data';
-    lastAssessed: string;
+    goalIndex: number;
+    dataPoints: number;
+    recentAverage: number;
+    overallAverage: number;
+    trend: TrendDirection;
+    trendDescription: string;
+    lastAssessed: string | null;
   }>;
   recentSubmissions: Array<{
     date: string;
@@ -71,11 +75,52 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
 
       if (!student) return;
 
-      // Get IEP goal progress
-      const { data: goalProgress } = await supabase
-        .from('iep_goal_progress')
-        .select('*')
-        .eq('student_id', studentId);
+      // Get student's IEP goals
+      const { data: studentDetails } = await supabase
+        .from('student_details')
+        .select('iep_goals')
+        .eq('student_id', studentId)
+        .single();
+
+      const studentIEPGoals = (studentDetails?.iep_goals as string[]) || [];
+
+      // Get exit ticket results for this student
+      const { data: exitTicketResults } = await supabase
+        .from('exit_ticket_results')
+        .select('rating, graded_at, iep_goal_text, iep_goal_index')
+        .eq('student_id', studentId)
+        .order('graded_at', { ascending: true });
+
+      // Group results by IEP goal and calculate trends
+      const goalResultsMap: Record<number, Array<{ rating: number; date: string }>> = {};
+
+      exitTicketResults?.forEach(result => {
+        if (!goalResultsMap[result.iep_goal_index]) {
+          goalResultsMap[result.iep_goal_index] = [];
+        }
+        goalResultsMap[result.iep_goal_index].push({
+          rating: result.rating,
+          date: result.graded_at,
+        });
+      });
+
+      // Calculate trends for each IEP goal
+      const iepGoals = studentIEPGoals.map((goal, index) => {
+        const resultsForGoal = goalResultsMap[index] || [];
+        const trendResult = calculateTrend(resultsForGoal);
+        const lastResult = resultsForGoal[resultsForGoal.length - 1];
+
+        return {
+          goal,
+          goalIndex: index,
+          dataPoints: trendResult.dataPoints,
+          recentAverage: trendResult.recentAverage,
+          overallAverage: trendResult.overallAverage,
+          trend: trendResult.trend,
+          trendDescription: getTrendDescription(trendResult),
+          lastAssessed: lastResult?.date || null,
+        };
+      });
 
       // Get worksheet submissions with time filter
       const timeFilter = getTimeRangeFilter();
@@ -97,15 +142,6 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
       }
 
       const { data: submissions } = await submissionsQuery;
-
-      // Process the data
-      const iepGoals = goalProgress?.map(goal => ({
-        goal: goal.iep_goal,
-        target: (goal.target_metric as any)?.value || 0,
-        current: goal.current_performance || 0,
-        trend: goal.trend || 'insufficient_data',
-        lastAssessed: goal.last_assessed || ''
-      })) || [];
 
       const recentSubmissions = submissions?.map(sub => ({
         date: sub.submitted_at,
@@ -376,42 +412,71 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
         </div>
       </div>
 
-      {/* IEP Goals Progress */}
+      {/* IEP Goals Progress (from Exit Tickets) */}
       {progressData.iepGoals.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">IEP Goal Progress</h3>
+          <h3 className="text-lg font-semibold mb-4">IEP Goal Progress (Exit Tickets)</h3>
           <div className="space-y-4">
             {progressData.iepGoals.map((goal, index) => (
               <div key={index} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <p className="text-sm text-gray-700 flex-1">{goal.goal}</p>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium text-gray-500">Goal #{goal.goalIndex + 1}</span>
+                      {goal.dataPoints >= 3 && (
+                        <span className="text-lg">{getTrendEmoji(goal.trend)}</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-700">{goal.goal}</p>
+                  </div>
                   <div className="flex items-center gap-2 ml-4">
                     {getTrendIcon(goal.trend)}
-                    <span className="text-sm text-gray-600">
-                      {goal.trend.replace('_', ' ')}
-                    </span>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Current: {goal.current}%</span>
-                    <span>Target: {goal.target}%</span>
+                <div className="mt-3 space-y-2">
+                  {/* Progress Info */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">{goal.trendDescription}</span>
+                    <span className="font-medium text-gray-900">
+                      {goal.dataPoints} assessment{goal.dataPoints !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${
-                        goal.current >= goal.target 
-                          ? 'bg-green-600' 
-                          : goal.current >= goal.target * 0.8 
-                          ? 'bg-yellow-600' 
-                          : 'bg-red-600'
-                      }`}
-                      style={{ width: `${Math.min(100, (goal.current / goal.target) * 100)}%` }}
-                    ></div>
-                  </div>
+
+                  {/* Rating Bar */}
+                  {goal.dataPoints > 0 && (
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-500">Recent Avg</span>
+                        <span className="font-medium">{goal.recentAverage.toFixed(1)}/10</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            goal.recentAverage >= 8
+                              ? 'bg-green-600'
+                              : goal.recentAverage >= 6
+                              ? 'bg-yellow-600'
+                              : 'bg-red-600'
+                          }`}
+                          style={{ width: `${(goal.recentAverage / 10) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
                   {goal.lastAssessed && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Last assessed: {new Date(goal.lastAssessed).toLocaleDateString()}
+                    <p className="text-xs text-gray-500">
+                      Last assessed: {new Date(goal.lastAssessed).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </p>
+                  )}
+
+                  {goal.dataPoints === 0 && (
+                    <p className="text-sm text-gray-500 italic">
+                      No exit tickets completed for this goal yet
                     </p>
                   )}
                 </div>

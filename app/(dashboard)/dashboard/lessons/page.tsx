@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, FolderOpenIcon, TicketIcon, ClipboardDocumentCheckIcon, DocumentTextIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import { ToastProvider } from '@/app/contexts/toast-context';
 import SampleLessonForm from './sample/sample-lesson-form';
 import WorksheetRenderer from './sample/worksheet-renderer';
@@ -11,6 +11,7 @@ import LessonBank from './components/lesson-bank';
 import ExitTicketBuilder from './components/exit-ticket-builder';
 import ProgressCheck from './components/progress-check';
 import SavedWorksheets from './components/saved-worksheets';
+import ResultsTab from './components/results-tab';
 
 // Type definition for teaching step
 type TeachingStep = {
@@ -44,7 +45,7 @@ interface GeneratedContent {
 }
 
 export default function LessonsPage() {
-  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets' | 'results'>('builder');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [lessonPlanTab, setLessonPlanTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
@@ -140,6 +141,20 @@ export default function LessonsPage() {
               >
                 <DocumentTextIcon className="w-5 h-5" />
                 Saved Worksheets
+              </button>
+              <button
+                onClick={() => setActiveTab('results')}
+                className={`
+                  flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
+                  transition-colors duration-200 flex items-center justify-center gap-2
+                  ${activeTab === 'results'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <ChartBarIcon className="w-5 h-5" />
+                Results
               </button>
             </nav>
           </div>
@@ -350,6 +365,12 @@ export default function LessonsPage() {
         {activeTab === 'saved-worksheets' && (
           <div className="bg-white rounded-lg shadow p-6">
             <SavedWorksheets />
+          </div>
+        )}
+
+        {activeTab === 'results' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <ResultsTab />
           </div>
         )}
       </div>
