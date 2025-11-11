@@ -149,14 +149,7 @@ export async function GET(request: NextRequest) {
         .eq('student_id', studentId)
         .order('created_at', { ascending: false });
 
-      console.log(`[API] Running query for student ${studentId} with status filter: ${status || 'none'}`);
-
       const { data: tickets, error: ticketsError } = await query;
-
-      console.log(`[API] Query result - tickets:`, tickets ? tickets.length : 0, 'error:', ticketsError);
-      if (tickets) {
-        console.log(`[API] Raw tickets data:`, JSON.stringify(tickets, null, 2));
-      }
 
       if (ticketsError) {
         console.error('Error fetching exit tickets:', ticketsError);
@@ -173,15 +166,11 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      console.log(`[API] Fetched ${tickets.length} exit tickets for student ${studentId}`);
-
       // Transform and filter results based on status
       const transformedTickets = tickets.map(ticket => {
         // Supabase returns an object (not array) when there's a unique constraint
         // and returns null when there's no related row
         const result = ticket.exit_ticket_results || null;
-
-        console.log(`[API] Ticket ${ticket.id}: has result = ${!!result}, result data:`, result);
 
         return {
           id: ticket.id,
