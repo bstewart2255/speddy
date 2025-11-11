@@ -170,7 +170,11 @@ export async function GET(request: NextRequest) {
       const transformedTickets = tickets.map(ticket => {
         // Supabase returns an object (not array) when there's a unique constraint
         // and returns null when there's no related row
-        const result = ticket.exit_ticket_results || null;
+        // TypeScript infers this as an array, so we handle both cases
+        const rawResult = ticket.exit_ticket_results;
+        const result = rawResult
+          ? (Array.isArray(rawResult) ? rawResult[0] : rawResult)
+          : null;
 
         return {
           id: ticket.id,
