@@ -122,7 +122,7 @@ export function calculateTrend(dataPoints: ProgressDataPoint[]): TrendResult {
  * Get a human-readable description of the trend
  */
 export function getTrendDescription(trendResult: TrendResult): string {
-  const { trend, confidence, recentAverage, slope, dataPoints } = trendResult;
+  const { trend, confidence, recentAverage, dataPoints } = trendResult;
 
   if (trend === 'insufficient_data') {
     return `Need ${MIN_DATA_POINTS - dataPoints} more data point${MIN_DATA_POINTS - dataPoints !== 1 ? 's' : ''} to determine trend`;

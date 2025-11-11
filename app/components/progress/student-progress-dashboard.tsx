@@ -297,8 +297,8 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
               <button
                 onClick={() => setSelectedTimeRange('week')}
                 className={`px-3 py-1 rounded ${
-                  selectedTimeRange === 'week' 
-                    ? 'bg-blue-600 text-white' 
+                  selectedTimeRange === 'week'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700'
                 }`}
               >
@@ -307,8 +307,8 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
               <button
                 onClick={() => setSelectedTimeRange('month')}
                 className={`px-3 py-1 rounded ${
-                  selectedTimeRange === 'month' 
-                    ? 'bg-blue-600 text-white' 
+                  selectedTimeRange === 'month'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700'
                 }`}
               >
@@ -317,8 +317,8 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
               <button
                 onClick={() => setSelectedTimeRange('all')}
                 className={`px-3 py-1 rounded ${
-                  selectedTimeRange === 'all' 
-                    ? 'bg-blue-600 text-white' 
+                  selectedTimeRange === 'all'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700'
                 }`}
               >
@@ -331,38 +331,6 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
             >
               <Download className="w-4 h-4" />
               Export Report
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSelectedTimeRange('week')}
-              className={`px-3 py-1 rounded ${
-                selectedTimeRange === 'week' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              Week
-            </button>
-            <button
-              onClick={() => setSelectedTimeRange('month')}
-              className={`px-3 py-1 rounded ${
-                selectedTimeRange === 'month' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              Month
-            </button>
-            <button
-              onClick={() => setSelectedTimeRange('all')}
-              className={`px-3 py-1 rounded ${
-                selectedTimeRange === 'all' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              All Time
             </button>
           </div>
         </div>
