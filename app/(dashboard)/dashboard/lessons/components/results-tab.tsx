@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useSchool } from '@/app/components/providers/school-context';
+import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
 
 interface Student {
   id: string;
   initials: string;
-  first_name: string;
-  last_name: string;
+  grade_level: string | number;
 }
 
 interface ExitTicketResult {
@@ -28,20 +29,22 @@ interface ExitTicketResult {
 }
 
 export default function ResultsTab() {
+  const { currentSchool } = useSchool();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [tickets, setTickets] = useState<ExitTicketResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const [saving, setSaving] = useState<string | null>(null); // Stores ticket ID being saved
   const [statusFilter, setStatusFilter] = useState<'all' | 'needs_grading' | 'graded'>('needs_grading');
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Fetch students on mount
+  // Fetch students on mount and when school changes
   useEffect(() => {
     fetchStudents();
-  }, []);
+  }, [currentSchool]);
 
   // Fetch tickets when student or filter changes
   useEffect(() => {
@@ -51,17 +54,50 @@ export default function ResultsTab() {
   }, [selectedStudentId, statusFilter]);
 
   const fetchStudents = async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('students')
-      .select('id, initials, first_name, last_name')
-      .order('last_name', { ascending: true });
+    setLoadingStudents(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
-    if (!error && data) {
-      setStudents(data);
-      if (data.length > 0 && !selectedStudentId) {
-        setSelectedStudentId(data[0].id);
+      if (!user) {
+        console.error('No authenticated user');
+        setStudents([]);
+        return;
       }
+
+      // Get user role to determine how to filter students
+      const userRole = await getUserRole(user.id);
+
+      if (!userRole) {
+        console.error('Failed to get user role');
+        setStudents([]);
+        return;
+      }
+
+      // Load students based on role (SEAs see only assigned students)
+      const { data, error } = await loadStudentsForUser(user.id, userRole, {
+        currentSchool,
+        includeIEPGoals: false
+      });
+
+      if (error) {
+        console.error('Error loading students:', error);
+        setStudents([]);
+        return;
+      }
+
+      if (data) {
+        console.log('Fetched students:', data.length);
+        setStudents(data);
+        if (data.length > 0 && !selectedStudentId) {
+          setSelectedStudentId(data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error in fetchStudents:', error);
+      setStudents([]);
+    } finally {
+      setLoadingStudents(false);
     }
   };
 
@@ -178,14 +214,23 @@ export default function ResultsTab() {
               id="student-select"
               value={selectedStudentId}
               onChange={(e) => setSelectedStudentId(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              disabled={loadingStudents}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              <option value="">Choose a student...</option>
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name} ({student.initials})
-                </option>
-              ))}
+              {loadingStudents ? (
+                <option value="">Loading students...</option>
+              ) : students.length === 0 ? (
+                <option value="">No students found</option>
+              ) : (
+                <>
+                  <option value="">Choose a student...</option>
+                  {students.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.initials}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
 
@@ -227,7 +272,7 @@ export default function ResultsTab() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="mt-2 text-sm text-gray-500">
-            No exit tickets found for {selectedStudent?.first_name} {selectedStudent?.last_name}
+            No exit tickets found for {selectedStudent?.initials}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             {statusFilter === 'needs_grading' && 'Try changing the filter to see graded tickets'}

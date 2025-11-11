@@ -239,9 +239,10 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
 
   IEP GOALS PROGRESS
   ------------------
-  ${progressData.iepGoals.map((goal, i) => 
+  ${progressData.iepGoals.map((goal, i) =>
   `${i + 1}. ${goal.goal}
-   Current: ${goal.current}% | Target: ${goal.target}% | Trend: ${goal.trend}`
+   Recent Average: ${goal.recentAverage.toFixed(1)}/10 | Trend: ${goal.trend}
+   Assessments: ${goal.dataPoints}`
   ).join('\n\n')}
   `;
 
