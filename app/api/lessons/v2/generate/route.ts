@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
           if (result.content.examples && result.content.examples.length > 0) {
             worksheetContent += `EXAMPLE PROBLEMS:\n`;
             result.content.examples.forEach((ex, i) => {
-              worksheetContent += `${i + 1}. ${ex.problem}\n   Solution: ${ex.solution}\n`;
+              worksheetContent += `${i + 1}. ${ex.problem}\n   Solution: ${ex.solution.join('; ')}\n`;
             });
             worksheetContent += '\n';
           }
@@ -237,9 +237,9 @@ export async function POST(request: NextRequest) {
             // Include first 5 questions to give context without overwhelming the prompt
             const sampleQuestions = result.content.questions.slice(0, 5);
             sampleQuestions.forEach((q, i) => {
-              worksheetContent += `${i + 1}. ${q.question}\n`;
-              if (q.context) {
-                worksheetContent += `   Context: ${q.context}\n`;
+              worksheetContent += `${i + 1}. ${q.text}\n`;
+              if (q.explanation) {
+                worksheetContent += `   Explanation: ${q.explanation}\n`;
               }
             });
             if (result.content.questions.length > 5) {
