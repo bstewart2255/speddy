@@ -20,6 +20,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
   const [generateLessonPlan, setGenerateLessonPlan] = useState(false);  // Default to unchecked
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   // Student selection state
   const [students, setStudents] = useState<StudentData[]>([]);
@@ -108,6 +109,7 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setWarning(null);
 
     // Client-side validation
     if (!grade && selectedStudentIds.length === 0) {
@@ -138,6 +140,12 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
       }
 
       const result = await response.json();
+
+      // Check for IEP goal warning in response
+      if (result.warning) {
+        setWarning(result.warning);
+      }
+
       onGenerate(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -301,6 +309,13 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
           </p>
         </div>
       </div>
+
+      {/* Warning Display */}
+      {warning && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+          <p className="text-sm text-amber-800">{warning}</p>
+        </div>
+      )}
 
       {/* Error Display */}
       {error && (
