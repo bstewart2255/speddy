@@ -45,6 +45,7 @@ export interface LessonPlanRequest {
   duration: number;
   students?: Student[];  // For IEP-specific accommodations
   abilityLevel?: string;  // Detected ability level
+  worksheetContent?: string;  // The actual worksheet content to base the lesson plan on
 }
 
 /**
@@ -68,7 +69,7 @@ export async function generateLessonPlan(
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5',
-    max_tokens: 3000,
+    max_tokens: 1200,
     messages: [
       {
         role: 'user',
@@ -129,9 +130,44 @@ export async function generateLessonPlan(
  * Build the AI prompt for lesson plan generation
  */
 function buildLessonPlanPrompt(request: LessonPlanRequest, contentLevel: string): string {
-  const { topic, subjectType, grade, duration, students } = request;
+  const { topic, subjectType, grade, duration, worksheetContent } = request;
 
-  // Get topic-specific teaching guidance
+  // If we have worksheet content, create a focused lesson plan for it
+  if (worksheetContent) {
+    return `You are an expert special education teacher creating a brief lesson plan for teaching this worksheet.
+
+WORKSHEET CONTENT:
+${worksheetContent}
+
+LESSON DETAILS:
+- Grade level: ${contentLevel}${grade && grade !== contentLevel ? ` (student ability is grade ${contentLevel}, actual grade is ${grade})` : ''}
+- Duration: ${duration} minutes
+- Subject: ${subjectType.toUpperCase()}
+
+Create a concise lesson plan in JSON format:
+{
+  "title": "Brief lesson title based on worksheet content",
+  "gradeLevel": "${contentLevel}",
+  "topic": "${topic}",
+  "duration": ${duration},
+  "objectives": ["2-3 specific learning objectives based on the worksheet"],
+  "teachingSteps": [
+    { "step": 1, "instruction": "Brief introduction step (2-3 sentences)" },
+    { "step": 2, "instruction": "Explain/model key concepts from worksheet (2-3 sentences)" },
+    { "step": 3, "instruction": "Guided practice approach (2-3 sentences)" },
+    { "step": 4, "instruction": "Independent work on worksheet (1-2 sentences)" }
+  ],
+  "guidedPractice": [
+    "How to demonstrate the first example",
+    "Key questions to ask students",
+    "What to watch for as students work"
+  ]
+}
+
+IMPORTANT: Be concise and specific to THIS worksheet. Each instruction should be 2-3 sentences maximum. Focus on practical steps a teacher can follow.`;
+  }
+
+  // Fallback to generic guidance if no worksheet content (shouldn't happen)
   const topicGuidance = getTopicTeachingGuidance(topic, contentLevel, duration);
 
   return `You are an expert special education teacher creating a lesson plan for teaching ${topic}.
