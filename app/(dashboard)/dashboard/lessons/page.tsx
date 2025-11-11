@@ -62,8 +62,8 @@ export default function LessonsPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Lessons</h1>
-              <p className="mt-2 text-gray-600">Create AI-generated worksheets and manage your lesson library</p>
+              <h1 className="text-3xl font-bold text-gray-900">Tools</h1>
+              <p className="mt-2 text-gray-600">Create AI-generated worksheets and track student progress</p>
             </div>
           </div>
         </div>
