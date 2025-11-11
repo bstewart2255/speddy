@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       // For providers, filter by provider_id
       let studentsQuery = supabase
         .from('students')
-        .select('id, initials, grade_level, student_details(iep_goals)')
+        .select('id, initials, grade_level, school_id, district_id, state_id, student_details(iep_goals)')
         .in('id', studentIds);
 
       // Only filter by provider_id for non-SEA users
@@ -161,7 +161,9 @@ export async function POST(request: NextRequest) {
         rejected: results.filter(r => r.status === 'rejected').length
       });
 
-      results.forEach((result, index) => {
+      for (let index = 0; index < results.length; index++) {
+        const result = results[index];
+
         if (result.status === 'fulfilled') {
           console.log(`[Progress Check] Student ${index + 1} result:`, {
             success: result.value.success,
@@ -170,12 +172,47 @@ export async function POST(request: NextRequest) {
           });
 
           if (result.value.success) {
-            worksheets.push({
-              studentId: result.value.studentId,
-              studentInitials: result.value.studentInitials,
-              gradeLevel: result.value.gradeLevel,
-              iepGoals: result.value.iepGoals
-            });
+            // Save to database
+            const student = studentsData.find(s => s.id === result.value.studentId);
+            const { data: savedCheck, error: saveError } = await supabase
+              .from('progress_checks')
+              .insert({
+                provider_id: userId,
+                student_id: result.value.studentId,
+                school_id: student?.school_id || null,
+                district_id: student?.district_id || null,
+                state_id: student?.state_id || null,
+                content: {
+                  studentId: result.value.studentId,
+                  studentInitials: result.value.studentInitials,
+                  gradeLevel: result.value.gradeLevel,
+                  iepGoals: result.value.iepGoals
+                }
+              })
+              .select('id')
+              .single();
+
+            if (saveError) {
+              console.error(`Error saving progress check for ${result.value.studentInitials}:`, saveError);
+              errors.push({
+                studentId: result.value.studentId,
+                error: 'Failed to save progress check'
+              });
+            } else if (savedCheck?.id) {
+              worksheets.push({
+                id: savedCheck.id,
+                studentId: result.value.studentId,
+                studentInitials: result.value.studentInitials,
+                gradeLevel: result.value.gradeLevel,
+                iepGoals: result.value.iepGoals
+              });
+            } else {
+              console.error(`Progress check saved but no ID returned for ${result.value.studentInitials}`);
+              errors.push({
+                studentId: result.value.studentId,
+                error: 'Progress check saved but ID not returned'
+              });
+            }
           } else {
             errors.push({
               studentId: result.value.studentId,
@@ -189,7 +226,7 @@ export async function POST(request: NextRequest) {
             error: result.reason?.message || 'Unknown error'
           });
         }
-      });
+      }
 
       console.log('[Progress Check] Final results:', {
         successCount: worksheets.length,
