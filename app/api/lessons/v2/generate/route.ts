@@ -209,6 +209,45 @@ export async function POST(request: NextRequest) {
           body.subjectType
         );
 
+        // Extract worksheet content for lesson plan generation
+        let worksheetContent = '';
+        if (result.content) {
+          // Add passage if present
+          if (result.content.passage) {
+            worksheetContent += `PASSAGE/TEXT:\n${result.content.passage}\n\n`;
+          }
+
+          // Add writing prompt if present
+          if (result.content.prompt) {
+            worksheetContent += `WRITING PROMPT:\n${result.content.prompt}\n\n`;
+          }
+
+          // Add examples if present
+          if (result.content.examples && result.content.examples.length > 0) {
+            worksheetContent += `EXAMPLE PROBLEMS:\n`;
+            result.content.examples.forEach((ex, i) => {
+              worksheetContent += `${i + 1}. ${ex.problem}\n   Solution: ${ex.solution.join('; ')}\n`;
+            });
+            worksheetContent += '\n';
+          }
+
+          // Add questions/problems
+          if (result.content.questions && result.content.questions.length > 0) {
+            worksheetContent += `STUDENT QUESTIONS (${result.content.questions.length} total):\n`;
+            // Include first 5 questions to give context without overwhelming the prompt
+            const sampleQuestions = result.content.questions.slice(0, 5);
+            sampleQuestions.forEach((q, i) => {
+              worksheetContent += `${i + 1}. ${q.text}\n`;
+              if (q.explanation) {
+                worksheetContent += `   Explanation: ${q.explanation}\n`;
+              }
+            });
+            if (result.content.questions.length > 5) {
+              worksheetContent += `... and ${result.content.questions.length - 5} more similar questions\n`;
+            }
+          }
+        }
+
         const lessonPlanRequest: LessonPlanRequest = {
           topic: body.topic,
           subjectType: body.subjectType,
@@ -216,6 +255,7 @@ export async function POST(request: NextRequest) {
           duration: body.duration,
           students,
           abilityLevel: abilityProfile.abilityLevel,  // Use detected ability level
+          worksheetContent,  // Pass the actual worksheet content
         };
 
         const lessonPlanResult = await generateLessonPlan(lessonPlanRequest, apiKey);
