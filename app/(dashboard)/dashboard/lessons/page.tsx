@@ -45,7 +45,8 @@ interface GeneratedContent {
 }
 
 export default function LessonsPage() {
-  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets' | 'results'>('builder');
+  const [activeTab, setActiveTab] = useState<'builder' | 'bank' | 'exit-tickets' | 'progress-check' | 'saved-worksheets'>('builder');
+  const [exitTicketSubTab, setExitTicketSubTab] = useState<'create' | 'results'>('create');
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [lessonPlanTab, setLessonPlanTab] = useState<'worksheet' | 'lessonPlan'>('worksheet');
 
@@ -115,20 +116,6 @@ export default function LessonsPage() {
                 Exit Tickets
               </button>
               <button
-                onClick={() => setActiveTab('results')}
-                className={`
-                  flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
-                  transition-colors duration-200 flex items-center justify-center gap-2
-                  ${activeTab === 'results'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }
-                `}
-              >
-                <ChartBarIcon className="w-5 h-5" />
-                Results
-              </button>
-              <button
                 onClick={() => setActiveTab('saved-worksheets')}
                 className={`
                   flex-1 sm:flex-initial py-4 px-6 text-center border-b-2 font-medium text-sm
@@ -144,6 +131,38 @@ export default function LessonsPage() {
               </button>
             </nav>
           </div>
+
+          {/* Sub-tabs for Exit Tickets */}
+          {activeTab === 'exit-tickets' && (
+            <div className="px-6 py-3 bg-gray-50">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setExitTicketSubTab('create')}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${exitTicketSubTab === 'create'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  Create
+                </button>
+                <button
+                  onClick={() => setExitTicketSubTab('results')}
+                  className={`
+                    px-4 py-2 text-sm font-medium rounded-md transition-colors
+                    ${exitTicketSubTab === 'results'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  Results
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -313,7 +332,8 @@ export default function LessonsPage() {
 
         {activeTab === 'exit-tickets' && (
           <div className="bg-white rounded-lg shadow p-6">
-            <ExitTicketBuilder />
+            {exitTicketSubTab === 'create' && <ExitTicketBuilder />}
+            {exitTicketSubTab === 'results' && <ResultsTab />}
           </div>
         )}
 
@@ -326,12 +346,6 @@ export default function LessonsPage() {
         {activeTab === 'saved-worksheets' && (
           <div className="bg-white rounded-lg shadow p-6">
             <SavedWorksheets />
-          </div>
-        )}
-
-        {activeTab === 'results' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <ResultsTab />
           </div>
         )}
       </div>
