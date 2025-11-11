@@ -166,11 +166,15 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      console.log(`[API] Fetched ${tickets.length} exit tickets for student ${studentId}`);
+
       // Transform and filter results based on status
       const transformedTickets = tickets.map(ticket => {
         const result = Array.isArray(ticket.exit_ticket_results) && ticket.exit_ticket_results.length > 0
           ? ticket.exit_ticket_results[0]
           : null;
+
+        console.log(`[API] Ticket ${ticket.id}: has result = ${!!result}, result data:`, result);
 
         return {
           id: ticket.id,

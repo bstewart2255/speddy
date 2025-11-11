@@ -111,6 +111,7 @@ export default function ResultsTab() {
       const data = await response.json();
 
       if (data.success && data.tickets) {
+        console.log('Fetched tickets:', data.tickets);
         setTickets(data.tickets);
 
         // Initialize ratings and notes from existing results
@@ -119,11 +120,15 @@ export default function ResultsTab() {
 
         data.tickets.forEach((ticket: ExitTicketResult) => {
           if (ticket.result) {
+            console.log(`Ticket ${ticket.id} has result:`, ticket.result);
             initialRatings[ticket.id] = ticket.result.rating;
             initialNotes[ticket.id] = ticket.result.notes || '';
+          } else {
+            console.log(`Ticket ${ticket.id} has NO result - is_graded: ${ticket.is_graded}`);
           }
         });
 
+        console.log('Setting ratings:', initialRatings);
         setRatings(initialRatings);
         setNotes(initialNotes);
       }
