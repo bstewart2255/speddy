@@ -39,14 +39,13 @@ export async function getTeachers() {
       const { data, error } = await supabase
         .from('teachers')
         .select('*')
-        .eq('provider_id', user.id)
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true });
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_teachers', 
+    {
+      operation: 'fetch_teachers',
       userId: user.id
     }
   );
@@ -80,7 +79,6 @@ export async function createTeacher(teacherData: TeacherCreationData) {
         .from('teachers')
         .insert([{
           ...teacherData,
-          provider_id: user.id,
           school_id: teacherData.school_id || null,
           school_site: teacherData.school_site || null
         }])
@@ -89,8 +87,8 @@ export async function createTeacher(teacherData: TeacherCreationData) {
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'create_teacher', 
+    {
+      operation: 'create_teacher',
       userId: user.id,
       teacherName: `${teacherData.first_name} ${teacherData.last_name}`
     }
@@ -125,14 +123,13 @@ export async function updateTeacher(teacherId: string, updates: TeacherUpdate) {
         .from('teachers')
         .update(updates)
         .eq('id', teacherId)
-        .eq('provider_id', user.id)
         .select()
         .single();
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'update_teacher', 
+    {
+      operation: 'update_teacher',
       userId: user.id,
       teacherId
     }
@@ -170,15 +167,14 @@ export async function deleteTeacher(teacherId: string) {
         .from('teachers')
         .select('id')
         .eq('id', teacherId)
-        .eq('provider_id', user.id)
         .single();
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'verify_teacher_ownership', 
+    {
+      operation: 'verify_teacher_ownership',
       userId: user.id,
-      teacherId 
+      teacherId
     }
   );
   verifyPerf.end({ success: !verifyResult.error });
@@ -193,15 +189,14 @@ export async function deleteTeacher(teacherId: string) {
       const { error } = await supabase
         .from('teachers')
         .delete()
-        .eq('id', teacherId)
-        .eq('provider_id', user.id);
+        .eq('id', teacherId);
       if (error) throw error;
       return null;
     },
-    { 
-      operation: 'delete_teacher', 
+    {
+      operation: 'delete_teacher',
       userId: user.id,
-      teacherId 
+      teacherId
     }
   );
   deletePerf.end({ success: !deleteResult.error });
@@ -232,8 +227,7 @@ export async function getTeacherByName(name: string): Promise<Teacher | null> {
     async () => {
       let query = supabase
         .from('teachers')
-        .select('*')
-        .eq('provider_id', user.id);
+        .select('*');
 
       if (firstName && lastName) {
         query = query
@@ -247,8 +241,8 @@ export async function getTeacherByName(name: string): Promise<Teacher | null> {
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_teacher_by_name', 
+    {
+      operation: 'fetch_teacher_by_name',
       userId: user.id,
       teacherName: name
     }

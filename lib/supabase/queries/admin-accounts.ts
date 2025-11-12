@@ -311,8 +311,7 @@ export async function createTeacherAccount(data: CreateTeacherAccountData) {
             school_id: data.school_id,
             school_site: data.school_site || null,
             account_id: profileId,
-            created_by_admin: true,
-            provider_id: adminUser.id  // Required: ID of admin creating this teacher
+            created_by_admin: true
           })
           .select()
           .single();

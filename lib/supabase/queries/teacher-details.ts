@@ -55,7 +55,6 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
           .from('teachers')
           .select('*')
           .eq('id', teacherId)
-          .eq('provider_id', user.id)
           .single();
         if (error) throw error;
         return data;
@@ -115,8 +114,8 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
 }
 
 export async function upsertTeacherDetails(
-  teacherId: string | null, 
-  details: Omit<Teacher, 'id' | 'provider_id' | 'created_at' | 'updated_at'>
+  teacherId: string | null,
+  details: Omit<Teacher, 'id' | 'created_at' | 'updated_at'>
 ): Promise<Teacher> {
   const supabase = createClient<Database>();
 
@@ -136,14 +135,13 @@ export async function upsertTeacherDetails(
   if (teacherId) {
     const updateResult = await safeQuery(
       async () => {
-        const { data, error } = await supabase
+        const { data, error} = await supabase
           .from('teachers')
           .update({
             ...details,
             updated_at: new Date().toISOString()
           })
           .eq('id', teacherId)
-          .eq('provider_id', user.id)
           .select()
           .single();
         if (error) throw error;
@@ -167,8 +165,7 @@ export async function upsertTeacherDetails(
         const { data, error } = await supabase
           .from('teachers')
           .insert([{
-            ...details,
-            provider_id: user.id
+            ...details
           }])
           .select()
           .single();
@@ -254,8 +251,7 @@ export async function getTeacherByStudentTeacherName(teacherName: string): Promi
     async () => {
       let query = supabase
         .from('teachers')
-        .select('*')
-        .eq('provider_id', user.id);
+        .select('*');
 
       if (firstName && lastName) {
         query = query
