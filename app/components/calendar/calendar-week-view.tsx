@@ -23,7 +23,7 @@ import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { Printer } from "lucide-react";
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
-type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
+type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
 
 interface CalendarWeekViewProps {
@@ -121,11 +121,11 @@ export function CalendarWeekView({
   // State for manual lesson creation
   const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
   const [showManualLessonForm, setShowManualLessonForm] = useState(false);
-  const [manualLessons, setManualLessons] = useState<Map<string, ManualLesson[]>>(new Map());
-  const [selectedManualLesson, setSelectedManualLesson] = useState<ManualLesson | null>(null);
+  const [manualLessons, setManualLessons] = useState<Map<string, Lesson[]>>(new Map());
+  const [selectedManualLesson, setSelectedManualLesson] = useState<Lesson | null>(null);
   const [loadingManualLessons, setLoadingManualLessons] = useState(false);
   const [showManualLessonView, setShowManualLessonView] = useState(false);
-  const [viewingManualLesson, setViewingManualLesson] = useState<ManualLesson | null>(null);
+  const [viewingManualLesson, setViewingManualLesson] = useState<Lesson | null>(null);
   
   // State for enhanced modal with multiple lessons
   const [enhancedModalOpen, setEnhancedModalOpen] = useState(false);
@@ -414,8 +414,8 @@ export function CalendarWeekView({
           // Fetched manual lessons
           
           // Group lessons by date
-          const lessonsByDate = new Map<string, ManualLesson[]>();
-          data.lessons.forEach((lesson: ManualLesson) => {
+          const lessonsByDate = new Map<string, Lesson[]>();
+          data.lessons.forEach((lesson: Lesson) => {
             const dateKey = lesson.lesson_date;
             // Processing lesson for date
             if (!lessonsByDate.has(dateKey)) {
@@ -1653,23 +1653,31 @@ export function CalendarWeekView({
 
     try {
       const lessonDate = toLocalDateKey(selectedLessonDate);
-      
+
+      // Structure content as JSON object for lessons table
+      const content = {
+        objectives: lessonData.learningObjectives || '',
+        materials: lessonData.materialsNeeded || '',
+        activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : [],
+        assessment: lessonData.assessmentMethods || ''
+      };
+
       const { data, error } = await supabase
-        .from('manual_lesson_plans')
+        .from('lessons')
         .insert({
           provider_id: currentUser.id,
           lesson_date: lessonDate,
+          lesson_source: 'manual',
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          objectives: lessonData.learningObjectives,
-          materials: lessonData.materialsNeeded,
-          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-          assessment: lessonData.assessmentMethods,
+          content: content,
           notes: lessonData.notes,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null,
+          lesson_status: 'draft'
         })
         .select()
         .single();
@@ -1692,7 +1700,7 @@ export function CalendarWeekView({
     }
   };
 
-  const handleEditManualLesson = (lesson: ManualLesson) => {
+  const handleEditManualLesson = (lesson: Lesson) => {
     setSelectedManualLesson(lesson);
     setShowManualLessonForm(true);
   };
@@ -1739,19 +1747,26 @@ export function CalendarWeekView({
     if (!selectedManualLesson) return;
 
     try {
+      // Structure content as JSON object for lessons table
+      const content = {
+        objectives: lessonData.learningObjectives || '',
+        materials: lessonData.materialsNeeded || '',
+        activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : [],
+        assessment: lessonData.assessmentMethods || ''
+      };
+
       const { data, error } = await supabase
-        .from('manual_lesson_plans')
+        .from('lessons')
         .update({
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          objectives: lessonData.learningObjectives,
-          materials: lessonData.materialsNeeded,
-          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-          assessment: lessonData.assessmentMethods,
+          content: content,
           notes: lessonData.notes,
-          updated_at: new Date().toISOString()
+          school_id: currentSchool?.school_id || null,
+          district_id: currentSchool?.district_id || null,
+          state_id: currentSchool?.state_id || null
         })
         .eq('id', selectedManualLesson.id)
         .select()
@@ -2151,14 +2166,14 @@ export function CalendarWeekView({
         onSave={selectedManualLesson ? handleUpdateManualLesson : handleSaveManualLesson}
         initialData={selectedManualLesson ? {
           id: selectedManualLesson.id,
-          title: selectedManualLesson.title,
+          title: selectedManualLesson.title || '',
           subject: selectedManualLesson.subject || '',
           gradeLevels: selectedManualLesson.grade_levels?.join(', ') || '',
           duration: selectedManualLesson.duration_minutes || undefined,
-          learningObjectives: selectedManualLesson.objectives || '',
-          materialsNeeded: selectedManualLesson.materials || '',
-          activities: selectedManualLesson.activities ? JSON.stringify(selectedManualLesson.activities) : '',
-          assessmentMethods: selectedManualLesson.assessment || '',
+          learningObjectives: (selectedManualLesson.content as any)?.objectives || '',
+          materialsNeeded: (selectedManualLesson.content as any)?.materials || '',
+          activities: (selectedManualLesson.content as any)?.activities ? JSON.stringify((selectedManualLesson.content as any).activities) : '',
+          assessmentMethods: (selectedManualLesson.content as any)?.assessment || '',
           notes: selectedManualLesson.notes || ''
         } : undefined}
         lessonDate={selectedLessonDate || new Date()}
@@ -2173,7 +2188,7 @@ export function CalendarWeekView({
             setViewingManualLesson(null);
           }}
           lesson={viewingManualLesson}
-          onEdit={(lesson) => {
+          onEdit={(lesson: Lesson) => {
             setShowManualLessonView(false);
             handleEditManualLesson(lesson);
           }}
