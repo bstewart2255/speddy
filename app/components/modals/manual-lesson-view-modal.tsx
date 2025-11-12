@@ -2,15 +2,15 @@
 
 import { useEffect, useRef } from 'react';
 import { Printer, Edit, Trash2, X } from 'lucide-react';
-import type { Database } from '../../../src/types/database';
+import type { Database } from '@/src/types/database';
 
-type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
+type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 
 interface ManualLessonViewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  lesson: ManualLesson;
-  onEdit: (lesson: ManualLesson) => void;
+  lesson: Lesson;
+  onEdit: (lesson: Lesson) => void;
   onDelete: (lessonId: string) => void;
 }
 
@@ -220,25 +220,25 @@ export function ManualLessonViewModal({
               </div>
 
               {/* Learning Objectives */}
-              {renderSection('Learning Objectives', lesson.objectives)}
+              {renderSection('Learning Objectives', (lesson.content as any)?.objectives)}
 
               {/* Materials Needed */}
-              {renderSection('Materials Needed', lesson.materials)}
+              {renderSection('Materials Needed', (lesson.content as any)?.materials)}
 
               {/* Activities/Steps */}
-              {lesson.activities && (
+              {(lesson.content as any)?.activities && (
                 <div className="section">
                   <h2 className="text-sm font-semibold text-gray-700 mb-2">Activities/Steps</h2>
                   <div className="text-sm text-gray-600 whitespace-pre-wrap">
-                    {typeof lesson.activities === 'string' 
-                      ? lesson.activities 
-                      : JSON.stringify(lesson.activities, null, 2)}
+                    {typeof (lesson.content as any).activities === 'string'
+                      ? (lesson.content as any).activities
+                      : JSON.stringify((lesson.content as any).activities, null, 2)}
                   </div>
                 </div>
               )}
 
               {/* Assessment Methods */}
-              {renderSection('Assessment Methods', lesson.assessment)}
+              {renderSection('Assessment Methods', (lesson.content as any)?.assessment)}
 
               {/* Notes */}
               {lesson.notes && (

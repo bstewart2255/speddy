@@ -430,7 +430,7 @@ export default function WorksheetUploadPage() {
             <div className="flex justify-between">
               <span className="text-gray-600">Created:</span>
               <span className="font-medium">
-                {new Date(worksheet.created_at).toLocaleDateString()}
+                {worksheet.created_at ? new Date(worksheet.created_at).toLocaleDateString() : 'Unknown'}
               </span>
             </div>
           </div>

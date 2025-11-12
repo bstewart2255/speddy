@@ -15,7 +15,7 @@ import { toLocalDateKey } from '@/lib/utils/date-time';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
-type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
+type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 
 interface CalendarWeekViewProps {
   sessions: ScheduleSession[];
@@ -97,11 +97,11 @@ export function CalendarWeekView({
   const [showLessonTypeModal, setShowLessonTypeModal] = useState(false);
   const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
   const [showManualLessonForm, setShowManualLessonForm] = useState(false);
-  const [manualLessons, setManualLessons] = useState<Map<string, ManualLesson[]>>(new Map());
-  const [selectedManualLesson, setSelectedManualLesson] = useState<ManualLesson | null>(null);
+  const [manualLessons, setManualLessons] = useState<Map<string, Lesson[]>>(new Map());
+  const [selectedManualLesson, setSelectedManualLesson] = useState<Lesson | null>(null);
   const [loadingManualLessons, setLoadingManualLessons] = useState(false);
   const [showManualLessonView, setShowManualLessonView] = useState(false);
-  const [viewingManualLesson, setViewingManualLesson] = useState<ManualLesson | null>(null);
+  const [viewingManualLesson, setViewingManualLesson] = useState<Lesson | null>(null);
   
   // Drag and drop state
   const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
@@ -218,8 +218,8 @@ export function CalendarWeekView({
           // Fetched manual lessons
           
           // Group lessons by date
-          const lessonsByDate = new Map<string, ManualLesson[]>();
-          data.lessons.forEach((lesson: ManualLesson) => {
+          const lessonsByDate = new Map<string, Lesson[]>();
+          data.lessons.forEach((lesson: Lesson) => {
             const dateKey = lesson.lesson_date;
             // Processing lesson for date
             if (!lessonsByDate.has(dateKey)) {
@@ -388,9 +388,9 @@ export function CalendarWeekView({
           const lessonPromises = sortedTimeSlots.map(async (timeSlot) => {
             const slotSessions = sessionsByTimeSlot[timeSlot];
             const studentDetails = slotSessions.map((session) => ({
-              id: session.student_id,
-              initials: students.get(session.student_id)?.initials || 'Unknown',
-              grade_level: students.get(session.student_id)?.grade_level || '1', // Default grade if missing
+              id: session.student_id || '',
+              initials: session.student_id ? students.get(session.student_id)?.initials || 'Unknown' : 'Unknown',
+              grade_level: session.student_id ? students.get(session.student_id)?.grade_level || '1' : '1', // Default grade if missing
               teacher_name: '' // Intentionally empty for PII protection
             }));
 
@@ -750,7 +750,7 @@ export function CalendarWeekView({
   const sessionsByDay = React.useMemo(() => {
     return sessionsState
       .filter((session) =>
-        students.has(session.student_id) &&
+        session.student_id && students.has(session.student_id) &&
         isScheduledSession(session)
       )
       .reduce((acc, session) => {
@@ -792,7 +792,7 @@ export function CalendarWeekView({
     if (!dateKey) return;
 
     // Optimistic update - create temporary lesson
-    const tempLesson: ManualLesson = {
+    const tempLesson: any = {
       id: selectedManualLesson?.id || `temp-${Date.now()}`,
       provider_id: '', // Will be set by server
       lesson_date: dateKey,
@@ -805,8 +805,6 @@ export function CalendarWeekView({
       activities: lessonData.activities || null,
       assessment: lessonData.assessmentMethods || null,
       notes: lessonData.notes || null,
-      group_id: null,
-      session_ids: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -941,7 +939,7 @@ export function CalendarWeekView({
   };
 
   // Handler for editing manual lesson
-  const handleEditManualLesson = (lesson: ManualLesson) => {
+  const handleEditManualLesson = (lesson: Lesson) => {
     setSelectedManualLesson(lesson);
     setSelectedLessonDate(new Date(lesson.lesson_date));
     setShowManualLessonForm(true);
@@ -1190,7 +1188,7 @@ export function CalendarWeekView({
                             setShowManualLessonView(true);
                           }}
                           className="w-full px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1.5 text-left"
-                          title={lesson.title}
+                          title={lesson.title || undefined}
                         >
                           <span>📝</span>
                           <span className="truncate">Manual Lesson: {lesson.title}</span>
@@ -1232,7 +1230,7 @@ export function CalendarWeekView({
                   </p>
                 ) : (
                   sortedDaySessions.map((session) => {
-                      const student = students.get(session.student_id);
+                      const student = session.student_id ? students.get(session.student_id) : undefined;
                       const currentSession = sessionsState.find(s => s.id === session.id) || session;
                     return (
                       <div
@@ -1320,8 +1318,8 @@ export function CalendarWeekView({
           // Otherwise use the regular mapping
           return selectedDaySessions.map((session, index) => ({
             id: `${session.student_id}-${index}`,
-            initials: students.get(session.student_id)?.initials || '',
-            grade_level: students.get(session.student_id)?.grade_level || '',
+            initials: session.student_id ? students.get(session.student_id)?.initials || '' : '',
+            grade_level: session.student_id ? students.get(session.student_id)?.grade_level || '' : '',
             teacher_name: ''
           }));
         })()}
@@ -1355,7 +1353,7 @@ export function CalendarWeekView({
                 <div className="space-y-3 mb-6">
                   <div>
                     <p className="text-sm text-gray-600">Student</p>
-                    <p className="font-medium">{students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                    <p className="font-medium">{selectedSession.student_id ? students.get(selectedSession.student_id)?.initials || 'Unknown' : 'Unknown'}</p>
                   </div>
                   {selectedSession.start_time && selectedSession.end_time && (
                     <div>
@@ -1426,7 +1424,7 @@ export function CalendarWeekView({
                 <h3 className="text-lg font-semibold mb-4">Session Notes</h3>
 
                 <div className="mb-4 text-sm text-gray-600">
-                  <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                  <p><strong>Student:</strong> {selectedSession.student_id ? students.get(selectedSession.student_id)?.initials || 'Unknown' : 'Unknown'}</p>
                   {selectedSession.start_time && selectedSession.end_time && (
                     <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
                   )}
@@ -1480,20 +1478,22 @@ export function CalendarWeekView({
           setSelectedManualLesson(null);
         }}
         onSave={handleSaveManualLesson}
-        initialData={selectedManualLesson ? {
+        initialData={(selectedManualLesson ? {
           id: selectedManualLesson.id,
           title: selectedManualLesson.title,
           subject: selectedManualLesson.subject ?? undefined,
           gradeLevels: selectedManualLesson.grade_levels?.join(', ') ?? undefined,
           duration: selectedManualLesson.duration_minutes ?? undefined,
-          learningObjectives: selectedManualLesson.objectives ?? undefined,
-          materialsNeeded: selectedManualLesson.materials ?? undefined,
-          activities: typeof selectedManualLesson.activities === 'string' 
-            ? selectedManualLesson.activities 
-            : JSON.stringify(selectedManualLesson.activities, null, 2),
-          assessmentMethods: selectedManualLesson.assessment ?? undefined,
+          learningObjectives: (selectedManualLesson.content as any)?.objectives || '',
+          materialsNeeded: (selectedManualLesson.content as any)?.materials || '',
+          activities: (selectedManualLesson.content as any)?.activities ?
+            (typeof (selectedManualLesson.content as any).activities === 'string'
+              ? (selectedManualLesson.content as any).activities
+              : JSON.stringify((selectedManualLesson.content as any).activities, null, 2))
+            : '',
+          assessmentMethods: (selectedManualLesson.content as any)?.assessment || '',
           notes: selectedManualLesson.notes ?? undefined,
-        } : undefined}
+        } : undefined) as any}
         lessonDate={selectedLessonDate || new Date()}
       />
 

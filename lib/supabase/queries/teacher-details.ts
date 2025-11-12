@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 type Teacher = Database['public']['Tables']['teachers']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];
@@ -16,6 +17,21 @@ export interface TeacherDetails extends Teacher {
   }>;
 }
 
+/**
+ * Retrieves detailed information about a teacher including their assigned students.
+ *
+ * @param teacherId - UUID of the teacher to fetch
+ * @returns TeacherDetails object with teacher info and assigned students, or null if not found
+ * @throws Error if user is not authenticated or if database query fails
+ *
+ * @example
+ * ```typescript
+ * const teacher = await getTeacherDetails('teacher-uuid');
+ * if (teacher) {
+ *   console.log(`${teacher.first_name} has ${teacher.assigned_students.length} students`);
+ * }
+ * ```
+ */
 export async function getTeacherDetails(teacherId: string): Promise<TeacherDetails | null> {
   const supabase = createClient<Database>();
 
@@ -73,8 +89,9 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
   fetchPerf.end({ success: !teacherResult.error && !studentsResult.error });
 
   if (teacherResult.error) {
-    if ((teacherResult.error as any).code === 'PGRST116' || 
-        teacherResult.error.message?.includes('No rows returned')) {
+    const error = teacherResult.error as PostgrestError;
+    if (error.code === 'PGRST116' ||
+        error.message?.includes('No rows returned')) {
       return null;
     }
     throw teacherResult.error;
@@ -82,9 +99,18 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
 
   if (!teacherResult.data) return null;
 
+  // Transform student data to provide defaults for nullable numeric fields
+  const assignedStudents = (studentsResult.data || []).map(student => ({
+    id: student.id,
+    initials: student.initials,
+    grade_level: student.grade_level,
+    sessions_per_week: student.sessions_per_week ?? 0,
+    minutes_per_session: student.minutes_per_session ?? 0
+  }));
+
   return {
     ...teacherResult.data,
-    assigned_students: studentsResult.data || []
+    assigned_students: assignedStudents
   };
 }
 

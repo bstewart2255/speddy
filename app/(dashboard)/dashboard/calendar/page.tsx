@@ -205,9 +205,9 @@ export default function CalendarPage() {
       if (profile?.role === 'sea') {
         // SEAs use RPC function to get their students
         // Pass both school_id and legacy school_site+district for migration compatibility
-        const schoolId = currentSchool?.school_id || null;
-        const schoolSite = currentSchool?.school_site ?? (currentSchool as any).site ?? null;
-        const schoolDistrict = currentSchool?.school_district ?? (currentSchool as any).district ?? null;
+        const schoolId = currentSchool?.school_id ?? undefined;
+        const schoolSite = currentSchool?.school_site ?? (currentSchool as any).site ?? undefined;
+        const schoolDistrict = currentSchool?.school_district ?? (currentSchool as any).district ?? undefined;
 
         const result = await supabase
           .rpc('get_sea_students', {

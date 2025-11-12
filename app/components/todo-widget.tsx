@@ -12,8 +12,9 @@ type Todo = {
   id: string
   user_id: string
   task: string
-  completed: boolean
+  completed: boolean | null
   created_at: string
+  updated_at?: string
   due_date?: string | null
   school_id?: string | null
   district_id?: string | null
@@ -42,7 +43,7 @@ export function TodoWidget() {
         .single()
 
       if (profile) {
-        setWorksAtMultipleSchools(profile.works_at_multiple_schools)
+        setWorksAtMultipleSchools(profile.works_at_multiple_schools ?? false)
       }
     }
 
@@ -262,8 +263,8 @@ export function TodoWidget() {
                   <div key={todo.id} className="flex items-center gap-2 group">
                     <input
                       type="checkbox"
-                      checked={todo.completed}
-                      onChange={() => toggleTodo(todo.id, todo.completed)}
+                      checked={todo.completed ?? false}
+                      onChange={() => toggleTodo(todo.id, todo.completed ?? false)}
                       className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
                     <span className="flex-1 text-sm">{todo.task}</span>
@@ -292,8 +293,8 @@ export function TodoWidget() {
                     <div key={todo.id} className="flex items-center gap-2 group opacity-60">
                       <input
                         type="checkbox"
-                        checked={todo.completed}
-                        onChange={() => toggleTodo(todo.id, todo.completed)}
+                        checked={todo.completed ?? false}
+                        onChange={() => toggleTodo(todo.id, todo.completed ?? false)}
                         className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                       />
                       <span className="flex-1 text-sm line-through">{todo.task}</span>

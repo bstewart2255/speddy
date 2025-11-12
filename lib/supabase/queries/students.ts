@@ -4,6 +4,7 @@ import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alert
 import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
 import { getOrCreateTeacher } from './teachers';
 import { updateExistingSessionsForStudent } from '../../scheduling/session-requirement-sync';
+import { requireNonNull } from '@/lib/types/utils';
 import type { Database } from '../../../src/types/database';
 
 /**
@@ -134,7 +135,7 @@ export async function createStudent(studentData: {
     throw new Error(insertResult.error.message || 'Failed to add student');
   }
 
-  const createdStudent = insertResult.data;
+  const createdStudent = requireNonNull(insertResult.data, 'created student data');
 
   // Create unscheduled sessions if schedule requirements are present
   if (studentData.sessions_per_week && studentData.minutes_per_session) {
@@ -446,6 +447,8 @@ export async function updateStudent(studentId: string, updates: {
     throw updateResult.error;
   }
 
+  const updatedStudent = requireNonNull(updateResult.data, 'updated student data');
+
   // If scheduling requirements changed, sync existing sessions
   const requirementsChanged =
     updates.sessions_per_week !== undefined ||
@@ -461,8 +464,8 @@ export async function updateStudent(studentId: string, updates: {
         sessions_per_week: oldStudentResult.data.sessions_per_week,
       },
       {
-        minutes_per_session: updateResult.data.minutes_per_session,
-        sessions_per_week: updateResult.data.sessions_per_week,
+        minutes_per_session: updatedStudent.minutes_per_session,
+        sessions_per_week: updatedStudent.sessions_per_week,
       }
     );
 

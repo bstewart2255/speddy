@@ -192,7 +192,7 @@ export function SubscriptionManager() {
   }
 
   const effectivePrice = subscription.current_credits
-    ? Math.max(0, SUBSCRIPTION_CONFIG.monthlyPrice - subscription.current_credits.total_credits)
+    ? Math.max(0, SUBSCRIPTION_CONFIG.monthlyPrice - (subscription.current_credits.total_credits ?? 0))
     : SUBSCRIPTION_CONFIG.monthlyPrice;
 
   return (
@@ -212,7 +212,7 @@ export function SubscriptionManager() {
             <dt className="text-sm font-medium text-gray-500">Monthly Price</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {formatPrice(effectivePrice)}
-              {subscription.current_credits && subscription.current_credits.total_credits > 0 && (
+              {subscription.current_credits && (subscription.current_credits.total_credits ?? 0) > 0 && (
                 <span className="text-green-600 ml-1">
                   (${subscription.current_credits.total_credits} credit applied)
                 </span>

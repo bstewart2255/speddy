@@ -9,10 +9,16 @@ interface Student {
   id: string;
   initials: string;
   grade_level: string;
-  teacher_name: string;
-  sessions_per_week: number;
-  minutes_per_session: number;
-  created_at: string;
+  teacher_name: string | null;
+  sessions_per_week: number | null;
+  minutes_per_session: number | null;
+  created_at: string | null;
+  provider_id: string | null;
+  district_id?: string | null;
+  school_district?: string | null;
+  school_site?: string | null;
+  school_id?: string | null;
+  updated_at?: string | null;
 }
 
 export function StudentsList() {

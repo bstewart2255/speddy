@@ -201,13 +201,13 @@ export default function DuplicatesPage() {
                           <div>
                             <span className="text-gray-500">Created:</span>{' '}
                             <span className="text-gray-900">
-                              {new Date(teacher.created_at).toLocaleDateString()}
+                              {teacher.created_at ? new Date(teacher.created_at).toLocaleDateString() : 'Unknown'}
                             </span>
                           </div>
                           <div>
                             <span className="text-gray-500">Last Updated:</span>{' '}
                             <span className="text-gray-900">
-                              {new Date(teacher.updated_at).toLocaleDateString()}
+                              {teacher.updated_at ? new Date(teacher.updated_at).toLocaleDateString() : 'Unknown'}
                             </span>
                           </div>
                         </div>

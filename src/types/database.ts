@@ -942,6 +942,65 @@ export type Database = {
           },
         ]
       }
+      manual_lesson_plans: {
+        Row: {
+          activities: Json | null
+          assessment: string | null
+          created_at: string
+          duration_minutes: number | null
+          grade_levels: string[] | null
+          id: string
+          lesson_date: string
+          materials: string | null
+          notes: string | null
+          objectives: string | null
+          provider_id: string
+          subject: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          activities?: Json | null
+          assessment?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          grade_levels?: string[] | null
+          id?: string
+          lesson_date: string
+          materials?: string | null
+          notes?: string | null
+          objectives?: string | null
+          provider_id: string
+          subject?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          activities?: Json | null
+          assessment?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          grade_levels?: string[] | null
+          id?: string
+          lesson_date?: string
+          materials?: string | null
+          notes?: string | null
+          objectives?: string | null
+          provider_id?: string
+          subject?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_lesson_plans_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_constraints: {
         Row: {
           active: boolean | null
@@ -3151,6 +3210,7 @@ export const Constants = {
 
 // Common type re-exports for convenience
 export type BellSchedule = Database["public"]["Tables"]["bell_schedules"]["Row"];
+export type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
 export type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 export type SchoolHour = Database["public"]["Tables"]["school_hours"]["Row"];
 export type SpecialActivity = Database["public"]["Tables"]["special_activities"]["Row"];
@@ -3162,4 +3222,7 @@ export type AdminPermission = Database["public"]["Tables"]["admin_permissions"][
 export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
 export type ReferralCode = Database["public"]["Tables"]["referral_codes"]["Row"];
 export type ReferralCredit = Database["public"]["Tables"]["referral_credits"]["Row"];
+
+// Type utilities (import from lib/types/utils)
+export type { NonNullableFields, RequireFields } from '../../lib/types/utils';
 

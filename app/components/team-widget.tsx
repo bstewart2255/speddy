@@ -127,7 +127,7 @@
                   });
 
                 const schoolKey = school.school_id || `${school.district_name}-${school.school_name}`;
-                teamsMap.set(schoolKey, sortedTeammates);
+                teamsMap.set(schoolKey, sortedTeammates as unknown as Profile[]);
               }
             }
 

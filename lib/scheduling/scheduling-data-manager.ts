@@ -128,8 +128,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // Try to use the batch RPC if available
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
-        p_school_site: this.schoolSite!,
-        p_school_id: this.schoolId
+        p_school_site: this.schoolSite!
       }).single();
       
       if (error) {

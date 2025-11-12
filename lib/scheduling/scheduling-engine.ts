@@ -382,6 +382,7 @@ export class SchedulingEngine {
       );
       
       const sameGradeCount = overlappingSessions.filter(session => {
+        if (!session.student_id) return false;
         const grade = context.studentGradeMap.get(session.student_id);
         return grade === targetGrade;
       }).length;

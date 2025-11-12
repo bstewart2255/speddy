@@ -124,7 +124,7 @@ export function CalendarTodayView({
   const selectedDayOfWeek = currentDate.getDay();
   const adjustedDayOfWeek = selectedDayOfWeek === 0 ? 7 : selectedDayOfWeek; // Convert Sunday (0) to 7
   const todaySessions = useMemo(
-    () => sessionsState.filter(s => s.day_of_week === adjustedDayOfWeek && students.has(s.student_id)),
+    () => sessionsState.filter(s => s.day_of_week === adjustedDayOfWeek && s.student_id && students.has(s.student_id)),
     [sessionsState, adjustedDayOfWeek, students]
   );
 
@@ -468,7 +468,7 @@ export function CalendarTodayView({
                     {hasSession && (
                       <div className="flex flex-wrap gap-2 p-2">
                         {sessionsAtTime.map((session) => {
-                          const student = students.get(session.student_id);
+                          const student = session.student_id ? students.get(session.student_id) : undefined;
                           const currentSession = sessionsState.find(s => s.id === session.id) || session;
                           
                           return (
@@ -478,7 +478,7 @@ export function CalendarTodayView({
                                 student={{
                                   initials: student?.initials || '?',
                                   grade_level: student?.grade_level || '',
-                                  id: session.student_id
+                                  id: session.student_id || ''
                                 }}
                                 isSeaSession={session.delivered_by === 'sea'}
                                 canEdit={canEditSession(session)}
@@ -556,7 +556,7 @@ export function CalendarTodayView({
               <h3 className="text-lg font-semibold mb-4">Session Notes</h3>
 
               <div className="mb-4 text-sm text-gray-600">
-                <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                <p><strong>Student:</strong> {selectedSession.student_id ? students.get(selectedSession.student_id)?.initials || 'Unknown' : 'Unknown'}</p>
                 {selectedSession.start_time && selectedSession.end_time && (
                   <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
                 )}

@@ -6,7 +6,7 @@ import type { SchoolInfo } from '@/app/components/providers/school-context';
 export type SchoolContext = SchoolInfo;
 
 export interface Session {
-  student_id: string;
+  student_id: string | null;
   [key: string]: any;
 }
 

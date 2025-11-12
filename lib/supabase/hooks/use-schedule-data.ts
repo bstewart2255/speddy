@@ -389,7 +389,7 @@ export function useScheduleData() {
       // 2. Sessions assigned to the current user (for specialists)
       const studentIds = data.students.map(s => s.id);
       const filteredSessions = cachedSessions.filter(session =>
-        studentIds.includes(session.student_id) ||
+        (session.student_id && studentIds.includes(session.student_id)) ||
         (data.currentUserId && session.assigned_to_specialist_id === data.currentUserId)
       );
 
