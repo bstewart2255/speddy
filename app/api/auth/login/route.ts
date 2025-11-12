@@ -126,9 +126,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
-    // If not SEA or teacher user, check for subscription
+    // If not SEA, teacher, or admin user, check for subscription
     let needsPayment = false;
-    if (profile?.role !== 'sea' && profile?.role !== 'teacher') {
+    if (profile?.role !== 'sea' && profile?.role !== 'teacher' && profile?.role !== 'site_admin' && profile?.role !== 'district_admin') {
       const { data: subscription, error: subError } = await supabase
         .from('subscriptions')
         .select('status')
