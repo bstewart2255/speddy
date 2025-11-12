@@ -30,9 +30,9 @@ export function CalendarEventModal({
   const [description, setDescription] = useState(event?.description || '');
   const [startTime, setStartTime] = useState(event?.start_time || '');
   const [endTime, setEndTime] = useState(event?.end_time || '');
-  const [allDay, setAllDay] = useState(event?.all_day || false);
+  const [allDay, setAllDay] = useState(event?.all_day ?? false);
   const [eventType, setEventType] = useState<'meeting' | 'assessment' | 'activity' | 'other'>(
-    event?.event_type || 'other'
+    (event?.event_type as 'meeting' | 'assessment' | 'activity' | 'other') || 'other'
   );
   const [location, setLocation] = useState(event?.location || '');
   const [attendees, setAttendees] = useState<string>(
@@ -49,8 +49,8 @@ export function CalendarEventModal({
       setDescription(event.description || '');
       setStartTime(event.start_time || '');
       setEndTime(event.end_time || '');
-      setAllDay(event.all_day);
-      setEventType(event.event_type || 'other');
+      setAllDay(event.all_day ?? false);
+      setEventType((event.event_type as 'meeting' | 'assessment' | 'activity' | 'other') || 'other');
       setLocation(event.location || '');
       setAttendees(event.attendees?.join(', ') || '');
     } else {

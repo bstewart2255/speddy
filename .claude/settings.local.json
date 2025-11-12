@@ -58,7 +58,10 @@
       "Bash(npx eslint:*)",
       "WebFetch(domain:objects.githubusercontent.com)",
       "Bash(git log:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(for line in 753 1235 1323 1324 1358 1429)",
+      "Bash(do echo \"=== Line $line ===\")",
+      "Bash(done)"
     ],
     "deny": []
   },

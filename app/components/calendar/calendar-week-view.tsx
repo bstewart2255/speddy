@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { createClient } from '@/lib/supabase/client';
-import type { Database } from "../../../src/types/database";
+import type { Database } from "@/src/types/database";
 import { AIContentModal } from "../ai-content-modal";
 import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
@@ -285,7 +285,7 @@ export function CalendarWeekView({
       }
 
       // Apply school filtering if current school is set
-      filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool);
+      filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as ScheduleSession[];
 
       setSessionsState(filteredSessions);
     };
@@ -1655,24 +1655,18 @@ export function CalendarWeekView({
       const lessonDate = toLocalDateKey(selectedLessonDate);
       
       const { data, error } = await supabase
-        .from('lessons')
+        .from('manual_lesson_plans')
         .insert({
           provider_id: currentUser.id,
-          lesson_source: 'manual',
           lesson_date: lessonDate,
-          school_id: currentSchool?.school_id || null,
-          district_id: currentSchool?.district_id || null,
-          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          content: {
-            objectives: lessonData.learningObjectives,
-            materials: lessonData.materialsNeeded,
-            activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-            assessment: lessonData.assessmentMethods
-          },
+          objectives: lessonData.learningObjectives,
+          materials: lessonData.materialsNeeded,
+          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+          assessment: lessonData.assessmentMethods,
           notes: lessonData.notes,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -1746,26 +1740,20 @@ export function CalendarWeekView({
 
     try {
       const { data, error } = await supabase
-        .from('lessons')
+        .from('manual_lesson_plans')
         .update({
-          school_id: currentSchool?.school_id || null,
-          district_id: currentSchool?.district_id || null,
-          state_id: currentSchool?.state_id || null,
           title: lessonData.title,
           subject: lessonData.subject,
           grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
           duration_minutes: lessonData.duration,
-          content: {
-            objectives: lessonData.learningObjectives,
-            materials: lessonData.materialsNeeded,
-            activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
-            assessment: lessonData.assessmentMethods
-          },
+          objectives: lessonData.learningObjectives,
+          materials: lessonData.materialsNeeded,
+          activities: lessonData.activities ? (typeof lessonData.activities === 'string' ? JSON.parse(lessonData.activities) : lessonData.activities) : null,
+          assessment: lessonData.assessmentMethods,
           notes: lessonData.notes,
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedManualLesson.id)
-        .eq('lesson_source', 'manual')
         .select()
         .single();
 
@@ -2236,7 +2224,7 @@ export function CalendarWeekView({
             // Don't clear selectedSession here in case notes modal needs it
           }}
           session={selectedSession}
-          student={allStudents.get(selectedSession.student_id)}
+          student={selectedSession.student_id ? allStudents.get(selectedSession.student_id) : undefined}
         />
       )}
     </div>

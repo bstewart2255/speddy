@@ -388,9 +388,9 @@ export function CalendarWeekView({
           const lessonPromises = sortedTimeSlots.map(async (timeSlot) => {
             const slotSessions = sessionsByTimeSlot[timeSlot];
             const studentDetails = slotSessions.map((session) => ({
-              id: session.student_id,
-              initials: students.get(session.student_id)?.initials || 'Unknown',
-              grade_level: students.get(session.student_id)?.grade_level || '1', // Default grade if missing
+              id: session.student_id || '',
+              initials: session.student_id ? students.get(session.student_id)?.initials || 'Unknown' : 'Unknown',
+              grade_level: session.student_id ? students.get(session.student_id)?.grade_level || '1' : '1', // Default grade if missing
               teacher_name: '' // Intentionally empty for PII protection
             }));
 
@@ -750,7 +750,7 @@ export function CalendarWeekView({
   const sessionsByDay = React.useMemo(() => {
     return sessionsState
       .filter((session) =>
-        students.has(session.student_id) &&
+        session.student_id && students.has(session.student_id) &&
         isScheduledSession(session)
       )
       .reduce((acc, session) => {
@@ -805,8 +805,6 @@ export function CalendarWeekView({
       activities: lessonData.activities || null,
       assessment: lessonData.assessmentMethods || null,
       notes: lessonData.notes || null,
-      group_id: null,
-      session_ids: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -1232,7 +1230,7 @@ export function CalendarWeekView({
                   </p>
                 ) : (
                   sortedDaySessions.map((session) => {
-                      const student = students.get(session.student_id);
+                      const student = session.student_id ? students.get(session.student_id) : undefined;
                       const currentSession = sessionsState.find(s => s.id === session.id) || session;
                     return (
                       <div
@@ -1320,8 +1318,8 @@ export function CalendarWeekView({
           // Otherwise use the regular mapping
           return selectedDaySessions.map((session, index) => ({
             id: `${session.student_id}-${index}`,
-            initials: students.get(session.student_id)?.initials || '',
-            grade_level: students.get(session.student_id)?.grade_level || '',
+            initials: session.student_id ? students.get(session.student_id)?.initials || '' : '',
+            grade_level: session.student_id ? students.get(session.student_id)?.grade_level || '' : '',
             teacher_name: ''
           }));
         })()}
@@ -1355,7 +1353,7 @@ export function CalendarWeekView({
                 <div className="space-y-3 mb-6">
                   <div>
                     <p className="text-sm text-gray-600">Student</p>
-                    <p className="font-medium">{students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                    <p className="font-medium">{selectedSession.student_id ? students.get(selectedSession.student_id)?.initials || 'Unknown' : 'Unknown'}</p>
                   </div>
                   {selectedSession.start_time && selectedSession.end_time && (
                     <div>
@@ -1426,7 +1424,7 @@ export function CalendarWeekView({
                 <h3 className="text-lg font-semibold mb-4">Session Notes</h3>
 
                 <div className="mb-4 text-sm text-gray-600">
-                  <p><strong>Student:</strong> {students.get(selectedSession.student_id)?.initials || 'Unknown'}</p>
+                  <p><strong>Student:</strong> {selectedSession.student_id ? students.get(selectedSession.student_id)?.initials || 'Unknown' : 'Unknown'}</p>
                   {selectedSession.start_time && selectedSession.end_time && (
                     <p><strong>Time:</strong> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}</p>
                   )}
