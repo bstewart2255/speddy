@@ -10,6 +10,21 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 // GET CURRENT USER'S SCHOOL ID
 // ============================================================================
 
+/**
+ * Retrieves the school ID for the currently authenticated user.
+ * Checks admin permissions first, then falls back to profile school_id.
+ *
+ * @returns School UUID if found, null if user has no school assignment
+ * @throws Error if user is not authenticated
+ *
+ * @example
+ * ```typescript
+ * const schoolId = await getCurrentUserSchoolId();
+ * if (schoolId) {
+ *   const teachers = await getSchoolTeachers(schoolId);
+ * }
+ * ```
+ */
 export async function getCurrentUserSchoolId(): Promise<string | null> {
   const supabase = createClient<Database>();
 
@@ -67,6 +82,19 @@ export async function getCurrentUserSchoolId(): Promise<string | null> {
 // GET ALL TEACHERS AT CURRENT USER'S SCHOOL
 // ============================================================================
 
+/**
+ * Retrieves all teachers at a specific school, ordered by last name.
+ *
+ * @param schoolId - Optional UUID of the school. If not provided, uses current user's school.
+ * @returns Array of teacher records with account information
+ * @throws Error if no school ID is found or database query fails
+ *
+ * @example
+ * ```typescript
+ * const teachers = await getSchoolTeachers('school-uuid');
+ * console.log(`Found ${teachers.length} teachers`);
+ * ```
+ */
 export async function getSchoolTeachers(schoolId?: string) {
   const supabase = createClient<Database>();
 
@@ -298,6 +326,19 @@ export async function getTeacherStudents(teacherId: string) {
 // FORMAT TEACHER NAME (HELPER)
 // ============================================================================
 
+/**
+ * Formats a teacher's name for display, handling cases where first or last name might be missing.
+ *
+ * @param teacher - Teacher object (or partial) with first_name and last_name
+ * @returns Formatted name string, defaulting to 'Unknown' if both names are missing
+ *
+ * @example
+ * ```typescript
+ * formatTeacherName({ first_name: 'Jane', last_name: 'Smith' }); // "Jane Smith"
+ * formatTeacherName({ first_name: null, last_name: 'Smith' }); // "Smith"
+ * formatTeacherName({ first_name: null, last_name: null }); // "Unknown"
+ * ```
+ */
 export function formatTeacherName(teacher: Pick<Teacher, 'first_name' | 'last_name'>): string {
   if (!teacher.first_name) {
     return teacher.last_name ?? 'Unknown';

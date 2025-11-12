@@ -16,8 +16,11 @@ export interface StudentDetails {
 }
 
 /**
- * Safely converts a Json value to a string array
- * Filters out any non-string values
+ * Safely converts a Json value to a string array.
+ * Filters out any non-string values and handles null/undefined cases.
+ *
+ * @param jsonValue - The Json value from the database (can be array, object, or primitive)
+ * @returns Array of strings, or empty array if input is null/undefined/invalid
  */
 function jsonToStringArray(value: Json | null): string[] {
   if (!value) return [];
@@ -27,6 +30,21 @@ function jsonToStringArray(value: Json | null): string[] {
   return [];
 }
 
+/**
+ * Retrieves detailed student information from the student_details table.
+ *
+ * @param studentId - UUID of the student to fetch details for
+ * @returns StudentDetails object with IEP information, or null if no details found
+ * @throws Error if database query fails
+ *
+ * @example
+ * ```typescript
+ * const details = await getStudentDetails('student-uuid');
+ * if (details) {
+ *   console.log(`IEP Goals: ${details.iep_goals.join(', ')}`);
+ * }
+ * ```
+ */
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
   const supabase = createClient<Database>();
 
@@ -69,8 +87,26 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   };
 }
 
+/**
+ * Creates or updates student details in the student_details table.
+ * Uses an upsert operation to handle both new records and updates to existing ones.
+ *
+ * @param studentId - UUID of the student to upsert details for
+ * @param details - StudentDetails object containing IEP information, goals, and skills
+ * @throws Error if database operation fails
+ *
+ * @example
+ * ```typescript
+ * await upsertStudentDetails('student-uuid', {
+ *   first_name: 'John',
+ *   last_name: 'Doe',
+ *   iep_goals: ['Reading comprehension', 'Math fluency'],
+ *   working_skills: ['Addition', 'Subtraction']
+ * });
+ * ```
+ */
 export async function upsertStudentDetails(
-  studentId: string, 
+  studentId: string,
   details: StudentDetails
 ): Promise<void> {
   const supabase = createClient<Database>();
@@ -112,8 +148,9 @@ export async function upsertStudentDetails(
   upsertPerf.end({ success: !upsertResult.error });
 
   if (upsertResult.error) {
-    console.error('Error saving student details:', upsertResult.error);
-    console.error('Error details:', upsertResult.error.message, (upsertResult.error as any).details, (upsertResult.error as any).hint);
+    const error = upsertResult.error as import('@supabase/supabase-js').PostgrestError;
+    console.error('Error saving student details:', error);
+    console.error('Error details:', error.message, error.details, error.hint);
     throw upsertResult.error;
   }
 }

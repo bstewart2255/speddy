@@ -37,6 +37,19 @@ export type CreateSpecialistAccountData = {
 // GET CURRENT ADMIN PERMISSIONS
 // ============================================================================
 
+/**
+ * Retrieves all admin permissions for the currently authenticated user.
+ * Returns permissions for both site_admin and district_admin roles.
+ *
+ * @returns Array of AdminPermission records for the current user
+ * @throws Error if user is not authenticated or database query fails
+ *
+ * @example
+ * ```typescript
+ * const permissions = await getCurrentAdminPermissions();
+ * const isSiteAdmin = permissions.some(p => p.role === 'site_admin');
+ * ```
+ */
 export async function getCurrentAdminPermissions() {
   const supabase = createClient<Database>();
 
@@ -79,6 +92,22 @@ export async function getCurrentAdminPermissions() {
 // CHECK IF USER IS ADMIN FOR A SCHOOL
 // ============================================================================
 
+/**
+ * Checks if the current user has admin permissions for a specific school.
+ * Verifies both site_admin (direct school access) and district_admin (school in district) roles.
+ *
+ * @param schoolId - UUID of the school to check access for
+ * @returns true if user is admin for the school, false otherwise
+ * @throws Error if user is not authenticated or database query fails
+ *
+ * @example
+ * ```typescript
+ * const hasAccess = await isAdminForSchool('school-uuid');
+ * if (hasAccess) {
+ *   // Allow admin operations
+ * }
+ * ```
+ */
 export async function isAdminForSchool(schoolId: string): Promise<boolean> {
   const supabase = createClient<Database>();
   const permissions = await getCurrentAdminPermissions();

@@ -15,12 +15,33 @@ export type ImportResult = {
   error?: string;
 };
 
+/**
+ * Service for importing bell schedules and special activities from one provider to another.
+ * Handles duplicate detection and provides multiple import strategies.
+ */
 export class ScheduleImportService {
   private supabase = createClient<Database>();
   private duplicateDetector = new DuplicateDetectionService();
 
   /**
-   * Import schedules from a sharer to a recipient
+   * Import schedules from a sharer to a recipient.
+   *
+   * @param sharerId - UUID of the provider sharing their schedules
+   * @param recipientId - UUID of the provider receiving the schedules
+   * @param schoolId - UUID of the school where schedules are being shared
+   * @param mode - Import strategy: 'skip_duplicates' | 'replace_existing' | 'import_all'
+   * @returns ImportResult with counts of imported items, duplicates skipped, and any errors
+   *
+   * @example
+   * ```typescript
+   * const result = await service.importSchedules(
+   *   'sharer-uuid',
+   *   'recipient-uuid',
+   *   'school-uuid',
+   *   'skip_duplicates'
+   * );
+   * console.log(`Imported ${result.bell_schedules_imported} bell schedules`);
+   * ```
    */
   async importSchedules(
     sharerId: string,
@@ -200,9 +221,15 @@ export class ScheduleImportService {
   private async insertBellSchedules(schedules: Partial<BellSchedule>[]): Promise<number> {
     if (schedules.length === 0) return 0;
 
+    // Prepare schedules for insert by ensuring all required fields are present
+    const schedulesToInsert = schedules.map(schedule => {
+      const { id, created_at, ...rest } = schedule as BellSchedule;
+      return rest;
+    });
+
     const { error } = await this.supabase
       .from('bell_schedules')
-      .insert(schedules as any);
+      .insert(schedulesToInsert);
 
     if (error) {
       console.error('Error inserting bell schedules:', error);
@@ -218,9 +245,15 @@ export class ScheduleImportService {
   private async insertSpecialActivities(activities: Partial<SpecialActivity>[]): Promise<number> {
     if (activities.length === 0) return 0;
 
+    // Prepare activities for insert by ensuring all required fields are present
+    const activitiesToInsert = activities.map(activity => {
+      const { id, created_at, ...rest } = activity as SpecialActivity;
+      return rest;
+    });
+
     const { error } = await this.supabase
       .from('special_activities')
-      .insert(activities as any);
+      .insert(activitiesToInsert);
 
     if (error) {
       console.error('Error inserting special activities:', error);
