@@ -71,7 +71,7 @@ export async function getCurrentAdminPermissions() {
     throw fetchResult.error;
   }
 
-  return fetchResult.data.data as AdminPermission[];
+  return fetchResult.data as AdminPermission[];
 }
 
 // ============================================================================
