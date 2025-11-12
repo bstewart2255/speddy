@@ -31,7 +31,7 @@ export async function getCurrentTeacher() {
       const { data, error } = await supabase
         .from('teachers')
         .select('*')
-        .eq('provider_id', user.id)
+        .eq('account_id', user.id)
         .single();
       if (error) throw error;
       return data;

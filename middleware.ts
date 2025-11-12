@@ -108,7 +108,7 @@ export async function middleware(request: NextRequest) {
   const isDashboardRoute = pathname.startsWith('/dashboard')
 
   // If user is an admin trying to access non-admin dashboard routes, redirect to admin dashboard
-  if ((userRole === 'site_admin' || userRole === 'district_admin') && isDashboardRoute && !isAdminRoute) {
+  if ((userRole === 'site_admin' || userRole === 'district_admin') && isDashboardRoute && !isAdminRoute && !isTeacherRoute) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/dashboard/admin'
     return NextResponse.redirect(redirectUrl)

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { searchTeachers, getTeacherDisplayText, formatTeacherName } from '@/lib/supabase/queries/school-directory';
+import { searchTeachers, formatTeacherName } from '@/lib/supabase/queries/school-directory';
 
 type Teacher = Awaited<ReturnType<typeof searchTeachers>>[number];
 

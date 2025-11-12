@@ -38,8 +38,8 @@ export async function getCurrentUserSchoolId(): Promise<string | null> {
     { operation: 'get_admin_school_id', userId: user.id }
   );
 
-  if (adminPermResult.data?.data?.school_id) {
-    return adminPermResult.data.data.school_id;
+  if (adminPermResult.data?.school_id) {
+    return adminPermResult.data.school_id;
   }
 
   // If not admin, get from profile
@@ -56,11 +56,11 @@ export async function getCurrentUserSchoolId(): Promise<string | null> {
     { operation: 'get_profile_school_id', userId: user.id }
   );
 
-  if (profileResult.error || !profileResult.data.data) {
+  if (profileResult.error || !profileResult.data) {
     return null;
   }
 
-  return profileResult.data.data.school_id;
+  return profileResult.data.school_id;
 }
 
 // ============================================================================
@@ -114,7 +114,7 @@ export async function getSchoolTeachers(schoolId?: string) {
     throw fetchResult.error;
   }
 
-  return fetchResult.data.data || [];
+  return fetchResult.data || [];
 }
 
 // ============================================================================
@@ -134,15 +134,18 @@ export async function searchTeachers(searchTerm: string, schoolId?: string) {
   const searchPerf = measurePerformanceWithAlerts('search_teachers', 'database');
   const searchResult = await safeQuery(
     async () => {
+      // Escape special characters to prevent SQL injection
+      const escapedTerm = searchTerm.replace(/[%_\\]/g, '\\$&');
+
       // Search by first name, last name, or email
       const { data, error } = await supabase
         .from('teachers')
         .select('id, first_name, last_name, email, classroom_number')
         .eq('school_id', targetSchoolId)
         .or(
-          `first_name.ilike.%${searchTerm}%,` +
-          `last_name.ilike.%${searchTerm}%,` +
-          `email.ilike.%${searchTerm}%`
+          `first_name.ilike.%${escapedTerm}%,` +
+          `last_name.ilike.%${escapedTerm}%,` +
+          `email.ilike.%${escapedTerm}%`
         )
         .order('last_name', { ascending: true })
         .limit(20);  // Limit results for autocomplete
@@ -162,7 +165,7 @@ export async function searchTeachers(searchTerm: string, schoolId?: string) {
     throw searchResult.error;
   }
 
-  return searchResult.data.data || [];
+  return searchResult.data || [];
 }
 
 // ============================================================================
@@ -201,7 +204,7 @@ export async function getTeacherById(teacherId: string) {
     throw fetchResult.error;
   }
 
-  return fetchResult.data.data;
+  return fetchResult.data;
 }
 
 // ============================================================================
@@ -241,7 +244,7 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
 
       return {
         ...teacher,
-        student_count: countResult.data?.data || 0
+        student_count: countResult.data || 0
       };
     })
   );
@@ -288,7 +291,7 @@ export async function getTeacherStudents(teacherId: string) {
     throw fetchResult.error;
   }
 
-  return fetchResult.data.data || [];
+  return fetchResult.data || [];
 }
 
 // ============================================================================

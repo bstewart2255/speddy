@@ -191,7 +191,7 @@ WITH CHECK (
         WHERE p.id = auth.uid()
         AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist')
         -- Can only create teachers at their own school
-        AND (p.school_id = school_id OR school_id IS NULL)
+        AND p.school_id = school_id
     )
 );
 

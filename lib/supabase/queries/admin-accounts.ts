@@ -79,11 +79,38 @@ export async function getCurrentAdminPermissions() {
 // ============================================================================
 
 export async function isAdminForSchool(schoolId: string): Promise<boolean> {
+  const supabase = createClient<Database>();
   const permissions = await getCurrentAdminPermissions();
-  return permissions.some(p =>
-    (p.role === 'site_admin' && p.school_id === schoolId) ||
-    (p.role === 'district_admin') // District admins can manage all schools in district
-  );
+
+  // Check if user is site admin for this specific school
+  const isSiteAdmin = permissions.some(p => p.role === 'site_admin' && p.school_id === schoolId);
+  if (isSiteAdmin) {
+    return true;
+  }
+
+  // For district admins, verify the school belongs to their district
+  const districtAdminPermission = permissions.find(p => p.role === 'district_admin');
+  if (districtAdminPermission) {
+    // Get the school's district_id to verify it matches
+    const schoolResult = await safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('schools')
+          .select('district_id')
+          .eq('nces_school_id', schoolId)
+          .single();
+        if (error) throw error;
+        return data;
+      },
+      { operation: 'fetch_school_district', schoolId }
+    );
+
+    if (!schoolResult.error && schoolResult.data) {
+      return schoolResult.data.district_id === districtAdminPermission.district_id;
+    }
+  }
+
+  return false;
 }
 
 // ============================================================================
@@ -144,8 +171,8 @@ export async function getSchoolStaff(schoolId: string) {
   if (specialistsResult.error) throw specialistsResult.error;
 
   return {
-    teachers: teachersResult.data.data || [],
-    specialists: specialistsResult.data.data || []
+    teachers: teachersResult.data || [],
+    specialists: specialistsResult.data || []
   };
 }
 
@@ -185,7 +212,7 @@ export async function checkDuplicateTeachers(
   );
 
   if (fetchResult.error) throw fetchResult.error;
-  return fetchResult.data.data || [];
+  return fetchResult.data || [];
 }
 
 // ============================================================================
@@ -257,7 +284,7 @@ export async function createTeacherAccount(data: CreateTeacherAccountData) {
 
     if (teacherResult.error) throw teacherResult.error;
 
-    return teacherResult.data.data;
+    return teacherResult.data;
 
   } catch (error) {
     createPerf.end();
@@ -295,7 +322,7 @@ export async function createSpecialistAccount(data: CreateSpecialistAccountData)
       { operation: 'check_existing_specialist', email: data.email }
     );
 
-    if (existingResult.data?.data) {
+    if (existingResult.data) {
       throw new Error(
         `An account with email ${data.email} already exists. ` +
         'Please use a different email address.'
@@ -349,12 +376,12 @@ export async function linkTeacherToProfile(
     { operation: 'get_teacher_for_linking', teacherId }
   );
 
-  if (teacherResult.error || !teacherResult.data.data) {
+  if (teacherResult.error || !teacherResult.data) {
     throw new Error('Teacher not found');
   }
 
   // Verify admin has permission for this school
-  const hasPermission = await isAdminForSchool(teacherResult.data.data.school_id);
+  const hasPermission = await isAdminForSchool(teacherResult.data.school_id);
   if (!hasPermission) {
     throw new Error('You do not have permission to manage teachers at this school');
   }
@@ -377,7 +404,7 @@ export async function linkTeacherToProfile(
 
   if (updateResult.error) throw updateResult.error;
 
-  return updateResult.data.data;
+  return updateResult.data;
 }
 
 // ============================================================================
@@ -413,7 +440,7 @@ export async function findPotentialDuplicates(schoolId: string) {
 
   if (teachersResult.error) throw teachersResult.error;
 
-  const teachers = teachersResult.data.data || [];
+  const teachers = teachersResult.data || [];
 
   // Group teachers by similar names
   const duplicateGroups: Teacher[][] = [];
@@ -499,11 +526,11 @@ export async function deleteTeacher(teacherId: string) {
     { operation: 'get_teacher_for_deletion', teacherId }
   );
 
-  if (teacherResult.error || !teacherResult.data.data) {
+  if (teacherResult.error || !teacherResult.data) {
     throw new Error('Teacher not found');
   }
 
-  const teacher = teacherResult.data.data;
+  const teacher = teacherResult.data;
 
   // Verify admin has permission
   const hasPermission = await isAdminForSchool(teacher.school_id);
