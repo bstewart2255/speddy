@@ -3148,3 +3148,18 @@ export const Constants = {
     },
   },
 } as const
+
+// Common type re-exports for convenience
+export type BellSchedule = Database["public"]["Tables"]["bell_schedules"]["Row"];
+export type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
+export type SchoolHour = Database["public"]["Tables"]["school_hours"]["Row"];
+export type SpecialActivity = Database["public"]["Tables"]["special_activities"]["Row"];
+export type Student = Database["public"]["Tables"]["students"]["Row"];
+export type StudentDetails = Database["public"]["Tables"]["student_details"]["Row"];
+export type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
+export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+export type AdminPermission = Database["public"]["Tables"]["admin_permissions"]["Row"];
+export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
+export type ReferralCode = Database["public"]["Tables"]["referral_codes"]["Row"];
+export type ReferralCredit = Database["public"]["Tables"]["referral_credits"]["Row"];
+

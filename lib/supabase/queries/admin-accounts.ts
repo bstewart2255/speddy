@@ -222,6 +222,18 @@ export async function checkDuplicateTeachers(
 export async function createTeacherAccount(data: CreateTeacherAccountData) {
   const supabase = createClient<Database>();
 
+  // Get current user (admin)
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_create_teacher' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+
+  const adminUser = authResult.data.data.user;
+
   // Verify admin has permission
   const hasPermission = await isAdminForSchool(data.school_id);
   if (!hasPermission) {
@@ -269,7 +281,8 @@ export async function createTeacherAccount(data: CreateTeacherAccountData) {
             school_id: data.school_id,
             school_site: data.school_site || null,
             account_id: profileId,
-            created_by_admin: true
+            created_by_admin: true,
+            provider_id: adminUser.id  // Required: ID of admin creating this teacher
           })
           .select()
           .single();
