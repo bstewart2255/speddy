@@ -260,7 +260,7 @@ export function CalendarDayView({
       );
 
       // Include if student is in the merged list OR if session is assigned to this user
-      return allStudents.has(s.student_id) || isAssignedToMe;
+      return (s.student_id && allStudents.has(s.student_id)) || isAssignedToMe;
     }),
     [sessionsState, allStudents, providerId]
   );
@@ -368,6 +368,12 @@ export function CalendarDayView({
         const session = sessionsState.find(s => s.id === sessionId);
         if (!session) {
           log.warn('Session not found in state', { sessionId });
+          continue;
+        }
+
+        // Skip sessions without required fields
+        if (!session.student_id || session.day_of_week === null || !session.start_time) {
+          log.warn('Session missing required fields for template lookup', { sessionId });
           continue;
         }
 
@@ -534,6 +540,11 @@ export function CalendarDayView({
       // Check if user has permission to ungroup this session
       if (!canUserGroupSession(session)) {
         throw new Error('You can only ungroup sessions that you are assigned to deliver');
+      }
+
+      // Ensure session has required fields
+      if (!session.student_id || session.day_of_week === null || !session.start_time) {
+        throw new Error('Session is missing required fields');
       }
 
       // Find the template session (preferred)
@@ -741,7 +752,7 @@ export function CalendarDayView({
                   .filter(s => s.start_time && s.end_time) // Filter out unscheduled sessions
                   .sort((a, b) => a.start_time!.localeCompare(b.start_time!))
                   .map((session) => {
-                    const student = allStudents.get(session.student_id);
+                    const student = session.student_id ? allStudents.get(session.student_id) : undefined;
                     const isGrouped = !!session.group_id;
                     const groupColor = isGrouped ? getGroupColor(session.group_id as string) : null;
 

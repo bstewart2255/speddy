@@ -57,14 +57,11 @@
       "Bash(npx tsx:*)",
       "Bash(npx eslint:*)",
       "WebFetch(domain:objects.githubusercontent.com)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "context7",
-    "playwright",
-    "supabase"
-  ]
+  "enabledMcpjsonServers": ["context7", "playwright", "supabase"]
 }
