@@ -42,6 +42,12 @@ export default function DashboardPage() {
             router.push('/dashboard/sea');
             return;
           }
+
+          // Redirect teachers to their specific dashboard
+          if (profile.role === 'teacher') {
+            router.push('/dashboard/teacher');
+            return;
+          }
         }
       } catch (error) {
         console.error('Error getting user role:', error);

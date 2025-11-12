@@ -65,7 +65,14 @@ export default function Navbar() {
       { name: 'Dashboard', href: '/dashboard' }
     ];
 
-    if (role === 'sea') {
+    if (role === 'teacher') {
+      // Teachers see their dashboard, students in resource, and special activities
+      return [
+        { name: 'Dashboard', href: '/dashboard/teacher' },
+        { name: 'My Students', href: '/dashboard/teacher/my-students' },
+        { name: 'Special Activities', href: '/dashboard/teacher/special-activities' },
+      ];
+    } else if (role === 'sea') {
       // SEAs see their dashboard, students (view-only), calendar, and lessons
       return [
         { name: 'Dashboard', href: '/dashboard/sea' },
@@ -73,7 +80,7 @@ export default function Navbar() {
         { name: 'Calendar', href: '/dashboard/calendar' },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
-      
+
     } else if (role === 'resource') {
       // Resource Specialists see everything including team management
       return [

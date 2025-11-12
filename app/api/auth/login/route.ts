@@ -126,9 +126,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
-    // If not SEA user, check for subscription
+    // If not SEA or teacher user, check for subscription
     let needsPayment = false;
-    if (profile?.role !== 'sea') {
+    if (profile?.role !== 'sea' && profile?.role !== 'teacher') {
       const { data: subscription, error: subError } = await supabase
         .from('subscriptions')
         .select('status')

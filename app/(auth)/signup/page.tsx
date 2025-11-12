@@ -27,8 +27,8 @@ function SignupContent() {
     setUserRole(role);
     setUserEmail(email);
 
-    // Skip payment for SEA users
-    if (role === 'sea') {
+    // Skip payment for SEA and teacher users
+    if (role === 'sea' || role === 'teacher') {
       router.push('/login');
     } else {
       setCurrentStep('payment');
