@@ -139,7 +139,7 @@ DROP POLICY IF EXISTS "Resource specialists can delete their own teachers" ON pu
 -- Teachers are viewable by:
 -- 1. Resource specialists at the same school
 -- 2. Site admins for that school
--- 3. District admins for that district
+-- 3. District admins for that district (simplified - no schools table check)
 -- 4. The teacher themselves (if they have an account)
 CREATE POLICY "School-level teacher visibility"
 ON public.teachers FOR SELECT
@@ -164,10 +164,10 @@ USING (
         AND ap.school_id = teachers.school_id
     )
     OR
-    -- District admins for this district can view
+    -- District admins with matching district can view (simplified check)
     EXISTS (
         SELECT 1 FROM public.admin_permissions ap
-        INNER JOIN public.profiles p ON p.id = auth.uid()
+        INNER JOIN public.profiles p ON p.id = teachers.provider_id
         WHERE ap.admin_id = auth.uid()
         AND ap.role = 'district_admin'
         AND ap.district_id = p.district_id
@@ -195,82 +195,51 @@ WITH CHECK (
     )
 );
 
--- NEW: Admins can create teachers at their assigned schools
-CREATE POLICY "Admins can create teachers"
+-- NEW: Site admins can create teachers at their assigned schools
+-- Simplified: Only site_admin for MVP, district_admin deferred
+CREATE POLICY "Site admins can create teachers"
 ON public.teachers FOR INSERT
 TO authenticated
 WITH CHECK (
     EXISTS (
         SELECT 1 FROM public.admin_permissions ap
         WHERE ap.admin_id = auth.uid()
-        AND (
-            -- Site admins for this school
-            (ap.role = 'site_admin' AND ap.school_id = school_id)
-            OR
-            -- District admins for this district
-            (ap.role = 'district_admin' AND EXISTS (
-                SELECT 1 FROM public.schools s
-                WHERE s.school_id = teachers.school_id
-                AND s.district_id = ap.district_id
-            ))
-        )
+        AND ap.role = 'site_admin'
+        AND ap.school_id = school_id
     )
 );
 
--- NEW: Admins can update teachers at their schools
-CREATE POLICY "Admins can update teachers"
+-- NEW: Site admins can update teachers at their schools
+CREATE POLICY "Site admins can update teachers"
 ON public.teachers FOR UPDATE
 TO authenticated
 USING (
     EXISTS (
         SELECT 1 FROM public.admin_permissions ap
         WHERE ap.admin_id = auth.uid()
-        AND (
-            -- Site admins for this school
-            (ap.role = 'site_admin' AND ap.school_id = school_id)
-            OR
-            -- District admins for this district
-            (ap.role = 'district_admin' AND EXISTS (
-                SELECT 1 FROM public.schools s
-                WHERE s.school_id = teachers.school_id
-                AND s.district_id = ap.district_id
-            ))
-        )
+        AND ap.role = 'site_admin'
+        AND ap.school_id = school_id
     )
 )
 WITH CHECK (
     EXISTS (
         SELECT 1 FROM public.admin_permissions ap
         WHERE ap.admin_id = auth.uid()
-        AND (
-            (ap.role = 'site_admin' AND ap.school_id = school_id)
-            OR
-            (ap.role = 'district_admin' AND EXISTS (
-                SELECT 1 FROM public.schools s
-                WHERE s.school_id = teachers.school_id
-                AND s.district_id = ap.district_id
-            ))
-        )
+        AND ap.role = 'site_admin'
+        AND ap.school_id = school_id
     )
 );
 
--- NEW: Admins can delete teachers at their schools
-CREATE POLICY "Admins can delete teachers"
+-- NEW: Site admins can delete teachers at their schools
+CREATE POLICY "Site admins can delete teachers"
 ON public.teachers FOR DELETE
 TO authenticated
 USING (
     EXISTS (
         SELECT 1 FROM public.admin_permissions ap
         WHERE ap.admin_id = auth.uid()
-        AND (
-            (ap.role = 'site_admin' AND ap.school_id = school_id)
-            OR
-            (ap.role = 'district_admin' AND EXISTS (
-                SELECT 1 FROM public.schools s
-                WHERE s.school_id = teachers.school_id
-                AND s.district_id = ap.district_id
-            ))
-        )
+        AND ap.role = 'site_admin'
+        AND ap.school_id = school_id
     )
 );
 
