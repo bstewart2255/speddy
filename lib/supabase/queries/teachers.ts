@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { requireNonNull } from '@/lib/types/utils';
 import type { Database } from '../../../src/types/database';
 
 type Teacher = Database['public']['Tables']['teachers']['Row'];
@@ -100,7 +101,7 @@ export async function createTeacher(teacherData: TeacherCreationData) {
     throw new Error(insertResult.error.message || 'Failed to add teacher');
   }
 
-  return insertResult.data;
+  return requireNonNull(insertResult.data, 'created teacher data');
 }
 
 export async function updateTeacher(teacherId: string, updates: TeacherUpdate) {

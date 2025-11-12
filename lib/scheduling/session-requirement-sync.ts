@@ -119,7 +119,7 @@ export async function updateExistingSessionsForStudent(
     // Step 3: Adjust session count if sessions_per_week changed
     if (countChanged && newRequirements.sessions_per_week != null) {
       // Get provider_id from any existing session (they all have the same provider)
-      const providerId = existingSessions[0]?.provider_id;
+      const providerId = existingSessions[0]?.provider_id ?? undefined;
 
       // Only count non-completed sessions to match the invariant
       const activeSessionCount = existingSessions.filter(s => !s.is_completed).length;
@@ -284,6 +284,9 @@ async function adjustSessionCount(
       }
 
       // Finally, by creation date (newer first)
+      if (a.created_at === null && b.created_at === null) return 0;
+      if (a.created_at === null) return 1;
+      if (b.created_at === null) return -1;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -391,6 +394,11 @@ async function detectSessionConflicts(
   for (const session of sessions) {
     const conflicts: string[] = [];
 
+    // Skip unscheduled sessions (no day/time set)
+    if (!session.day_of_week || !session.start_time || !session.end_time) {
+      continue;
+    }
+
     // Conflict 1: Session extends beyond 5 PM
     if (session.end_time > '17:00:00') {
       conflicts.push('Session extends beyond 5:00 PM');
@@ -400,7 +408,8 @@ async function detectSessionConflicts(
     const overlappingSessions = sessions.filter(other =>
       other.id !== session.id &&
       other.day_of_week === session.day_of_week &&
-      timesOverlap(session.start_time, session.end_time, other.start_time, other.end_time)
+      other.start_time && other.end_time && // Ensure other session is scheduled
+      timesOverlap(session.start_time!, session.end_time!, other.start_time, other.end_time)
     );
 
     if (overlappingSessions.length > 0) {

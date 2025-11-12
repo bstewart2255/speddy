@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types/database';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
+import { requireNonNull } from '@/lib/types/utils';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
@@ -248,6 +249,10 @@ export class SessionUpdateService {
       return { valid: true };
     }
 
+    // Validate required fields
+    const providerId = requireNonNull(session.provider_id, 'session.provider_id');
+    const studentId = requireNonNull(session.student_id, 'session.student_id');
+
     // Validate time range
     if (timeToMinutes(targetStartTime) >= timeToMinutes(targetEndTime)) {
       return {
@@ -271,8 +276,8 @@ export class SessionUpdateService {
 
     // Check bell schedule conflicts
     const bellScheduleConflict = await this.checkBellScheduleConflicts(
-      session.provider_id,
-      session.student_id,
+      providerId,
+      studentId,
       targetDay,
       targetStartTime,
       targetEndTime
@@ -283,8 +288,8 @@ export class SessionUpdateService {
 
     // Check special activity conflicts
     const specialActivityConflict = await this.checkSpecialActivityConflicts(
-      session.provider_id,
-      session.student_id,
+      providerId,
+      studentId,
       targetDay,
       targetStartTime,
       targetEndTime
@@ -295,7 +300,7 @@ export class SessionUpdateService {
 
     // Check concurrent session limits
     const concurrentConflict = await this.checkConcurrentSessionLimit(
-      session.provider_id,
+      providerId,
       targetDay,
       targetStartTime,
       targetEndTime,
@@ -307,8 +312,8 @@ export class SessionUpdateService {
 
     // Check consecutive session rules
     const consecutiveConflict = await this.checkConsecutiveSessionRules(
-      session.provider_id,
-      session.student_id,
+      providerId,
+      studentId,
       targetDay,
       targetStartTime,
       targetEndTime,
@@ -320,8 +325,8 @@ export class SessionUpdateService {
 
     // Check break requirements
     const breakConflict = await this.checkBreakRequirements(
-      session.provider_id,
-      session.student_id,
+      providerId,
+      studentId,
       targetDay,
       targetStartTime,
       targetEndTime,
@@ -333,7 +338,7 @@ export class SessionUpdateService {
 
     // Check for overlapping sessions for the same student
     const overlapConflict = await this.checkStudentSessionOverlap(
-      session.student_id,
+      studentId,
       targetDay,
       targetStartTime,
       targetEndTime,

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
-import type { CalendarEvent } from '../../../src/types/database';
+import type { CalendarEvent } from '@/src/types/database';
 import { toDateKeyLocal } from '@/app/utils/date-helpers';
 
 interface CalendarEventModalProps {

@@ -182,6 +182,7 @@ export class SessionDistributor {
       let otherGradeCount = 0;
       
       for (const session of overlappingSessions) {
+        if (!session.student_id) continue; // Skip sessions without student_id
         const sessionGrade = context.studentGradeMap.get(session.student_id);
         if (sessionGrade === targetGrade) {
           sameGradeCount++;
@@ -472,6 +473,7 @@ export class SessionDistributor {
       );
       
       for (const session of overlappingSessions) {
+        if (!session.student_id) continue; // Skip sessions without student_id
         const sessionGrade = studentGradeMap.get(session.student_id);
         if (sessionGrade === targetGrade) {
           gradeAlignment += 2; // Bonus for same grade
@@ -553,6 +555,7 @@ export class SessionDistributor {
       
       if (overlappingSessions.length > 0) {
         const sameGradeCount = overlappingSessions.filter(session => {
+          if (!session.student_id) return false;
           const grade = studentGradeMap.get(session.student_id);
           return grade === targetGrade;
         }).length;

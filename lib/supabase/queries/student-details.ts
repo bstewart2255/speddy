@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
+import type { Json } from '../../../src/types/database';
 
 export interface StudentDetails {
   first_name: string;
@@ -12,6 +13,18 @@ export interface StudentDetails {
   upcoming_triennial_date: string;
   iep_goals: string[];
   working_skills: string[];
+}
+
+/**
+ * Safely converts a Json value to a string array
+ * Filters out any non-string values
+ */
+function jsonToStringArray(value: Json | null): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  return [];
 }
 
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
@@ -52,7 +65,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
-    working_skills: data.working_skills || []
+    working_skills: jsonToStringArray(data.working_skills)
   };
 }
 

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { requireNonNull } from '@/lib/types/utils';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -47,7 +48,7 @@ export async function getCurrentTeacher() {
     throw new Error('Teacher record not found');
   }
 
-  return fetchResult.data;
+  return requireNonNull(fetchResult.data, 'teacher record');
 }
 
 /**

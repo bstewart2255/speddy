@@ -1224,6 +1224,7 @@ export class OptimizedScheduler {
         session_date: session.session_date,
         manually_placed: session.manually_placed || false,
         created_at: new Date().toISOString(),
+        updated_at: null,
         is_completed: session.is_completed || false,
         student_absent: session.student_absent || false,
         outside_schedule_conflict: session.outside_schedule_conflict || false,
@@ -1390,6 +1391,7 @@ export class OptimizedScheduler {
       let otherGradeCount = 0;
       
       for (const session of overlappingSessions) {
+        if (!session.student_id) continue; // Skip sessions without student_id
         const sessionGrade = this.context!.studentGradeMap.get(session.student_id);
         if (sessionGrade) {
           if (sessionGrade === targetGrade) {

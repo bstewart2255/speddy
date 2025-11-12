@@ -300,9 +300,9 @@ export async function getTeacherStudents(teacherId: string) {
 
 export function formatTeacherName(teacher: Pick<Teacher, 'first_name' | 'last_name'>): string {
   if (!teacher.first_name) {
-    return teacher.last_name;
+    return teacher.last_name ?? 'Unknown';
   }
-  return `${teacher.first_name} ${teacher.last_name}`;
+  return `${teacher.first_name} ${teacher.last_name ?? ''}`.trim();
 }
 
 // ============================================================================

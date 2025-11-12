@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { requireNonNull, withDefault } from '@/lib/types/utils';
 import type { Database } from '../../../src/types/database';
 
 type AdminPermission = Database['public']['Tables']['admin_permissions']['Row'];
@@ -309,11 +310,11 @@ export async function createTeacherAccount(data: CreateTeacherAccountData) {
 // CREATE SPECIALIST ACCOUNT
 // ============================================================================
 
-export async function createSpecialistAccount(data: CreateSpecialistAccountData) {
+export async function createSpecialistAccount(accountData: CreateSpecialistAccountData) {
   const supabase = createClient<Database>();
 
   // Verify admin has permission
-  const hasPermission = await isAdminForSchool(data.school_id);
+  const hasPermission = await isAdminForSchool(accountData.school_id);
   if (!hasPermission) {
     throw new Error('You do not have permission to create accounts at this school');
   }
@@ -327,17 +328,17 @@ export async function createSpecialistAccount(data: CreateSpecialistAccountData)
         const { data, error } = await supabase
           .from('profiles')
           .select('id, email')
-          .eq('email', data.email)
+          .eq('email', accountData.email)
           .maybeSingle();
         if (error) throw error;
         return data;
       },
-      { operation: 'check_existing_specialist', email: data.email }
+      { operation: 'check_existing_specialist', email: accountData.email }
     );
 
     if (existingResult.data) {
       throw new Error(
-        `An account with email ${data.email} already exists. ` +
+        `An account with email ${accountData.email} already exists. ` +
         'Please use a different email address.'
       );
     }
@@ -393,8 +394,11 @@ export async function linkTeacherToProfile(
     throw new Error('Teacher not found');
   }
 
+  const teacher = teacherResult.data;
+  const schoolId = requireNonNull(teacher.school_id, 'teacher.school_id');
+
   // Verify admin has permission for this school
-  const hasPermission = await isAdminForSchool(teacherResult.data.school_id);
+  const hasPermission = await isAdminForSchool(schoolId);
   if (!hasPermission) {
     throw new Error('You do not have permission to manage teachers at this school');
   }
@@ -462,19 +466,25 @@ export async function findPotentialDuplicates(schoolId: string) {
   for (const teacher of teachers) {
     if (processed.has(teacher.id)) continue;
 
-    const similar = teachers.filter(t =>
-      t.id !== teacher.id &&
-      !processed.has(t.id) &&
-      (
+    // Skip teachers without last names for duplicate detection
+    if (!teacher.last_name) continue;
+
+    const teacherLastName = teacher.last_name.toLowerCase();
+
+    const similar = teachers.filter(t => {
+      if (t.id === teacher.id || processed.has(t.id) || !t.last_name) {
+        return false;
+      }
+
+      const tLastName = t.last_name.toLowerCase();
+
+      return (
         // Exact last name match
-        t.last_name.toLowerCase() === teacher.last_name.toLowerCase() ||
+        tLastName === teacherLastName ||
         // Very similar last names (Levenshtein distance <= 2)
-        levenshteinDistance(
-          t.last_name.toLowerCase(),
-          teacher.last_name.toLowerCase()
-        ) <= 2
-      )
-    );
+        levenshteinDistance(tLastName, teacherLastName) <= 2
+      );
+    });
 
     if (similar.length > 0) {
       const group = [teacher, ...similar];
@@ -544,9 +554,10 @@ export async function deleteTeacher(teacherId: string) {
   }
 
   const teacher = teacherResult.data;
+  const schoolId = requireNonNull(teacher.school_id, 'teacher.school_id');
 
   // Verify admin has permission
-  const hasPermission = await isAdminForSchool(teacher.school_id);
+  const hasPermission = await isAdminForSchool(schoolId);
   if (!hasPermission) {
     throw new Error('You do not have permission to delete teachers at this school');
   }

@@ -82,9 +82,18 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
 
   if (!teacherResult.data) return null;
 
+  // Transform student data to provide defaults for nullable numeric fields
+  const assignedStudents = (studentsResult.data || []).map(student => ({
+    id: student.id,
+    initials: student.initials,
+    grade_level: student.grade_level,
+    sessions_per_week: student.sessions_per_week ?? 0,
+    minutes_per_session: student.minutes_per_session ?? 0
+  }));
+
   return {
     ...teacherResult.data,
-    assigned_students: studentsResult.data || []
+    assigned_students: assignedStudents
   };
 }
 

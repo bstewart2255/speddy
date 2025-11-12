@@ -401,6 +401,7 @@ export class SchedulingCoordinator {
     
     // Group existing sessions by student
     for (const session of this.context.existingSessions) {
+      if (!session.student_id) continue; // Skip sessions without student_id
       if (!distributionContext.existingSessions.has(session.student_id)) {
         distributionContext.existingSessions.set(session.student_id, []);
       }
@@ -597,6 +598,7 @@ export class SchedulingCoordinator {
         session_date: session.session_date,
         manually_placed: session.manually_placed || false,
         created_at: new Date().toISOString(),
+        updated_at: null,
         is_completed: session.is_completed || false,
         student_absent: session.student_absent || false,
         outside_schedule_conflict: session.outside_schedule_conflict || false,
