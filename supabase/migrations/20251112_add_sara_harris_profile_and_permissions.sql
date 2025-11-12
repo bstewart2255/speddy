@@ -21,7 +21,7 @@ BEGIN
   -- Create profile
   INSERT INTO public.profiles (
     id, email, full_name, role,
-    school_id, school_site, district_id, district_domain
+    school_id, school_site, school_district, district_id, district_domain
   ) VALUES (
     sara_user_id,
     'harrissara@mdusd.org',
@@ -29,6 +29,7 @@ BEGIN
     'site_admin',
     '062271002458',
     'Mt Diablo Elementary',
+    'Mt Diablo Unified',
     '0761754',
     'mdusd.org'
   );
