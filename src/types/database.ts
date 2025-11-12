@@ -3163,3 +3163,6 @@ export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
 export type ReferralCode = Database["public"]["Tables"]["referral_codes"]["Row"];
 export type ReferralCredit = Database["public"]["Tables"]["referral_credits"]["Row"];
 
+// Type utilities (import from lib/types/utils)
+export type { NonNullableFields, RequireFields } from '../../lib/types/utils';
+
