@@ -202,7 +202,7 @@ export class ScheduleImportService {
 
     const { error } = await this.supabase
       .from('bell_schedules')
-      .insert(schedules);
+      .insert(schedules as any);
 
     if (error) {
       console.error('Error inserting bell schedules:', error);
@@ -220,7 +220,7 @@ export class ScheduleImportService {
 
     const { error } = await this.supabase
       .from('special_activities')
-      .insert(activities);
+      .insert(activities as any);
 
     if (error) {
       console.error('Error inserting special activities:', error);

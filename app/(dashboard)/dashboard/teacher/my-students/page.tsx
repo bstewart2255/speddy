@@ -31,7 +31,7 @@ export default function MyStudentsPage() {
         setLoading(true);
         setError(null);
         const data = await getMyStudentsInResource();
-        setStudents(data as StudentInResource[]);
+        setStudents(data as unknown as StudentInResource[]);
       } catch (err) {
         console.error('Error fetching students:', err);
         setError(err instanceof Error ? err.message : 'Failed to load students');

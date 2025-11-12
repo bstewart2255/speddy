@@ -49,7 +49,7 @@ export default function StudentDetailPage() {
 
         // Fetch student details
         const studentData = await getStudentDetails(studentId);
-        setStudent(studentData as StudentDetail);
+        setStudent(studentData as unknown as StudentDetail);
 
         // Fetch schedule
         const scheduleData = await getStudentResourceSchedule(studentId);
