@@ -1,5 +1,8 @@
 -- Fix infinite recursion in teacher RLS policies
 -- The issue: circular dependency between students and schedule_sessions policies
+--
+-- IMPORTANT: This migration must run AFTER 20251111_add_teacher_role_rls_policies.sql
+-- It drops and recreates policies from that migration to fix recursion issues.
 
 -- Drop the problematic policies
 DROP POLICY IF EXISTS "Teachers can view their own students" ON public.students;
@@ -18,7 +21,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.teachers t
     WHERE t.id = students.teacher_id
-    AND t.provider_id = auth.uid()
+    AND t.account_id = auth.uid()
   )
 );
 
@@ -35,7 +38,7 @@ USING (
     FROM public.students s
     INNER JOIN public.teachers t ON s.teacher_id = t.id
     WHERE s.id = student_details.student_id
-    AND t.provider_id = auth.uid()
+    AND t.account_id = auth.uid()
   )
 );
 
@@ -56,7 +59,7 @@ USING (
     FROM public.students s
     JOIN public.teachers t ON s.teacher_id = t.id
     WHERE s.id = schedule_sessions.student_id
-      AND t.provider_id = auth.uid()
+      AND t.account_id = auth.uid()
       -- Use WITH CHECK OPTION to hint no recursion needed
       AND s.teacher_id IS NOT NULL
   )

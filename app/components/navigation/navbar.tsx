@@ -65,7 +65,15 @@ export default function Navbar() {
       { name: 'Dashboard', href: '/dashboard' }
     ];
 
-    if (role === 'teacher') {
+    if (role === 'site_admin' || role === 'district_admin') {
+      // Admins see their dashboard, teacher directory, and settings
+      return [
+        { name: 'Dashboard', href: '/dashboard/admin' },
+        { name: 'Teachers', href: '/dashboard/admin/teachers' },
+        { name: 'Create Account', href: '/dashboard/admin/create-account' },
+        { name: 'Duplicates', href: '/dashboard/admin/duplicates' },
+      ];
+    } else if (role === 'teacher') {
       // Teachers see their dashboard, students in resource, and special activities
       return [
         { name: 'Dashboard', href: '/dashboard/teacher' },

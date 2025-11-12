@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { getCurrentTeacher, getMyStudentsInResource } from '@/lib/supabase/queries/teacher-portal';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
@@ -11,7 +10,6 @@ export default function TeacherDashboardPage() {
   const [studentCount, setStudentCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClient();
 
   useEffect(() => {
     const fetchDashboardData = async () => {

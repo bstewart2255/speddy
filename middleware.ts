@@ -103,8 +103,23 @@ export async function middleware(request: NextRequest) {
   }
 
   // Role-based routing
+  const isAdminRoute = pathname.startsWith('/dashboard/admin')
   const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
   const isDashboardRoute = pathname.startsWith('/dashboard')
+
+  // If user is an admin trying to access non-admin dashboard routes, redirect to admin dashboard
+  if ((userRole === 'site_admin' || userRole === 'district_admin') && isDashboardRoute && !isAdminRoute && !isTeacherRoute) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard/admin'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // If non-admin user trying to access admin routes, redirect to main dashboard
+  if (userRole !== 'site_admin' && userRole !== 'district_admin' && isAdminRoute) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    return NextResponse.redirect(redirectUrl)
+  }
 
   // If user is a teacher trying to access non-teacher dashboard routes, redirect to teacher dashboard
   if (userRole === 'teacher' && isDashboardRoute && !isTeacherRoute) {
