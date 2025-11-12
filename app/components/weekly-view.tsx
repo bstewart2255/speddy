@@ -467,7 +467,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   // Helper function to get unique student initials with Set for better performance
   const getUniqueStudentInitials = useCallback((groupSessions: ScheduleSession[]) => {
     const initialsSet = new Set(
-      groupSessions.map((s: ScheduleSession) => students[s.student_id]?.initials || '?')
+      groupSessions.map((s: ScheduleSession) => s.student_id ? students[s.student_id]?.initials || '?' : '?')
     );
     return Array.from(initialsSet).join(', ');
   }, [students]);
@@ -689,10 +689,10 @@ return (
                       } else {
                         const session = block.data.session;
                         const studentData = {
-                          id: session.student_id,
-                          initials: students[session.student_id]?.initials || '?',
-                          grade_level: students[session.student_id]?.grade_level || '',
-                          teacher_name: students[session.student_id]?.teacher_name
+                          id: session.student_id || '',
+                          initials: session.student_id ? students[session.student_id]?.initials || '?' : '?',
+                          grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
+                          teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
                         };
 
                         return (
@@ -806,10 +806,10 @@ return (
                       } else {
                         const session = block.data.session;
                         const studentData = {
-                          id: session.student_id,
-                          initials: students[session.student_id]?.initials || '?',
-                          grade_level: students[session.student_id]?.grade_level || '',
-                          teacher_name: students[session.student_id]?.teacher_name
+                          id: session.student_id || '',
+                          initials: session.student_id ? students[session.student_id]?.initials || '?' : '?',
+                          grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
+                          teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
                         };
 
                         return (
