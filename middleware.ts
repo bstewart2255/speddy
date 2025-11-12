@@ -86,9 +86,39 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // For authenticated users, pass the session info in headers
+  // Fetch user profile to determine role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const userRole = profile?.role
+
+  // For authenticated users, pass the session info and role in headers
   response.headers.set('x-user-id', user.id)
   response.headers.set('x-user-email', user.email || '')
+  if (userRole) {
+    response.headers.set('x-user-role', userRole)
+  }
+
+  // Role-based routing
+  const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
+  const isDashboardRoute = pathname.startsWith('/dashboard')
+
+  // If user is a teacher trying to access non-teacher dashboard routes, redirect to teacher dashboard
+  if (userRole === 'teacher' && isDashboardRoute && !isTeacherRoute) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard/teacher'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // If non-teacher user trying to access teacher routes, redirect to main dashboard
+  if (userRole !== 'teacher' && isTeacherRoute) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    return NextResponse.redirect(redirectUrl)
+  }
 
   return response
 }
