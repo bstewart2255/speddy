@@ -24,8 +24,7 @@ export const useTeachers = (supabase: SupabaseClient, currentSchool: SchoolInfo 
 
       const { data: allTeachers, error: checkError } = await supabase
         .from('teachers')
-        .select('school_id')
-        .eq('provider_id', user.user.id);
+        .select('school_id');
 
       if (checkError) {
         if (isMounted) {
@@ -36,8 +35,7 @@ export const useTeachers = (supabase: SupabaseClient, currentSchool: SchoolInfo 
 
       let query = supabase
         .from('teachers')
-        .select('*')
-        .eq('provider_id', user.user.id);
+        .select('*');
 
       if (schoolId && allTeachers?.some(t => t.school_id)) {
         query = query.eq('school_id', schoolId);
