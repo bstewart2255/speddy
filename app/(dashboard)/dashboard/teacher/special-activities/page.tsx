@@ -44,7 +44,7 @@ export default function TeacherSpecialActivitiesPage() {
 
       // Fetch all visible activities (own + RS activities at school)
       const { data: { user } } = await supabase.auth.getUser();
-      if (user && teacherData.school_id) {
+      if (user && teacherData && teacherData.school_id) {
         const { data, error: fetchError } = await supabase
           .from('special_activities')
           .select('*')
