@@ -419,7 +419,7 @@ export function GroupDetailsModal({
                 <p className="text-gray-500 text-sm">No sessions in this group</p>
               ) : (
                 sessions.map((session) => {
-                  const student = students.get(session.student_id);
+                  const student = session.student_id ? students.get(session.student_id) : undefined;
                   return (
                     <div
                       key={session.id}

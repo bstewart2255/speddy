@@ -26,11 +26,13 @@ type Student = {
   teacher_id?: string | null;
   sessions_per_week: number | null;
   minutes_per_session: number | null;
-  provider_id: string;
-  created_at: string;
-  updated_at: string;
+  provider_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   school_site?: string | null;
   school_id?: string | null;
+  district_id?: string | null;
+  school_district?: string | null;
 };
 
 export default function StudentsPage() {

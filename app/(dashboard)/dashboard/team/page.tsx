@@ -10,8 +10,8 @@ interface SEAProfile {
   full_name: string;
   email: string;
   school_site: string;
-  created_at: string;
-  shared_at_school: boolean;
+  created_at: string | null;
+  shared_at_school: boolean | null;
   supervising_provider_id: string | null;
 }
 
@@ -200,12 +200,12 @@ export default function TeamPage() {
                         <p className="text-sm text-gray-600">{sea.email}</p>
                         <p className="text-sm text-gray-500">{sea.school_site}</p>
                         <p className="text-xs text-gray-400">
-                          Joined: {new Date(sea.created_at).toLocaleDateString()}
+                          Joined: {sea.created_at ? new Date(sea.created_at).toLocaleDateString() : 'Unknown'}
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => toggleSharingStatus(sea.id, sea.shared_at_school)}
+                          onClick={() => toggleSharingStatus(sea.id, sea.shared_at_school ?? false)}
                           className={`px-3 py-1 text-sm border rounded hover:opacity-80 ${
                             sea.shared_at_school
                               ? 'text-orange-600 border-orange-300 hover:bg-orange-50'

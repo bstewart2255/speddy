@@ -527,12 +527,12 @@ export function GroupSessionsWidget() {
                               key={session.id}
                               className={cn(
                                 "inline-block text-xs",
-                                updatedSessionIds.has(session.id) 
-                                  ? "text-blue-700 font-semibold" 
+                                updatedSessionIds.has(session.id)
+                                  ? "text-blue-700 font-semibold"
                                   : "text-gray-600"
                               )}
                             >
-                              {students[session.student_id]?.initials}
+                              {session.student_id ? students[session.student_id]?.initials : '?'}
                               {idx < slotSessions.length - 1 && ", "}
                             </span>
                           ))}

@@ -144,7 +144,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
       const { data: submissions } = await submissionsQuery;
 
       const recentSubmissions = submissions?.map(sub => ({
-        date: sub.submitted_at,
+        date: sub.submitted_at || '',
         worksheetType: sub.worksheets.worksheet_type,
         accuracy: sub.accuracy_percentage || 0,
         skillsAssessed: (sub.skills_assessed as any) || []

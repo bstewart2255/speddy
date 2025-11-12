@@ -45,6 +45,7 @@ export function UnscheduledSessionsPanel({
     const grouped = new Map<string, ScheduleSession[]>();
 
     unscheduledSessions.forEach((session) => {
+      if (!session.student_id) return;
       const existing = grouped.get(session.student_id) || [];
       grouped.set(session.student_id, [...existing, session]);
     });

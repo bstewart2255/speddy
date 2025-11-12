@@ -40,6 +40,10 @@
 
         console.log('Student created:', student);
 
+        if (!student) {
+          throw new Error('Failed to create student');
+        }
+
         // Show success message - sessions are auto-created
         alert(`Student "${student.initials}" has been added successfully!\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`);
 

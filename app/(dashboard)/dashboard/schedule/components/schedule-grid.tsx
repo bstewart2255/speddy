@@ -464,7 +464,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             zIndex: draggedSession?.id === session.id ? 20 : 10,
                           }}
                           onClick={(e) => {
-                            onHighlightToggle(session.student_id);
+                            if (session.student_id) {
+                              onHighlightToggle(session.student_id);
+                            }
                             const rect = e.currentTarget.getBoundingClientRect();
                             onSessionClick(session, rect);
                           }}

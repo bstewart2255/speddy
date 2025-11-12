@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Printer, Edit, Trash2, X } from 'lucide-react';
-import type { Database } from '../../../src/types/database';
+import type { Database } from '@/src/types/database';
 
 type ManualLesson = Database["public"]["Tables"]["manual_lesson_plans"]["Row"];
 
