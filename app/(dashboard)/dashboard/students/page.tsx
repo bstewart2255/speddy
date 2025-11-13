@@ -13,6 +13,7 @@ import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
+import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
 import { useRouter } from 'next/navigation';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { StudentBulkImporter } from '../../../components/students/student-bulk-importer';
@@ -43,7 +44,8 @@ export default function StudentsPage() {
   const [formData, setFormData] = useState({
     initials: '',
     grade_level: '',
-    teacher_name: '',
+    teacher_id: null as string | null,
+    teacherName: null as string | null,
     sessions_per_week: '',
     minutes_per_session: '30'
   });
@@ -203,7 +205,8 @@ export default function StudentsPage() {
       const newStudent = await createStudent({
         initials: formData.initials,
         grade_level: formData.grade_level,
-        teacher_name: formData.teacher_name,
+        teacher_id: formData.teacher_id,
+        teacher_name: formData.teacherName || undefined,
         sessions_per_week: parseInt(formData.sessions_per_week),
         minutes_per_session: parseInt(formData.minutes_per_session),
         school_site: currentSchool?.school_site || '',
@@ -217,7 +220,8 @@ export default function StudentsPage() {
       setFormData({
         initials: '',
         grade_level: '',
-        teacher_name: '',
+        teacher_id: null,
+        teacherName: null,
         sessions_per_week: '',
         minutes_per_session: '30'
       });
@@ -471,15 +475,14 @@ export default function StudentsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Teacher Name*
+                      Teacher*
                     </label>
-                    <input
-                      type="text"
+                    <TeacherAutocomplete
+                      value={formData.teacher_id}
+                      teacherName={formData.teacherName || undefined}
+                      onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
+                      placeholder="Search for a teacher..."
                       required
-                      value={formData.teacher_name}
-                      onChange={(e) => setFormData({...formData, teacher_name: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., Smith"
                     />
                   </div>
 

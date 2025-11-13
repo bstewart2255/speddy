@@ -10,6 +10,7 @@ import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
 import { AssessmentInputs } from './assessment-inputs';
 import { IEPGoalsUploader } from './iep-goals-uploader';
 import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
+import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -18,7 +19,8 @@ interface StudentDetailsModalProps {
     id: string;
     initials: string;
     grade_level: string;
-    teacher_name: string;
+    teacher_id?: string | null;
+    teacher_name?: string | null;
     sessions_per_week: number;
     minutes_per_session: number;
     school_id?: string | null;
@@ -28,7 +30,8 @@ interface StudentDetailsModalProps {
   onUpdateStudent?: (studentId: string, updates: {
     initials?: string;
     grade_level: string;
-    teacher_name: string;
+    teacher_id?: string | null;
+    teacher_name?: string;
     sessions_per_week: number;
     minutes_per_session: number;
   }) => void;
@@ -61,7 +64,8 @@ export function StudentDetailsModal({
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
     grade_level: student.grade_level,
-    teacher_name: student.teacher_name,
+    teacher_id: student.teacher_id || null,
+    teacherName: student.teacher_name || null,
     sessions_per_week: student.sessions_per_week,
     minutes_per_session: student.minutes_per_session,
   });
@@ -73,7 +77,8 @@ export function StudentDetailsModal({
       setStudentInfo({
         initials: student.initials,
         grade_level: student.grade_level,
-        teacher_name: student.teacher_name,
+        teacher_id: student.teacher_id || null,
+        teacherName: student.teacher_name || null,
         sessions_per_week: student.sessions_per_week,
         minutes_per_session: student.minutes_per_session,
       });
@@ -113,7 +118,7 @@ export function StudentDetailsModal({
 
       loadData();
     }
-  }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
+  }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_id, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -293,13 +298,12 @@ export function StudentDetailsModal({
                 </FormGroup>
 
                 <FormGroup>
-                  <Label htmlFor="teacher_name">Teacher Name</Label>
-                  <Input
-                    id="teacher_name"
-                    type="text"
-                    value={studentInfo.teacher_name}
-                    onChange={(e) => setStudentInfo({...studentInfo, teacher_name: e.target.value})}
-                    placeholder="Enter teacher name"
+                  <Label htmlFor="teacher">Teacher</Label>
+                  <TeacherAutocomplete
+                    value={studentInfo.teacher_id}
+                    teacherName={studentInfo.teacherName || undefined}
+                    onChange={(teacherId, teacherName) => setStudentInfo({...studentInfo, teacher_id: teacherId, teacherName})}
+                    placeholder="Search for a teacher..."
                     disabled={readOnly}
                   />
                 </FormGroup>

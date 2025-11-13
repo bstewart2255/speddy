@@ -257,10 +257,38 @@ export async function getTeacherByName(name: string): Promise<Teacher | null> {
   return fetchResult.data;
 }
 
+/**
+ * @deprecated This function is deprecated and should not be used for new code.
+ *
+ * **Why deprecated:**
+ * - Teachers should only be created by site administrators, not auto-created by specialists
+ * - Auto-creation leads to duplicate/inconsistent teacher records
+ * - New student forms use TeacherAutocomplete which requires existing teachers
+ *
+ * **What to do instead:**
+ * - Use TeacherAutocomplete component to select from existing teachers
+ * - Site admins should create teachers via the Teachers page before students are added
+ * - For bulk imports, match teacher names to existing teachers or prompt for manual assignment
+ *
+ * **Migration path:**
+ * - Run the migration script: 20251113_migrate_students_teacher_name_to_teacher_id.sql
+ * - This will populate teacher_id for existing students based on teacher_name
+ * - Remaining unmatched records should be manually assigned by site admins
+ *
+ * @param name - Teacher name (usually last name or "FirstName LastName")
+ * @param schoolInfo - Optional school identification for scoping
+ * @returns Promise<Teacher> - Existing or newly created teacher record
+ */
 export async function getOrCreateTeacher(
-  name: string, 
+  name: string,
   schoolInfo: { school_id?: string | null; school_site?: string | null } = {}
 ): Promise<Teacher> {
+  console.warn(
+    '[DEPRECATED] getOrCreateTeacher() is deprecated. ' +
+    'Teachers should be created by site administrators only. ' +
+    'Use TeacherAutocomplete component to select existing teachers instead.'
+  );
+
   const existing = await getTeacherByName(name);
   if (existing) return existing;
 

@@ -9,7 +9,6 @@ interface TeacherAutocompleteProps {
   value: string | null; // teacher_id or null
   teacherName?: string; // Display name if teacher_id is set
   onChange: (teacherId: string | null, teacherName: string | null) => void;
-  onCreateNew?: (teacherName: string) => void; // Optional callback when user wants to create new teacher
   placeholder?: string;
   required?: boolean;
   className?: string;
@@ -20,7 +19,6 @@ export function TeacherAutocomplete({
   value,
   teacherName,
   onChange,
-  onCreateNew,
   placeholder = 'Search for a teacher...',
   required = false,
   className = '',
@@ -82,14 +80,6 @@ export function TeacherAutocomplete({
     setSelectedTeacher(null);
     setSearchTerm('');
     onChange(null, null);
-  };
-
-  const handleCreateNew = () => {
-    if (onCreateNew && searchTerm) {
-      onCreateNew(searchTerm);
-      setSearchTerm('');
-      setIsOpen(false);
-    }
   };
 
   // Display value
@@ -160,20 +150,15 @@ export function TeacherAutocomplete({
                   ) : loading ? (
                     <p className="text-sm text-gray-500">Searching...</p>
                   ) : (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">No teachers found matching "{searchTerm}"</p>
-                      {onCreateNew && (
-                        <button
-                          type="button"
-                          onClick={handleCreateNew}
-                          className="w-full text-left px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded flex items-center"
-                        >
-                          <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Create new teacher "{searchTerm}"
-                        </button>
-                      )}
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-500">No teachers found matching "{searchTerm}"</p>
+                      <div className="px-3 py-2 bg-blue-50 rounded-md">
+                        <p className="text-xs text-blue-700">
+                          <span className="font-medium">Teacher not in the system?</span>
+                          <br />
+                          Contact your site admin to add them.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -206,20 +191,6 @@ export function TeacherAutocomplete({
                       </button>
                     </li>
                   ))}
-                  {onCreateNew && (
-                    <li className="border-t border-gray-200 mt-1 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleCreateNew}
-                        className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 flex items-center"
-                      >
-                        <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Create new teacher "{searchTerm}"
-                      </button>
-                    </li>
-                  )}
                 </ul>
               )}
             </div>

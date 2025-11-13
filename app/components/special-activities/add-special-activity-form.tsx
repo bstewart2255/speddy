@@ -6,15 +6,18 @@ import type { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
+import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 
 interface Props {
-  teacherName: string;
+  teacherId?: string | null;
+  teacherName?: string | null;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export default function AddSpecialActivityForm({ teacherName: initialTeacherName, onSuccess, onCancel }: Props) {
-  const [teacherName, setTeacherName] = useState(initialTeacherName || '');
+export default function AddSpecialActivityForm({ teacherId: initialTeacherId, teacherName: initialTeacherName, onSuccess, onCancel }: Props) {
+  const [teacherId, setTeacherId] = useState<string | null>(initialTeacherId || null);
+  const [teacherName, setTeacherName] = useState<string | null>(initialTeacherName || null);
   const [activityName, setActivityName] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState('1');
   const [startTime, setStartTime] = useState('');
@@ -35,7 +38,7 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
       return;
     }
 
-    if (!teacherName || !activityName || !startTime || !endTime) {
+    if (!teacherId || !activityName || !startTime || !endTime) {
       setError('All fields are required');
       return;
     }
@@ -55,7 +58,8 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
       .from('special_activities')
       .insert({
         provider_id: user.user.id,
-        teacher_name: teacherName,
+        teacher_id: teacherId,
+        teacher_name: teacherName || '',
         activity_name: activityName,
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
@@ -68,7 +72,8 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
       // Check for conflicts after successful insert
       const resolver = new ConflictResolver(user.user.id);
       const insertedActivity = {
-        teacher_name: teacherName,
+        teacher_id: teacherId,
+        teacher_name: teacherName || '',
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
         end_time: endTime,
@@ -103,14 +108,16 @@ export default function AddSpecialActivityForm({ teacherName: initialTeacherName
 
       <div>
         <label className="block text-sm font-medium mb-1">
-          Teacher Name*
+          Teacher*
         </label>
-        <input
-          type="text"
-          value={teacherName}
-          onChange={(e) => setTeacherName(e.target.value)}
-          placeholder="Smith"
-          className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <TeacherAutocomplete
+          value={teacherId}
+          teacherName={teacherName || undefined}
+          onChange={(newTeacherId, newTeacherName) => {
+            setTeacherId(newTeacherId);
+            setTeacherName(newTeacherName);
+          }}
+          placeholder="Search for a teacher..."
           required
         />
       </div>
