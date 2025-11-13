@@ -4,6 +4,7 @@
   import { createStudent } from '../../../lib/supabase/queries/students';
   import { Button } from '../ui/button';
   import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
+  import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 
   interface AddStudentFormProps {
     onClose: () => void;
@@ -14,7 +15,8 @@
     const [formData, setFormData] = useState({
       initials: '',
       grade_level: '',
-      teacher_name: '',
+      teacher_id: null as string | null,
+      teacherName: null as string | null,
       sessions_per_week: 1,
       minutes_per_session: 30,
     });
@@ -33,7 +35,7 @@
         const student = await createStudent({
           initials: formData.initials.toUpperCase(),
           grade_level: formData.grade_level.trim(),
-          teacher_name: formData.teacher_name,
+          teacher_id: formData.teacher_id,
           sessions_per_week: formData.sessions_per_week,
           minutes_per_session: formData.minutes_per_session,
         });
@@ -102,15 +104,14 @@
       </FormGroup>
 
       <FormGroup>
-        <Label htmlFor="teacher_name" required>
-          Teacher Name
+        <Label htmlFor="teacher" required>
+          Teacher
         </Label>
-        <Input
-          id="teacher_name"
-          type="text"
-          value={formData.teacher_name}
-          onChange={(e) => setFormData({ ...formData, teacher_name: e.target.value })}
-          placeholder="e.g., Smith"
+        <TeacherAutocomplete
+          value={formData.teacher_id}
+          teacherName={formData.teacherName || undefined}
+          onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
+          placeholder="Search for a teacher..."
           required
         />
       </FormGroup>

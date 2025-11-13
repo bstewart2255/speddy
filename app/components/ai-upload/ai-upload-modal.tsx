@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Upload, X, AlertCircle, CheckCircle, Loader2, HelpCircle } from 'lucide-react';
 import AIUploadExamples from './ai-upload-examples';
+import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 
 interface AIUploadModalProps {
   isOpen: boolean;
@@ -166,6 +167,18 @@ export default function AIUploadModal({
     }));
   };
 
+  // Helper function to update teacher fields (both ID and name)
+  const updateTeacherForItem = (index: number, teacherId: string | null, teacherName: string | null) => {
+    setEditedItems(prev => ({
+      ...prev,
+      [index]: {
+        ...getCurrentItemData(parsedData!.confirmed[index], index),
+        teacher_id: teacherId,
+        teacher_name: teacherName
+      }
+    }));
+  };
+
   const renderParsedItem = (item: any, index: number) => {
     const currentData = getCurrentItemData(item, index);
     const isEdited = editedItems[index] !== undefined;
@@ -209,17 +222,18 @@ export default function AIUploadModal({
                 <option value="8">8</option>
               </select>
             </div>
-            
+
             <div>
               <label className="text-xs text-gray-600">Teacher</label>
-              <input
-                type="text"
-                value={currentData.teacher_name || ''}
-                onChange={(e) => updateEditedItem(index, 'teacher_name', e.target.value)}
-                className="w-full text-sm border rounded px-2 py-1"
+              <TeacherAutocomplete
+                value={currentData.teacher_id || null}
+                teacherName={currentData.teacher_name || undefined}
+                onChange={(teacherId, teacherName) => updateTeacherForItem(index, teacherId, teacherName)}
+                placeholder="Search..."
+                className="text-sm"
               />
             </div>
-            
+
             <div>
               <label className="text-xs text-gray-600">Sessions/Week</label>
               <input
@@ -354,14 +368,15 @@ export default function AIUploadModal({
           <div className="grid grid-cols-5 gap-2 items-center">
             <div>
               <label className="text-xs text-gray-600">Teacher</label>
-              <input
-                type="text"
-                value={currentData.teacher_name || ''}
-                onChange={(e) => updateEditedItem(index, 'teacher_name', e.target.value)}
-                className="w-full text-sm border rounded px-2 py-1"
+              <TeacherAutocomplete
+                value={currentData.teacher_id || null}
+                teacherName={currentData.teacher_name || undefined}
+                onChange={(teacherId, teacherName) => updateTeacherForItem(index, teacherId, teacherName)}
+                placeholder="Search..."
+                className="text-sm"
               />
             </div>
-            
+
             <div>
               <label className="text-xs text-gray-600">Activity</label>
               <input
