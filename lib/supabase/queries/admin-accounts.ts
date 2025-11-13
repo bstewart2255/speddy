@@ -312,7 +312,7 @@ export async function createTeacherAccount(data: CreateTeacherAccountData) {
             school_site: data.school_site || null,
             account_id: profileId,
             created_by_admin: true
-          })
+          } as any)
           .select()
           .single();
 
