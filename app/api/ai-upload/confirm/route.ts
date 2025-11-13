@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
               provider_id: user.id,
               initials: student.initials.toUpperCase(),
               grade_level: student.grade_level.toUpperCase(),
-              teacher_name: student.teacher_name,
+              teacher_id: student.teacher_id || null,
+              teacher_name: student.teacher_name || null,
               sessions_per_week: student.sessions_per_week,
               minutes_per_session: student.minutes_per_session,
               school_site: profile?.school_site || '',
@@ -183,7 +184,8 @@ export async function POST(request: NextRequest) {
         try {
           const activityData = {
             provider_id: user.id,
-            teacher_name: activity.teacher_name,
+            teacher_id: activity.teacher_id || null,
+            teacher_name: activity.teacher_name || null,
             activity_name: activity.activity_name,
             day_of_week: activity.day_of_week,
             start_time: activity.start_time,

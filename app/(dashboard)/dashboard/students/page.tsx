@@ -206,6 +206,7 @@ export default function StudentsPage() {
         initials: formData.initials,
         grade_level: formData.grade_level,
         teacher_id: formData.teacher_id,
+        teacher_name: formData.teacherName || undefined,
         sessions_per_week: parseInt(formData.sessions_per_week),
         minutes_per_session: parseInt(formData.minutes_per_session),
         school_site: currentSchool?.school_site || '',

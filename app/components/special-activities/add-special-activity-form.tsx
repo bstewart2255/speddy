@@ -59,6 +59,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
       .insert({
         provider_id: user.user.id,
         teacher_id: teacherId,
+        teacher_name: teacherName || '',
         activity_name: activityName,
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
@@ -72,6 +73,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
       const resolver = new ConflictResolver(user.user.id);
       const insertedActivity = {
         teacher_id: teacherId,
+        teacher_name: teacherName || '',
         day_of_week: parseInt(dayOfWeek),
         start_time: startTime,
         end_time: endTime,

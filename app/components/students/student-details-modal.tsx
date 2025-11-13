@@ -31,6 +31,7 @@ interface StudentDetailsModalProps {
     initials?: string;
     grade_level: string;
     teacher_id?: string | null;
+    teacher_name?: string;
     sessions_per_week: number;
     minutes_per_session: number;
   }) => void;

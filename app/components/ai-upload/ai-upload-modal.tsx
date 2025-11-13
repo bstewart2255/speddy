@@ -99,6 +99,18 @@ export default function AIUploadModal({
       return;
     }
 
+    // Validate that all items requiring teachers have teacher_id set
+    if (uploadType === 'students' || uploadType === 'special_activities') {
+      const itemsMissingTeacher = confirmedData.filter((item: any) => !item?.teacher_id);
+      if (itemsMissingTeacher.length > 0) {
+        alert(
+          `Cannot import: ${itemsMissingTeacher.length} item(s) are missing teacher assignment.\n\n` +
+          `Please use the teacher dropdown to select an existing teacher for each item before importing.`
+        );
+        return;
+      }
+    }
+
     setConfirming(true);
 
     try {

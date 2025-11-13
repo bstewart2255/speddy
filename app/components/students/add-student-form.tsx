@@ -36,6 +36,7 @@
           initials: formData.initials.toUpperCase(),
           grade_level: formData.grade_level.trim(),
           teacher_id: formData.teacher_id,
+          teacher_name: formData.teacherName || undefined,
           sessions_per_week: formData.sessions_per_week,
           minutes_per_session: formData.minutes_per_session,
         });

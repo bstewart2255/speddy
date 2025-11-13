@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
-import { getOrCreateTeacher } from './teachers';
 import { updateExistingSessionsForStudent } from '../../scheduling/session-requirement-sync';
 import { requireNonNull } from '@/lib/types/utils';
 import type { Database } from '../../../src/types/database';
@@ -11,7 +10,7 @@ import type { Database } from '../../../src/types/database';
  * Create a student record for the logged in provider.
  * Supports both structured and text-based school identification.
  *
- * @param studentData.teacher_id - Required: ID of the teacher from the teachers table
+ * @param studentData.teacher_id - Recommended: ID of the teacher from the teachers table
  * @param studentData.teacher_name - Deprecated: Use teacher_id instead. Kept for backward compatibility.
  */
 export async function createStudent(studentData: {
@@ -476,7 +475,7 @@ export async function updateStudent(studentId: string, updates: {
 * Convenience wrapper that creates a student and returns the new record.
 * Supports both structured and text-based school identification.
 *
-* @param studentData.teacher_id - Required: ID of the teacher from the teachers table
+* @param studentData.teacher_id - Recommended: ID of the teacher from the teachers table
 * @param studentData.teacher_name - Deprecated: Use teacher_id instead.
 */
 export async function createStudentWithAutoSchedule(studentData: {

@@ -25,7 +25,7 @@ WHERE s.teacher_id IS NULL
   AND s.school_id = t.school_id;  -- Match within same school
 
 -- Step 3: Update students where teacher_name matches "[FirstName] [LastName]" pattern
--- Extract last name (word after space) and match to teachers.last_name
+-- Extract last name (last word after last space) and match to teachers.last_name
 UPDATE students s
 SET teacher_id = t.id
 FROM teachers t
@@ -33,7 +33,7 @@ WHERE s.teacher_id IS NULL
   AND s.teacher_name IS NOT NULL
   AND s.teacher_name != ''
   AND s.teacher_name ~ '\s+'  -- Contains a space (first and last name)
-  AND LOWER(TRIM(SPLIT_PART(s.teacher_name, ' ', -1))) = LOWER(TRIM(t.last_name))
+  AND LOWER(TRIM(SUBSTRING(s.teacher_name FROM '(\S+)$'))) = LOWER(TRIM(t.last_name))
   AND s.school_id = t.school_id;  -- Match within same school
 
 -- Step 4: For legacy students without school_id, try matching by teacher_name only
@@ -52,6 +52,7 @@ DO $$
 DECLARE
   matched_count INTEGER;
   unmatched_count INTEGER;
+  legacy_matched_count INTEGER;
 BEGIN
   -- Count students with teacher_id now populated
   SELECT COUNT(*) INTO matched_count
@@ -65,9 +66,22 @@ BEGIN
     AND teacher_name != ''
     AND teacher_id IS NULL;
 
+  -- Count students matched without school_id verification (Step 4 legacy matches)
+  SELECT COUNT(*) INTO legacy_matched_count
+  FROM students
+  WHERE teacher_id IS NOT NULL
+    AND school_id IS NULL
+    AND teacher_name IS NOT NULL
+    AND teacher_name != '';
+
   RAISE NOTICE 'Migration complete:';
   RAISE NOTICE '  Students with teacher_id: %', matched_count;
   RAISE NOTICE '  Students with teacher_name but no teacher_id: %', unmatched_count;
+
+  IF legacy_matched_count > 0 THEN
+    RAISE NOTICE 'WARNING: % legacy students were matched without school verification.', legacy_matched_count;
+    RAISE NOTICE 'These matches relied on teacher name only and should be reviewed for accuracy.';
+  END IF;
 
   IF unmatched_count > 0 THEN
     RAISE NOTICE 'Note: % students could not be matched automatically.', unmatched_count;
@@ -104,6 +118,9 @@ ALTER VIEW unmatched_student_teachers SET (security_invoker = true);
 GRANT SELECT ON unmatched_student_teachers TO authenticated;
 
 -- Create RLS policy for site admins to view unmatched students in their schools
+-- Note: This policy grants additional SELECT access to site admins for the students table.
+-- The conditions (teacher_name IS NOT NULL, teacher_id IS NULL) duplicate the view filters
+-- to ensure consistent access control at both the view and table levels.
 -- Drop if exists to avoid conflicts
 DROP POLICY IF EXISTS "Site admins can view unmatched students for teacher assignment" ON students;
 
@@ -120,6 +137,7 @@ USING (
       AND ap.school_id = students.school_id
   )
   -- Only return records that would appear in the unmatched view
+  -- These conditions duplicate the view filters for security and consistency
   AND students.teacher_name IS NOT NULL
   AND students.teacher_name != ''
   AND students.teacher_id IS NULL

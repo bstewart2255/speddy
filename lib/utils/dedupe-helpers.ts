@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
 export interface NormalizedSpecialActivity {
+  teacher_id: string | null;
   teacher_name: string;
   activity_name: string;
   day_of_week: number;
@@ -74,6 +75,7 @@ function generateContentHash(obj: any): string {
 
 export function normalizeSpecialActivity(activity: any): NormalizedSpecialActivity {
   const normalized = {
+    teacher_id: activity.teacher_id || null,
     teacher_name: activity.teacher_name?.trim() || '',
     activity_name: activity.activity_name?.trim() || '',
     day_of_week: parseInt(activity.day_of_week) || 1,
