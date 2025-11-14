@@ -305,6 +305,7 @@ export function StudentDetailsModal({
                     onChange={(teacherId, teacherName) => setStudentInfo({...studentInfo, teacher_id: teacherId, teacherName})}
                     placeholder="Search for a teacher..."
                     disabled={readOnly}
+                    schoolId={student.school_id || undefined}
                   />
                 </FormGroup>
               </div>
