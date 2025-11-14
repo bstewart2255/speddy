@@ -261,12 +261,20 @@ export async function getTeacherByStudentTeacherName(teacherName: string): Promi
         query = query.or(`last_name.ilike.%${teacherName}%,first_name.ilike.%${teacherName}%`);
       }
 
+      // Order by preference: admin-created records with complete info first
+      // This handles duplicate teacher records gracefully
+      query = query
+        .order('created_by_admin', { ascending: false })
+        .order('first_name', { ascending: true, nullsFirst: false })
+        .order('email', { ascending: true, nullsFirst: false })
+        .limit(1);
+
       const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_teacher_by_student_name', 
+    {
+      operation: 'fetch_teacher_by_student_name',
       userId: user.id,
       teacherName
     }
@@ -277,6 +285,6 @@ export async function getTeacherByStudentTeacherName(teacherName: string): Promi
     console.error('Error fetching teacher by name:', fetchResult.error);
     return null;
   }
-  
+
   return fetchResult.data;
 }

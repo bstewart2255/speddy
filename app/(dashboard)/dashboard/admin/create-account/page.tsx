@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createTeacherAccount, checkDuplicateTeachers, type CreateTeacherAccountData } from '@/lib/supabase/queries/admin-accounts';
+import { checkDuplicateTeachers } from '@/lib/supabase/queries/admin-accounts';
 import { getCurrentUserSchoolId } from '@/lib/supabase/queries/school-directory';
 import { Card } from '@/app/components/ui/card';
+import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 import Link from 'next/link';
 
 export default function CreateAccountPage() {
@@ -20,6 +21,8 @@ export default function CreateAccountPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [credentials, setCredentials] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -68,26 +71,44 @@ export default function CreateAccountPage() {
 
     try {
       if (accountType === 'teacher') {
+        // Validate email is provided
+        if (!formData.email) {
+          throw new Error('Email is required to create a teacher account');
+        }
+
         // Get current user's school ID
         const schoolId = await getCurrentUserSchoolId();
+
         if (!schoolId) {
           throw new Error('Could not determine your school. Please contact support.');
         }
 
-        const teacherData: CreateTeacherAccountData = {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email || '',
-          classroom_number: formData.classroom_number || undefined,
-          phone_number: formData.phone_number || undefined,
-          school_id: schoolId,
-          send_invite: false // For MVP, don't send email invites yet
-        };
+        // Call the new API endpoint to create teacher account with credentials
+        const response = await fetch('/api/admin/create-teacher-account', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email,
+            classroom_number: formData.classroom_number || null,
+            phone_number: formData.phone_number || null,
+            school_id: schoolId,
+            school_site: null, // Optional field
+          }),
+        });
 
-        await createTeacherAccount(teacherData);
+        const data = await response.json();
 
-        // Success - redirect to teacher directory
-        router.push('/dashboard/admin/teachers');
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create teacher account');
+        }
+
+        // Show credentials modal with the generated password
+        setCredentials(data.credentials);
+        setShowCredentialsModal(true);
       } else {
         // Specialist account creation not yet implemented
         setError('Specialist account creation is not yet available. Please contact support.');
@@ -98,6 +119,13 @@ export default function CreateAccountPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCredentialsModalClose = () => {
+    setShowCredentialsModal(false);
+    setCredentials(null);
+    // Redirect to teacher directory
+    router.push('/dashboard/admin/teachers');
   };
 
   return (
@@ -209,18 +237,19 @@ export default function CreateAccountPage() {
               {/* Email */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   id="email"
+                  required
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                   placeholder="john.smith@school.edu"
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Optional. Email invites are not yet enabled in MVP.
+                  Required for login. A temporary password will be generated.
                 </p>
               </div>
 
@@ -304,15 +333,26 @@ export default function CreateAccountPage() {
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
           <div className="ml-3 text-sm text-blue-700">
-            <p className="font-medium mb-1">MVP Note:</p>
+            <p className="font-medium mb-1">How It Works:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Teacher accounts are created without login credentials for now</li>
-              <li>Email invites will be implemented in a future release</li>
-              <li>Teachers can be manually linked to their portal accounts later</li>
+              <li>A secure temporary password will be auto-generated</li>
+              <li>You'll receive the login credentials to share with the teacher</li>
+              <li>Teacher can log in immediately with the provided credentials</li>
+              <li>Recommend teacher changes password after first login</li>
             </ul>
           </div>
         </div>
       </div>
+
+      {/* Credentials Modal */}
+      {credentials && (
+        <TeacherCredentialsModal
+          isOpen={showCredentialsModal}
+          onClose={handleCredentialsModalClose}
+          credentials={credentials}
+          teacherName={`${formData.first_name} ${formData.last_name}`}
+        />
+      )}
     </div>
   );
 }
