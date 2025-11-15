@@ -37,9 +37,8 @@ async function debugRLSIssue() {
   console.log('='.repeat(80));
   console.log('RLS DEBUGGING FOR PROFILES TABLE');
   console.log('='.repeat(80));
-  // Mask sensitive data - only show first 8 chars
-  const maskedUserId = TEST_USER_ID ? TEST_USER_ID.substring(0, 8) + '...' : 'NOT_SET';
-  console.log(`Test User ID: ${maskedUserId}\n`);
+  // User ID configured via environment variable TEST_USER_ID
+  console.log(`Test User ID: ${TEST_USER_ID ? '[CONFIGURED]' : '[NOT_SET]'}\n`);
 
   try {
     // Step 1: Check if RLS is enabled

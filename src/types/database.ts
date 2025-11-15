@@ -536,6 +536,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "exit_ticket_results_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       exit_tickets: {
@@ -619,6 +626,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "students"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_tickets_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
           },
         ]
       }
@@ -717,6 +731,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "iep_goal_progress_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       lesson_adjustment_queue: {
@@ -765,6 +786,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lesson_adjustment_queue_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+          {
             foreignKeyName: "lesson_adjustment_queue_worksheet_submission_id_fkey"
             columns: ["worksheet_submission_id"]
             isOneToOne: false
@@ -811,6 +839,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "students"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_performance_history_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
           },
         ]
       }
@@ -938,65 +973,6 @@ export type Database = {
             columns: ["state_id"]
             isOneToOne: false
             referencedRelation: "states"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      manual_lesson_plans: {
-        Row: {
-          activities: Json | null
-          assessment: string | null
-          created_at: string
-          duration_minutes: number | null
-          grade_levels: string[] | null
-          id: string
-          lesson_date: string
-          materials: string | null
-          notes: string | null
-          objectives: string | null
-          provider_id: string
-          subject: string | null
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          activities?: Json | null
-          assessment?: string | null
-          created_at?: string
-          duration_minutes?: number | null
-          grade_levels?: string[] | null
-          id?: string
-          lesson_date: string
-          materials?: string | null
-          notes?: string | null
-          objectives?: string | null
-          provider_id: string
-          subject?: string | null
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          activities?: Json | null
-          assessment?: string | null
-          created_at?: string
-          duration_minutes?: number | null
-          grade_levels?: string[] | null
-          id?: string
-          lesson_date?: string
-          materials?: string | null
-          notes?: string | null
-          objectives?: string | null
-          provider_id?: string
-          subject?: string | null
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "manual_lesson_plans_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1178,6 +1154,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "progress_check_results_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       progress_checks: {
@@ -1253,6 +1236,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "progress_checks_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       progress_notifications: {
@@ -1303,6 +1293,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "students"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progress_notifications_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
           },
         ]
       }
@@ -1669,6 +1666,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "students"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_sessions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
           },
         ]
       }
@@ -2060,6 +2064,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "student_assessments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       student_details: {
@@ -2116,6 +2127,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "student_details_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: true
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       student_performance_metrics: {
@@ -2162,6 +2180,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "students"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_performance_metrics_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
           },
         ]
       }
@@ -2340,7 +2365,6 @@ export type Database = {
           id: string
           last_name: string | null
           phone_number: string | null
-          provider_id: string
           school_id: string | null
           school_site: string | null
           updated_at: string | null
@@ -2355,7 +2379,6 @@ export type Database = {
           id?: string
           last_name?: string | null
           phone_number?: string | null
-          provider_id: string
           school_id?: string | null
           school_site?: string | null
           updated_at?: string | null
@@ -2370,7 +2393,6 @@ export type Database = {
           id?: string
           last_name?: string | null
           phone_number?: string | null
-          provider_id?: string
           school_id?: string | null
           school_site?: string | null
           updated_at?: string | null
@@ -2379,13 +2401,6 @@ export type Database = {
           {
             foreignKeyName: "teachers_account_id_fkey"
             columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "teachers_provider_id_fkey"
-            columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -2661,6 +2676,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "worksheets_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
     }
@@ -2695,6 +2717,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "schedule_sessions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       shared_students: {
@@ -2725,6 +2754,54 @@ export type Database = {
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_sessions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
+      unmatched_student_teachers: {
+        Row: {
+          created_at: string | null
+          grade_level: string | null
+          initials: string | null
+          school_district: string | null
+          school_id: string | null
+          school_site: string | null
+          student_id: string | null
+          teacher_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          grade_level?: string | null
+          initials?: string | null
+          school_district?: string | null
+          school_id?: string | null
+          school_site?: string | null
+          student_id?: string | null
+          teacher_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          grade_level?: string | null
+          initials?: string | null
+          school_district?: string | null
+          school_id?: string | null
+          school_site?: string | null
+          student_id?: string | null
+          teacher_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
             referencedColumns: ["id"]
           },
         ]
@@ -2973,6 +3050,10 @@ export type Database = {
       increment_referral_uses: {
         Args: { referrer_user_id: string }
         Returns: undefined
+      }
+      is_teacher_for_student: {
+        Args: { p_account_id: string; p_student_id: string }
+        Returns: boolean
       }
       is_teacher_of_student: {
         Args: { student_uuid: string }
@@ -3225,4 +3306,3 @@ export type ReferralCredit = Database["public"]["Tables"]["referral_credits"]["R
 
 // Type utilities (import from lib/types/utils)
 export type { NonNullableFields, RequireFields } from '../../lib/types/utils';
-
