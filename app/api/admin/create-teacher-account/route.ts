@@ -159,8 +159,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Create teacher record linked to the auth account
-      // Note: Using type assertion to bypass incorrect TypeScript types
-      // The teachers table does NOT have a provider_id column
       const { data: teacher, error: teacherError } = await adminClient
         .from('teachers')
         .insert({
@@ -173,7 +171,7 @@ export async function POST(request: NextRequest) {
           classroom_number: classroom_number || null,
           phone_number: phone_number || null,
           created_by_admin: true,
-        } as any)
+        })
         .select()
         .single();
 
