@@ -48,6 +48,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
     // Verify the user has site_admin role for this school
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
@@ -65,12 +74,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for duplicate teacher at this school
-    const { data: existingTeacher } = await supabase
+    const { data: existingTeacher, error: duplicateError } = await supabase
       .from('teachers')
       .select('id')
       .eq('school_id', school_id)
       .eq('email', email.toLowerCase().trim())
-      .single();
+      .maybeSingle();
+
+    // Only check for errors that aren't "no rows found"
+    if (duplicateError && duplicateError.code !== 'PGRST116') {
+      console.error('Error checking for duplicate teacher:', duplicateError);
+      return NextResponse.json(
+        { error: 'Failed to check for duplicate teachers' },
+        { status: 500 }
+      );
+    }
 
     if (existingTeacher) {
       return NextResponse.json(
@@ -126,6 +144,18 @@ export async function POST(request: NextRequest) {
 
       if (profileError) {
         throw new Error(`Profile creation failed: ${profileError.message}`);
+      }
+
+      // Update the profile with the known school_id
+      // The RPC function relies on name matching which may fail or mismatch
+      // We already have a validated school_id from the admin permission check
+      const { error: updateError } = await adminClient
+        .from('profiles')
+        .update({ school_id })
+        .eq('id', authUser.user.id);
+
+      if (updateError) {
+        throw new Error(`Profile school_id update failed: ${updateError.message}`);
       }
 
       // Create teacher record linked to the auth account
