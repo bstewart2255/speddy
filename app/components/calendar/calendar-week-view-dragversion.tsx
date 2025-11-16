@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
+import type { LessonContent } from "@/lib/types/lesson";
 import { AIContentModal } from "../ai-content-modal";
 import { SessionGenerator } from '@/lib/services/session-generator';
 import { LessonTypeModal } from "../modals/lesson-type-modal";
@@ -1478,22 +1479,22 @@ export function CalendarWeekView({
           setSelectedManualLesson(null);
         }}
         onSave={handleSaveManualLesson}
-        initialData={(selectedManualLesson ? {
+        initialData={selectedManualLesson ? {
           id: selectedManualLesson.id,
-          title: selectedManualLesson.title,
+          title: selectedManualLesson.title || '',
           subject: selectedManualLesson.subject ?? undefined,
           gradeLevels: selectedManualLesson.grade_levels?.join(', ') ?? undefined,
           duration: selectedManualLesson.duration_minutes ?? undefined,
-          learningObjectives: (selectedManualLesson.content as any)?.objectives || '',
-          materialsNeeded: (selectedManualLesson.content as any)?.materials || '',
-          activities: (selectedManualLesson.content as any)?.activities ?
-            (typeof (selectedManualLesson.content as any).activities === 'string'
-              ? (selectedManualLesson.content as any).activities
-              : JSON.stringify((selectedManualLesson.content as any).activities, null, 2))
+          learningObjectives: (selectedManualLesson.content as LessonContent)?.objectives || '',
+          materialsNeeded: (selectedManualLesson.content as LessonContent)?.materials || '',
+          activities: (selectedManualLesson.content as LessonContent)?.activities ?
+            (typeof (selectedManualLesson.content as LessonContent).activities === 'string'
+              ? (selectedManualLesson.content as LessonContent).activities as string
+              : JSON.stringify((selectedManualLesson.content as LessonContent).activities, null, 2))
             : '',
-          assessmentMethods: (selectedManualLesson.content as any)?.assessment || '',
+          assessmentMethods: (selectedManualLesson.content as LessonContent)?.assessment || '',
           notes: selectedManualLesson.notes ?? undefined,
-        } : undefined) as any}
+        } : undefined}
         lessonDate={selectedLessonDate || new Date()}
       />
 

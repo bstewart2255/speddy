@@ -11,6 +11,7 @@ import { useSchool } from "../../../components/providers/school-context";
 import { ToastProvider } from "../../../contexts/toast-context";
 import { exportWeekToPDF } from "@/lib/utils/export-week-to-pdf";
 import type { Database } from "../../../../src/types/database";
+import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 
 type ViewType = 'day' | 'week' | 'month';
 
@@ -61,8 +62,8 @@ export default function CalendarPage() {
     // Apply school filter if currentSchool is available (normalize aliases)
     if (currentSchool) {
       const schoolId = currentSchool.school_id ?? null;
-      const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
-      const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+      const schoolSite = getSchoolSite(currentSchool);
+      const schoolDistrict = getSchoolDistrict(currentSchool);
 
       if (schoolSite && schoolDistrict) {
         // Filter by school_site and school_district which includes all events at this school
@@ -172,8 +173,8 @@ export default function CalendarPage() {
       // Apply school filter if currentSchool is available (normalize aliases)
       if (currentSchool) {
         const schoolId = currentSchool.school_id ?? null;
-        const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
-        const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+        const schoolSite = getSchoolSite(currentSchool);
+        const schoolDistrict = getSchoolDistrict(currentSchool);
 
         if (schoolSite && schoolDistrict) {
           // Filter by school_site and school_district which includes all students at this school
@@ -206,8 +207,8 @@ export default function CalendarPage() {
         // SEAs use RPC function to get their students
         // Pass both school_id and legacy school_site+district for migration compatibility
         const schoolId = currentSchool?.school_id ?? undefined;
-        const schoolSite = currentSchool?.school_site ?? (currentSchool as any).site ?? undefined;
-        const schoolDistrict = currentSchool?.school_district ?? (currentSchool as any).district ?? undefined;
+        const schoolSite = getSchoolSite(currentSchool) ?? undefined;
+        const schoolDistrict = getSchoolDistrict(currentSchool) ?? undefined;
 
         const result = await supabase
           .rpc('get_sea_students', {
@@ -227,8 +228,8 @@ export default function CalendarPage() {
         // Apply school filter if currentSchool is available (normalize aliases)
         if (currentSchool) {
           const schoolId = currentSchool.school_id ?? null;
-          const schoolSite = currentSchool.school_site ?? (currentSchool as any).site;
-          const schoolDistrict = currentSchool.school_district ?? (currentSchool as any).district;
+          const schoolSite = getSchoolSite(currentSchool);
+          const schoolDistrict = getSchoolDistrict(currentSchool);
 
           if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
             console.log('[DEBUG] Filtering students with school context:', {
@@ -283,9 +284,9 @@ export default function CalendarPage() {
         console.log('Current school object:', currentSchool);
         console.log('Current school keys:', Object.keys(currentSchool));
 
-        // Check which properties exist
-        const schoolSite = (currentSchool as any).site || (currentSchool as any).school_site;
-        const schoolDistrict = (currentSchool as any).district || (currentSchool as any).school_district;
+        // Check which properties exist (handles both legacy and current field names)
+        const schoolSite = getSchoolSite(currentSchool);
+        const schoolDistrict = getSchoolDistrict(currentSchool);
 
         if (schoolSite && schoolDistrict) {
           console.log('Fetching holidays for:', { schoolSite, schoolDistrict });

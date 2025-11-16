@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Printer, Edit, Trash2, X } from 'lucide-react';
 import type { Database } from '@/src/types/database';
+import type { LessonContent } from '@/lib/types/lesson';
 
 type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 
@@ -220,25 +221,25 @@ export function ManualLessonViewModal({
               </div>
 
               {/* Learning Objectives */}
-              {renderSection('Learning Objectives', (lesson.content as any)?.objectives)}
+              {renderSection('Learning Objectives', (lesson.content as LessonContent)?.objectives)}
 
               {/* Materials Needed */}
-              {renderSection('Materials Needed', (lesson.content as any)?.materials)}
+              {renderSection('Materials Needed', (lesson.content as LessonContent)?.materials)}
 
               {/* Activities/Steps */}
-              {(lesson.content as any)?.activities && (
+              {(lesson.content as LessonContent)?.activities && (
                 <div className="section">
                   <h2 className="text-sm font-semibold text-gray-700 mb-2">Activities/Steps</h2>
                   <div className="text-sm text-gray-600 whitespace-pre-wrap">
-                    {typeof (lesson.content as any).activities === 'string'
-                      ? (lesson.content as any).activities
-                      : JSON.stringify((lesson.content as any).activities, null, 2)}
+                    {typeof (lesson.content as LessonContent).activities === 'string'
+                      ? String((lesson.content as LessonContent).activities)
+                      : JSON.stringify((lesson.content as LessonContent).activities, null, 2)}
                   </div>
                 </div>
               )}
 
               {/* Assessment Methods */}
-              {renderSection('Assessment Methods', (lesson.content as any)?.assessment)}
+              {renderSection('Assessment Methods', (lesson.content as LessonContent)?.assessment)}
 
               {/* Notes */}
               {lesson.notes && (

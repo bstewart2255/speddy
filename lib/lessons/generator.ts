@@ -14,6 +14,24 @@ interface WorksheetSection {
   title: string;
   instructions: string;
   items: WorksheetItem[];
+  // Legacy format support
+  sectionType?: string;
+  sectionTitle?: string;
+}
+
+// Nested metadata that may contain timing information
+interface NestedGenerationMetadata {
+  generationTimeMs?: number;
+  [key: string]: unknown;
+}
+
+// Extended worksheet response formats that may come from AI providers
+interface ExtendedWorksheetResponse {
+  worksheet?: Worksheet | null;
+  studentMaterials?: Array<{ worksheet?: Worksheet }>;
+  lesson?: {
+    studentMaterials?: Array<{ worksheet?: Worksheet }>;
+  };
 }
 
 interface Worksheet {
@@ -72,7 +90,7 @@ function toSafeMetadata(metadata: GenerationMetadata | null | undefined): SafeGe
   
   // Add timing data if available (from nested generationMetadata)
   if (metadata.generationMetadata && typeof metadata.generationMetadata === 'object') {
-    const nestedMeta = metadata.generationMetadata as any;
+    const nestedMeta = metadata.generationMetadata as NestedGenerationMetadata;
     if (typeof nestedMeta.generationTimeMs === 'number') {
       safeMetadata.generationTimeMs = nestedMeta.generationTimeMs;
     }
@@ -180,8 +198,8 @@ export class LessonGenerator {
             const worksheet = responseWithWorksheet.worksheet;
             const activitySection = worksheet?.sections?.find((s: WorksheetSection) =>
               s?.title === 'Activity' ||
-              (s as any)?.sectionType === 'practice' ||
-              /activity/i.test((s as any)?.sectionTitle || '')
+              s?.sectionType === 'practice' ||
+              /activity/i.test(s?.sectionTitle || '')
             );
             if (activitySection?.items) {
               activitySection.items.forEach((item: WorksheetItem) => {
@@ -230,15 +248,11 @@ export class LessonGenerator {
         // Stamp validation metadata
         if (validation.isValid) {
           lesson.metadata.validationStatus = 'passed';
-          if ('validationErrors' in lesson.metadata) {
-            (lesson.metadata as any).validationErrors = [];
-          }
+          lesson.metadata.validationErrors = [];
         } else {
           console.warn('Validation failed:', validation.errors);
           lesson.metadata.validationStatus = 'failed';
-          if ('validationErrors' in lesson.metadata) {
-            (lesson.metadata as any).validationErrors = validation.errors;
-          }
+          lesson.metadata.validationErrors = validation.errors;
         }
 
         // Return the lesson regardless of validation status
@@ -361,9 +375,10 @@ Return ONLY the worksheet content in this structure:
           }
           
           // Extract worksheet from various possible response formats
-          const worksheet = worksheetResponse?.worksheet || 
-                          (worksheetResponse as any)?.studentMaterials?.[0]?.worksheet ||
-                          (worksheetResponse as any)?.lesson?.studentMaterials?.[0]?.worksheet ||
+          const extendedResponse = worksheetResponse as ExtendedWorksheetResponse;
+          const worksheet = extendedResponse?.worksheet ||
+                          extendedResponse?.studentMaterials?.[0]?.worksheet ||
+                          extendedResponse?.lesson?.studentMaterials?.[0]?.worksheet ||
                           this.createMockWorksheet(group.grades[0], request.subject);
           
           for (const student of groupStudents) {
