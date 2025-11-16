@@ -527,11 +527,13 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
     // Find slots with many sessions
     const crowdedSlots = Object.entries(sessionsByDayTime)
-      .filter(([key, sessions]) => Array.isArray(sessions) && sessions.length > 2)
-      .map(([key, sessions]) => ({
+      .filter((entry): entry is [string, typeof sessionsByDayTime[string]] =>
+        Array.isArray(entry[1]) && entry[1].length > 2
+      )
+      .map(([key, slotSessions]) => ({
         key,
-        count: (sessions as any[]).length,
-        times: (sessions as any[]).map(s => s.start_time)
+        count: slotSessions.length,
+        times: slotSessions.map(s => s.start_time)
       }));
   }, [sessions, sessionsByDayTime]);
 
