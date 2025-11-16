@@ -49,8 +49,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Use a simple check to avoid ReDoS vulnerabilities
+    // Check for basic email structure: has @ and domain with dot
+    const trimmedEmail = email.trim();
+    const atIndex = trimmedEmail.indexOf('@');
+    const lastDotIndex = trimmedEmail.lastIndexOf('.');
+
+    if (
+      atIndex === -1 || // no @ symbol
+      atIndex === 0 || // @ at start
+      atIndex === trimmedEmail.length - 1 || // @ at end
+      lastDotIndex === -1 || // no dot in domain
+      lastDotIndex < atIndex || // dot before @
+      lastDotIndex === trimmedEmail.length - 1 || // dot at end
+      trimmedEmail.includes(' ') || // contains whitespace
+      trimmedEmail.length > 254 // email too long (RFC 5321)
+    ) {
       return NextResponse.json(
         { error: 'Invalid email format' },
         { status: 400 }
