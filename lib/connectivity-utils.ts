@@ -15,6 +15,13 @@ interface NetworkInformation {
   saveData?: boolean;
 }
 
+// Extend Navigator interface for Network Information API
+declare global {
+  interface Navigator {
+    connection?: NetworkInformation;
+  }
+}
+
 export interface ConnectivityTestResult {
   isOnline: boolean;
   latency?: number;
@@ -109,9 +116,9 @@ export async function testConnectivity(): Promise<ConnectivityTestResult> {
     }
 
     // Get network type if available
-    if ('connection' in navigator) {
-      const connection = (navigator as any).connection;
-      result.networkType = connection?.effectiveType || connection?.type || 'unknown';
+    if (navigator.connection) {
+      const connection = navigator.connection;
+      result.networkType = connection.effectiveType || connection.type || 'unknown';
     }
 
   } catch (error) {
@@ -127,9 +134,9 @@ export async function testConnectivity(): Promise<ConnectivityTestResult> {
 export function analyzeNetworkError(error: any, url?: string): DetailedNetworkError {
   const timestamp = new Date().toISOString();
   let networkInfo: NetworkInformation | undefined;
-  
-  if ('connection' in navigator) {
-    networkInfo = (navigator as any).connection;
+
+  if (navigator.connection) {
+    networkInfo = navigator.connection;
   }
 
   // Default error structure
@@ -290,7 +297,7 @@ export function logConnectivityDebugInfo(error: DetailedNetworkError, additional
     network: {
       isOnline: navigator.onLine,
       userAgent: navigator.userAgent,
-      connection: 'connection' in navigator ? (navigator as any).connection : null
+      connection: navigator.connection || null
     },
     timestamp: new Date().toISOString(),
     context: additionalContext

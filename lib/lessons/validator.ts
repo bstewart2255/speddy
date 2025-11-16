@@ -16,6 +16,15 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+// Legacy lesson format support - old lessons may have these fields
+interface LegacyLessonFields {
+  mainActivity?: string | { materials?: string };
+  closure?: string | { materials?: string };
+}
+
+// Type for lessons that may have legacy fields
+type LessonWithLegacySupport = LessonResponse['lesson'] & LegacyLessonFields;
+
 // Compound phrases that should be preserved as single units during material parsing
 const COMPOUND_MATERIAL_PHRASES = [
   'whiteboard and markers',
@@ -50,11 +59,12 @@ export class MaterialsValidator {
       this.validateActivitySection(lesson.lesson.activity, 'Activity', errors);
     }
     // Legacy format support (if mainActivity or closure exist from old lessons)
-    if ((lesson.lesson as any).mainActivity) {
-      this.validateActivitySection((lesson.lesson as any).mainActivity, 'Main Activity', errors);
+    const legacyLesson = lesson.lesson as LessonWithLegacySupport;
+    if (legacyLesson.mainActivity) {
+      this.validateActivitySection(legacyLesson.mainActivity, 'Main Activity', errors);
     }
-    if ((lesson.lesson as any).closure) {
-      this.validateActivitySection((lesson.lesson as any).closure, 'Closure', errors);
+    if (legacyLesson.closure) {
+      this.validateActivitySection(legacyLesson.closure, 'Closure', errors);
     }
 
     // Check student materials

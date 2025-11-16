@@ -1,9 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
-import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
+
+// Interface for Supabase query builder methods we use
+interface SupabaseQueryBuilder {
+  or: (filters: string) => SupabaseQueryBuilder;
+  eq: (column: string, value: string) => SupabaseQueryBuilder;
+}
 
 
 /**
@@ -24,17 +30,17 @@ export class SessionGenerator {
    * Apply role-based filters to a Supabase query
    * This adds OR conditions for assigned sessions based on user role
    */
-  private applyRoleFilter<T>(
+  private applyRoleFilter<T extends SupabaseQueryBuilder>(
     query: T,
     providerId: string,
     normalizedRole: string
   ): T {
-    if (SPECIALIST_SOURCE_ROLES.includes(normalizedRole as any)) {
-      return (query as any).or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`);
+    if (isSpecialistSourceRole(normalizedRole)) {
+      return query.or(`provider_id.eq.${providerId},assigned_to_specialist_id.eq.${providerId}`) as T;
     } else if (normalizedRole === 'sea') {
-      return (query as any).or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`);
+      return query.or(`provider_id.eq.${providerId},assigned_to_sea_id.eq.${providerId}`) as T;
     } else {
-      return (query as any).eq('provider_id', providerId);
+      return query.eq('provider_id', providerId) as T;
     }
   }
 
