@@ -14,6 +14,18 @@ export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
 export const SPECIALIST_SOURCE_ROLES = ['resource', 'specialist', 'speech', 'ot', 'counseling'] as const;
 
 /**
+ * Type for specialist source roles
+ */
+export type SpecialistSourceRole = typeof SPECIALIST_SOURCE_ROLES[number];
+
+/**
+ * Type guard to check if a string is a specialist source role
+ */
+export function isSpecialistSourceRole(role: string): role is SpecialistSourceRole {
+  return (SPECIALIST_SOURCE_ROLES as readonly string[]).includes(role);
+}
+
+/**
  * Normalizes a user role to the corresponding delivered_by value
  *
  * @param role - The user's role from the profiles table
@@ -31,7 +43,7 @@ export function normalizeDeliveredBy(role: string): DeliveredByRole {
     return 'sea';
   }
 
-  if (SPECIALIST_SOURCE_ROLES.includes(normalizedRole as any)) {
+  if (isSpecialistSourceRole(normalizedRole)) {
     return 'specialist';
   }
 

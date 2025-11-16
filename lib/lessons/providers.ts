@@ -4,6 +4,26 @@ import Anthropic from '@anthropic-ai/sdk';
 import { LessonRequest, LessonResponse, isValidLessonResponse } from './schema';
 import { logger } from '@/lib/logger';
 
+// Type for metadata object that may include gradeGroups from AI response
+interface MetadataWithGradeGroups {
+  gradeGroups?: string[];
+  [key: string]: unknown;
+}
+
+// Type for Error objects that may have HTTP status information
+interface ErrorWithStatus extends Error {
+  status?: number;
+  code?: number | string;
+  response?: {
+    status?: number;
+  };
+}
+
+// Type guard to check if value has gradeGroups property
+function hasGradeGroups(obj: unknown): obj is MetadataWithGradeGroups {
+  return typeof obj === 'object' && obj !== null && 'gradeGroups' in obj;
+}
+
 // Environment flags for controlling sensitive data capture
 const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
 const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
@@ -282,7 +302,7 @@ export class OpenAIProvider implements AIProvider {
         modelVersion: this.model,
         generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
-        gradeGroups: (baseMeta as any).gradeGroups || [],
+        gradeGroups: hasGradeGroups(baseMeta) ? baseMeta.gradeGroups || [] : [],
         validationStatus: 'passed' // Will be updated if validation fails
       };
 
@@ -329,8 +349,8 @@ export class OpenAIProvider implements AIProvider {
       if (error instanceof Error) {
         errorMessage = error.message;
         // Check for status/code in error object
-        const errorWithStatus = error as any;
-        statusCode = errorWithStatus.status || errorWithStatus.code || errorWithStatus.response?.status;
+        const errorWithStatus = error as ErrorWithStatus;
+        statusCode = errorWithStatus.status ?? (typeof errorWithStatus.code === 'number' ? errorWithStatus.code : undefined) ?? errorWithStatus.response?.status;
       }
       
       // Map errors to user-friendly messages
@@ -491,7 +511,7 @@ export class AnthropicProvider implements AIProvider {
   - Max response tokens configured: ${this.maxTokens}`);
 
         // Log stop reason for truncation detection
-        const stopReason = (message as any).stop_reason || 'unknown';
+        const stopReason = message.stop_reason || 'unknown';
         logger.debug(`[Anthropic] Response completed in ${Date.now() - startTime}ms; stop_reason=${stopReason}`);
 
         // Detect potential truncation
@@ -607,7 +627,7 @@ export class AnthropicProvider implements AIProvider {
         modelVersion: this.model,
         generationTime: 0, // Will be filled after validation
         generatedAt: new Date().toISOString(),
-        gradeGroups: (baseMeta as any).gradeGroups || [],
+        gradeGroups: hasGradeGroups(baseMeta) ? baseMeta.gradeGroups || [] : [],
         validationStatus: 'passed' // Will be updated if validation fails
       };
 

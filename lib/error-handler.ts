@@ -1,6 +1,14 @@
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 
+// Type for Supabase/PostgrestError
+interface SupabaseErrorLike {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+}
+
 // Error types
 export enum ErrorCode {
   // Authentication errors
@@ -100,8 +108,8 @@ export function handleApiError(error: unknown): NextResponse<ErrorResponse> {
 
   // Handle Supabase errors
   if (error && typeof error === 'object' && 'code' in error) {
-    const supabaseError = error as any;
-    
+    const supabaseError = error as SupabaseErrorLike;
+
     // Map common Supabase error codes
     let statusCode = 500;
     let errorCode = ErrorCode.SUPABASE_ERROR;

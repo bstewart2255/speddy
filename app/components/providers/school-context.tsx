@@ -6,6 +6,35 @@ import { buildSchoolFilter, getSchoolDisplayName, isUserMigrated, getSchoolKey }
 import { getCurrentDayOfWeek } from '@/lib/helpers/day-of-week';
 import { getSchoolsForDay } from '@/lib/supabase/queries/user-site-schedules';
 
+// Type for Supabase foreign key relation (districts with states)
+// Supabase returns foreign key relations as arrays, even with !inner joins
+interface SchoolDistrictRelation {
+  name: string;
+  states: {
+    name: string;
+    abbreviation: string;
+  }[];
+}
+
+// Type for school data returned from getSchoolsForDay
+interface ScheduledSchoolData {
+  school_id?: string;
+  school_site?: string;
+  school_district?: string;
+  district_id?: string;
+  state_id?: string;
+  is_primary?: boolean;
+}
+
+// Type for Supabase/Postgrest error with additional status information
+interface PostgrestErrorWithStatus {
+  status?: number;
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
 export interface SchoolInfo {
   // Structured data (preferred)
   school_id?: string | null;
@@ -96,18 +125,23 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .eq('id', school.school_id)
           .single();
         
-        if (schoolDetails) {
-          const districts = schoolDetails.districts as any;
-          enrichedSchool.school_details = {
-            name: schoolDetails.name,
-            district_name: districts?.name,
-            state_name: districts?.states?.name,
-            nces_id: schoolDetails.nces_id,
-          };
-          
-          // Update display name with richer data
-          enrichedSchool.display_name = `${schoolDetails.name} (${districts?.name}, ${districts?.states?.abbreviation})`;
-          enrichedSchool.full_address = `${schoolDetails.name}, ${districts?.name}, ${districts?.states?.name}`;
+        if (schoolDetails && schoolDetails.districts) {
+          // Supabase returns foreign key relations as arrays
+          const districtsArray = schoolDetails.districts as SchoolDistrictRelation[];
+          const district = districtsArray[0];
+          const state = district?.states[0];
+          if (district && state) {
+            enrichedSchool.school_details = {
+              name: schoolDetails.name,
+              district_name: district.name,
+              state_name: state.name,
+              nces_id: schoolDetails.nces_id,
+            };
+
+            // Update display name with richer data
+            enrichedSchool.display_name = `${schoolDetails.name} (${district.name}, ${state.abbreviation})`;
+            enrichedSchool.full_address = `${schoolDetails.name}, ${district.name}, ${state.name}`;
+          }
         }
       } catch (error) {
         console.warn('[SchoolContext] Could not fetch additional school details:', error);
@@ -149,13 +183,14 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (profileError) {
+        const errorWithStatus = profileError as PostgrestErrorWithStatus;
         console.error('[SchoolContext] Error fetching profile:', {
           error: profileError,
           message: profileError.message,
           code: profileError.code,
           details: profileError.details,
           hint: profileError.hint,
-          status: (profileError as any).status
+          status: errorWithStatus.status
         });
       }
 
@@ -283,7 +318,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
 
                 if (schoolsForToday.length === 1) {
                   // Exactly one school scheduled for today
-                  const todaySchoolData = schoolsForToday[0] as any;
+                  const todaySchoolData = schoolsForToday[0] as ScheduledSchoolData;
                   if (todaySchoolData && typeof todaySchoolData === 'object') {
                     schoolToSet = enrichedSchools.find(s =>
                       s.school_id === todaySchoolData.school_id ||

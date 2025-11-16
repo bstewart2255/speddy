@@ -1,8 +1,15 @@
 // lib/monitoring/analytics.ts
 import { log } from './logger';
 
+// Extend Window interface for Google Analytics gtag
+declare global {
+  interface Window {
+    gtag?: (command: string, ...args: unknown[]) => void;
+  }
+}
+
 interface EventProperties {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export const track = {
@@ -10,8 +17,8 @@ export const track = {
     log.info(`Analytics: ${eventName}`, properties);
 
     // For future analytics integration
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', eventName, properties);
+    if (typeof window !== 'undefined' && window.gtag) {
+      window.gtag('event', eventName, properties);
     }
   },
 
@@ -19,8 +26,8 @@ export const track = {
     log.info('Page view', { page: pageName });
 
     // For future analytics integration
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'page_view', {
+    if (typeof window !== 'undefined' && window.gtag) {
+      window.gtag('event', 'page_view', {
         page_title: pageName,
         page_location: window.location.href,
         page_path: window.location.pathname
