@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "@/src/types/database";
+import type { LessonContent } from "@/lib/types/lesson";
 import { AIContentModal } from "../ai-content-modal";
 import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
@@ -2194,10 +2195,14 @@ export function CalendarWeekView({
           subject: selectedManualLesson.subject || '',
           gradeLevels: selectedManualLesson.grade_levels?.join(', ') || '',
           duration: selectedManualLesson.duration_minutes || undefined,
-          learningObjectives: (selectedManualLesson.content as any)?.objectives || '',
-          materialsNeeded: (selectedManualLesson.content as any)?.materials || '',
-          activities: (selectedManualLesson.content as any)?.activities ? JSON.stringify((selectedManualLesson.content as any).activities) : '',
-          assessmentMethods: (selectedManualLesson.content as any)?.assessment || '',
+          learningObjectives: (selectedManualLesson.content as LessonContent)?.objectives || '',
+          materialsNeeded: (selectedManualLesson.content as LessonContent)?.materials || '',
+          activities: (selectedManualLesson.content as LessonContent)?.activities
+            ? (typeof (selectedManualLesson.content as LessonContent).activities === 'string'
+              ? String((selectedManualLesson.content as LessonContent).activities)
+              : JSON.stringify((selectedManualLesson.content as LessonContent).activities))
+            : '',
+          assessmentMethods: (selectedManualLesson.content as LessonContent)?.assessment || '',
           notes: selectedManualLesson.notes || ''
         } : undefined}
         lessonDate={selectedLessonDate || new Date()}
