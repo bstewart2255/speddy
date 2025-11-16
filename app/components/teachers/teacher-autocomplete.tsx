@@ -13,6 +13,7 @@ interface TeacherAutocompleteProps {
   required?: boolean;
   className?: string;
   disabled?: boolean;
+  schoolId?: string; // Optional school_id to search teachers from a specific school
 }
 
 export function TeacherAutocomplete({
@@ -22,7 +23,8 @@ export function TeacherAutocomplete({
   placeholder = 'Search for a teacher...',
   required = false,
   className = '',
-  disabled = false
+  disabled = false,
+  schoolId
 }: TeacherAutocompleteProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -53,7 +55,7 @@ export function TeacherAutocomplete({
 
       try {
         setLoading(true);
-        const results = await searchTeachers(searchTerm);
+        const results = await searchTeachers(searchTerm, schoolId);
         setTeachers(results);
         setIsOpen(true);
       } catch (error) {
@@ -67,7 +69,7 @@ export function TeacherAutocomplete({
     // Debounce search
     const timeoutId = setTimeout(searchForTeachers, 300);
     return () => clearTimeout(timeoutId);
-  }, [searchTerm]);
+  }, [searchTerm, schoolId]);
 
   const handleSelect = (teacher: Teacher) => {
     setSelectedTeacher(teacher);
