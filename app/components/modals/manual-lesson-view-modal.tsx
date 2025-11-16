@@ -220,26 +220,34 @@ export function ManualLessonViewModal({
                 </div>
               </div>
 
-              {/* Learning Objectives */}
-              {renderSection('Learning Objectives', (lesson.content as LessonContent)?.objectives)}
+              {/* Cache typed content once to avoid repeated casts */}
+              {(() => {
+                const typedContent = lesson.content as LessonContent;
+                return (
+                  <>
+                    {/* Learning Objectives */}
+                    {renderSection('Learning Objectives', typedContent?.objectives)}
 
-              {/* Materials Needed */}
-              {renderSection('Materials Needed', (lesson.content as LessonContent)?.materials)}
+                    {/* Materials Needed */}
+                    {renderSection('Materials Needed', typedContent?.materials)}
 
-              {/* Activities/Steps */}
-              {(lesson.content as LessonContent)?.activities && (
-                <div className="section">
-                  <h2 className="text-sm font-semibold text-gray-700 mb-2">Activities/Steps</h2>
-                  <div className="text-sm text-gray-600 whitespace-pre-wrap">
-                    {typeof (lesson.content as LessonContent).activities === 'string'
-                      ? String((lesson.content as LessonContent).activities)
-                      : JSON.stringify((lesson.content as LessonContent).activities, null, 2)}
-                  </div>
-                </div>
-              )}
+                    {/* Activities/Steps */}
+                    {typedContent?.activities && (
+                      <div className="section">
+                        <h2 className="text-sm font-semibold text-gray-700 mb-2">Activities/Steps</h2>
+                        <div className="text-sm text-gray-600 whitespace-pre-wrap">
+                          {typeof typedContent.activities === 'string'
+                            ? typedContent.activities
+                            : JSON.stringify(typedContent.activities, null, 2)}
+                        </div>
+                      </div>
+                    )}
 
-              {/* Assessment Methods */}
-              {renderSection('Assessment Methods', (lesson.content as LessonContent)?.assessment)}
+                    {/* Assessment Methods */}
+                    {renderSection('Assessment Methods', typedContent?.assessment)}
+                  </>
+                );
+              })()}
 
               {/* Notes */}
               {lesson.notes && (

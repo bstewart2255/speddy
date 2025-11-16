@@ -1489,7 +1489,7 @@ export function CalendarWeekView({
           materialsNeeded: (selectedManualLesson.content as LessonContent)?.materials || '',
           activities: (selectedManualLesson.content as LessonContent)?.activities ?
             (typeof (selectedManualLesson.content as LessonContent).activities === 'string'
-              ? (selectedManualLesson.content as LessonContent).activities as string
+              ? String((selectedManualLesson.content as LessonContent).activities)
               : JSON.stringify((selectedManualLesson.content as LessonContent).activities, null, 2))
             : '',
           assessmentMethods: (selectedManualLesson.content as LessonContent)?.assessment || '',

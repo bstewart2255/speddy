@@ -2197,7 +2197,11 @@ export function CalendarWeekView({
           duration: selectedManualLesson.duration_minutes || undefined,
           learningObjectives: (selectedManualLesson.content as LessonContent)?.objectives || '',
           materialsNeeded: (selectedManualLesson.content as LessonContent)?.materials || '',
-          activities: (selectedManualLesson.content as LessonContent)?.activities ? JSON.stringify((selectedManualLesson.content as LessonContent).activities) : '',
+          activities: (selectedManualLesson.content as LessonContent)?.activities
+            ? (typeof (selectedManualLesson.content as LessonContent).activities === 'string'
+              ? String((selectedManualLesson.content as LessonContent).activities)
+              : JSON.stringify((selectedManualLesson.content as LessonContent).activities))
+            : '',
           assessmentMethods: (selectedManualLesson.content as LessonContent)?.assessment || '',
           notes: selectedManualLesson.notes || ''
         } : undefined}
