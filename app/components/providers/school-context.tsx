@@ -7,12 +7,13 @@ import { getCurrentDayOfWeek } from '@/lib/helpers/day-of-week';
 import { getSchoolsForDay } from '@/lib/supabase/queries/user-site-schedules';
 
 // Type for Supabase foreign key relation (districts with states)
+// Supabase returns foreign key relations as arrays, even with !inner joins
 interface SchoolDistrictRelation {
-  name?: string;
-  states?: {
-    name?: string;
-    abbreviation?: string;
-  };
+  name: string;
+  states: {
+    name: string;
+    abbreviation: string;
+  }[];
 }
 
 // Type for school data returned from getSchoolsForDay
@@ -124,18 +125,23 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .eq('id', school.school_id)
           .single();
         
-        if (schoolDetails) {
-          const districts = schoolDetails.districts as SchoolDistrictRelation | null;
-          enrichedSchool.school_details = {
-            name: schoolDetails.name,
-            district_name: districts?.name,
-            state_name: districts?.states?.name,
-            nces_id: schoolDetails.nces_id,
-          };
+        if (schoolDetails && schoolDetails.districts) {
+          // Supabase returns foreign key relations as arrays
+          const districtsArray = schoolDetails.districts as SchoolDistrictRelation[];
+          const district = districtsArray[0];
+          const state = district?.states[0];
+          if (district && state) {
+            enrichedSchool.school_details = {
+              name: schoolDetails.name,
+              district_name: district.name,
+              state_name: state.name,
+              nces_id: schoolDetails.nces_id,
+            };
 
-          // Update display name with richer data
-          enrichedSchool.display_name = `${schoolDetails.name} (${districts?.name}, ${districts?.states?.abbreviation})`;
-          enrichedSchool.full_address = `${schoolDetails.name}, ${districts?.name}, ${districts?.states?.name}`;
+            // Update display name with richer data
+            enrichedSchool.display_name = `${schoolDetails.name} (${district.name}, ${state.abbreviation})`;
+            enrichedSchool.full_address = `${schoolDetails.name}, ${district.name}, ${state.name}`;
+          }
         }
       } catch (error) {
         console.warn('[SchoolContext] Could not fetch additional school details:', error);
