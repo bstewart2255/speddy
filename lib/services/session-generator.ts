@@ -6,6 +6,10 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
 // Interface for Supabase query builder methods we use
+// Note: This is a simplified interface for our specific use case.
+// Supabase's actual types use specialized builder classes (PostgrestFilterBuilder, etc.)
+// but for method chaining in applyRoleFilter, this abstraction is sufficient.
+// Using generic constraint with 'as T' is safer than 'as any' as it preserves the caller's type.
 interface SupabaseQueryBuilder {
   or: (filters: string) => SupabaseQueryBuilder;
   eq: (column: string, value: string) => SupabaseQueryBuilder;

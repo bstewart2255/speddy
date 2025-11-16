@@ -350,7 +350,7 @@ export class OpenAIProvider implements AIProvider {
         errorMessage = error.message;
         // Check for status/code in error object
         const errorWithStatus = error as ErrorWithStatus;
-        statusCode = errorWithStatus.status || (typeof errorWithStatus.code === 'number' ? errorWithStatus.code : undefined) || errorWithStatus.response?.status;
+        statusCode = errorWithStatus.status ?? (typeof errorWithStatus.code === 'number' ? errorWithStatus.code : undefined) ?? errorWithStatus.response?.status;
       }
       
       // Map errors to user-friendly messages

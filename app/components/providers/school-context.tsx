@@ -25,7 +25,7 @@ interface ScheduledSchoolData {
   is_primary?: boolean;
 }
 
-// Type guard for Supabase error with status property
+// Type for Supabase/Postgrest error with additional status information
 interface PostgrestErrorWithStatus {
   status?: number;
   message?: string;
