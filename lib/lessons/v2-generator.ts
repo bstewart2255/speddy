@@ -2,7 +2,7 @@
 // Flow: Template Selection → AI (content only) → Template Population → Rendering
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { TemplateTopic } from '@/lib/templates/types';
+import type { TemplateTopic, QuestionType } from '@/lib/templates/types';
 import { selectTemplate, type TemplateSelection } from '@/lib/templates/template-selector';
 import { buildV2Prompt } from './v2-prompts';
 import { validateV2Content } from './v2-validator';
@@ -295,7 +295,8 @@ export function populateTemplate(
           }
 
           // Check if question type is allowed for this slot
-          const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as any);
+          // Cast is safe: V2Question.type is a subset of QuestionType from templates
+          const isAllowed = allowedTypes.length === 0 || allowedTypes.includes(question.type as QuestionType);
 
           if (isAllowed) {
             // Special handling for phonics: distinguish word completion from sentence completion

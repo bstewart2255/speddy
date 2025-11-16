@@ -1,7 +1,7 @@
 // lib/worksheets/worksheet-generator.ts
 import QRCode from 'qrcode';
 import { createClient } from '@/lib/supabase/server';
-import type { Database } from '../../src/types/database';
+import type { Database, Json } from '../../src/types/database';
 import type { LessonResponse, StudentMaterial, WorksheetItem } from '../lessons/schema';
 import { standardizeGradeLevel } from '../utils/grade-level';
 
@@ -38,7 +38,7 @@ export async function generateWorksheetWithQR(
       lesson_id: lessonId,
       student_id: studentId,
       worksheet_type: worksheetType,
-      content: content as any,
+      content: content as unknown as Json,
       answer_key: {
         questions: content.questions.map(q => ({
           id: q.id,

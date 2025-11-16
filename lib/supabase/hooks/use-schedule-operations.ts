@@ -3,9 +3,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '../../services/session-update-service';
-import type { Database } from '../../../src/types/database';
+import type { Database, ScheduleSession } from '../../../src/types/database';
 
-type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];
 
 interface DragOperationResult {
@@ -30,7 +29,7 @@ export function useScheduleOperations() {
   ) => {
     try {
       const validation = await sessionUpdateService.validateSessionMove({
-        session: session as any,
+        session,
         targetDay,
         targetStartTime,
         targetEndTime,

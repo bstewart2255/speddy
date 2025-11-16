@@ -143,23 +143,29 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
 
       const { data: submissions } = await submissionsQuery;
 
+      // Type for skills assessment data stored in JSON
+      interface SkillAssessment {
+        skill: string;
+        percentage: number;
+      }
+
       const recentSubmissions = submissions?.map(sub => ({
         date: sub.submitted_at || '',
         worksheetType: sub.worksheets.worksheet_type,
         accuracy: sub.accuracy_percentage || 0,
-        skillsAssessed: (sub.skills_assessed as any) || []
+        skillsAssessed: (sub.skills_assessed as unknown as SkillAssessment[]) || []
       })) || [];
 
       // Calculate overall progress
       const accuracies = recentSubmissions.map(s => s.accuracy);
-      const averageAccuracy = accuracies.length > 0 
-        ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length 
+      const averageAccuracy = accuracies.length > 0
+        ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
         : 0;
 
       // Find strongest and weakest skills
       const allSkills: Record<string, number[]> = {};
       recentSubmissions.forEach(sub => {
-        sub.skillsAssessed.forEach((skill: any) => {
+        sub.skillsAssessed.forEach((skill: SkillAssessment) => {
           if (!allSkills[skill.skill]) allSkills[skill.skill] = [];
           allSkills[skill.skill].push(skill.percentage);
         });

@@ -21,7 +21,7 @@ interface ExitTicketProblem {
   answer_format?: AnswerFormat;
 }
 
-interface ExitTicketContent {
+export interface ExitTicketContent {
   passage?: string; // Optional reading passage for comprehension questions
   problems: ExitTicketProblem[];
 }

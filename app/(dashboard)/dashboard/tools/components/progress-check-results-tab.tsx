@@ -357,7 +357,7 @@ export default function ProgressCheckResultsTab() {
           <select
             id="status-filter"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'needs_grading' | 'graded' | 'discarded')}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="needs_grading">Needs Grading</option>

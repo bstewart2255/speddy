@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-import { generateExitTicket } from '@/lib/exit-tickets/generator';
+import { generateExitTicket, type ExitTicketContent } from '@/lib/exit-tickets/generator';
 
 export const maxDuration = 60; // 1 minute timeout for generation
 
@@ -87,13 +87,30 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Type for student details JSON field
+      interface StudentDetailsJson {
+        iep_goals?: string[];
+        last_exit_ticket_goal_index?: number;
+      }
+
+      // Type for generated exit ticket
+      interface GeneratedTicket {
+        id: string;
+        student_id: string;
+        student_initials: string;
+        student_grade: string;
+        iep_goal_text: string;
+        content: ExitTicketContent;
+        created_at: string;
+      }
+
       // Generate exit tickets for each student
-      const tickets: any[] = [];
+      const tickets: GeneratedTicket[] = [];
       const rotationUpdates: { studentId: string; nextIndex: number }[] = [];
       const failedStudents: string[] = [];
 
       for (const student of students) {
-        const studentDetails = student.student_details as any;
+        const studentDetails = student.student_details as StudentDetailsJson;
         const iepGoals = studentDetails?.iep_goals || [];
 
         if (iepGoals.length === 0) {
