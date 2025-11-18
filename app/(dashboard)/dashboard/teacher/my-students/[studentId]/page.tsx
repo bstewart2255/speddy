@@ -87,6 +87,21 @@ export default function StudentDetailPage() {
     return minutes;
   };
 
+  // Parse date string as local date to avoid timezone shift
+  // Supabase returns dates like "2025-11-18" which JS interprets as UTC midnight
+  // This would shift the date by a day for non-UTC timezones
+  const formatSessionDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'Date TBD';
+
+    // Parse as local date by appending time component
+    const localDate = new Date(dateString + 'T00:00:00');
+    return localDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -223,7 +238,7 @@ export default function StudentDetailPage() {
                 >
                   <div>
                     <p className="font-medium text-gray-900">
-                      {getDayName(session.day_of_week)}, {new Date(session.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {getDayName(session.day_of_week)}, {formatSessionDate(session.session_date)}
                     </p>
                     <p className="text-sm text-gray-600 capitalize">{session.service_type}</p>
                   </div>
