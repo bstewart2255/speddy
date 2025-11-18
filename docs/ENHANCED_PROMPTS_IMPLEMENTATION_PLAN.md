@@ -77,41 +77,20 @@ This document outlines the step-by-step implementation plan for integrating the 
 - [ ] Validate question types match enhanced standards
 - [ ] Confirm grade-based blank line rules work correctly
 
-### Phase 3: Entry Point #1 - Upcoming Sessions Widget 📅
-
-**Goal**: Add subject type selection via small popup before AI generation
-
-#### Step 3.1: Create Subject Type Selection Popup
-
-**File**: `/app/components/group-sessions-widget.tsx`
-
-- [ ] Create small popup modal with "Math or ELA?" choice
-- [ ] Trigger popup when user clicks "AI Lesson" button
-- [ ] Simple 2-button interface: "Math" | "ELA"
-- [ ] Include cancel option to abort generation
-- [ ] Update generateAIContent() to include selected subjectType
-
-#### Step 3.2: Update Widget Flow
-
-- [ ] Modify handleGenerateAIContent() to show popup first
-- [ ] Pass selected subjectType to lesson generation API
-- [ ] Maintain current loading states after subject selection
-- [ ] Ensure popup is lightweight and fast to use
-
-### Phase 4: Entry Point #2 - Calendar Week View 📊
+### Phase 3: Entry Point - Calendar Week View 📊
 
 **Goal**: Add subject type selection via popup before AI generation
 
-#### Step 4.1: Update Calendar Lesson Creation Flow
+#### Step 3.1: Update Calendar Lesson Creation Flow
 
 **File**: `/app/components/calendar/calendar-week-view.tsx`
 
-- [ ] Create subject type selection popup (similar to widget popup)
+- [ ] Create subject type selection popup
 - [ ] Trigger popup after user selects "Create AI Lesson Plan" in LessonTypeModal
 - [ ] Update lesson generation flow: Choose AI → Choose Subject (popup) → Generate
 - [ ] Pass subjectType through to lesson generation API calls
 
-#### Step 4.2: Enhance Lesson Type Modal Flow
+#### Step 3.2: Enhance Lesson Type Modal Flow
 
 **File**: `/app/components/modals/lesson-type-modal.tsx`
 
@@ -119,41 +98,40 @@ This document outlines the step-by-step implementation plan for integrating the 
 - [ ] Trigger subject type popup when AI option is selected
 - [ ] Modal flow: Click "+ Create Lesson" → Choose AI/Manual → [If AI] Choose Math/ELA (popup) → Generate
 
-### Phase 5: Testing & Validation ✅
+### Phase 4: Testing & Validation ✅
 
 **Goal**: Comprehensive testing across all entry points
 
-#### Step 5.1: Automated Testing
+#### Step 4.1: Automated Testing
 
-- [ ] Create test cases for all 3 entry points with both ELA and Math
+- [ ] Create test cases for all entry points with both ELA and Math
 - [ ] Validate JSON structure matches enhanced schema
 - [ ] Test grade-based formatting rules
 - [ ] Verify standardized question types are enforced
 
-#### Step 5.2: User Acceptance Testing
+#### Step 4.2: User Acceptance Testing
 
-- [ ] Test lesson generation from dashboard widget
 - [ ] Test lesson generation from calendar
 - [ ] Test lesson generation from lesson builder
 - [ ] Validate lesson quality improvements
 
-#### Step 5.3: Performance Testing
+#### Step 4.3: Performance Testing
 
 - [ ] Measure response times with enhanced prompts
 - [ ] Test with various student group sizes
 - [ ] Validate memory usage and API performance
 
-### Phase 6: Documentation & Training 📚
+### Phase 5: Documentation & Training 📚
 
 **Goal**: Update documentation and prepare for user adoption
 
-#### Step 6.1: Update Technical Documentation
+#### Step 5.1: Update Technical Documentation
 
 - [ ] Update API documentation with subjectType requirements
 - [ ] Document new prompt system capabilities
 - [ ] Create troubleshooting guide for common issues
 
-#### Step 6.2: Create User-Facing Documentation
+#### Step 5.2: Create User-Facing Documentation
 
 - [ ] Document subject type selection process for users
 - [ ] Explain improved lesson formatting benefits
@@ -171,12 +149,12 @@ This document outlines the step-by-step implementation plan for integrating the 
 - Implement enhanced prompts in primary entry point
 - Test and validate enhanced lesson generation
 
-### Week 3: Widget & Calendar (Phases 3-4)
+### Week 3: Calendar Integration (Phase 3)
 
 - Add subject type selection to remaining entry points
 - Ensure consistent UX across all generation methods
 
-### Week 4: Testing & Polish (Phases 5-6)
+### Week 4: Testing & Polish (Phases 4-5)
 
 - Comprehensive testing and bug fixes
 - Documentation updates and user training materials
