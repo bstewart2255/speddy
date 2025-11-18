@@ -189,10 +189,11 @@ export async function getStudentResourceSchedule(studentId: string) {
     async () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
-        .select('id, day_of_week, start_time, end_time, service_type')
+        .select('id, session_date, day_of_week, start_time, end_time, service_type')
         .eq('student_id', studentId)
         .eq('status', 'active')
-        .order('day_of_week', { ascending: true })
+        .not('session_date', 'is', null)
+        .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
       return data;

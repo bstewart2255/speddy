@@ -12,17 +12,18 @@ type StudentDetail = {
   grade_level: string;
   sessions_per_week: number;
   minutes_per_session: number;
-  student_details: Array<{
+  student_details: {
     iep_goals: string[];
     upcoming_iep_date: string | null;
-  }>;
+  } | null;
   profiles: {
     full_name: string;
-  };
+  } | null;
 };
 
 type ScheduleSession = {
   id: string;
+  session_date: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
@@ -128,8 +129,8 @@ export default function StudentDetailPage() {
     );
   }
 
-  const iepGoals = student.student_details?.[0]?.iep_goals || [];
-  const upcomingIepDate = student.student_details?.[0]?.upcoming_iep_date;
+  const iepGoals = student.student_details?.iep_goals || [];
+  const upcomingIepDate = student.student_details?.upcoming_iep_date;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -221,7 +222,9 @@ export default function StudentDetailPage() {
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{getDayName(session.day_of_week)}</p>
+                    <p className="font-medium text-gray-900">
+                      {getDayName(session.day_of_week)}, {new Date(session.session_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
                     <p className="text-sm text-gray-600 capitalize">{session.service_type}</p>
                   </div>
                   <div className="text-right">
