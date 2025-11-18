@@ -185,10 +185,10 @@ export class AutoScheduler {
         return [];
       }
 
+      // Query all activities at the school (teacher and provider created)
       const { data } = await this.supabase
         .from('special_activities')
         .select('*')
-        .eq('provider_id', this.providerId)
         .eq('school_id', schoolId);
 
       return data || [];

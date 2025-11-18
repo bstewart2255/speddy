@@ -297,7 +297,7 @@ export async function createSpecialActivity(activityData: {
           teacher_id: teacher.id,
           created_by_role: 'teacher',
           created_by_id: user.id,
-          provider_id: user.id,  // Required field
+          provider_id: null,  // School-wide, not owned by specific provider
         }])
         .select()
         .single();
