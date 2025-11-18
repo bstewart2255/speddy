@@ -32,13 +32,14 @@ export async function generateWorksheetWithQR(
   const worksheetCode = `WS-${lessonId.slice(0, 8)}-${studentId.slice(0, 8)}-${Date.now()}`;
 
   // Save worksheet to database with just the code
+  // Explicitly serialize content to ensure JSON compatibility
   const { data: worksheet, error } = await supabase
     .from('worksheets')
     .insert({
       lesson_id: lessonId,
       student_id: studentId,
       worksheet_type: worksheetType,
-      content: content as unknown as Json,
+      content: JSON.parse(JSON.stringify(content)) as Json,
       answer_key: {
         questions: content.questions.map(q => ({
           id: q.id,
