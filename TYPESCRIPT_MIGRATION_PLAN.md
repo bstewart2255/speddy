@@ -62,7 +62,6 @@ Files to fix:
 Resolve type mismatches in component props and state:
 
 - `app/components/calendar/calendar-week-view.tsx`
-- `app/components/group-sessions-widget.tsx`
 
 ### Phase 4: Enable Full Strict Mode (Priority: Low)
 
