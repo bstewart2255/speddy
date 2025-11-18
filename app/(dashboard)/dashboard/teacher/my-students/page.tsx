@@ -11,13 +11,13 @@ type StudentInResource = {
   grade_level: string;
   sessions_per_week: number;
   minutes_per_session: number;
-  student_details: Array<{
+  student_details: {
     iep_goals: string[];
     upcoming_iep_date: string | null;
-  }>;
+  } | null;
   profiles: {
     full_name: string;
-  };
+  } | null;
 };
 
 export default function MyStudentsPage() {
@@ -140,7 +140,7 @@ export default function MyStudentsPage() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {students.map((student) => {
-                    const goalCount = student.student_details?.[0]?.iep_goals?.length || 0;
+                    const goalCount = student.student_details?.iep_goals?.length || 0;
                     return (
                       <tr key={student.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">

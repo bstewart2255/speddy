@@ -12,17 +12,18 @@ type StudentDetail = {
   grade_level: string;
   sessions_per_week: number;
   minutes_per_session: number;
-  student_details: Array<{
+  student_details: {
     iep_goals: string[];
     upcoming_iep_date: string | null;
-  }>;
+  } | null;
   profiles: {
     full_name: string;
-  };
+  } | null;
 };
 
 type ScheduleSession = {
   id: string;
+  session_date: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
@@ -86,6 +87,21 @@ export default function StudentDetailPage() {
     return minutes;
   };
 
+  // Parse date string as local date to avoid timezone shift
+  // Supabase returns dates like "2025-11-18" which JS interprets as UTC midnight
+  // This would shift the date by a day for non-UTC timezones
+  const formatSessionDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'Date TBD';
+
+    // Parse as local date by appending time component
+    const localDate = new Date(dateString + 'T00:00:00');
+    return localDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -128,8 +144,8 @@ export default function StudentDetailPage() {
     );
   }
 
-  const iepGoals = student.student_details?.[0]?.iep_goals || [];
-  const upcomingIepDate = student.student_details?.[0]?.upcoming_iep_date;
+  const iepGoals = student.student_details?.iep_goals || [];
+  const upcomingIepDate = student.student_details?.upcoming_iep_date;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -221,7 +237,9 @@ export default function StudentDetailPage() {
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{getDayName(session.day_of_week)}</p>
+                    <p className="font-medium text-gray-900">
+                      {getDayName(session.day_of_week)}, {formatSessionDate(session.session_date)}
+                    </p>
                     <p className="text-sm text-gray-600 capitalize">{session.service_type}</p>
                   </div>
                   <div className="text-right">
