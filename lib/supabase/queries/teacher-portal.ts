@@ -214,7 +214,7 @@ export async function getStudentResourceSchedule(studentId: string) {
 }
 
 /**
- * Get special activities created by the current teacher
+ * Get special activities assigned to the current teacher
  */
 export async function getMySpecialActivities() {
   const supabase = createClient<Database>();
@@ -230,14 +230,16 @@ export async function getMySpecialActivities() {
 
   const user = authResult.data.data.user;
 
+  // Get teacher record to filter by teacher_id
+  const teacher = await getCurrentTeacher();
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_my_special_activities', 'database');
   const fetchResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('special_activities')
         .select('*')
-        .eq('created_by_id', user.id)
-        .eq('created_by_role', 'teacher')
+        .eq('teacher_id', teacher.id)
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
@@ -245,7 +247,8 @@ export async function getMySpecialActivities() {
     },
     {
       operation: 'fetch_my_special_activities',
-      userId: user.id
+      userId: user.id,
+      teacherId: teacher.id
     }
   );
   fetchPerf.end({ success: !fetchResult.error });
@@ -281,6 +284,9 @@ export async function createSpecialActivity(activityData: {
 
   const user = authResult.data.data.user;
 
+  // Get teacher record to set teacher_id
+  const teacher = await getCurrentTeacher();
+
   const insertPerf = measurePerformanceWithAlerts('create_special_activity', 'database');
   const insertResult = await safeQuery(
     async () => {
@@ -288,6 +294,7 @@ export async function createSpecialActivity(activityData: {
         .from('special_activities')
         .insert([{
           ...activityData,
+          teacher_id: teacher.id,
           created_by_role: 'teacher',
           created_by_id: user.id,
           provider_id: user.id,  // Required field

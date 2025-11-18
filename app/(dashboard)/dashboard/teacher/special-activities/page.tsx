@@ -26,6 +26,7 @@ export default function TeacherSpecialActivitiesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [teacher, setTeacher] = useState<any>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'my' | 'all'>('my');
   const supabase = createClient();
 
@@ -33,6 +34,12 @@ export default function TeacherSpecialActivitiesPage() {
     try {
       setLoading(true);
       setError(null);
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
 
       // Get teacher info
       const teacherData = await getCurrentTeacher();
@@ -43,7 +50,6 @@ export default function TeacherSpecialActivitiesPage() {
       setActivities(myActivitiesData as SpecialActivity[]);
 
       // Fetch all visible activities (own + RS activities at school)
-      const { data: { user } } = await supabase.auth.getUser();
       if (user && teacherData && teacherData.school_id) {
         const { data, error: fetchError } = await supabase
           .from('special_activities')
@@ -365,13 +371,19 @@ export default function TeacherSpecialActivitiesPage() {
                       </td>
                       {viewMode === 'my' && (
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <button
-                            onClick={() => handleDelete(activity.id, activity.activity_name)}
-                            disabled={deletingId === activity.id}
-                            className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                          >
-                            {deletingId === activity.id ? 'Deleting...' : 'Delete'}
-                          </button>
+                          {activity.created_by_id === currentUserId ? (
+                            <button
+                              onClick={() => handleDelete(activity.id, activity.activity_name)}
+                              disabled={deletingId === activity.id}
+                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                            >
+                              {deletingId === activity.id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 text-sm" title="Only activities you created can be deleted">
+                              Read-only
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>
