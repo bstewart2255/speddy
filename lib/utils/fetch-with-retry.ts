@@ -3,14 +3,21 @@
  * Designed to handle network issues and timeouts in production environments
  */
 
+// Type for Headers-like object with forEach method
+interface HeadersLike {
+  forEach: (callback: (value: string, key: string) => void) => void;
+}
+
 /**
  * Custom error class for timeout errors to help distinguish them from other failures
  */
 export class TimeoutError extends Error {
+  cause?: unknown;
+
   constructor(message: string, options?: { cause?: unknown }) {
     super(message);
     this.name = 'TimeoutError';
-    if (options?.cause) (this as any).cause = options.cause;
+    if (options?.cause) this.cause = options.cause;
   }
 }
 
@@ -177,7 +184,7 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
   if (typeof headers === 'object') {
     // Check if it has Headers-like methods
     if ('forEach' in headers && typeof headers.forEach === 'function') {
-      (headers as any).forEach((value: string, key: string) => {
+      (headers as unknown as HeadersLike).forEach((value: string, key: string) => {
         normalized[key] = value;
       });
       return normalized;

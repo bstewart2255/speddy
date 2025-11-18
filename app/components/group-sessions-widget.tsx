@@ -78,8 +78,8 @@ export function GroupSessionsWidget() {
   // Note: useSessionSync expects ScheduleSession[], but we use ScheduleSessionWithStudent[]
   // This is safe because the sync hook only updates existing sessions without the students field
   const { isConnected, lastSync } = useSessionSync({
-    sessions: sessions as any,
-    setSessions: setSessions as any,
+    sessions: sessions as unknown as ScheduleSession[],
+    setSessions: setSessions as unknown as React.Dispatch<React.SetStateAction<ScheduleSession[]>>,
     providerId: providerId || undefined,
   });
 

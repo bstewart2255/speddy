@@ -503,13 +503,18 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         const confirmedMatch = responseText.match(/"confirmed"\s*:\s*\[([\s\S]*)/);
         if (confirmedMatch) {
           const content = confirmedMatch[1];
-          const items: any[] = []; // Explicitly type as any array
+          // Type for parsed blocking period items
+          interface BlockingPeriodItem {
+            grade_level: string;
+            period_name: string;
+          }
+          const items: BlockingPeriodItem[] = [];
 
           // Extract individual items
           const itemMatches = content.matchAll(/\{[^}]+\}/g);
           for (const match of itemMatches) {
             try {
-              const item = JSON.parse(match[0]);
+              const item = JSON.parse(match[0]) as BlockingPeriodItem;
               if (item.grade_level && item.period_name) {
                 // Log what we're filtering
                 if (item.period_name.toLowerCase() === 'class') {

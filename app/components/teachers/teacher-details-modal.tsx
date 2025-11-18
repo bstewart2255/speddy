@@ -11,6 +11,9 @@ import type { Database } from '../../../src/types/database';
 type Teacher = Database['public']['Tables']['teachers']['Row'];
 type Student = Database['public']['Tables']['students']['Row'];
 
+// Type for teacher update data (matches what upsertTeacherDetails expects)
+type TeacherUpdateData = Omit<Teacher, 'id' | 'created_at' | 'updated_at'>;
+
 interface TeacherDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -98,7 +101,7 @@ export function TeacherDetailsModal({
           phone_number: formData.phone_number || null,
           school_id: teacher.school_id,
           school_site: teacher.school_site,
-        } as any);
+        } as TeacherUpdateData);
       } else {
         savedTeacher = await getOrCreateTeacher(
           formData.first_name || formData.last_name ? 
@@ -115,7 +118,7 @@ export function TeacherDetailsModal({
             phone_number: formData.phone_number || null,
             school_site: savedTeacher.school_site,
             school_id: savedTeacher.school_id,
-          } as any);
+          } as TeacherUpdateData);
         }
       }
 

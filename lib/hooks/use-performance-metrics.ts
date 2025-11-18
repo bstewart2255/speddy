@@ -2,6 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+// Chrome-specific performance.memory API
+interface PerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+interface PerformanceWithMemory extends Performance {
+  memory?: PerformanceMemory;
+}
+
 interface PerformanceMetrics {
   renderTime: number;
   renderCount: number;
@@ -45,7 +56,8 @@ export function usePerformanceMetrics(componentName: string) {
     // Get memory usage if available
     let memoryUsage: number | undefined;
     if ('memory' in performance) {
-      memoryUsage = (performance as any).memory.usedJSHeapSize / 1048576; // Convert to MB
+      const perfWithMemory = performance as PerformanceWithMemory;
+      memoryUsage = perfWithMemory.memory?.usedJSHeapSize ? perfWithMemory.memory.usedJSHeapSize / 1048576 : undefined; // Convert to MB
     }
 
     const averageRenderTime = 

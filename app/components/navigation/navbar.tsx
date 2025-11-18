@@ -8,6 +8,15 @@ import type { User } from '@supabase/supabase-js';
 import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
 
+// Type for Supabase error with status property
+interface PostgrestErrorWithStatus {
+  status?: number;
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
 type NavigationItem = {
   name: string;
   href: string;
@@ -42,7 +51,7 @@ export default function Navbar() {
             code: error.code,
             details: error.details,
             hint: error.hint,
-            status: (error as any).status
+            status: (error as PostgrestErrorWithStatus).status
           });
         }
 

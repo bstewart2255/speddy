@@ -163,7 +163,7 @@ export default function StudentsPage() {
           setStudents([]);
         } else {
           console.log('SEA students data received:', data);
-          setStudents(data as any);
+          setStudents(data as Student[]);
         }
       } else {
         const data = await getStudents(currentSchool);

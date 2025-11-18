@@ -5,6 +5,15 @@
 
 import * as ExcelJS from 'exceljs';
 
+// ExcelJS cell value types for rich text and formula results
+interface ExcelRichTextValue {
+  richText: Array<{ text: string }>;
+}
+
+interface ExcelFormulaValue {
+  result?: string | number | boolean | Date;
+}
+
 export interface ParsedStudent {
   firstName: string;
   lastName: string;
@@ -35,7 +44,8 @@ interface ColumnMapping {
  */
 export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as any);
+  // ExcelJS expects ArrayBuffer, but Buffer is compatible
+  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
 
   const students: ParsedStudent[] = [];
   const errors: Array<{ row: number; message: string }> = [];
@@ -230,13 +240,13 @@ function getCellValue(row: ExcelJS.Row, colNumber: number): string {
 
   // Handle rich text
   if (typeof cell.value === 'object' && 'richText' in cell.value) {
-    const richText = cell.value as any;
-    return richText.richText.map((t: any) => t.text).join('');
+    const richText = cell.value as ExcelRichTextValue;
+    return richText.richText.map((t) => t.text).join('');
   }
 
   // Handle formula result
   if (typeof cell.value === 'object' && 'result' in cell.value) {
-    const formula = cell.value as any;
+    const formula = cell.value as ExcelFormulaValue;
     return String(formula.result || '');
   }
 

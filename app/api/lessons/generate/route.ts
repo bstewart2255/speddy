@@ -10,6 +10,13 @@ import { withAuth } from '@/lib/api/with-auth';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { createClient } from '@/lib/supabase/server';
 
+// Type for error objects with optional properties
+interface ErrorWithDetails {
+  name?: string;
+  code?: string;
+  message?: string;
+}
+
 // Extended timeout for complex AI generation
 // Note: Requires platform support - works on Vercel Pro (300s), AWS Lambda Extended (900s),
 // self-hosted (unlimited). Falls back to platform limits on free/hobby tiers (e.g., 10s on Vercel Hobby)
@@ -329,12 +336,13 @@ export async function POST(request: NextRequest) {
       
     } catch (error) {
       console.error('Lesson generation error:', error);
-      
+
       // Add timeout handling
-      const errorName = (error as any)?.name;
-      const errorCode = (error as any)?.code;
-      const errorMsg = String((error as any)?.message || '');
-      
+      const err = error as ErrorWithDetails;
+      const errorName = err?.name;
+      const errorCode = err?.code;
+      const errorMsg = String(err?.message || '');
+
       if (errorName === 'AbortError' || errorCode === 'ETIMEDOUT' || /timeout/i.test(errorMsg)) {
         return NextResponse.json(
           { 

@@ -5,6 +5,11 @@ import { log } from '@/lib/monitoring/logger';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 import Link from 'next/link';
 
+// Next.js error object may include digest for tracking
+interface ErrorWithDigest extends Error {
+  digest?: string;
+}
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error?: Error;
@@ -31,7 +36,7 @@ export class DashboardErrorBoundary extends React.Component<ErrorBoundaryProps, 
     // Log the error with context
     log.error('Dashboard Error Boundary caught error', error, {
       componentStack: errorInfo.componentStack,
-      digest: (error as any).digest,
+      digest: (error as ErrorWithDigest).digest,
       location: window.location.href,
       userAgent: navigator.userAgent
     });
