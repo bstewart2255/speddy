@@ -3,28 +3,28 @@ import { SpecialActivity } from '../../../src/types/database';
 import type { Database } from '../../../src/types/database';
 
 /**
- * Retrieve all special activities belonging to the logged in provider.
+ * Retrieve all special activities at schools where the provider has students.
  * @param schoolId - Optional school ID to filter activities
  */
 export async function getSpecialActivities(schoolId?: string): Promise<SpecialActivity[]> {
   const supabase = createClient();
-  
+
   // Get current user first - CRITICAL for security
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     throw new Error('User not authenticated');
   }
 
+  // Query all activities at the school (teacher and provider created)
   let query = supabase
     .from('special_activities')
-    .select('*')
-    .eq('provider_id', user.id); // CRITICAL: Filter by provider_id
-  
+    .select('*');
+
   // Filter by school_id if provided
   if (schoolId) {
     query = query.eq('school_id', schoolId);
   }
-  
+
   const { data, error } = await query
     .order('day_of_week')
     .order('start_time');

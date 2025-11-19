@@ -46,15 +46,15 @@ export default function SpecialActivitiesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !currentSchool) return;
 
+      // Query all activities at the current school (teacher and provider created)
       let query = supabase
         .from('special_activities')
-        .select('*')
-        .eq('provider_id', user.id);
-      
+        .select('*');
+
       if (currentSchool.school_id) {
         query = query.eq('school_id', currentSchool.school_id);
       }
-      
+
       const { data, error } = await query
         .order('teacher_name', { ascending: true })
         .order('day_of_week', { ascending: true })
