@@ -483,6 +483,7 @@ export default function StudentsPage() {
                       onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
                       placeholder="Search for a teacher..."
                       required
+                      schoolId={currentSchool?.school_id || undefined}
                     />
                   </div>
 

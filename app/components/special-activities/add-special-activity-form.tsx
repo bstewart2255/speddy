@@ -119,6 +119,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
           }}
           placeholder="Search for a teacher..."
           required
+          schoolId={currentSchool?.school_id || undefined}
         />
       </div>
 
