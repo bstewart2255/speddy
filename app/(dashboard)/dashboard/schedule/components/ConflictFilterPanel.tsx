@@ -32,32 +32,74 @@ export function ConflictFilterPanel({
   // Get unique grade levels from bell schedules
   const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
   
-  // Use teachers from the teachers table
+  // Use teachers from the teachers table, with fallback to legacy teacher names
   const teachers = useMemo(() => {
-    if (!teachersFromTable || teachersFromTable.length === 0) {
-      return [];
+    if (teachersFromTable && teachersFromTable.length > 0) {
+      // Use teachers table when available
+      return [...teachersFromTable].sort((a, b) => {
+        const lastNameA = (a.last_name || '').toLowerCase();
+        const lastNameB = (b.last_name || '').toLowerCase();
+        if (lastNameA !== lastNameB) {
+          return lastNameA.localeCompare(lastNameB);
+        }
+        const firstNameA = (a.first_name || '').toLowerCase();
+        const firstNameB = (b.first_name || '').toLowerCase();
+        return firstNameA.localeCompare(firstNameB);
+      });
     }
 
-    // Sort teachers by last name, then first name
-    return [...teachersFromTable].sort((a, b) => {
-      const lastNameA = (a.last_name || '').toLowerCase();
-      const lastNameB = (b.last_name || '').toLowerCase();
-      if (lastNameA !== lastNameB) {
-        return lastNameA.localeCompare(lastNameB);
+    // Fallback: Extract unique teacher names from students and special activities
+    const teacherNames = new Set<string>();
+
+    // Collect from students
+    students.forEach(s => {
+      if (s.teacher_name && s.teacher_name.trim()) {
+        teacherNames.add(s.teacher_name.trim());
       }
-      const firstNameA = (a.first_name || '').toLowerCase();
-      const firstNameB = (b.first_name || '').toLowerCase();
-      return firstNameA.localeCompare(firstNameB);
     });
-  }, [teachersFromTable]);
+
+    // Collect from special activities
+    specialActivities.forEach(sa => {
+      if (sa.teacher_name && sa.teacher_name.trim()) {
+        teacherNames.add(sa.teacher_name.trim());
+      }
+    });
+
+    // Create synthetic Teacher objects from legacy names
+    // Use the teacher_name as the ID for fallback mode
+    return Array.from(teacherNames)
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+      .map(name => ({
+        id: `legacy_${name}`, // Synthetic ID
+        first_name: null,
+        last_name: name, // Store full name in last_name
+        email: null,
+        school_id: null,
+        created_at: null,
+        updated_at: null,
+      } as Teacher));
+  }, [teachersFromTable, students, specialActivities]);
   
   // Map teacher IDs to their primary grade - memoized for performance
   const teacherGrades = useMemo(() => {
     const grades = new Map<string, string>();
 
     teachers.forEach(teacher => {
-      // Filter students by teacher_id instead of teacher_name
-      const teacherStudents = students.filter(s => s.teacher_id === teacher.id);
+      let teacherStudents: Student[];
+
+      if (teacher.id.startsWith('legacy_')) {
+        // For legacy synthetic IDs, match by teacher_name
+        const teacherName = teacher.last_name; // We stored the full name here
+        teacherStudents = students.filter(s => s.teacher_name === teacherName);
+      } else {
+        // For real teacher IDs, match by teacher_id with fallback to teacher_name
+        const teacherName = formatTeacherName(teacher);
+        teacherStudents = students.filter(s =>
+          s.teacher_id === teacher.id ||
+          (teacherName && s.teacher_name === teacherName)
+        );
+      }
+
       if (teacherStudents.length > 0) {
         // Use the most common grade level for this teacher
         const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
@@ -158,7 +200,7 @@ export function ConflictFilterPanel({
               <option value="">All Teachers</option>
               {teachers.map((teacher) => {
                 const grade = teacherGrades.get(teacher.id);
-                const displayName = formatTeacherName(teacher);
+                const displayName = formatTeacherName(teacher) || 'Unknown Teacher';
                 return (
                   <option key={teacher.id} value={teacher.id}>
                     {displayName} {grade ? `(${grade})` : ''}
@@ -181,7 +223,7 @@ export function ConflictFilterPanel({
           )}
           {selectedFilters.specialActivityTeacher && (() => {
             const teacher = teachers.find(t => t.id === selectedFilters.specialActivityTeacher);
-            const teacherName = teacher ? formatTeacherName(teacher) : selectedFilters.specialActivityTeacher;
+            const teacherName = teacher ? (formatTeacherName(teacher) || 'Unknown Teacher') : selectedFilters.specialActivityTeacher;
             return (
               <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
                 Activity: {teacherName}

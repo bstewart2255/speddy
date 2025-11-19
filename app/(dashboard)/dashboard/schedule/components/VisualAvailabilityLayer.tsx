@@ -86,13 +86,24 @@ export function VisualAvailabilityLayer({
     if (filters.specialActivityTeacher) {
       // Find the selected teacher to get their name for fallback filtering
       const selectedTeacher = teachers.find(t => t.id === filters.specialActivityTeacher);
-      const teacherName = selectedTeacher ? formatTeacherName(selectedTeacher) : null;
+      const isLegacyId = filters.specialActivityTeacher.startsWith('legacy_');
 
-      // Filter special activities using teacher_id (preferred) or teacher_name (fallback)
+      // For legacy IDs, the full teacher name is stored in last_name
+      const teacherName = isLegacyId && selectedTeacher
+        ? selectedTeacher.last_name
+        : (selectedTeacher ? formatTeacherName(selectedTeacher) : null);
+
+      // Filter special activities using teacher_id (preferred) or teacher_name (flexible fallback)
       // This handles records that haven't been fully migrated to teacher_id yet
       const teacherActivities = specialActivities.filter(sa => {
         if (sa.day_of_week !== day) return false;
-        // Check teacher_id first (preferred), then fall back to teacher_name
+
+        // For legacy IDs, match by teacher_name directly
+        if (isLegacyId) {
+          return sa.teacher_name === teacherName;
+        }
+
+        // For real teacher IDs, check teacher_id first (preferred), then fall back to teacher_name
         if (sa.teacher_id === filters.specialActivityTeacher) return true;
         if (teacherName && sa.teacher_name === teacherName) return true;
         return false;
@@ -100,7 +111,12 @@ export function VisualAvailabilityLayer({
 
       // Find the teacher's primary grade for color using teacher_id (preferred) or teacher_name (fallback)
       const teacherStudents = students.filter(s => {
-        // Check teacher_id first (preferred), then fall back to teacher_name
+        // For legacy IDs, match by teacher_name directly
+        if (isLegacyId) {
+          return s.teacher_name === teacherName;
+        }
+
+        // For real teacher IDs, check teacher_id first (preferred), then fall back to teacher_name
         if (s.teacher_id === filters.specialActivityTeacher) return true;
         if (teacherName && s.teacher_name === teacherName) return true;
         return false;
