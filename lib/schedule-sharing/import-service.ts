@@ -147,20 +147,15 @@ export class ScheduleImportService {
 
   /**
    * Fetch special activities for a provider and school
+   *
+   * NOTE: As of 2025-11-18, special activities are school-wide and visible to all providers.
+   * This method returns an empty array since sharing/copying is no longer needed.
+   * Activities are automatically visible to all providers at the same school.
    */
   private async fetchSpecialActivities(providerId: string, schoolId: string): Promise<SpecialActivity[]> {
-    const { data, error } = await this.supabase
-      .from('special_activities')
-      .select('*')
-      .eq('provider_id', providerId)
-      .eq('school_id', schoolId);
-
-    if (error) {
-      console.error('Error fetching special activities:', error);
-      throw error;
-    }
-
-    return data || [];
+    // Special activities are now school-wide - no need to fetch/copy them
+    // They're automatically visible to all providers at the school
+    return [];
   }
 
   /**
