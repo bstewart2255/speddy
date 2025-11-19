@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getTeacherDisplayName } from '../utils/getTeacherDisplayName';
 import type { Teacher } from '../types/teacher';
 
 export type VisualFilters = {
   bellScheduleGrade: string | null;
-  specialActivityTeacher: string | null;
+  specialActivityTeacher: string | null; // teacher_id (UUID)
 };
 
 const DEFAULT_VISUAL_FILTERS: VisualFilters = {
@@ -89,9 +88,9 @@ export const useVisualFilters = (
       return;
     }
 
+    // Check if teacher_id still exists in the teachers table
     const teacherExists = teachers.some(
-      teacher =>
-        getTeacherDisplayName(teacher) === visualFilters.specialActivityTeacher
+      teacher => teacher.id === visualFilters.specialActivityTeacher
     );
 
     if (!teacherExists) {

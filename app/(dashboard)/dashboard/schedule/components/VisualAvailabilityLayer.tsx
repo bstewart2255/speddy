@@ -80,15 +80,14 @@ export function VisualAvailabilityLayer({
 
     // Teacher/Special Activities conflicts
     if (filters.specialActivityTeacher) {
-      
-      // First, show special activities for this teacher
-      // Note: special activities use 'teacher_name' field, not 'teacher'
+
+      // Show special activities for this teacher using teacher_id
       const teacherActivities = specialActivities.filter(
-        sa => sa.teacher_name === filters.specialActivityTeacher && sa.day_of_week === day
+        sa => sa.teacher_id === filters.specialActivityTeacher && sa.day_of_week === day
       );
-      
-      // Find the teacher's primary grade for color
-      const teacherStudents = students.filter(s => s.teacher_name === filters.specialActivityTeacher);
+
+      // Find the teacher's primary grade for color using teacher_id
+      const teacherStudents = students.filter(s => s.teacher_id === filters.specialActivityTeacher);
       const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
         acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
         return acc;
@@ -138,14 +137,9 @@ export function VisualAvailabilityLayer({
       
       // If bands overlap or touch
       if (next.startMin <= current.endMin) {
-        // Merge them, keeping the most restrictive color/type
+        // Merge them, extend the time range
         current.endMin = Math.max(current.endMin, next.endMin);
-        
-        // If different types, create a striped pattern indicator
-        if (current.type !== next.type) {
-          current.color = 'bg-gradient-to-r from-red-300 to-blue-300';
-          current.opacity = 50;
-        }
+        // Keep the existing color (no gradient blending since we're only showing one grade/teacher at a time)
       } else {
         // No overlap, push current and start new
         merged.push(current);
