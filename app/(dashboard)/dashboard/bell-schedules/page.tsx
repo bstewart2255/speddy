@@ -9,7 +9,6 @@ import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-sch
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { useSchool } from '../../../components/providers/school-context';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../components/schedule/filter-select';

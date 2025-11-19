@@ -278,9 +278,10 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
       if (error) throw error;
 
       // Transform the data to include student_count as a number
+      // Handle case where students array might be empty or undefined
       return data.map(({ students, ...teacher }) => ({
         ...teacher,
-        student_count: students?.[0]?.count || 0
+        student_count: (students && students.length > 0 && students[0].count !== undefined) ? students[0].count : 0
       }));
     },
     {
