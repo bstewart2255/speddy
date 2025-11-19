@@ -15,6 +15,17 @@ import type { Database } from '../../../src/types/database';
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type Lesson = Database['public']['Tables']['lessons']['Row'];
 
+interface CurriculumTracking {
+  id: string;
+  group_id: string | null;
+  session_id: string | null;
+  curriculum_type: string;
+  curriculum_level: string;
+  current_lesson: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface Document {
   id: string;
   documentable_type: 'group' | 'session';
@@ -41,6 +52,15 @@ interface GroupDetailsModalProps {
   students: Map<string, { initials: string; grade_level?: string }>;
 }
 
+// Curriculum options
+const CURRICULUM_OPTIONS = [
+  { value: 'SPIRE', label: 'S.P.I.R.E.' },
+  { value: 'Reveal Math', label: 'Reveal Math' }
+];
+
+const SPIRE_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+
 export function GroupDetailsModal({
   isOpen,
   onClose,
@@ -57,6 +77,12 @@ export function GroupDetailsModal({
   const [loadingLesson, setLoadingLesson] = useState(true);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+
+  // Curriculum tracking state
+  const [curriculumTracking, setCurriculumTracking] = useState<CurriculumTracking | null>(null);
+  const [curriculumType, setCurriculumType] = useState('');
+  const [curriculumLevel, setCurriculumLevel] = useState('');
+  const [currentLesson, setCurrentLesson] = useState<number>(1);
 
   // Documents state
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -139,16 +165,102 @@ export function GroupDetailsModal({
     }
   }, [groupId, showToast]);
 
-  // Fetch lesson and documents when modal opens
+  const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(`/api/curriculum-tracking?groupId=${groupId}`, { signal });
+      if (!response.ok) {
+        if (response.status === 404) {
+          // No curriculum tracking exists yet, which is fine
+          return;
+        }
+        throw new Error('Failed to fetch curriculum tracking');
+      }
+
+      const { data } = await response.json();
+      if (data) {
+        setCurriculumTracking(data);
+        setCurriculumType(data.curriculum_type);
+        setCurriculumLevel(data.curriculum_level);
+        setCurrentLesson(data.current_lesson);
+      }
+    } catch (error) {
+      // Ignore abort errors - expected during cleanup
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      // Silently fail for curriculum tracking - it's optional
+      console.error('Error fetching curriculum tracking:', error);
+    }
+  }, [groupId]);
+
+  // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
     const controller = new AbortController();
     fetchLesson(controller.signal);
     fetchDocuments(controller.signal);
+    fetchCurriculumTracking(controller.signal);
 
     return () => controller.abort();
-  }, [isOpen, fetchLesson, fetchDocuments]);
+  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking]);
+
+  const saveCurriculumTracking = async () => {
+    // Only save if all curriculum fields are provided
+    if (!curriculumType || !curriculumLevel || !currentLesson) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/curriculum-tracking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId,
+          curriculumType,
+          curriculumLevel,
+          currentLesson
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to save curriculum tracking');
+
+      const { data } = await response.json();
+      setCurriculumTracking(data);
+    } catch (error) {
+      console.error('Error saving curriculum tracking:', error);
+      throw error;
+    }
+  };
+
+  const handleNextLesson = async () => {
+    if (!curriculumTracking) {
+      showToast('Please save curriculum information first', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/curriculum-tracking', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId,
+          action: 'next'
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to advance lesson');
+
+      const { data } = await response.json();
+      setCurriculumTracking(data);
+      setCurrentLesson(data.current_lesson);
+
+      showToast(`Advanced to Lesson ${data.current_lesson}`, 'success');
+    } catch (error) {
+      console.error('Error advancing lesson:', error);
+      showToast('Failed to advance lesson', 'error');
+    }
+  };
 
   const handleSaveLesson = async () => {
     if (!content.trim()) {
@@ -175,6 +287,17 @@ export function GroupDetailsModal({
 
       const data = await response.json();
       setLesson(data.lesson);
+
+      // Save curriculum tracking if provided
+      if (curriculumType && curriculumLevel && currentLesson) {
+        try {
+          await saveCurriculumTracking();
+        } catch (currError) {
+          // Lesson saved but curriculum failed - warn user
+          showToast('Lesson saved, but curriculum tracking failed', 'warning');
+          return;
+        }
+      }
 
       showToast('Lesson saved successfully', 'success');
     } catch (error) {
@@ -464,6 +587,32 @@ export function GroupDetailsModal({
             </div>
           </div>
 
+          {/* Curriculum Context Section */}
+          {curriculumTracking && (
+            <div className="p-4 border-b border-gray-200 bg-blue-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📚</span>
+                  <div>
+                    <h5 className="font-medium text-gray-900 text-sm">
+                      {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
+                      {curriculumTracking.curriculum_type === 'SPIRE' ? 'Level' : 'Grade'} {curriculumTracking.curriculum_level}
+                    </h5>
+                    <p className="text-xs text-gray-600">
+                      Lesson {curriculumTracking.current_lesson}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleNextLesson}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"
+                >
+                  Next Lesson →
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Fixed Section: Documents */}
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between mb-3">
@@ -723,50 +872,107 @@ export function GroupDetailsModal({
             )}
           </div>
 
-          {/* Scrollable Section: Lesson Form */}
+          {/* Curriculum Tracking Section */}
+          <div className="p-6 border-b border-gray-200 bg-gray-50">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Curriculum Tracking</h3>
+            <div className="space-y-3 bg-white p-4 rounded-lg border border-gray-200">
+              <h5 className="text-sm font-medium text-gray-900 mb-3">
+                Curriculum Tracking (Optional)
+              </h5>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Curriculum
+                  </label>
+                  <select
+                    value={curriculumType}
+                    onChange={(e) => {
+                      setCurriculumType(e.target.value);
+                      // Reset level when curriculum changes
+                      setCurriculumLevel('');
+                    }}
+                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select curriculum...</option>
+                    {CURRICULUM_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {curriculumType && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {curriculumType === 'SPIRE' ? 'Level' : 'Grade'}
+                      </label>
+                      <select
+                        value={curriculumLevel}
+                        onChange={(e) => setCurriculumLevel(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select {curriculumType === 'SPIRE' ? 'level' : 'grade'}...</option>
+                        {(curriculumType === 'SPIRE' ? SPIRE_LEVELS : REVEAL_MATH_GRADES).map(level => (
+                          <option key={level} value={level}>{level}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Current Lesson Number
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={currentLesson}
+                        onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Lesson Plan Section */}
           <div className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Lesson Plan</h3>
-
             {loadingLesson ? (
               <div className="flex items-center justify-center py-8">
                 <div className="text-gray-500">Loading lesson...</div>
               </div>
             ) : (
-              <>
-                {lesson && lesson.lesson_source && (
-                  <p className="text-xs text-gray-500 mb-3">
-                    {lesson.lesson_source === 'ai_generated' ? '✨ AI-Generated' : '📝 Manual'}
-                  </p>
-                )}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Title
-                    </label>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder={`Lesson for ${groupName}`}
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Lesson Content
-                    </label>
-                    <textarea
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      placeholder="Enter your lesson plan content..."
-                      rows={15}
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
-                    />
-                  </div>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="lesson-title" className="block text-sm font-medium text-gray-700 mb-1">
+                    Title <span className="text-gray-500">(Optional)</span>
+                  </label>
+                  <input
+                    id="lesson-title"
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={groupName}
+                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              </>
+
+                <div>
+                  <label htmlFor="lesson-content" className="block text-sm font-medium text-gray-700 mb-1">
+                    Lesson Content
+                  </label>
+                  <textarea
+                    id="lesson-content"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Enter lesson content..."
+                    rows={10}
+                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  />
+                </div>
+              </div>
             )}
           </div>
         </div>
