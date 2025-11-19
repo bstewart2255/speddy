@@ -15,6 +15,7 @@ import type {
   Student,
 } from '@/src/types/database';
 import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
+import type { Teacher } from '../types/teacher';
 
 interface ScheduleGridProps {
   sessions: ScheduleSession[];
@@ -22,6 +23,7 @@ interface ScheduleGridProps {
   schoolHours: SchoolHour[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
+  teachers: Teacher[];
   visualFilters: {
     bellScheduleGrade: string | null;
     specialActivityTeacher: string | null;
@@ -79,6 +81,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   schoolHours,
   bellSchedules,
   specialActivities,
+  teachers,
   visualFilters,
   selectedGrades,
   selectedTimeSlot,
@@ -363,6 +366,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       schoolHours={schoolHours}
                       sessions={sessions}
                       students={students}
+                      teachers={teachers}
                       filters={visualFilters}
                       gridConfig={gridConfig}
                     />

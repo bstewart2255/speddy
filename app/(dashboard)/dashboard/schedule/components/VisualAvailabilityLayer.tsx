@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
+import { formatTeacherName } from '@/lib/utils/teacher-utils';
 import type {
   BellSchedule,
   ScheduleSession,
@@ -9,6 +10,7 @@ import type {
   SpecialActivity,
   Student,
 } from '@/src/types/database';
+import type { Teacher } from '../types/teacher';
 
 interface VisualAvailabilityLayerProps {
   day: number;
@@ -17,9 +19,10 @@ interface VisualAvailabilityLayerProps {
   schoolHours: SchoolHour[];
   sessions: ScheduleSession[];
   students: Student[];
+  teachers: Teacher[];
   filters: {
     bellScheduleGrade: string | null;
-    specialActivityTeacher: string | null;
+    specialActivityTeacher: string | null; // teacher_id
   };
   gridConfig: {
     startHour: number;
@@ -35,6 +38,7 @@ export function VisualAvailabilityLayer({
   schoolHours,
   sessions,
   students,
+  teachers,
   filters,
   gridConfig,
 }: VisualAvailabilityLayerProps) {
@@ -80,14 +84,27 @@ export function VisualAvailabilityLayer({
 
     // Teacher/Special Activities conflicts
     if (filters.specialActivityTeacher) {
+      // Find the selected teacher to get their name for fallback filtering
+      const selectedTeacher = teachers.find(t => t.id === filters.specialActivityTeacher);
+      const teacherName = selectedTeacher ? formatTeacherName(selectedTeacher) : null;
 
-      // Show special activities for this teacher using teacher_id
-      const teacherActivities = specialActivities.filter(
-        sa => sa.teacher_id === filters.specialActivityTeacher && sa.day_of_week === day
-      );
+      // Filter special activities using teacher_id (preferred) or teacher_name (fallback)
+      // This handles records that haven't been fully migrated to teacher_id yet
+      const teacherActivities = specialActivities.filter(sa => {
+        if (sa.day_of_week !== day) return false;
+        // Check teacher_id first (preferred), then fall back to teacher_name
+        if (sa.teacher_id === filters.specialActivityTeacher) return true;
+        if (teacherName && sa.teacher_name === teacherName) return true;
+        return false;
+      });
 
-      // Find the teacher's primary grade for color using teacher_id
-      const teacherStudents = students.filter(s => s.teacher_id === filters.specialActivityTeacher);
+      // Find the teacher's primary grade for color using teacher_id (preferred) or teacher_name (fallback)
+      const teacherStudents = students.filter(s => {
+        // Check teacher_id first (preferred), then fall back to teacher_name
+        if (s.teacher_id === filters.specialActivityTeacher) return true;
+        if (teacherName && s.teacher_name === teacherName) return true;
+        return false;
+      });
       const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
         acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
         return acc;
@@ -120,7 +137,7 @@ export function VisualAvailabilityLayer({
 
 
     return bands;
-  }, [day, bellSchedules, specialActivities, students, filters, gridConfig]);
+  }, [day, bellSchedules, specialActivities, students, teachers, filters, gridConfig]);
 
   // Merge overlapping bands
   const mergedBands = useMemo(() => {
