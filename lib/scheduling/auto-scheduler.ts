@@ -186,10 +186,12 @@ export class AutoScheduler {
       }
 
       // Query all activities at the school (teacher and provider created)
+      // Exclude soft-deleted activities
       const { data } = await this.supabase
         .from('special_activities')
         .select('*')
-        .eq('school_id', schoolId);
+        .eq('school_id', schoolId)
+        .is('deleted_at', null);
 
       return data || [];
     }

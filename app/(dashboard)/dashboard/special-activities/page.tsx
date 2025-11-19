@@ -47,15 +47,17 @@ export default function SpecialActivitiesPage() {
       if (!user || !currentSchool) return;
 
       // Query all activities at the current school (teacher and provider created)
+      // Exclude soft-deleted activities
       let query = supabase
         .from('special_activities')
-        .select('*');
+        .select('*')
+        .is('deleted_at', null);
 
       if (currentSchool.school_id) {
         query = query.eq('school_id', currentSchool.school_id);
       }
 
-      const { data, error } = await query
+      const { data, error} = await query
         .order('teacher_name', { ascending: true })
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
@@ -81,7 +83,12 @@ export default function SpecialActivitiesPage() {
 
   // Handle delete
   const handleDelete = async (id: string, activityName: string) => {
-    if (!confirm(`Are you sure you want to delete "${activityName}"?`)) {
+    // Enhanced confirmation with school-wide impact warning
+    const confirmMessage = `Are you sure you want to delete "${activityName}"?\n\n` +
+      `This activity is visible to all providers at ${currentSchool?.school_site || 'your school'} and may affect scheduling for multiple providers. ` +
+      `You can restore it within 30 days if deleted by mistake.`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 

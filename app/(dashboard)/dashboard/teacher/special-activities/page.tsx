@@ -105,7 +105,12 @@ export default function TeacherSpecialActivitiesPage() {
   };
 
   const handleDelete = async (id: string, activityName: string) => {
-    if (!confirm(`Are you sure you want to delete "${activityName}"?`)) {
+    // Enhanced confirmation with school-wide impact warning
+    const confirmMessage = `Are you sure you want to delete "${activityName}"?\n\n` +
+      `This activity is visible to all providers at your school and may affect scheduling. ` +
+      `You can restore it within 30 days if deleted by mistake.`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 

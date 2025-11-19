@@ -133,10 +133,12 @@ export function useScheduleData() {
         })(),
         
         // Special activities query - School-wide (all providers see all activities)
+        // Exclude soft-deleted activities
         (() => {
           let query = supabase
             .from('special_activities')
-            .select('*');
+            .select('*')
+            .is('deleted_at', null);
           if (currentSchool.school_id) {
             query = query.eq('school_id', currentSchool.school_id);
           }

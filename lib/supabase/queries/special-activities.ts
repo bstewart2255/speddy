@@ -16,9 +16,11 @@ export async function getSpecialActivities(schoolId?: string): Promise<SpecialAc
   }
 
   // Query all activities at the school (teacher and provider created)
+  // Exclude soft-deleted activities
   let query = supabase
     .from('special_activities')
-    .select('*');
+    .select('*')
+    .is('deleted_at', null);
 
   // Filter by school_id if provided
   if (schoolId) {
@@ -88,26 +90,29 @@ export async function addSpecialActivity(
 }
 
 /**
- * Delete a special activity by id after verifying ownership.
+ * Soft delete a special activity by id after verifying ownership.
+ * Sets deleted_at timestamp instead of permanently deleting the record.
  */
 export async function deleteSpecialActivity(id: string): Promise<void> {
   const supabase = createClient();
-  
+
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
     throw new Error('User not authenticated');
   }
 
-  // CRITICAL: Double-check ownership before delete
+  // CRITICAL: Soft delete with ownership verification
+  // Use created_by_id for ownership (works for both teacher and provider activities)
   const { error } = await supabase
     .from('special_activities')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('provider_id', user.id); // CRITICAL: Ensure user owns this record
+    .eq('created_by_id', user.id) // CRITICAL: Ensure user created this record
+    .is('deleted_at', null); // Only delete if not already deleted
 
   if (error) {
-    console.error('Error deleting special activity:', error);
+    console.error('Error soft-deleting special activity:', error);
     throw error;
   }
 }
