@@ -140,7 +140,16 @@ export function StudentDetailsModal({
       // Update student info if changed
       if (onUpdateStudent) {
         console.log('Updating student info:', studentInfo);
-        await onUpdateStudent(student.id, studentInfo);
+        // Convert teacherName to teacher_name for database compatibility
+        const updates = {
+          initials: studentInfo.initials,
+          grade_level: studentInfo.grade_level,
+          teacher_id: studentInfo.teacher_id,
+          teacher_name: studentInfo.teacherName || undefined,
+          sessions_per_week: studentInfo.sessions_per_week,
+          minutes_per_session: studentInfo.minutes_per_session,
+        };
+        await onUpdateStudent(student.id, updates);
         console.log('Student info updated successfully');
       }
 
