@@ -394,16 +394,16 @@ export async function deleteSpecialActivity(activityId: string) {
   const deletePerf = measurePerformanceWithAlerts('delete_special_activity', 'database');
   const deleteResult = await safeQuery(
     async () => {
-      const { error, count } = await supabase
+      const { data, error } = await supabase
         .from('special_activities')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', activityId)
         .eq('created_by_id', user.id)
         .eq('created_by_role', 'teacher')
         .is('deleted_at', null) // Only delete if not already deleted
-        .select('id', { count: 'exact' });
+        .select();
       if (error) throw error;
-      if (count === 0) {
+      if (!data || data.length === 0) {
         throw new Error('Activity not found, already deleted, or you do not have permission to delete it');
       }
       return null;

@@ -106,13 +106,13 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
 
   // CRITICAL: Soft delete with ownership verification
   // Use created_by_id for ownership (works for both teacher and provider activities)
-  const { data, error, count } = await supabase
+  const { data, error } = await supabase
     .from('special_activities')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
     .eq('created_by_id', user.id) // CRITICAL: Ensure user created this record
     .is('deleted_at', null) // Only delete if not already deleted
-    .select('id', { count: 'exact' });
+    .select();
 
   if (error) {
     console.error('Error soft-deleting special activity:', error);
@@ -120,7 +120,7 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
   }
 
   // Check if any rows were affected
-  if (count === 0) {
+  if (!data || data.length === 0) {
     throw new Error('Activity not found, already deleted, or you do not have permission to delete it');
   }
 }
