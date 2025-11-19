@@ -240,6 +240,7 @@ export async function getMySpecialActivities() {
         .from('special_activities')
         .select('*')
         .eq('teacher_id', teacher.id)
+        .is('deleted_at', null)
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
@@ -373,7 +374,8 @@ export async function updateSpecialActivity(
 }
 
 /**
- * Delete a special activity created by the current teacher
+ * Soft delete a special activity created by the current teacher
+ * Sets deleted_at timestamp instead of permanently deleting the record
  */
 export async function deleteSpecialActivity(activityId: string) {
   const supabase = createClient<Database>();
@@ -392,13 +394,18 @@ export async function deleteSpecialActivity(activityId: string) {
   const deletePerf = measurePerformanceWithAlerts('delete_special_activity', 'database');
   const deleteResult = await safeQuery(
     async () => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('special_activities')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', activityId)
         .eq('created_by_id', user.id)
-        .eq('created_by_role', 'teacher');
+        .eq('created_by_role', 'teacher')
+        .is('deleted_at', null) // Only delete if not already deleted
+        .select('id', { count: 'exact' });
       if (error) throw error;
+      if (count === 0) {
+        throw new Error('Activity not found, already deleted, or you do not have permission to delete it');
+      }
       return null;
     },
     {
