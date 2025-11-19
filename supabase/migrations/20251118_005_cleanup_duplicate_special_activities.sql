@@ -12,7 +12,7 @@ WITH duplicates AS (
   SELECT
     id,
     ROW_NUMBER() OVER (
-      PARTITION BY school_id, teacher_name, activity_name, day_of_week, start_time, end_time
+      PARTITION BY school_id, teacher_name, COALESCE(activity_name, ''), day_of_week, start_time, end_time
       ORDER BY created_at ASC  -- Keep the oldest (first created)
     ) as row_num
   FROM public.special_activities

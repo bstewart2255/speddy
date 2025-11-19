@@ -57,7 +57,7 @@ export default function SpecialActivitiesPage() {
         query = query.eq('school_id', currentSchool.school_id);
       }
 
-      const { data, error} = await query
+      const { data, error } = await query
         .order('teacher_name', { ascending: true })
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
