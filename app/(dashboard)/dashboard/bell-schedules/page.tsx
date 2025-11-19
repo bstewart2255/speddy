@@ -9,7 +9,6 @@ import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-sch
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { useSchool } from '../../../components/providers/school-context';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../components/schedule/filter-select';
@@ -160,13 +159,15 @@ export default function BellSchedulesPage() {
                 >
                   Import CSV
                 </Button>
-                <AIUploadButton 
-                  uploadType="bell_schedule" 
+                {/* Hidden: AI Upload not working as intended
+                <AIUploadButton
+                  uploadType="bell_schedule"
                   onSuccess={() => {
                     // Refresh bell schedules
                     window.location.reload();
-                  }} 
+                  }}
                 />
+                */}
                 <Button 
                   variant="primary" 
                   onClick={() => setShowAddForm(!showAddForm)}

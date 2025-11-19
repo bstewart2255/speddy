@@ -6,7 +6,7 @@ import { deleteTeacher } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
 
-type TeacherWithCount = Awaited<ReturnType<typeof getTeachersWithStudentCount>>[number];
+type TeacherWithCount = NonNullable<Awaited<ReturnType<typeof getTeachersWithStudentCount>>>[number];
 
 export default function TeacherDirectoryPage() {
   const [teachers, setTeachers] = useState<TeacherWithCount[]>([]);
@@ -20,7 +20,7 @@ export default function TeacherDirectoryPage() {
       setLoading(true);
       setError(null);
       const data = await getTeachersWithStudentCount();
-      setTeachers(data);
+      setTeachers(data || []);
     } catch (err) {
       console.error('Error loading teachers:', err);
       setError(err instanceof Error ? err.message : 'Failed to load teachers');

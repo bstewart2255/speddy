@@ -10,7 +10,6 @@ import SpecialActivitiesCSVImport from '../../../components/special-activities/c
 import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { FilterSelect } from '../../../components/schedule/filter-select';
 import { LastSaved } from '../../../components/ui/last-saved';
 import { getLastSavedSpecialActivity } from '../../../../lib/supabase/queries/last-saved';
@@ -175,13 +174,15 @@ export default function SpecialActivitiesPage() {
                 >
                   Import CSV
                 </Button>
-                <AIUploadButton 
-                  uploadType="special_activities" 
+                {/* Hidden: AI Upload not working as intended
+                <AIUploadButton
+                  uploadType="special_activities"
                   onSuccess={() => {
                     // Refresh special activities
                     window.location.reload();
-                  }} 
+                  }}
                 />
+                */}
                 <Button 
                   variant="primary" 
                   onClick={() => setShowAddForm(!showAddForm)}
