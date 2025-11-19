@@ -216,7 +216,7 @@ Continue?`;
         className={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "opacity-50 cursor-not-allowed" : ""}
         title={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "No unscheduled sessions" : `Schedule ${unscheduledCount} unscheduled session${unscheduledCount !== 1 ? 's' : ''}`}
       >
-        {isProcessing ? 'Scheduling...' : 'Schedule Sessions'}
+        {isProcessing ? 'Scheduling...' : 'Auto-Schedule Sessions'}
       </Button>
 
       {isProcessing && (

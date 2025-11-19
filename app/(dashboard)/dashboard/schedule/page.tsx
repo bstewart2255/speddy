@@ -438,6 +438,7 @@ export default function SchedulePage() {
             schoolHours={schoolHours}
             bellSchedules={bellSchedules}
             specialActivities={specialActivities}
+            teachers={teachers}
             visualFilters={visualFilters}
             selectedGrades={selectedGrades}
             selectedTimeSlot={selectedTimeSlot}

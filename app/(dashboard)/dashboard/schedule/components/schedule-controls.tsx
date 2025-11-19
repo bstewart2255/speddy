@@ -53,74 +53,82 @@ export function ScheduleControls({
 
   return (
     <>
-      {/* Session Filter */}
-      <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">View Sessions</h3>
-        <div className="flex gap-2">
-          <FilterButton
-            active={sessionFilter === 'all'}
-            onClick={() => onSessionFilterChange('all')}
-          >
-            All Sessions
-          </FilterButton>
-          <FilterButton
-            active={sessionFilter === 'mine'}
-            onClick={() => onSessionFilterChange('mine')}
-          >
-            My Sessions
-          </FilterButton>
-          <FilterButton
-            active={sessionFilter === 'sea'}
-            onClick={() => onSessionFilterChange('sea')}
-          >
-            SEA Sessions
-          </FilterButton>
-          {showSpecialistFilter && (
+      {/* Session Filter and Grade Level Filter - Side by Side */}
+      <div className="mb-4 flex flex-col lg:flex-row gap-4">
+        {/* View Sessions - Left Side */}
+        <div className="bg-white rounded-lg shadow-sm p-4 flex-shrink-0">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">View Sessions</h3>
+          <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap">
             <FilterButton
-              active={sessionFilter === 'specialist'}
-              onClick={() => onSessionFilterChange('specialist')}
+              active={sessionFilter === 'all'}
+              onClick={() => onSessionFilterChange('all')}
+              compact
             >
-              Specialist Sessions
+              All Sessions
             </FilterButton>
-          )}
-          {showAssignedFilter && (
             <FilterButton
-              active={sessionFilter === 'assigned'}
-              onClick={() => onSessionFilterChange('assigned')}
+              active={sessionFilter === 'mine'}
+              onClick={() => onSessionFilterChange('mine')}
+              compact
             >
-              Assigned Sessions
+              My Sessions
             </FilterButton>
-          )}
-        </div>
-      </div>
-
-      {/* Grade Level Filter */}
-      <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Grade Levels</h3>
-        <div className="flex flex-wrap gap-3">
-          {GRADE_COLORS.map(({ grade, colorClass, displayName }) => {
-            const isActive = selectedGrades.has(grade);
-            return (
-              <button
-                key={grade}
-                onClick={() => onGradeToggle(grade)}
-                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            <FilterButton
+              active={sessionFilter === 'sea'}
+              onClick={() => onSessionFilterChange('sea')}
+              compact
+            >
+              SEA Sessions
+            </FilterButton>
+            {showSpecialistFilter && (
+              <FilterButton
+                active={sessionFilter === 'specialist'}
+                onClick={() => onSessionFilterChange('specialist')}
+                compact
               >
-                <div
-                  className={`w-4 h-4 rounded ${
-                    isActive ? colorClass : 'bg-gray-300'
-                  }`}
-                />
-                <span
-                  className={`text-sm ${
-                    isActive ? 'text-gray-600' : 'text-gray-400'
-                  }`}
+                Specialist Sessions
+              </FilterButton>
+            )}
+            {showAssignedFilter && (
+              <FilterButton
+                active={sessionFilter === 'assigned'}
+                onClick={() => onSessionFilterChange('assigned')}
+                compact
+              >
+                Assigned Sessions
+              </FilterButton>
+            )}
+          </div>
+        </div>
+
+        {/* Grade Levels - Right Side */}
+        <div className="bg-white rounded-lg shadow-sm p-4 flex-1">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Grade Levels</h3>
+          <div className="flex flex-wrap gap-3">
+            {GRADE_COLORS.map(({ grade, colorClass, displayName }) => {
+              const isActive = selectedGrades.has(grade);
+              return (
+                <button
+                  key={grade}
+                  onClick={() => onGradeToggle(grade)}
+                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                 >
-                  {displayName}
-                </span>
-              </button>
-            );
-          })}
+                  <div
+                    className={`w-4 h-4 rounded ${
+                      isActive ? colorClass : 'bg-gray-300'
+                    }`}
+                  />
+                  <span
+                    className={`text-sm ${
+                      isActive ? 'text-gray-600' : 'text-gray-400'
+                    }`}
+                  >
+                    {displayName}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -153,15 +161,17 @@ function FilterButton({
   active,
   onClick,
   children,
+  compact = false,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1 text-sm rounded-md transition-colors ${
+      className={`${compact ? 'px-2 py-1 text-xs' : 'px-3 py-1 text-sm'} rounded-md transition-colors ${
         active
           ? 'bg-blue-500 text-white'
           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
