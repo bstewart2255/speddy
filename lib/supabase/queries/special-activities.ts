@@ -75,6 +75,8 @@ export async function addSpecialActivity(
     .insert({
       ...activity,
       provider_id: user.id,
+      created_by_id: user.id,
+      created_by_role: 'provider',
       school_site: finalSchoolSite,
       school_id: finalSchoolId
     })
@@ -104,27 +106,33 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
 
   // CRITICAL: Soft delete with ownership verification
   // Use created_by_id for ownership (works for both teacher and provider activities)
-  const { error } = await supabase
+  const { data, error, count } = await supabase
     .from('special_activities')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
     .eq('created_by_id', user.id) // CRITICAL: Ensure user created this record
-    .is('deleted_at', null); // Only delete if not already deleted
+    .is('deleted_at', null) // Only delete if not already deleted
+    .select('id', { count: 'exact' });
 
   if (error) {
     console.error('Error soft-deleting special activity:', error);
     throw error;
   }
+
+  // Check if any rows were affected
+  if (count === 0) {
+    throw new Error('Activity not found, already deleted, or you do not have permission to delete it');
+  }
 }
 
 /**
- * Remove all activities for a specific teacher owned by the user.
+ * Soft delete all activities for a specific teacher created by the user.
  * @param teacherName - The teacher's name
  * @param schoolId - Optional school ID to scope the deletion
  */
 export async function deleteTeacherActivities(teacherName: string, schoolId?: string): Promise<void> {
   const supabase = createClient();
-  
+
   // Get current user
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -133,19 +141,20 @@ export async function deleteTeacherActivities(teacherName: string, schoolId?: st
 
   let query = supabase
     .from('special_activities')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('teacher_name', teacherName)
-    .eq('provider_id', user.id); // CRITICAL: Filter by provider_id
-  
+    .eq('created_by_id', user.id) // CRITICAL: Filter by creator
+    .is('deleted_at', null); // Only delete active records
+
   // Filter by school_id if provided
   if (schoolId) {
     query = query.eq('school_id', schoolId);
   }
-  
+
   const { error } = await query;
 
   if (error) {
-    console.error('Error deleting teacher activities:', error);
+    console.error('Error soft-deleting teacher activities:', error);
     throw error;
   }
 }
