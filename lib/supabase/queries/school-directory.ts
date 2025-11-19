@@ -251,35 +251,51 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_teachers_with_counts', 'database');
 
-  // Get all teachers
-  const teachers = await getSchoolTeachers(targetSchoolId);
+  // Optimized: Get all teachers with student counts in a single query
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          classroom_number,
+          phone_number,
+          school_id,
+          school_site,
+          account_id,
+          created_by_admin,
+          created_at,
+          updated_at,
+          students:students(count)
+        `)
+        .eq('school_id', targetSchoolId)
+        .order('last_name', { ascending: true })
+        .order('first_name', { ascending: true });
 
-  // Get student counts for each teacher
-  const teachersWithCounts = await Promise.all(
-    teachers.map(async (teacher) => {
-      const countResult = await safeQuery(
-        async () => {
-          const { count, error } = await supabase
-            .from('students')
-            .select('id', { count: 'exact', head: true })
-            .eq('teacher_id', teacher.id);
+      if (error) throw error;
 
-          if (error) throw error;
-          return count || 0;
-        },
-        { operation: 'count_teacher_students', teacherId: teacher.id }
-      );
-
-      return {
+      // Transform the data to include student_count as a number
+      return data.map(({ students, ...teacher }) => ({
         ...teacher,
-        student_count: countResult.data || 0
-      };
-    })
+        student_count: students?.[0]?.count || 0
+      }));
+    },
+    {
+      operation: 'fetch_teachers_with_counts',
+      schoolId: targetSchoolId
+    }
   );
 
   fetchPerf.end();
 
-  return teachersWithCounts;
+  if (fetchResult.error) {
+    throw fetchResult.error;
+  }
+
+  return fetchResult.data;
 }
 
 // ============================================================================
