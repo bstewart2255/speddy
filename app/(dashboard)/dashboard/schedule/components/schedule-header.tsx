@@ -71,7 +71,7 @@ function UnscheduledSessionsAlert({ count }: { count: number }) {
             {count} session{count !== 1 ? 's' : ''} need{count === 1 ? 's' : ''} to be scheduled
           </p>
           <p className="text-sm text-amber-700">
-            Click &quot;Schedule Sessions&quot; above to add these sessions to your calendar
+            Click &quot;Auto-Schedule Sessions&quot; above to add these sessions to your calendar, or drag-and-drop them from the &quot;Unscheduled Sessions&quot; section below.
           </p>
         </div>
       </div>
