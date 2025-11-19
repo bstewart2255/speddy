@@ -147,47 +147,34 @@ export class ScheduleImportService {
 
   /**
    * Fetch special activities for a provider and school
+   *
+   * NOTE: As of 2025-11-18, special activities are school-wide and visible to all providers.
+   * This method returns an empty array since sharing/copying is no longer needed.
+   * Activities are automatically visible to all providers at the same school.
    */
   private async fetchSpecialActivities(providerId: string, schoolId: string): Promise<SpecialActivity[]> {
-    const { data, error } = await this.supabase
-      .from('special_activities')
-      .select('*')
-      .eq('provider_id', providerId)
-      .eq('school_id', schoolId);
-
-    if (error) {
-      console.error('Error fetching special activities:', error);
-      throw error;
-    }
-
-    return data || [];
+    // Special activities are now school-wide - no need to fetch/copy them
+    // They're automatically visible to all providers at the school
+    return [];
   }
 
   /**
    * Delete existing schedules for a provider and school
+   *
+   * NOTE: As of 2025-11-18, special activities are school-wide and should NOT be deleted
+   * during schedule imports. They're automatically visible to all providers at the school.
    */
   private async deleteExistingSchedules(providerId: string, schoolId: string): Promise<void> {
-    const [bellResult, activityResult] = await Promise.all([
-      this.supabase
-        .from('bell_schedules')
-        .delete()
-        .eq('provider_id', providerId)
-        .eq('school_id', schoolId),
-      this.supabase
-        .from('special_activities')
-        .delete()
-        .eq('provider_id', providerId)
-        .eq('school_id', schoolId),
-    ]);
+    // Only delete bell schedules - special activities are school-wide and should not be deleted
+    const { error: bellError } = await this.supabase
+      .from('bell_schedules')
+      .delete()
+      .eq('provider_id', providerId)
+      .eq('school_id', schoolId);
 
-    if (bellResult.error) {
-      console.error('Error deleting bell schedules:', bellResult.error);
-      throw bellResult.error;
-    }
-
-    if (activityResult.error) {
-      console.error('Error deleting special activities:', activityResult.error);
-      throw activityResult.error;
+    if (bellError) {
+      console.error('Error deleting bell schedules:', bellError);
+      throw bellError;
     }
   }
 

@@ -1827,6 +1827,7 @@ export type Database = {
           created_by_id: string | null
           created_by_role: string | null
           day_of_week: number
+          deleted_at: string | null
           district_id: string | null
           end_time: string
           id: string
@@ -1845,6 +1846,7 @@ export type Database = {
           created_by_id?: string | null
           created_by_role?: string | null
           day_of_week: number
+          deleted_at?: string | null
           district_id?: string | null
           end_time: string
           id?: string
@@ -1863,6 +1865,7 @@ export type Database = {
           created_by_id?: string | null
           created_by_role?: string | null
           day_of_week?: number
+          deleted_at?: string | null
           district_id?: string | null
           end_time?: string
           id?: string
