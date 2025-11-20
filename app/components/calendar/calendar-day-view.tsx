@@ -11,6 +11,7 @@ import { useSchool } from '../providers/school-context';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
+import { SessionGenerator } from '@/lib/services/session-generator';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -57,6 +58,7 @@ export function CalendarDayView({
   const [savingGroup, setSavingGroup] = useState(false);
 
   const supabase = useMemo(() => createClient<Database>(), []);
+  const sessionGenerator = useMemo(() => new SessionGenerator(), []);
 
   // Group color mapping (cycle through colors for different groups)
   const groupColors = [
@@ -135,30 +137,60 @@ export function CalendarDayView({
       // Format current date as YYYY-MM-DD in local timezone
       const dateStr = formatDateLocal(currentDate);
 
-      // Get instances for this specific date
-      const { data: sessions, error } = await supabase
-        .from('schedule_sessions')
-        .select(`
-          *,
-          students!inner(school_id, district_id, school_site, school_district)
-        `)
-        .not('session_date', 'is', null)
-        .eq('session_date', dateStr);
+      // Use SessionGenerator to get sessions for this day
+      // This will return both:
+      // 1. Existing instances from the database
+      // 2. Temporary instances created from templates (if database instances don't exist)
+      const dayStart = new Date(currentDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(23, 59, 59, 999);
 
-      if (error) {
-        log.error('[CalendarDayView] Error fetching sessions', error);
-        setSessionsState([]);
-        return;
-      }
+      const sessions = await sessionGenerator.getSessionsForDateRange(user.id, dayStart, dayEnd, profile?.role);
 
-      // Filter sessions by current school if applicable
-      const filteredSessions = await filterSessionsBySchool(supabase, sessions || [], currentSchool);
+      log.info('[CalendarDayView] SessionGenerator returned sessions', {
+        count: sessions?.length || 0,
+        sessionIds: sessions?.map(s => s.id) || [],
+        dateStr
+      });
+
+      // Filter sessions by current school if applicable, but preserve assigned sessions
+      let filteredSessions = await filterSessionsBySchool(supabase, sessions || [], currentSchool);
+
+      log.info('[CalendarDayView] After school filtering', {
+        count: filteredSessions.length,
+        sessionIds: filteredSessions.map(s => s.id)
+      });
+
+      // Add back any assigned sessions that may have been filtered out by school filter
+      const assignedSessions = (sessions || []).filter(s =>
+        s.assigned_to_specialist_id === user.id || s.assigned_to_sea_id === user.id
+      );
+
+      log.info('[CalendarDayView] Found assigned sessions', {
+        count: assignedSessions.length,
+        sessionIds: assignedSessions.map(s => s.id),
+        userId: user.id
+      });
+
+      // Merge, removing duplicates
+      const sessionIds = new Set(filteredSessions.map(s => s.id));
+      assignedSessions.forEach(s => {
+        if (!sessionIds.has(s.id)) {
+          filteredSessions.push(s);
+        }
+      });
+
+      log.info('[CalendarDayView] Final sessions after merging', {
+        count: filteredSessions.length,
+        sessionIds: filteredSessions.map(s => s.id)
+      });
 
       setSessionsState(filteredSessions);
     };
 
     loadSessions();
-  }, [currentDate, currentSchool, supabase]);
+  }, [currentDate, currentSchool, supabase, sessionGenerator]);
 
   // Fetch student data for assigned sessions (students that aren't in the prop)
   React.useEffect(() => {

@@ -78,11 +78,21 @@ export class SessionGenerator {
       return [];
     }
 
+    // Calculate which days of week we need templates for
+    const neededDays = new Set<number>();
+    const currentDay = new Date(startDate);
+    while (currentDay <= endDate) {
+      neededDays.add(currentDay.getDay() || 7); // Convert Sunday (0) to 7
+      currentDay.setDate(currentDay.getDate() + 1);
+    }
+
     // Get template sessions (where session_date is NULL)
+    // Only fetch templates for days we actually need (performance optimization)
     let templatesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .is('session_date', null);
+      .is('session_date', null)
+      .in('day_of_week', Array.from(neededDays));
 
     // Include templates assigned to this user based on their role
     templatesQuery = this.applyRoleFilter(templatesQuery, providerId, normalizedRole);
