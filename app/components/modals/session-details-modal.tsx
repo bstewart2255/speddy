@@ -10,6 +10,7 @@ import {
   getFileTypeName
 } from '@/lib/document-utils';
 import { formatTime } from '@/lib/utils/time-options';
+import { ensureSessionPersisted } from '@/lib/services/session-persistence';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -68,6 +69,22 @@ export function SessionDetailsModal({
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Track persisted session ID (may differ from prop if we auto-save a temp session)
+  const [currentSessionId, setCurrentSessionId] = useState<string>(session.id);
+
+  // Helper to ensure session is persisted before operations that require a real ID
+  const ensurePersistedSession = async (): Promise<string> => {
+    // If already using a permanent ID, return it
+    if (!currentSessionId.startsWith('temp-')) {
+      return currentSessionId;
+    }
+
+    // Persist the temp session and update our tracked ID
+    const persistedSession = await ensureSessionPersisted(session);
+    setCurrentSessionId(persistedSession.id);
+    return persistedSession.id;
+  };
+
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [title, setTitle] = useState('');
@@ -89,6 +106,11 @@ export function SessionDetailsModal({
   const [newDocUrl, setNewDocUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
+
+  // Sync currentSessionId when session prop changes
+  useEffect(() => {
+    setCurrentSessionId(session.id);
+  }, [session.id]);
 
   // Add escape key handler and body scroll prevention
   useEffect(() => {
@@ -118,7 +140,7 @@ export function SessionDetailsModal({
 
     setLoadingDocuments(true);
     try {
-      const response = await fetch(`/api/sessions/${session.id}/documents`, { signal });
+      const response = await fetch(`/api/sessions/${currentSessionId}/documents`, { signal });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('API Error:', response.status, errorData);
@@ -138,7 +160,7 @@ export function SessionDetailsModal({
     } finally {
       setLoadingDocuments(false);
     }
-  }, [session.id, showToast]);
+  }, [currentSessionId, showToast]);
 
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
     // Skip curriculum tracking for temporary sessions (not yet saved to database)
@@ -147,7 +169,7 @@ export function SessionDetailsModal({
     }
 
     try {
-      const response = await fetch(`/api/curriculum-tracking?sessionId=${session.id}`, { signal });
+      const response = await fetch(`/api/curriculum-tracking?sessionId=${currentSessionId}`, { signal });
       if (!response.ok) {
         if (response.status === 404) {
           // No curriculum tracking exists yet, which is fine
@@ -171,7 +193,7 @@ export function SessionDetailsModal({
       // Silently fail for curriculum tracking - it's optional
       console.error('Error fetching curriculum tracking:', error);
     }
-  }, [session.id]);
+  }, [currentSessionId]);
 
   // Initialize lesson, documents and curriculum tracking when modal opens
   useEffect(() => {
@@ -199,11 +221,14 @@ export function SessionDetailsModal({
     }
 
     try {
+      // Ensure session is persisted before saving curriculum tracking
+      const sessionId = await ensurePersistedSession();
+
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: session.id,
+          sessionId,
           curriculumType,
           curriculumLevel,
           currentLesson
@@ -227,11 +252,14 @@ export function SessionDetailsModal({
     }
 
     try {
+      // Ensure session is persisted before advancing lesson
+      const sessionId = await ensurePersistedSession();
+
       const response = await fetch('/api/curriculum-tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: session.id,
+          sessionId,
           action: 'next'
         })
       });
@@ -256,6 +284,9 @@ export function SessionDetailsModal({
     }
 
     try {
+      // Ensure session is persisted before saving lesson
+      await ensurePersistedSession();
+
       const sessionDate = session.session_date || new Date().toISOString().split('T')[0];
       const timeSlot = `${session.start_time}-${session.end_time}`;
 
@@ -359,12 +390,15 @@ export function SessionDetailsModal({
 
     setUploading(true);
     try {
+      // Ensure session is persisted before uploading document
+      const sessionId = await ensurePersistedSession();
+
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('title', newDocTitle.trim());
       formData.append('document_type', 'file');
 
-      const response = await fetch(`/api/sessions/${session.id}/documents`, {
+      const response = await fetch(`/api/sessions/${sessionId}/documents`, {
         method: 'POST',
         body: formData
       });
@@ -416,13 +450,16 @@ export function SessionDetailsModal({
     }
 
     try {
+      // Ensure session is persisted before adding link
+      const sessionId = await ensurePersistedSession();
+
       const body = {
         title: newDocTitle.trim(),
         document_type: 'link',
         url: newDocUrl.trim()
       };
 
-      const response = await fetch(`/api/sessions/${session.id}/documents`, {
+      const response = await fetch(`/api/sessions/${sessionId}/documents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -449,7 +486,7 @@ export function SessionDetailsModal({
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const response = await fetch(`/api/sessions/${session.id}/documents?documentId=${documentId}`, {
+      const response = await fetch(`/api/sessions/${currentSessionId}/documents?documentId=${documentId}`, {
         method: 'DELETE'
       });
 

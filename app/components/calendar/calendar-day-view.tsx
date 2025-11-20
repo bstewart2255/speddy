@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
+import { ensureSessionsPersisted } from '@/lib/services/session-persistence';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
@@ -388,6 +389,19 @@ export function CalendarDayView({
     try {
       if (!providerId) {
         throw new Error('User not authenticated');
+      }
+
+      // Persist any temporary sessions before grouping
+      const selectedSessions = Array.from(selectedSessionIds)
+        .map(id => sessionsState.find(s => s.id === id))
+        .filter((s): s is ScheduleSession => s !== undefined);
+
+      const tempSessions = selectedSessions.filter(s => s.id.startsWith('temp-'));
+      if (tempSessions.length > 0) {
+        log.info('Persisting temporary sessions before grouping', {
+          tempSessionCount: tempSessions.length
+        });
+        await ensureSessionsPersisted(tempSessions);
       }
 
       // Find template sessions that correspond to the selected sessions
