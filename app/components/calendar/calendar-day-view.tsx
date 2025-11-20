@@ -5,6 +5,7 @@ import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { ensureSessionsPersisted } from '@/lib/services/session-persistence';
+import { SessionGenerator } from '@/lib/services/session-generator';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
@@ -12,7 +13,6 @@ import { useSchool } from '../providers/school-context';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
-import { SessionGenerator } from '@/lib/services/session-generator';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
