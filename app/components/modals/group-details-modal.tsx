@@ -59,7 +59,7 @@ const CURRICULUM_OPTIONS = [
 ];
 
 const SPIRE_LEVELS = ['Foundations', '1', '2', '3', '4', '5', '6', '7', '8'];
-const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5'];
 
 export function GroupDetailsModal({
   isOpen,
