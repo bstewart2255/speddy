@@ -28,7 +28,7 @@ const CURRICULUM_OPTIONS = [
   { value: 'Reveal Math', label: 'Reveal Math' }
 ];
 
-const SPIRE_LEVELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const SPIRE_LEVELS = ['Foundations', '1', '2', '3', '4', '5', '6', '7', '8'];
 const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
 
 export function GroupLessonPanel({
@@ -369,7 +369,7 @@ export function GroupLessonPanel({
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {curriculumType === 'SPIRE' ? 'Level' : 'Grade'}
+                      {curriculumType === 'SPIRE' ? 'Level/Foundations' : 'Grade'}
                     </label>
                     <select
                       value={curriculumLevel}
@@ -378,7 +378,9 @@ export function GroupLessonPanel({
                     >
                       <option value="">Select {curriculumType === 'SPIRE' ? 'level' : 'grade'}...</option>
                       {(curriculumType === 'SPIRE' ? SPIRE_LEVELS : REVEAL_MATH_GRADES).map(level => (
-                        <option key={level} value={level}>{level}</option>
+                        <option key={level} value={level}>
+                          {curriculumType === 'SPIRE' && level !== 'Foundations' ? `Level ${level}` : level}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -440,7 +442,10 @@ export function GroupLessonPanel({
   // Get level/grade label
   const getLevelLabel = () => {
     if (!curriculumTracking) return '';
-    return curriculumTracking.curriculum_type === 'SPIRE' ? 'Level' : 'Grade';
+    if (curriculumTracking.curriculum_type === 'SPIRE') {
+      return curriculumTracking.curriculum_level === 'Foundations' ? '' : 'Level';
+    }
+    return 'Grade';
   };
 
   return (
