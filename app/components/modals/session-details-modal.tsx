@@ -110,6 +110,12 @@ export function SessionDetailsModal({
   }, [isOpen, onClose]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
+    // Skip documents for temporary sessions (not yet saved to database)
+    if (session.id.startsWith('temp-')) {
+      setDocuments([]);
+      return;
+    }
+
     setLoadingDocuments(true);
     try {
       const response = await fetch(`/api/sessions/${session.id}/documents`, { signal });
@@ -135,6 +141,11 @@ export function SessionDetailsModal({
   }, [session.id, showToast]);
 
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
+    // Skip curriculum tracking for temporary sessions (not yet saved to database)
+    if (session.id.startsWith('temp-')) {
+      return;
+    }
+
     try {
       const response = await fetch(`/api/curriculum-tracking?sessionId=${session.id}`, { signal });
       if (!response.ok) {
