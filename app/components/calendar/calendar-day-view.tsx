@@ -155,34 +155,10 @@ export function CalendarDayView({
         dateStr
       });
 
-      // Filter sessions by current school if applicable, but preserve assigned sessions
+      // Filter sessions by current school if applicable
       let filteredSessions = await filterSessionsBySchool(supabase, sessions || [], currentSchool);
 
       log.info('[CalendarDayView] After school filtering', {
-        count: filteredSessions.length,
-        sessionIds: filteredSessions.map(s => s.id)
-      });
-
-      // Add back any assigned sessions that may have been filtered out by school filter
-      const assignedSessions = (sessions || []).filter(s =>
-        s.assigned_to_specialist_id === user.id || s.assigned_to_sea_id === user.id
-      );
-
-      log.info('[CalendarDayView] Found assigned sessions', {
-        count: assignedSessions.length,
-        sessionIds: assignedSessions.map(s => s.id),
-        userId: user.id
-      });
-
-      // Merge, removing duplicates
-      const sessionIds = new Set(filteredSessions.map(s => s.id));
-      assignedSessions.forEach(s => {
-        if (!sessionIds.has(s.id)) {
-          filteredSessions.push(s);
-        }
-      });
-
-      log.info('[CalendarDayView] Final sessions after merging', {
         count: filteredSessions.length,
         sessionIds: filteredSessions.map(s => s.id)
       });
@@ -560,7 +536,6 @@ export function CalendarDayView({
       log.info('Grouping API response', { data });
 
       // Reload sessions using SessionGenerator to maintain role-based filtering
-      // This ensures assigned sessions (where user is specialist/SEA) remain visible
       log.info('Reloading sessions for date', { currentDate });
       const dayStart = new Date(currentDate);
       dayStart.setHours(0, 0, 0, 0);
@@ -659,25 +634,26 @@ export function CalendarDayView({
         throw new Error(data.error || 'Failed to ungroup session');
       }
 
-      // Reload sessions to reflect the ungrouped session
-      const dateStr = formatDateLocal(currentDate);
-      const { data: updatedSessions, error: reloadError } = await supabase
-        .from('schedule_sessions')
-        .select(`
-          *,
-          students!inner(school_id, district_id, school_site, school_district)
-        `)
-        .not('session_date', 'is', null)
-        .eq('session_date', dateStr);
+      // Reload sessions using SessionGenerator to maintain role-based filtering
+      log.info('Reloading sessions for date after ungrouping', { currentDate });
+      const dayStart = new Date(currentDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(23, 59, 59, 999);
 
-      if (reloadError) {
-        log.error('[CalendarDayView] Error reloading sessions after ungrouping', reloadError);
-        showToast('Failed to reload sessions', 'error');
-        return;
-      }
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        dayStart,
+        dayEnd,
+        userProfile?.role
+      );
+
+      log.info('Reloaded sessions', {
+        sessionCount: updatedSessions.length
+      });
 
       // Filter by current school
-      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions || [], currentSchool);
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
 
       setSessionsState(filteredSessions);
 
