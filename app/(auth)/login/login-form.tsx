@@ -122,7 +122,7 @@ export default function LoginForm() {
         </Link>
       </p>
       <div className="text-xs text-gray-500 mb-4 text-center">
-        By creating an account, you agree to our{' '}
+        By using this service, you agree to our{' '}
         <Link href="/terms" className="text-blue-600 hover:text-blue-500">
           Terms of Service
         </Link>,{' '}
