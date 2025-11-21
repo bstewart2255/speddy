@@ -79,6 +79,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       : startOfWeek(today, { weekStartsOn: 1 });
   }, []); // Calculate once on mount
 
+  const sessionGenerator = React.useMemo(() => new SessionGenerator(), []);
+
   const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
   const [students, setStudents] = React.useState<Record<string, {
     id: string;
@@ -210,7 +212,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         // Use SessionGenerator to get sessions for this week
         // This includes role-based filtering for assigned sessions (specialist/SEA)
-        const sessionGenerator = new SessionGenerator();
         let allSessions = await sessionGenerator.getSessionsForDateRange(
           user.id,
           weekStartDate,
@@ -233,46 +234,17 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           sessionData = allSessions;
         }
 
-        // Apply school filtering while preserving assigned sessions
+        // Apply school filtering
         if (currentSchool && worksAtMultipleSchools && currentSchool.school_id) {
-          const filteredBySchool = await filterSessionsBySchool(
+          sessionData = await filterSessionsBySchool(
             supabase,
             sessionData,
             currentSchool
           );
-
-          // Add back any assigned sessions that may have been filtered out by school
-          const assignedSessions = sessionData.filter(s =>
-            s.assigned_to_specialist_id === user.id || s.assigned_to_sea_id === user.id
-          );
-
-          const sessionIds = new Set(filteredBySchool.map(s => s.id));
-          assignedSessions.forEach(s => {
-            if (!sessionIds.has(s.id)) {
-              filteredBySchool.push(s);
-            }
-          });
-
-          sessionData = filteredBySchool;
-        }
-
-        const sessionError = null; // SessionGenerator handles errors internally
-
-        if (sessionError) {
-          console.error("Session fetch error:", sessionError);
-          setLoading(false);
-          return;
         }
 
         if (sessionData && isMounted) {
-          // Transform sessions to include date field
-          const transformedSessions = sessionData.map((session) => ({
-            ...session,
-            // Use session_date for the date field
-            date: session.session_date,
-          }));
-
-          setSessions(transformedSessions);
+          setSessions(sessionData);
 
           // Get unique student IDs
           const studentIds = [
@@ -338,7 +310,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school changes
+  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools, sessionGenerator]); // Re-run when viewMode, weekStart, or school changes
 
   // Helper functions
   const getDayIndex = (session: any): number => {
