@@ -105,30 +105,8 @@ export class SessionGenerator {
     }
 
     if (!templates || templates.length === 0) {
-      // Even without templates, we should clean up orphaned instances
-      if (instances && instances.length > 0) {
-        const today = formatLocalDate(new Date());
-        const orphanedInstances = instances.filter(instance => {
-          // Only check future non-completed instances
-          if (instance.session_date && instance.session_date < today) return false;
-          if (instance.completed_at) return false;
-
-          // An instance is orphaned if no template exists for this provider/student/day/time
-          // Since we have no templates, any instance from this provider is potentially orphaned
-          return true;
-        });
-
-        // Delete orphaned instances asynchronously (don't block the response)
-        if (orphanedInstances.length > 0) {
-          console.log('[SessionGenerator] Found potentially orphaned instances with no templates:',
-            orphanedInstances.map(i => i.id));
-        }
-
-        // Return completed instances and past instances only
-        return instances.filter(i =>
-          i.completed_at || (i.session_date && i.session_date < today)
-        );
-      }
+      // No templates found - return all instances as-is
+      // We can't determine orphans without templates to compare against
       return instances || [];
     }
 
@@ -148,6 +126,7 @@ export class SessionGenerator {
       // Check if a matching template exists
       const hasMatchingTemplate = templates.some(t =>
         t.student_id === instance.student_id &&
+        t.provider_id === instance.provider_id &&
         t.day_of_week === instance.day_of_week &&
         t.start_time === instance.start_time
       );
