@@ -10,6 +10,7 @@ import {
   getFileTypeName
 } from '@/lib/document-utils';
 import { formatTime } from '@/lib/utils/time-options';
+import { ensureSessionsPersisted } from '@/lib/services/session-persistence';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -71,6 +72,19 @@ export function GroupDetailsModal({
 }: GroupDetailsModalProps) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper to ensure all sessions in the group are persisted before operations
+  const ensureGroupSessionsPersisted = async (): Promise<void> => {
+    // Filter temp sessions
+    const tempSessions = sessions.filter(s => s.id.startsWith('temp-'));
+
+    if (tempSessions.length === 0) {
+      return; // All sessions already persisted
+    }
+
+    // Persist all temp sessions
+    await ensureSessionsPersisted(tempSessions);
+  };
 
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -212,6 +226,9 @@ export function GroupDetailsModal({
     }
 
     try {
+      // Ensure all sessions in the group are persisted before saving curriculum
+      await ensureGroupSessionsPersisted();
+
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,6 +257,9 @@ export function GroupDetailsModal({
     }
 
     try {
+      // Ensure all sessions in the group are persisted before advancing lesson
+      await ensureGroupSessionsPersisted();
+
       const response = await fetch('/api/curriculum-tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -269,6 +289,9 @@ export function GroupDetailsModal({
     }
 
     try {
+      // Ensure all sessions in the group are persisted before saving lesson
+      await ensureGroupSessionsPersisted();
+
       const body: any = {
         title: title.trim() || groupName,
         content: content.trim(),
@@ -366,6 +389,9 @@ export function GroupDetailsModal({
 
     setUploading(true);
     try {
+      // Ensure all sessions in the group are persisted before uploading document
+      await ensureGroupSessionsPersisted();
+
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('title', newDocTitle.trim());
@@ -423,6 +449,9 @@ export function GroupDetailsModal({
     }
 
     try {
+      // Ensure all sessions in the group are persisted before adding link
+      await ensureGroupSessionsPersisted();
+
       const body = {
         title: newDocTitle.trim(),
         document_type: 'link',

@@ -4,6 +4,8 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
+import { ensureSessionsPersisted } from '@/lib/services/session-persistence';
+import { SessionGenerator } from '@/lib/services/session-generator';
 import { cn } from '@/src/utils/cn';
 import { useToast } from '../../contexts/toast-context';
 import { toDateKeyLocal } from '../../utils/date-helpers';
@@ -11,7 +13,6 @@ import { useSchool } from '../providers/school-context';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
-import { SessionGenerator } from '@/lib/services/session-generator';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -390,6 +391,50 @@ export function CalendarDayView({
         throw new Error('User not authenticated');
       }
 
+      // Persist any temporary sessions before grouping
+      const selectedSessions = Array.from(selectedSessionIds)
+        .map(id => sessionsState.find(s => s.id === id))
+        .filter((s): s is ScheduleSession => s !== undefined);
+
+      const tempSessions = selectedSessions.filter(s => s.id.startsWith('temp-'));
+      if (tempSessions.length > 0) {
+        log.info('Persisting temporary sessions before grouping', {
+          tempSessionCount: tempSessions.length
+        });
+        const persistedSessions = await ensureSessionsPersisted(tempSessions);
+
+        // Update sessionsState with persisted sessions (new IDs)
+        const idMap = new Map(persistedSessions.map(ps => {
+          const temp = tempSessions.find(ts =>
+            ts.student_id === ps.student_id &&
+            ts.day_of_week === ps.day_of_week &&
+            ts.start_time === ps.start_time &&
+            ts.session_date === ps.session_date
+          );
+          return temp ? [temp.id, ps.id] : null;
+        }).filter((entry): entry is [string, string] => entry !== null));
+
+        // Update sessionsState with persisted sessions
+        setSessionsState(prev => prev.map(s => {
+          const persistedSession = persistedSessions.find(ps =>
+            s.student_id === ps.student_id &&
+            s.day_of_week === ps.day_of_week &&
+            s.start_time === ps.start_time &&
+            s.session_date === ps.session_date
+          );
+          return persistedSession || s;
+        }));
+
+        // Update selectedSessionIds with new persisted IDs
+        setSelectedSessionIds(prev => {
+          const newSet = new Set<string>();
+          prev.forEach(id => {
+            newSet.add(idMap.get(id) || id);
+          });
+          return newSet;
+        });
+      }
+
       // Find template sessions that correspond to the selected sessions
       // Templates have: same student_id, same day_of_week, same start_time, and session_date IS NULL
       const templateIds: string[] = [];
@@ -514,31 +559,28 @@ export function CalendarDayView({
 
       log.info('Grouping API response', { data });
 
-      // Reload sessions to reflect the grouped templates
+      // Reload sessions using SessionGenerator to maintain role-based filtering
+      // This ensures assigned sessions (where user is specialist/SEA) remain visible
       log.info('Reloading sessions for date', { currentDate });
-      const dateStr = formatDateLocal(currentDate);
-      const { data: updatedSessions, error: reloadError } = await supabase
-        .from('schedule_sessions')
-        .select(`
-          *,
-          students!inner(school_id, district_id, school_site, school_district)
-        `)
-        .not('session_date', 'is', null)
-        .eq('session_date', dateStr);
+      const dayStart = new Date(currentDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(23, 59, 59, 999);
 
-      if (reloadError) {
-        log.error('[CalendarDayView] Error reloading sessions after grouping', reloadError);
-        showToast('Failed to reload sessions', 'error');
-        return;
-      }
+      const updatedSessions = await sessionGenerator.getSessionsForDateRange(
+        providerId,
+        dayStart,
+        dayEnd,
+        userProfile?.role
+      );
 
       log.info('Reloaded sessions', {
-        sessionCount: updatedSessions?.length || 0,
-        sessionsWithGroups: updatedSessions?.filter(s => s.group_id).length || 0
+        sessionCount: updatedSessions.length,
+        sessionsWithGroups: updatedSessions.filter(s => s.group_id).length
       });
 
       // Filter by current school
-      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions || [], currentSchool);
+      const filteredSessions = await filterSessionsBySchool(supabase, updatedSessions, currentSchool);
 
       setSessionsState(filteredSessions);
 
