@@ -121,14 +121,7 @@ export async function GET(request: NextRequest) {
       const studentId = searchParams.get('student_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
-      if (!studentId) {
-        return NextResponse.json(
-          { error: 'Student ID is required' },
-          { status: 400 }
-        );
-      }
-
-      // Fetch exit tickets for the student
+      // Fetch exit tickets (optionally filtered by student)
       let query = supabase
         .from('exit_tickets')
         .select(`
@@ -147,8 +140,12 @@ export async function GET(request: NextRequest) {
             graded_by
           )
         `)
-        .eq('student_id', studentId)
         .order('created_at', { ascending: false });
+
+      // Filter by student if provided
+      if (studentId) {
+        query = query.eq('student_id', studentId);
+      }
 
       const { data: tickets, error: ticketsError } = await query;
 

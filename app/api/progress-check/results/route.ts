@@ -160,15 +160,8 @@ export async function GET(request: NextRequest) {
       const studentId = searchParams.get('student_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
-      if (!studentId) {
-        return NextResponse.json(
-          { error: 'Student ID is required' },
-          { status: 400 }
-        );
-      }
-
-      // Fetch progress checks for the student with their results
-      const { data: checks, error: checksError } = await supabase
+      // Fetch progress checks (optionally filtered by student) with their results
+      let query = supabase
         .from('progress_checks')
         .select(`
           id,
@@ -187,8 +180,14 @@ export async function GET(request: NextRequest) {
             graded_by
           )
         `)
-        .eq('student_id', studentId)
         .order('created_at', { ascending: false });
+
+      // Filter by student if provided
+      if (studentId) {
+        query = query.eq('student_id', studentId);
+      }
+
+      const { data: checks, error: checksError } = await query;
 
       if (checksError) {
         console.error('Error fetching progress checks:', checksError);

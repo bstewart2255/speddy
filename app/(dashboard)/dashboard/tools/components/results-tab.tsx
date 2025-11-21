@@ -51,6 +51,8 @@ export default function ResultsTab() {
   useEffect(() => {
     if (selectedStudentId) {
       fetchTickets();
+    } else {
+      setTickets([]);
     }
   }, [selectedStudentId, statusFilter]);
 
@@ -108,7 +110,8 @@ export default function ResultsTab() {
     setLoading(true);
     try {
       const filterParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
-      const response = await fetch(`/api/exit-tickets/results?student_id=${selectedStudentId}${filterParam}`);
+      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
+      const response = await fetch(`/api/exit-tickets/results?${studentParam}${filterParam.replace('&', '')}`);
       const data = await response.json();
 
       if (data.success && data.tickets) {
@@ -247,6 +250,7 @@ export default function ResultsTab() {
               ) : (
                 <>
                   <option value="">Choose a student...</option>
+                  <option value="all">All Students</option>
                   {students.map((student) => (
                     <option key={student.id} value={student.id}>
                       {student.initials}

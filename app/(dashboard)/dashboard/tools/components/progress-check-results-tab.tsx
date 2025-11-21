@@ -134,8 +134,9 @@ export default function ProgressCheckResultsTab() {
   const fetchChecks = useCallback(async () => {
     setLoading(true);
     try {
+      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
       const response = await fetch(
-        `/api/progress-check/results?student_id=${selectedStudentId}&status=${statusFilter}`
+        `/api/progress-check/results?${studentParam}status=${statusFilter}`
       );
 
       if (!response.ok) throw new Error('Failed to fetch progress checks');
@@ -342,6 +343,7 @@ export default function ProgressCheckResultsTab() {
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">-- Select a student --</option>
+            <option value="all">All Students</option>
             {students.map((student) => (
               <option key={student.id} value={student.id}>
                 {student.initials} (Grade {student.grade_level})
