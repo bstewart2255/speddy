@@ -10,6 +10,8 @@ import { ScheduleSession } from '@/src/types/database';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { GroupDetailsModal } from '@/app/components/modals/group-details-modal';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
+import { SessionGenerator } from '@/lib/services/session-generator';
+import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 
 interface Holiday {
   date: string;
@@ -76,6 +78,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       ? startOfWeek(addDays(today, 7), { weekStartsOn: 1 })
       : startOfWeek(today, { weekStartsOn: 1 });
   }, []); // Calculate once on mount
+
+  const sessionGenerator = React.useMemo(() => new SessionGenerator(), []);
 
   const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
   const [students, setStudents] = React.useState<Record<string, {
@@ -198,109 +202,49 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           setShowToggle(false);
         }
 
-        // Fetch schedule sessions based on view mode
-        // Only join students table if we need to filter by school
-        const needsStudentJoin = currentSchool &&
-                                worksAtMultipleSchools &&
-                                currentSchool.school_id;
-
-        let sessionQuery;
-        if (needsStudentJoin) {
-          sessionQuery = supabase
-            .from("schedule_sessions")
-            .select(`
-              id,
-              day_of_week,
-              start_time,
-              end_time,
-              student_id,
-              delivered_by,
-              assigned_to_sea_id,
-              assigned_to_specialist_id,
-              provider_id,
-              service_type,
-              session_date,
-              session_notes,
-              is_completed,
-              student_absent,
-              outside_schedule_conflict,
-              completed_at,
-              completed_by,
-              group_id,
-              group_name,
-              students!inner(
-                id,
-                school_id
-              )
-            `)
-            .gte("day_of_week", 1)
-            .lte("day_of_week", 5)
-            .order("day_of_week")
-            .order("start_time");
-        } else {
-          sessionQuery = supabase
-            .from("schedule_sessions")
-            .select("id, day_of_week, start_time, end_time, student_id, delivered_by, assigned_to_sea_id, assigned_to_specialist_id, provider_id, service_type, session_date, session_notes, is_completed, student_absent, outside_schedule_conflict, completed_at, completed_by, group_id, group_name")
-            .gte("day_of_week", 1)
-            .lte("day_of_week", 5)
-            .order("day_of_week")
-            .order("start_time");
-        }
-
-        // Determine session filtering based on user role and view mode
-        if (userRole === 'sea') {
-          // SEA users: Show sessions assigned to them
-          sessionQuery = sessionQuery
-            .not("assigned_to_sea_id", "is", null)
-            .eq("assigned_to_sea_id", user.id);
-        } else if (hasSEAs && viewMode === 'sea') {
-          // Provider viewing SEA sessions: Show sessions assigned to SEAs
-          sessionQuery = sessionQuery
-            .eq("provider_id", user.id)
-            .eq("delivered_by", "sea");
-        } else {
-          // Provider viewing their own sessions
-          sessionQuery = sessionQuery
-            .eq("provider_id", user.id);
-        }
-
-        // Apply school filter if a specific school is selected
-        if (needsStudentJoin && currentSchool?.school_id) {
-          sessionQuery = sessionQuery.eq('students.school_id', currentSchool.school_id);
-        }
-
-        // Calculate week date range for filtering instances
+        // Calculate week date range
+        const weekStartDate = new Date(weekStart);
+        weekStartDate.setHours(0, 0, 0, 0);
+        const weekEndDate = new Date(addDays(weekStart, 4));
+        weekEndDate.setHours(23, 59, 59, 999);
         const weekStartStr = format(weekStart, 'yyyy-MM-dd');
         const weekEndStr = format(addDays(weekStart, 4), 'yyyy-MM-dd');
 
-        // Filter to show only instances (not templates) within the current week
-        sessionQuery = sessionQuery
-          .not('session_date', 'is', null)
-          .gte('session_date', weekStartStr)
-          .lte('session_date', weekEndStr);
+        // Use SessionGenerator to get sessions for this week
+        // This includes role-based filtering for assigned sessions (specialist/SEA)
+        let allSessions = await sessionGenerator.getSessionsForDateRange(
+          user.id,
+          weekStartDate,
+          weekEndDate,
+          profile?.role
+        );
 
-        const { data: sessionData, error: sessionError } = await sessionQuery;
+        // Apply view mode filtering
+        let sessionData: ScheduleSession[];
+        if (userRole === 'sea') {
+          // SEA users: Only show sessions assigned to them (already filtered by SessionGenerator)
+          sessionData = allSessions.filter(s => s.assigned_to_sea_id === user.id);
+        } else if (hasSEAs && viewMode === 'sea') {
+          // Provider viewing SEA sessions: Show only sessions they own that are assigned to SEAs
+          sessionData = allSessions.filter(s =>
+            s.provider_id === user.id && s.delivered_by === 'sea'
+          );
+        } else {
+          // Provider viewing their own sessions: Show owned + assigned sessions
+          sessionData = allSessions;
+        }
 
-        if (sessionError) {
-          console.error("Session fetch error:", sessionError);
-          setLoading(false);
-          return;
+        // Apply school filtering
+        if (currentSchool && worksAtMultipleSchools && currentSchool.school_id) {
+          sessionData = await filterSessionsBySchool(
+            supabase,
+            sessionData,
+            currentSchool
+          );
         }
 
         if (sessionData && isMounted) {
-          // Transform sessions to include date field
-          // Handle both with and without student joins
-          const transformedSessions = sessionData.map((session: any) => {
-            // Extract the core session data (removing nested students object if present)
-            const { students, ...sessionCore } = session;
-            return {
-              ...sessionCore,
-              // Use session_date directly since we're only fetching instances
-              date: sessionCore.session_date,
-            };
-          });
-
-          setSessions(transformedSessions);
+          setSessions(sessionData);
 
           // Get unique student IDs
           const studentIds = [
@@ -366,7 +310,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools]); // Re-run when viewMode, weekStart, or school changes
+  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools, sessionGenerator]); // Re-run when viewMode, weekStart, or school changes
 
   // Helper functions
   const getDayIndex = (session: any): number => {
