@@ -158,6 +158,7 @@ export async function GET(request: NextRequest) {
       const supabase = await createClient();
       const { searchParams } = new URL(req.url);
       const studentId = searchParams.get('student_id');
+      const schoolId = searchParams.get('school_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
       // Fetch progress checks (optionally filtered by student) with their results
@@ -170,6 +171,9 @@ export async function GET(request: NextRequest) {
           created_at,
           completed_at,
           discarded_at,
+          students!inner (
+            school_id
+          ),
           progress_check_results (
             id,
             iep_goal_index,
@@ -185,6 +189,11 @@ export async function GET(request: NextRequest) {
       // Filter by student if provided
       if (studentId) {
         query = query.eq('student_id', studentId);
+      }
+
+      // Filter by school if provided (for "All Students" view)
+      if (schoolId) {
+        query = query.eq('students.school_id', schoolId);
       }
 
       const { data: checks, error: checksError } = await query;

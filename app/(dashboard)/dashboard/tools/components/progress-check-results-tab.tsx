@@ -135,8 +135,9 @@ export default function ProgressCheckResultsTab() {
     setLoading(true);
     try {
       const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
+      const schoolParam = selectedStudentId === 'all' && currentSchool ? `school_id=${currentSchool}&` : '';
       const response = await fetch(
-        `/api/progress-check/results?${studentParam}status=${statusFilter}`
+        `/api/progress-check/results?${studentParam}${schoolParam}status=${statusFilter}`
       );
 
       if (!response.ok) throw new Error('Failed to fetch progress checks');
@@ -166,7 +167,7 @@ export default function ProgressCheckResultsTab() {
     } finally {
       setLoading(false);
     }
-  }, [selectedStudentId, statusFilter]);
+  }, [selectedStudentId, statusFilter, currentSchool]);
 
   // Fetch checks when student or filter changes
   useEffect(() => {

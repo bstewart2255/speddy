@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
       const supabase = await createClient();
       const { searchParams } = new URL(req.url);
       const studentId = searchParams.get('student_id');
+      const schoolId = searchParams.get('school_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
       // Fetch exit tickets (optionally filtered by student)
@@ -132,6 +133,9 @@ export async function GET(request: NextRequest) {
           content,
           created_at,
           discarded_at,
+          students!inner (
+            school_id
+          ),
           exit_ticket_results (
             id,
             rating,
@@ -145,6 +149,11 @@ export async function GET(request: NextRequest) {
       // Filter by student if provided
       if (studentId) {
         query = query.eq('student_id', studentId);
+      }
+
+      // Filter by school if provided (for "All Students" view)
+      if (schoolId) {
+        query = query.eq('students.school_id', schoolId);
       }
 
       const { data: tickets, error: ticketsError } = await query;
