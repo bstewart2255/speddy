@@ -135,7 +135,7 @@ export default function ProgressCheckResultsTab() {
     setLoading(true);
     try {
       const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool ? `school_id=${currentSchool}&` : '';
+      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
       const response = await fetch(
         `/api/progress-check/results?${studentParam}${schoolParam}status=${statusFilter}`
       );

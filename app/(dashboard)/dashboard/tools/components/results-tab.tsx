@@ -111,7 +111,7 @@ export default function ResultsTab() {
     try {
       const filterParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
       const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool ? `school_id=${currentSchool}&` : '';
+      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
       const response = await fetch(`/api/exit-tickets/results?${studentParam}${schoolParam}${filterParam.replace('&', '')}`);
       const data = await response.json();
 
