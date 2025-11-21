@@ -73,7 +73,8 @@ export function SessionDetailsModal({
   const [currentSessionId, setCurrentSessionId] = useState<string>(session.id);
 
   // Helper to ensure session is persisted before operations that require a real ID
-  const ensurePersistedSession = async (): Promise<string> => {
+  // Using useCallback with proper dependencies to avoid stale closure issues
+  const ensurePersistedSession = useCallback(async (): Promise<string> => {
     // If already using a permanent ID, return it
     if (!currentSessionId.startsWith('temp-')) {
       return currentSessionId;
@@ -83,7 +84,7 @@ export function SessionDetailsModal({
     const persistedSession = await ensureSessionPersisted(session);
     setCurrentSessionId(persistedSession.id);
     return persistedSession.id;
-  };
+  }, [currentSessionId, session]);
 
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -132,8 +133,8 @@ export function SessionDetailsModal({
   }, [isOpen, onClose]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
-    // Skip documents for temporary sessions (not yet saved to database)
-    if (session.id.startsWith('temp-')) {
+    // Skip documents for sessions that are still temporary (no real DB ID yet)
+    if (currentSessionId.startsWith('temp-')) {
       setDocuments([]);
       return;
     }
@@ -163,8 +164,8 @@ export function SessionDetailsModal({
   }, [currentSessionId, showToast]);
 
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
-    // Skip curriculum tracking for temporary sessions (not yet saved to database)
-    if (session.id.startsWith('temp-')) {
+    // Skip curriculum tracking for sessions that are still temporary (no real DB ID yet)
+    if (currentSessionId.startsWith('temp-')) {
       return;
     }
 
