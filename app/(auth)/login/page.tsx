@@ -18,7 +18,7 @@ export default function LoginPage() {
               The friendly elementary SpEd platform :)
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              Sign in (or up) to make your SpEd life easier!
+              Sign in to make your SpEd life easier!
             </p>
           </div>
           
