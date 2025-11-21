@@ -105,11 +105,86 @@ export class SessionGenerator {
     }
 
     if (!templates || templates.length === 0) {
+      // Even without templates, we should clean up orphaned instances
+      if (instances && instances.length > 0) {
+        const today = formatLocalDate(new Date());
+        const orphanedInstances = instances.filter(instance => {
+          // Only check future non-completed instances
+          if (instance.session_date && instance.session_date < today) return false;
+          if (instance.completed_at) return false;
+
+          // An instance is orphaned if no template exists for this provider/student/day/time
+          // Since we have no templates, any instance from this provider is potentially orphaned
+          return true;
+        });
+
+        // Delete orphaned instances asynchronously (don't block the response)
+        if (orphanedInstances.length > 0) {
+          console.log('[SessionGenerator] Found potentially orphaned instances with no templates:',
+            orphanedInstances.map(i => i.id));
+        }
+
+        // Return completed instances and past instances only
+        return instances.filter(i =>
+          i.completed_at || (i.session_date && i.session_date < today)
+        );
+      }
       return instances || [];
     }
 
+    // AUTO-CLEANUP: Detect and remove orphaned instances
+    // An instance is orphaned if its start_time doesn't match any template for that student+day
+    const orphanedInstanceIds: string[] = [];
+    const validInstances: ScheduleSession[] = [];
+    const today = formatLocalDate(new Date());
+
+    for (const instance of (instances || [])) {
+      // Skip completed instances and past instances - preserve history
+      if (instance.completed_at || (instance.session_date && instance.session_date < today)) {
+        validInstances.push(instance);
+        continue;
+      }
+
+      // Check if a matching template exists
+      const hasMatchingTemplate = templates.some(t =>
+        t.student_id === instance.student_id &&
+        t.day_of_week === instance.day_of_week &&
+        t.start_time === instance.start_time
+      );
+
+      if (hasMatchingTemplate) {
+        validInstances.push(instance);
+      } else {
+        // This is an orphaned instance - mark for deletion
+        orphanedInstanceIds.push(instance.id);
+        console.log('[SessionGenerator] Detected orphaned instance:', {
+          id: instance.id,
+          student_id: instance.student_id,
+          session_date: instance.session_date,
+          start_time: instance.start_time,
+          day_of_week: instance.day_of_week
+        });
+      }
+    }
+
+    // Delete orphaned instances asynchronously
+    if (orphanedInstanceIds.length > 0) {
+      console.log('[SessionGenerator] Cleaning up', orphanedInstanceIds.length, 'orphaned instances');
+      this.supabase
+        .from('schedule_sessions')
+        .delete()
+        .in('id', orphanedInstanceIds)
+        .then(({ error }) => {
+          if (error) {
+            console.error('[SessionGenerator] Error deleting orphaned instances:', error);
+          } else {
+            console.log('[SessionGenerator] Successfully deleted orphaned instances');
+          }
+        });
+    }
+
     // For each day in range, check if we need to create instances
-    const sessions: ScheduleSession[] = instances || [];
+    const sessions: ScheduleSession[] = validInstances;
     const currentDate = new Date(startDate);
 
     while (currentDate <= endDate) {
