@@ -122,6 +122,16 @@ export async function GET(request: NextRequest) {
       const schoolId = searchParams.get('school_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
 
+      // If filtering by school, get the student IDs for that school first
+      let schoolStudentIds: string[] | null = null;
+      if (schoolId && !studentId) {
+        const { data: schoolStudents } = await supabase
+          .from('students')
+          .select('id')
+          .eq('school_id', schoolId);
+        schoolStudentIds = schoolStudents?.map(s => s.id) || [];
+      }
+
       // Fetch exit tickets (optionally filtered by student)
       let query = supabase
         .from('exit_tickets')
@@ -133,9 +143,6 @@ export async function GET(request: NextRequest) {
           content,
           created_at,
           discarded_at,
-          students!inner (
-            school_id
-          ),
           exit_ticket_results (
             id,
             rating,
@@ -149,11 +156,12 @@ export async function GET(request: NextRequest) {
       // Filter by student if provided
       if (studentId) {
         query = query.eq('student_id', studentId);
-      }
-
-      // Filter by school if provided (for "All Students" view)
-      if (schoolId) {
-        query = query.eq('students.school_id', schoolId);
+      } else if (schoolStudentIds && schoolStudentIds.length > 0) {
+        // Filter by school's students
+        query = query.in('student_id', schoolStudentIds);
+      } else if (schoolId && (!schoolStudentIds || schoolStudentIds.length === 0)) {
+        // School has no students, return empty
+        return NextResponse.json({ success: true, tickets: [] });
       }
 
       const { data: tickets, error: ticketsError } = await query;
