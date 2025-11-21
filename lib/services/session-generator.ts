@@ -105,11 +105,65 @@ export class SessionGenerator {
     }
 
     if (!templates || templates.length === 0) {
+      // No templates found - return all instances as-is
+      // We can't determine orphans without templates to compare against
       return instances || [];
     }
 
+    // AUTO-CLEANUP: Detect and remove orphaned instances
+    // An instance is orphaned if its start_time doesn't match any template for that student+day
+    const orphanedInstanceIds: string[] = [];
+    const validInstances: ScheduleSession[] = [];
+    const today = formatLocalDate(new Date());
+
+    for (const instance of (instances || [])) {
+      // Skip completed instances and past instances - preserve history
+      if (instance.completed_at || (instance.session_date && instance.session_date < today)) {
+        validInstances.push(instance);
+        continue;
+      }
+
+      // Check if a matching template exists
+      const hasMatchingTemplate = templates.some(t =>
+        t.student_id === instance.student_id &&
+        t.provider_id === instance.provider_id &&
+        t.day_of_week === instance.day_of_week &&
+        t.start_time === instance.start_time
+      );
+
+      if (hasMatchingTemplate) {
+        validInstances.push(instance);
+      } else {
+        // This is an orphaned instance - mark for deletion
+        orphanedInstanceIds.push(instance.id);
+        console.log('[SessionGenerator] Detected orphaned instance:', {
+          id: instance.id,
+          student_id: instance.student_id,
+          session_date: instance.session_date,
+          start_time: instance.start_time,
+          day_of_week: instance.day_of_week
+        });
+      }
+    }
+
+    // Delete orphaned instances asynchronously
+    if (orphanedInstanceIds.length > 0) {
+      console.log('[SessionGenerator] Cleaning up', orphanedInstanceIds.length, 'orphaned instances');
+      this.supabase
+        .from('schedule_sessions')
+        .delete()
+        .in('id', orphanedInstanceIds)
+        .then(({ error }) => {
+          if (error) {
+            console.error('[SessionGenerator] Error deleting orphaned instances:', error);
+          } else {
+            console.log('[SessionGenerator] Successfully deleted orphaned instances');
+          }
+        });
+    }
+
     // For each day in range, check if we need to create instances
-    const sessions: ScheduleSession[] = instances || [];
+    const sessions: ScheduleSession[] = validInstances;
     const currentDate = new Date(startDate);
 
     while (currentDate <= endDate) {

@@ -9,6 +9,16 @@ const timeToMinutes = (time: string): number => {
   return hours * 60 + minutes;
 };
 
+/**
+ * Format a Date object as a local YYYY-MM-DD string
+ */
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const addMinutesToTime = (time: string, minutesToAdd: number): string => {
   const totalMinutes = timeToMinutes(time) + minutesToAdd;
   const hours = Math.floor(totalMinutes / 60);
@@ -174,6 +184,41 @@ export class SessionUpdateService {
         newStartTime,
         newEndTime
       });
+
+      // ORPHAN CLEANUP: When a template's time/day changes, delete future orphaned instances
+      // This prevents old instances from showing up in Day view/Today's Schedule
+      if (session.session_date === null) {
+        const timeChanged = session.start_time !== newStartTime || session.day_of_week !== newDay;
+
+        if (timeChanged && session.start_time && session.day_of_week !== null) {
+          const today = formatLocalDate(new Date());
+
+          console.log('Cleaning up orphaned instances:', {
+            studentId: session.student_id,
+            oldDay: session.day_of_week,
+            oldStartTime: session.start_time,
+            newDay,
+            newStartTime
+          });
+
+          // Delete future non-completed instances at the OLD time
+          const { error: cleanupError, count } = await this.supabase
+            .from('schedule_sessions')
+            .delete()
+            .eq('student_id', session.student_id)
+            .eq('provider_id', session.provider_id)
+            .eq('day_of_week', session.day_of_week)
+            .eq('start_time', session.start_time)
+            .gte('session_date', today)
+            .is('completed_at', null);
+
+          if (cleanupError) {
+            console.error('Error cleaning up orphaned instances:', cleanupError);
+          } else {
+            console.log(`Deleted ${count || 0} orphaned instances`);
+          }
+        }
+      }
 
       // Generate instances if this is a template session being scheduled
       // Only create instances if:
