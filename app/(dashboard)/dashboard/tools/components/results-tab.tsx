@@ -308,7 +308,9 @@ export default function ResultsTab() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredTickets.map((ticket) => (
+          {filteredTickets.map((ticket) => {
+            const ticketStudent = students.find(s => s.id === ticket.student_id);
+            return (
             <div
               key={ticket.id}
               className={`bg-white border rounded-lg p-6 hover:shadow-md transition-shadow ${
@@ -319,7 +321,7 @@ export default function ResultsTab() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      Exit Ticket
+                      {ticketStudent?.initials || 'Unknown'} - Exit Ticket
                     </h3>
                     {ticket.discarded_at ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
@@ -443,7 +445,8 @@ export default function ResultsTab() {
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

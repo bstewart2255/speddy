@@ -409,7 +409,7 @@ export default function ProgressCheckResultsTab() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-900">
-                        Progress Check - {new Date(check.created_at).toLocaleDateString()}
+                        {check.content.studentInitials} - Progress Check - {new Date(check.created_at).toLocaleDateString()}
                       </span>
                       {check.discarded_at ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800">
