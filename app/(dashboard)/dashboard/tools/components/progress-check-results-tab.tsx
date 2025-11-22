@@ -64,6 +64,9 @@ export default function ProgressCheckResultsTab() {
   const [questionStates, setQuestionStates] = useState<Record<string, Record<string, QuestionResult>>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const ITEMS_PER_PAGE = 50;
 
   // Cleanup success message timeout on unmount
   useEffect(() => {
@@ -131,50 +134,72 @@ export default function ProgressCheckResultsTab() {
     }
   }, [currentSchool, fetchStudents]);
 
-  const fetchChecks = useCallback(async () => {
+  const fetchChecks = useCallback(async (reset = false, pageNumber = 0) => {
     setLoading(true);
     try {
-      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
-      const response = await fetch(
-        `/api/progress-check/results?${studentParam}${schoolParam}status=${statusFilter}`
-      );
+      const offset = pageNumber * ITEMS_PER_PAGE;
+
+      // Build query params properly using URLSearchParams
+      const params = new URLSearchParams();
+      if (selectedStudentId !== 'all') {
+        params.append('student_id', selectedStudentId);
+      }
+      if (selectedStudentId === 'all' && currentSchool?.school_id) {
+        params.append('school_id', currentSchool.school_id);
+      }
+      params.append('status', statusFilter);
+      params.append('limit', ITEMS_PER_PAGE.toString());
+      params.append('offset', offset.toString());
+
+      const response = await fetch(`/api/progress-check/results?${params.toString()}`);
 
       if (!response.ok) throw new Error('Failed to fetch progress checks');
 
       const data = await response.json();
-      setChecks(data.checks || []);
+      const newChecks = data.checks || [];
+
+      setChecks(prevChecks => reset ? newChecks : [...prevChecks, ...newChecks]);
+      setHasMore(newChecks.length === ITEMS_PER_PAGE);
 
       // Initialize question states from existing results
-      const initialStates: Record<string, Record<string, QuestionResult>> = {};
-      data.checks.forEach((check: ProgressCheck) => {
-        const checkStates: Record<string, QuestionResult> = {};
-        check.results.forEach((result: any) => {
-          const key = `${result.iep_goal_index}-${result.question_index}`;
-          checkStates[key] = {
-            iep_goal_index: result.iep_goal_index,
-            question_index: result.question_index,
-            status: result.status,
-            notes: result.notes || undefined,
-          };
+      setQuestionStates(prevStates => {
+        const initialStates: Record<string, Record<string, QuestionResult>> = reset ? {} : { ...prevStates };
+        newChecks.forEach((check: ProgressCheck) => {
+          const checkStates: Record<string, QuestionResult> = {};
+          check.results.forEach((result: any) => {
+            const key = `${result.iep_goal_index}-${result.question_index}`;
+            checkStates[key] = {
+              iep_goal_index: result.iep_goal_index,
+              question_index: result.question_index,
+              status: result.status,
+              notes: result.notes || undefined,
+            };
+          });
+          initialStates[check.id] = checkStates;
         });
-        initialStates[check.id] = checkStates;
+        return initialStates;
       });
-      setQuestionStates(initialStates);
 
     } catch (error) {
       console.error('Error fetching progress checks:', error);
     } finally {
       setLoading(false);
     }
-  }, [selectedStudentId, statusFilter, currentSchool]);
+  }, [selectedStudentId, statusFilter, currentSchool, ITEMS_PER_PAGE]);
+
+  const loadMore = useCallback(() => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchChecks(false, nextPage);
+  }, [page, fetchChecks]);
 
   // Fetch checks when student or filter changes
   useEffect(() => {
+    setPage(0);  // Reset to first page
     if (selectedStudentId) {
-      fetchChecks();
+      fetchChecks(true, 0);  // reset=true, page=0
     }
-  }, [selectedStudentId, fetchChecks]);
+  }, [selectedStudentId, statusFilter, fetchChecks]);
 
   const toggleCheck = (checkId: string) => {
     setExpandedChecks(prev => ({
@@ -556,6 +581,18 @@ export default function ProgressCheckResultsTab() {
               </div>
             );
           })}
+
+          {/* Load More Button */}
+          {hasMore && !loading && (
+            <div className="flex justify-center pt-6">
+              <button
+                onClick={loadMore}
+                className="inline-flex items-center px-6 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Load More Results
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
@@ -41,6 +41,19 @@ export default function ResultsTab() {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const successMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const ITEMS_PER_PAGE = 50;
+
+  // Cleanup success message timer on unmount
+  useEffect(() => {
+    return () => {
+      if (successMessageTimerRef.current) {
+        clearTimeout(successMessageTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch students on mount and when school changes
   useEffect(() => {
@@ -49,8 +62,9 @@ export default function ResultsTab() {
 
   // Fetch tickets when student or filter changes
   useEffect(() => {
+    setPage(0);  // Reset to first page
     if (selectedStudentId) {
-      fetchTickets();
+      fetchTickets(true);  // true = reset tickets
     } else {
       setTickets([]);
     }
@@ -104,25 +118,41 @@ export default function ResultsTab() {
     }
   };
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (reset = false) => {
     if (!selectedStudentId) return;
 
     setLoading(true);
     try {
-      const filterParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
-      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
-      const response = await fetch(`/api/exit-tickets/results?${studentParam}${schoolParam}${filterParam.replace('&', '')}`);
+      const currentPage = reset ? 0 : page;
+      const offset = currentPage * ITEMS_PER_PAGE;
+
+      // Build query params properly using URLSearchParams
+      const params = new URLSearchParams();
+      if (selectedStudentId !== 'all') {
+        params.append('student_id', selectedStudentId);
+      }
+      if (selectedStudentId === 'all' && currentSchool?.school_id) {
+        params.append('school_id', currentSchool.school_id);
+      }
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      params.append('limit', ITEMS_PER_PAGE.toString());
+      params.append('offset', offset.toString());
+
+      const response = await fetch(`/api/exit-tickets/results?${params.toString()}`);
       const data = await response.json();
 
       if (data.success && data.tickets) {
-        setTickets(data.tickets);
+        const newTickets = data.tickets;
+        setTickets(reset ? newTickets : [...tickets, ...newTickets]);
+        setHasMore(newTickets.length === ITEMS_PER_PAGE);
 
         // Initialize ratings and notes from existing results
-        const initialRatings: Record<string, number> = {};
-        const initialNotes: Record<string, string> = {};
+        const initialRatings: Record<string, number> = reset ? {} : { ...ratings };
+        const initialNotes: Record<string, string> = reset ? {} : { ...notes };
 
-        data.tickets.forEach((ticket: ExitTicketResult) => {
+        newTickets.forEach((ticket: ExitTicketResult) => {
           if (ticket.result) {
             initialRatings[ticket.id] = ticket.result.rating;
             initialNotes[ticket.id] = ticket.result.notes || '';
@@ -137,6 +167,12 @@ export default function ResultsTab() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchTickets(false);
   };
 
   const handleSubmitRating = async (ticketId: string) => {
@@ -165,7 +201,11 @@ export default function ResultsTab() {
 
       if (data.success) {
         setSuccessMessage('Result saved successfully!');
-        setTimeout(() => setSuccessMessage(null), 3000);
+        // Clear any existing timer before setting a new one
+        if (successMessageTimerRef.current) {
+          clearTimeout(successMessageTimerRef.current);
+        }
+        successMessageTimerRef.current = setTimeout(() => setSuccessMessage(null), 3000);
         // Refresh tickets to show updated status
         await fetchTickets();
       } else {
@@ -189,7 +229,11 @@ export default function ResultsTab() {
 
       if (data.success) {
         setSuccessMessage(data.message);
-        setTimeout(() => setSuccessMessage(null), 3000);
+        // Clear any existing timer before setting a new one
+        if (successMessageTimerRef.current) {
+          clearTimeout(successMessageTimerRef.current);
+        }
+        successMessageTimerRef.current = setTimeout(() => setSuccessMessage(null), 3000);
         // Refresh tickets to show updated status
         await fetchTickets();
       } else {
@@ -448,6 +492,18 @@ export default function ResultsTab() {
             </div>
           );
           })}
+
+          {/* Load More Button */}
+          {hasMore && !loading && (
+            <div className="flex justify-center pt-6">
+              <button
+                onClick={loadMore}
+                className="inline-flex items-center px-6 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Load More Results
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

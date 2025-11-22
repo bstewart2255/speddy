@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
 interface ProgressChartProps {
   data: Array<{
@@ -15,25 +15,27 @@ export function ProgressChart({ data, height = 300 }: ProgressChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Group data by date and calculate daily averages
-  const chartData = data.reduce((acc: any[], item) => {
-    const date = new Date(item.date + "T00:00:00").toLocaleDateString();
-    const existing = acc.find(d => d.date === date);
+  const chartData = useMemo(() => {
+    return data.reduce((acc: any[], item) => {
+      const date = new Date(item.date + "T00:00:00").toLocaleDateString();
+      const existing = acc.find(d => d.date === date);
 
-    if (existing) {
-      existing.total += item.accuracy;
-      existing.count += 1;
-      existing.accuracy = existing.total / existing.count;
-    } else {
-      acc.push({
-        date,
-        accuracy: item.accuracy,
-        total: item.accuracy,
-        count: 1
-      });
-    }
+      if (existing) {
+        existing.total += item.accuracy;
+        existing.count += 1;
+        existing.accuracy = existing.total / existing.count;
+      } else {
+        acc.push({
+          date,
+          accuracy: item.accuracy,
+          total: item.accuracy,
+          count: 1
+        });
+      }
 
-    return acc;
-  }, []).reverse(); // Reverse to show oldest to newest
+      return acc;
+    }, []).reverse(); // Reverse to show oldest to newest
+  }, [data]);
 
   if (data.length === 0) {
     return (
