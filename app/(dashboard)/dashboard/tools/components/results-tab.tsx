@@ -42,6 +42,9 @@ export default function ResultsTab() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const successMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const ITEMS_PER_PAGE = 50;
 
   // Cleanup success message timer on unmount
   useEffect(() => {
@@ -59,8 +62,9 @@ export default function ResultsTab() {
 
   // Fetch tickets when student or filter changes
   useEffect(() => {
+    setPage(0);  // Reset to first page
     if (selectedStudentId) {
-      fetchTickets();
+      fetchTickets(true);  // true = reset tickets
     } else {
       setTickets([]);
     }
@@ -114,25 +118,30 @@ export default function ResultsTab() {
     }
   };
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (reset = false) => {
     if (!selectedStudentId) return;
 
     setLoading(true);
     try {
+      const currentPage = reset ? 0 : page;
+      const offset = currentPage * ITEMS_PER_PAGE;
       const filterParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
       const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
       const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
-      const response = await fetch(`/api/exit-tickets/results?${studentParam}${schoolParam}${filterParam.replace('&', '')}`);
+      const paginationParam = `&limit=${ITEMS_PER_PAGE}&offset=${offset}`;
+      const response = await fetch(`/api/exit-tickets/results?${studentParam}${schoolParam}${filterParam.replace('&', '')}${paginationParam}`);
       const data = await response.json();
 
       if (data.success && data.tickets) {
-        setTickets(data.tickets);
+        const newTickets = data.tickets;
+        setTickets(reset ? newTickets : [...tickets, ...newTickets]);
+        setHasMore(newTickets.length === ITEMS_PER_PAGE);
 
         // Initialize ratings and notes from existing results
-        const initialRatings: Record<string, number> = {};
-        const initialNotes: Record<string, string> = {};
+        const initialRatings: Record<string, number> = reset ? {} : { ...ratings };
+        const initialNotes: Record<string, string> = reset ? {} : { ...notes };
 
-        data.tickets.forEach((ticket: ExitTicketResult) => {
+        newTickets.forEach((ticket: ExitTicketResult) => {
           if (ticket.result) {
             initialRatings[ticket.id] = ticket.result.rating;
             initialNotes[ticket.id] = ticket.result.notes || '';
@@ -147,6 +156,12 @@ export default function ResultsTab() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchTickets(false);
   };
 
   const handleSubmitRating = async (ticketId: string) => {
@@ -466,6 +481,18 @@ export default function ResultsTab() {
             </div>
           );
           })}
+
+          {/* Load More Button */}
+          {hasMore && !loading && (
+            <div className="flex justify-center pt-6">
+              <button
+                onClick={loadMore}
+                className="inline-flex items-center px-6 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Load More Results
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

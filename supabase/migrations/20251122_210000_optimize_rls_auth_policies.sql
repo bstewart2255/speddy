@@ -15,12 +15,8 @@ DROP POLICY IF EXISTS "SEAs can view students at their school" ON students;
 DROP POLICY IF EXISTS "Site admins can view unmatched students for teacher assignment" ON students;
 
 -- Recreate with optimized auth check
-CREATE POLICY "Specialists can view assigned students" ON students
-    FOR SELECT USING (
-        (select auth.uid()) IN (
-            SELECT provider_id FROM students WHERE id = students.id
-        )
-    );
+-- Note: "Specialists can view assigned students" policy removed as redundant
+-- It's equivalent to the "Providers can view their own students" policy below
 
 CREATE POLICY "Providers can view their own students" ON students
     FOR SELECT USING (provider_id = (select auth.uid()));

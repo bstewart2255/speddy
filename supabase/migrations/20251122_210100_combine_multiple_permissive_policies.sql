@@ -19,20 +19,16 @@ DROP POLICY IF EXISTS "Users can view accessible students" ON students;
 -- Create single combined policy with OR conditions
 CREATE POLICY "Users can view accessible students" ON students
     FOR SELECT USING (
-        -- Providers can view their own students
-        provider_id = (select auth.uid())
-        -- Teachers can view their assigned students
-        OR teacher_id IN (
+        provider_id = (select auth.uid())  -- Providers can view their own students
+        OR teacher_id IN (  -- Teachers can view their assigned students
             SELECT id FROM teachers WHERE account_id = (select auth.uid())
         )
-        -- SEAs can view students assigned to them via sessions
-        OR EXISTS (
+        OR EXISTS (  -- SEAs can view students assigned to them via sessions
             SELECT 1 FROM schedule_sessions
             WHERE schedule_sessions.student_id = students.id
             AND schedule_sessions.assigned_to_sea_id = (select auth.uid())
         )
-        -- SEAs can view all students at their school
-        OR (
+        OR (  -- SEAs can view all students at their school
             school_id IN (
                 SELECT school_id FROM profiles WHERE id = (select auth.uid())
             )
@@ -40,8 +36,7 @@ CREATE POLICY "Users can view accessible students" ON students
                 SELECT id FROM profiles WHERE role = 'sea'
             )
         )
-        -- Site admins can view unmatched students for assignment
-        OR EXISTS (
+        OR EXISTS (  -- Site admins can view unmatched students for assignment
             SELECT 1 FROM admin_permissions
             WHERE admin_id = (select auth.uid())
             AND role = 'site_admin'
@@ -65,17 +60,14 @@ DROP POLICY IF EXISTS "Users can update accessible student details" ON student_d
 -- Combined SELECT policy
 CREATE POLICY "Users can view accessible student details" ON student_details
     FOR SELECT USING (
-        -- Providers can view their own students' details
-        student_id IN (
+        student_id IN (  -- Providers can view their own students' details
             SELECT id FROM students WHERE provider_id = (select auth.uid())
         )
-        -- SEAs can view details for assigned students
-        OR student_id IN (
+        OR student_id IN (  -- SEAs can view details for assigned students
             SELECT student_id FROM schedule_sessions
             WHERE assigned_to_sea_id = (select auth.uid())
         )
-        -- Teachers can view IEP goals for their students
-        OR student_id IN (
+        OR student_id IN (  -- Teachers can view IEP goals for their students
             SELECT s.id FROM students s
             JOIN teachers t ON s.teacher_id = t.id
             WHERE t.account_id = (select auth.uid())
@@ -85,12 +77,10 @@ CREATE POLICY "Users can view accessible student details" ON student_details
 -- Combined UPDATE policy
 CREATE POLICY "Users can update accessible student details" ON student_details
     FOR UPDATE USING (
-        -- Providers can update their students' details
-        student_id IN (
+        student_id IN (  -- Providers can update their students' details
             SELECT id FROM students WHERE provider_id = (select auth.uid())
         )
-        -- SEAs can update exit ticket rotation for assigned students
-        OR student_id IN (
+        OR student_id IN (  -- SEAs can update exit ticket rotation for assigned students
             SELECT student_id FROM schedule_sessions
             WHERE assigned_to_sea_id = (select auth.uid())
         )
@@ -106,14 +96,10 @@ DROP POLICY IF EXISTS "Users can view accessible sessions" ON schedule_sessions;
 
 CREATE POLICY "Users can view accessible sessions" ON schedule_sessions
     FOR SELECT USING (
-        -- Session provider
-        provider_id = (select auth.uid())
-        -- Assigned specialist
-        OR assigned_to_specialist_id = (select auth.uid())
-        -- Assigned SEA
-        OR assigned_to_sea_id = (select auth.uid())
-        -- Teacher of the student
-        OR student_id IN (
+        provider_id = (select auth.uid())  -- Session provider
+        OR assigned_to_specialist_id = (select auth.uid())  -- Assigned specialist
+        OR assigned_to_sea_id = (select auth.uid())  -- Assigned SEA
+        OR student_id IN (  -- Teacher of the student
             SELECT s.id FROM students s
             JOIN teachers t ON s.teacher_id = t.id
             WHERE t.account_id = (select auth.uid())
@@ -134,18 +120,14 @@ DROP POLICY IF EXISTS "Users can manage own activities" ON special_activities;
 -- Combined SELECT policy
 CREATE POLICY "Users can view accessible activities" ON special_activities
     FOR SELECT USING (
-        -- Own activities (teachers via teacher ID)
-        provider_id IN (
+        provider_id IN (  -- Own activities (teachers via teacher ID)
             SELECT id FROM teachers WHERE account_id = (select auth.uid())
         )
-        -- Own activities (resource specialists direct)
-        OR provider_id = (select auth.uid())
-        -- All activities at user's schools
-        OR school_id IN (
+        OR provider_id = (select auth.uid())  -- Own activities (resource specialists direct)
+        OR school_id IN (  -- All activities at user's schools
             SELECT school_id FROM profiles WHERE id = (select auth.uid())
         )
-        -- Teachers can view activities at their school
-        OR school_id IN (
+        OR school_id IN (  -- Teachers can view activities at their school
             SELECT school_id FROM teachers WHERE account_id = (select auth.uid())
         )
     );
@@ -180,15 +162,13 @@ DROP POLICY IF EXISTS "Users can update teachers" ON teachers;
 -- Combined INSERT policy
 CREATE POLICY "Users can create teachers" ON teachers
     FOR INSERT WITH CHECK (
-        -- Site admins at the school
-        EXISTS (
+        EXISTS (  -- Site admins at the school
             SELECT 1 FROM admin_permissions
             WHERE admin_id = (select auth.uid())
             AND role = 'site_admin'
             AND school_id = teachers.school_id
         )
-        -- Resource specialists at the school
-        OR school_id IN (
+        OR school_id IN (  -- Resource specialists at the school
             SELECT school_id FROM profiles WHERE id = (select auth.uid())
         )
     );
@@ -196,15 +176,13 @@ CREATE POLICY "Users can create teachers" ON teachers
 -- Combined UPDATE policy
 CREATE POLICY "Users can update teachers" ON teachers
     FOR UPDATE USING (
-        -- Site admins at the school
-        EXISTS (
+        EXISTS (  -- Site admins at the school
             SELECT 1 FROM admin_permissions
             WHERE admin_id = (select auth.uid())
             AND role = 'site_admin'
             AND school_id = teachers.school_id
         )
-        -- Teachers updating their own info
-        OR account_id = (select auth.uid())
+        OR account_id = (select auth.uid())  -- Teachers updating their own info
     );
 
 -- =============================================================================
