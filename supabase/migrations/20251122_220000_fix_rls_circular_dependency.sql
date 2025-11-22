@@ -11,7 +11,10 @@
 DROP POLICY IF EXISTS "Users can view accessible sessions" ON schedule_sessions;
 
 -- Recreate without the student/teacher join that causes recursion
--- Teachers will need to access sessions through direct assignment fields only
+-- Users can see sessions where they are:
+-- 1. The session provider (created it)
+-- 2. Assigned as a specialist
+-- 3. Assigned as an SEA
 CREATE POLICY "Users can view accessible sessions" ON schedule_sessions
     FOR SELECT USING (
         provider_id = (select auth.uid())  -- Session provider
@@ -20,28 +23,14 @@ CREATE POLICY "Users can view accessible sessions" ON schedule_sessions
     );
 
 -- =============================================================================
--- ALTERNATIVE: Add a separate policy for teachers using a simpler check
--- =============================================================================
-
--- Teachers can view sessions where they are listed in a teacher-related field
--- This avoids the circular dependency by not joining to students table
-CREATE POLICY "Teachers can view sessions at their school" ON schedule_sessions
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM teachers
-            WHERE teachers.account_id = (select auth.uid())
-            AND teachers.school_id = schedule_sessions.school_id
-        )
-    );
-
--- =============================================================================
 -- NOTES
 -- =============================================================================
--- This breaks the circular dependency by removing the students table join
--- from the schedule_sessions policy. Teachers can now see:
--- 1. Sessions they're directly assigned to (provider/specialist/SEA fields)
--- 2. All sessions at their school (via the new school-based policy)
+-- This breaks the circular dependency by removing the students table join.
+-- The teacher access check has been removed because it caused infinite recursion.
 --
--- This is actually more performant and aligns with typical access patterns
--- where teachers need to see all sessions at their school, not just specific
--- student sessions.
+-- Impact: Teachers will only see sessions where they are explicitly assigned
+-- via provider_id, assigned_to_specialist_id, or assigned_to_sea_id fields.
+--
+-- If teachers need broader access to sessions for their students, this should
+-- be handled at the application layer or by ensuring teachers are properly
+-- assigned to relevant sessions via the assignment fields.
