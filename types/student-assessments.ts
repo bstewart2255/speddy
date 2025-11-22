@@ -1,0 +1,154 @@
+/**
+ * Student Assessment Types
+ * Defines data structures for different assessment tools used in the district
+ */
+
+// Assessment type enum
+export type AssessmentType =
+  | 'mclass'
+  | 'star_reading'
+  | 'star_math'
+  | 'wisc_v'
+  | 'brief'
+
+// Risk level for mClass/DIBELS
+export type RiskLevel = 'low_risk' | 'some_risk' | 'high_risk'
+
+// mClass (DIBELS) Assessment Data
+export interface MClassAssessmentData {
+  compositeScore?: number
+  riskLevel?: RiskLevel
+  // Letter Naming Fluency (Kindergarten)
+  letterNamingFluency?: number
+  // Phoneme Segmentation Fluency (Kindergarten-1st)
+  phonemeSegmentationFluency?: number
+  // Nonsense Word Fluency
+  nonsenseWordFluency?: number
+  nonsenseWordFluencyAccuracy?: number // Percentage
+  // DORF - DIBELS Oral Reading Fluency (1st grade and up)
+  dorfWordsCorrect?: number // Words per minute
+  dorfAccuracy?: number // Percentage
+  // Maze (comprehension)
+  mazeAdjustedScore?: number
+  // Additional fields
+  notes?: string
+}
+
+// STAR Reading Assessment Data
+export interface StarReadingAssessmentData {
+  scaledScore?: number
+  percentileRank?: number // 1-99
+  gradeEquivalent?: string // e.g., "3.2"
+  instructionalReadingLevel?: string // e.g., "3.5"
+  // Domain scores (0-100)
+  wordKnowledgeAndSkills?: number
+  comprehensionStrategiesAndConstructiveMeaning?: number
+  analyzingLiteraryText?: number
+  understandingAuthorscraft?: number
+  analyzingArgumentAndEvaluatingText?: number
+  notes?: string
+}
+
+// STAR Math Assessment Data
+export interface StarMathAssessmentData {
+  scaledScore?: number
+  percentileRank?: number // 1-99
+  gradeEquivalent?: string // e.g., "3.2"
+  // Domain scores (0-100)
+  numbersAndOperations?: number
+  algebra?: number
+  geometryAndMeasurement?: number
+  dataAnalysisStatisticsAndProbability?: number
+  notes?: string
+}
+
+// WISC-V Assessment Data
+export interface WiscVAssessmentData {
+  fullScaleIQ?: number
+  // Index Scores (standard scores, mean 100, SD 15)
+  verbalComprehension?: number
+  visualSpatial?: number
+  fluidReasoning?: number
+  workingMemory?: number
+  processingSpeed?: number
+  // Additional composite scores
+  generalAbilityIndex?: number // GAI
+  cognitiveProfileIndex?: number // CPI
+  notes?: string
+}
+
+// BRIEF (Behavior Rating Inventory of Executive Function) Assessment Data
+export interface BriefAssessmentData {
+  // Clinical scales (T-scores, mean 50, SD 10)
+  // Higher scores indicate more problems
+  inhibit?: number
+  selfMonitor?: number
+  shift?: number
+  emotionalControl?: number
+  initiateTask?: number
+  workingMemory?: number
+  planOrganize?: number
+  taskMonitor?: number
+  organizationOfMaterials?: number
+  // Composite/Index scores
+  behavioralRegulationIndex?: number // BRI
+  emotionRegulationIndex?: number // ERI
+  cognitiveRegulationIndex?: number // CRI
+  globalExecutiveComposite?: number // GEC
+  notes?: string
+}
+
+// Union type for all assessment data
+export type AssessmentData =
+  | MClassAssessmentData
+  | StarReadingAssessmentData
+  | StarMathAssessmentData
+  | WiscVAssessmentData
+  | BriefAssessmentData
+
+// Database record structure
+export interface StudentAssessment {
+  id: string
+  studentId: string
+  assessmentType: AssessmentType
+  assessmentDate: string // ISO date string
+  data: AssessmentData
+  createdAt: string
+  updatedAt: string
+}
+
+// Helper type for creating new assessments
+export type CreateAssessmentInput = Omit<StudentAssessment, 'id' | 'createdAt' | 'updatedAt'>
+
+// Helper type for updating assessments
+export type UpdateAssessmentInput = Partial<CreateAssessmentInput> & { id: string }
+
+// Display labels for assessment types
+export const ASSESSMENT_TYPE_LABELS: Record<AssessmentType, string> = {
+  mclass: 'mClass (DIBELS)',
+  star_reading: 'STAR Reading',
+  star_math: 'STAR Math',
+  wisc_v: 'WISC-V',
+  brief: 'BRIEF (Executive Function)'
+}
+
+// Type guards for discriminating assessment data types
+export function isMClassData(data: AssessmentData): data is MClassAssessmentData {
+  return 'compositeScore' in data || 'riskLevel' in data || 'dorfWordsCorrect' in data
+}
+
+export function isStarReadingData(data: AssessmentData): data is StarReadingAssessmentData {
+  return 'instructionalReadingLevel' in data || 'wordKnowledgeAndSkills' in data
+}
+
+export function isStarMathData(data: AssessmentData): data is StarMathAssessmentData {
+  return 'numbersAndOperations' in data || 'algebra' in data
+}
+
+export function isWiscVData(data: AssessmentData): data is WiscVAssessmentData {
+  return 'fullScaleIQ' in data || 'verbalComprehension' in data
+}
+
+export function isBriefData(data: AssessmentData): data is BriefAssessmentData {
+  return 'behavioralRegulationIndex' in data || 'inhibit' in data
+}

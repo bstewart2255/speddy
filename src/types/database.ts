@@ -347,6 +347,61 @@ export type Database = {
           },
         ]
       }
+      curriculum_tracking: {
+        Row: {
+          created_at: string | null
+          current_lesson: number
+          curriculum_level: string
+          curriculum_type: string
+          group_id: string | null
+          id: string
+          session_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_lesson: number
+          curriculum_level: string
+          curriculum_type: string
+          group_id?: string | null
+          id?: string
+          session_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_lesson?: number
+          curriculum_level?: string
+          curriculum_type?: string
+          group_id?: string | null
+          id?: string
+          session_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_curriculum_tracking_session"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "cross_provider_visibility"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "fk_curriculum_tracking_session"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_curriculum_tracking_session"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "shared_students"
+            referencedColumns: ["session_id"]
+          },
+        ]
+      }
       debug_signup_log: {
         Row: {
           created_at: string | null
@@ -1931,20 +1986,65 @@ export type Database = {
       }
       student_assessments: {
         Row: {
+          assessment_date: string
+          assessment_type: string
+          created_at: string
+          data: Json
+          id: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          assessment_date: string
+          assessment_type: string
+          created_at?: string
+          data?: Json
+          id?: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          assessment_date?: string
+          assessment_type?: string
+          created_at?: string
+          data?: Json
+          id?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_assessments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_assessments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
+      student_assessments_backup: {
+        Row: {
           academic_fluency_score: number | null
           assessment_date: string | null
           brief_inhibition_tscore: number | null
           brief_shift_flexibility_tscore: number | null
           brief_working_memory_tscore: number | null
           cognitive_efficiency_score: number | null
-          created_at: string
+          created_at: string | null
           delayed_recall_score: number | null
           dibels_nonsense_word_fluency: number | null
           dibels_wpm_accuracy: number | null
           fp_dra_level: string | null
           grade_month_reading_level: number | null
           handwriting_letters_per_minute: number | null
-          id: string
+          id: string | null
           immediate_recall_score: number | null
           lexile_level: string | null
           math_computation_addition_accuracy: number | null
@@ -1965,8 +2065,8 @@ export type Database = {
           sight_words_list_level: string | null
           spelling_accuracy: number | null
           spelling_developmental_stage: string | null
-          student_id: string
-          updated_at: string
+          student_id: string | null
+          updated_at: string | null
           wisc_fluid_reasoning_index: number | null
           wisc_processing_speed_index: number | null
           wisc_working_memory_index: number | null
@@ -1980,14 +2080,14 @@ export type Database = {
           brief_shift_flexibility_tscore?: number | null
           brief_working_memory_tscore?: number | null
           cognitive_efficiency_score?: number | null
-          created_at?: string
+          created_at?: string | null
           delayed_recall_score?: number | null
           dibels_nonsense_word_fluency?: number | null
           dibels_wpm_accuracy?: number | null
           fp_dra_level?: string | null
           grade_month_reading_level?: number | null
           handwriting_letters_per_minute?: number | null
-          id?: string
+          id?: string | null
           immediate_recall_score?: number | null
           lexile_level?: string | null
           math_computation_addition_accuracy?: number | null
@@ -2008,8 +2108,8 @@ export type Database = {
           sight_words_list_level?: string | null
           spelling_accuracy?: number | null
           spelling_developmental_stage?: string | null
-          student_id: string
-          updated_at?: string
+          student_id?: string | null
+          updated_at?: string | null
           wisc_fluid_reasoning_index?: number | null
           wisc_processing_speed_index?: number | null
           wisc_working_memory_index?: number | null
@@ -2023,14 +2123,14 @@ export type Database = {
           brief_shift_flexibility_tscore?: number | null
           brief_working_memory_tscore?: number | null
           cognitive_efficiency_score?: number | null
-          created_at?: string
+          created_at?: string | null
           delayed_recall_score?: number | null
           dibels_nonsense_word_fluency?: number | null
           dibels_wpm_accuracy?: number | null
           fp_dra_level?: string | null
           grade_month_reading_level?: number | null
           handwriting_letters_per_minute?: number | null
-          id?: string
+          id?: string | null
           immediate_recall_score?: number | null
           lexile_level?: string | null
           math_computation_addition_accuracy?: number | null
@@ -2051,30 +2151,15 @@ export type Database = {
           sight_words_list_level?: string | null
           spelling_accuracy?: number | null
           spelling_developmental_stage?: string | null
-          student_id?: string
-          updated_at?: string
+          student_id?: string | null
+          updated_at?: string | null
           wisc_fluid_reasoning_index?: number | null
           wisc_processing_speed_index?: number | null
           wisc_working_memory_index?: number | null
           words_per_sentence_average?: number | null
           written_expression_score?: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "student_assessments_student_id_fkey"
-            columns: ["student_id"]
-            isOneToOne: false
-            referencedRelation: "students"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "student_assessments_student_id_fkey"
-            columns: ["student_id"]
-            isOneToOne: false
-            referencedRelation: "unmatched_student_teachers"
-            referencedColumns: ["student_id"]
-          },
-        ]
+        Relationships: []
       }
       student_details: {
         Row: {
@@ -2090,7 +2175,6 @@ export type Database = {
           upcoming_iep_date: string | null
           upcoming_triennial_date: string | null
           updated_at: string | null
-          working_skills: Json | null
         }
         Insert: {
           created_at?: string | null
@@ -2105,7 +2189,6 @@ export type Database = {
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string | null
-          working_skills?: Json | null
         }
         Update: {
           created_at?: string | null
@@ -2120,7 +2203,6 @@ export type Database = {
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string | null
-          working_skills?: Json | null
         }
         Relationships: [
           {
@@ -3292,20 +3374,13 @@ export const Constants = {
   },
 } as const
 
-// Common type re-exports for convenience
-export type BellSchedule = Database["public"]["Tables"]["bell_schedules"]["Row"];
-export type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
-export type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
-export type SchoolHour = Database["public"]["Tables"]["school_hours"]["Row"];
-export type SpecialActivity = Database["public"]["Tables"]["special_activities"]["Row"];
-export type Student = Database["public"]["Tables"]["students"]["Row"];
-export type StudentDetails = Database["public"]["Tables"]["student_details"]["Row"];
-export type Teacher = Database["public"]["Tables"]["teachers"]["Row"];
-export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-export type AdminPermission = Database["public"]["Tables"]["admin_permissions"]["Row"];
-export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
-export type ReferralCode = Database["public"]["Tables"]["referral_codes"]["Row"];
-export type ReferralCredit = Database["public"]["Tables"]["referral_credits"]["Row"];
-
-// Type utilities (import from lib/types/utils)
-export type { NonNullableFields, RequireFields } from '../../lib/types/utils';
+// Convenience type exports for easier importing throughout the application
+export type Student = Database['public']['Tables']['students']['Row']
+export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row']
+export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row']
+export type SpecialActivity = Database['public']['Tables']['special_activities']['Row']
+export type SchoolHour = Database['public']['Tables']['school_hours']['Row']
+export type Subscription = Database['public']['Tables']['subscriptions']['Row']
+export type ReferralCode = Database['public']['Tables']['referral_codes']['Row']
+export type ReferralCredit = Database['public']['Tables']['referral_credits']['Row']
+export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']

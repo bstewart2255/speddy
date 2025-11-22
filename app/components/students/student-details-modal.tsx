@@ -4,10 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../../lib/supabase/queries/student-details';
-import { getStudentAssessment, upsertStudentAssessment, StudentAssessment } from '../../../lib/supabase/queries/student-assessments';
-import { SkillsChecklist } from './skills-checklist';
-import { AreasOfNeedDropdown } from './areas-of-need-dropdown';
-import { AssessmentInputs } from './assessment-inputs';
+import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
 import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
@@ -52,14 +49,12 @@ export function StudentDetailsModal({
     district_id: '',
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
-    iep_goals: [],
-    working_skills: []
+    iep_goals: []
   });
-  const [assessment, setAssessment] = useState<StudentAssessment>({});
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'areas' | 'assessments'>('current');
+  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments'>('current');
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -99,17 +94,8 @@ export function StudentDetailsModal({
               district_id: '',
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
-              iep_goals: [],
-              working_skills: []
-                      });
-          }
-
-          // Load assessment data
-          const existingAssessment = await getStudentAssessment(student.id);
-          if (existingAssessment) {
-            setAssessment(existingAssessment);
-          } else {
-            setAssessment({});
+              iep_goals: []
+            });
           }
         } catch (error) {
           console.error('Error loading student data:', error);
@@ -124,18 +110,10 @@ export function StudentDetailsModal({
     setLoading(true);
     try {
       console.log('Saving student details:', details);
-      console.log('Saving assessment data:', assessment);
 
       // Save student details
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
-
-      // Save assessment data if any fields are filled
-      const hasAssessmentData = Object.values(assessment).some(value => value !== null && value !== undefined && value !== '');
-      if (hasAssessmentData) {
-        await upsertStudentAssessment(student.id, assessment);
-        console.log('Assessment data saved successfully');
-      }
 
       // Update student info if changed
       if (onUpdateStudent) {
@@ -241,16 +219,6 @@ export function StudentDetailsModal({
                 IEP Goals
               </button>
               <button
-                onClick={() => setActiveTab('areas')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'areas'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Areas of Need
-              </button>
-              <button
                 onClick={() => setActiveTab('assessments')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'assessments'
@@ -258,7 +226,7 @@ export function StudentDetailsModal({
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Academic Assessments
+                Assessments
               </button>
             </nav>
           </div>
@@ -541,41 +509,12 @@ export function StudentDetailsModal({
             </div>
             )}
 
-            {/* Areas of Need Tab */}
-            {activeTab === 'areas' && (
-            <div className="space-y-3 min-h-[400px]">
-              <div className="space-y-1">
-                <h3 className="font-medium text-gray-900">Areas of Need</h3>
-                <p className="text-sm text-gray-600">
-                  Select the skills {student.initials} is currently working on. You can choose skills from different grade levels and trimesters.
-                </p>
-              </div>
-
-              <AreasOfNeedDropdown
-                gradeLevel={studentInfo.grade_level}
-                selectedSkills={details.working_skills}
-                onSkillsChange={(skills) => setDetails({...details, working_skills: skills})}
-                readOnly={readOnly}
-              />
-            </div>
-            )}
-
-            {/* Academic Assessments Tab */}
+            {/* Assessments Tab */}
             {activeTab === 'assessments' && (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <h3 className="font-medium text-gray-900">Academic Assessments</h3>
-                <p className="text-sm text-gray-600">
-                  Optional assessment data to help AI generate more personalized lesson content. All fields are optional.
-                </p>
-              </div>
-              
-              <AssessmentInputs
-                assessment={assessment}
-                onChange={setAssessment}
+              <AssessmentList
+                studentId={student.id}
                 readOnly={readOnly}
               />
-            </div>
             )}
           </div>
           
