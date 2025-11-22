@@ -121,6 +121,8 @@ export async function GET(request: NextRequest) {
       const studentId = searchParams.get('student_id');
       const schoolId = searchParams.get('school_id');
       const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
+      const limit = parseInt(searchParams.get('limit') || '50', 10);
+      const offset = parseInt(searchParams.get('offset') || '0', 10);
 
       // If filtering by school, get the student IDs for that school first
       let schoolStudentIds: string[] | null = null;
@@ -163,6 +165,9 @@ export async function GET(request: NextRequest) {
         // School has no students, return empty
         return NextResponse.json({ success: true, tickets: [] });
       }
+
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
 
       const { data: tickets, error: ticketsError } = await query;
 

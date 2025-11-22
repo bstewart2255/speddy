@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
@@ -41,6 +41,16 @@ export default function ResultsTab() {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const successMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup success message timer on unmount
+  useEffect(() => {
+    return () => {
+      if (successMessageTimerRef.current) {
+        clearTimeout(successMessageTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch students on mount and when school changes
   useEffect(() => {
@@ -165,7 +175,11 @@ export default function ResultsTab() {
 
       if (data.success) {
         setSuccessMessage('Result saved successfully!');
-        setTimeout(() => setSuccessMessage(null), 3000);
+        // Clear any existing timer before setting a new one
+        if (successMessageTimerRef.current) {
+          clearTimeout(successMessageTimerRef.current);
+        }
+        successMessageTimerRef.current = setTimeout(() => setSuccessMessage(null), 3000);
         // Refresh tickets to show updated status
         await fetchTickets();
       } else {
@@ -189,7 +203,11 @@ export default function ResultsTab() {
 
       if (data.success) {
         setSuccessMessage(data.message);
-        setTimeout(() => setSuccessMessage(null), 3000);
+        // Clear any existing timer before setting a new one
+        if (successMessageTimerRef.current) {
+          clearTimeout(successMessageTimerRef.current);
+        }
+        successMessageTimerRef.current = setTimeout(() => setSuccessMessage(null), 3000);
         // Refresh tickets to show updated status
         await fetchTickets();
       } else {
