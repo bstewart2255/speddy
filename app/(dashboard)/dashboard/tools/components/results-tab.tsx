@@ -125,11 +125,22 @@ export default function ResultsTab() {
     try {
       const currentPage = reset ? 0 : page;
       const offset = currentPage * ITEMS_PER_PAGE;
-      const filterParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
-      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
-      const paginationParam = `&limit=${ITEMS_PER_PAGE}&offset=${offset}`;
-      const response = await fetch(`/api/exit-tickets/results?${studentParam}${schoolParam}${filterParam.replace('&', '')}${paginationParam}`);
+
+      // Build query params properly using URLSearchParams
+      const params = new URLSearchParams();
+      if (selectedStudentId !== 'all') {
+        params.append('student_id', selectedStudentId);
+      }
+      if (selectedStudentId === 'all' && currentSchool?.school_id) {
+        params.append('school_id', currentSchool.school_id);
+      }
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      params.append('limit', ITEMS_PER_PAGE.toString());
+      params.append('offset', offset.toString());
+
+      const response = await fetch(`/api/exit-tickets/results?${params.toString()}`);
       const data = await response.json();
 
       if (data.success && data.tickets) {

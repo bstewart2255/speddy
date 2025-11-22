@@ -138,12 +138,20 @@ export default function ProgressCheckResultsTab() {
     setLoading(true);
     try {
       const offset = pageNumber * ITEMS_PER_PAGE;
-      const studentParam = selectedStudentId === 'all' ? '' : `student_id=${selectedStudentId}&`;
-      const schoolParam = selectedStudentId === 'all' && currentSchool?.school_id ? `school_id=${currentSchool.school_id}&` : '';
-      const paginationParam = `&limit=${ITEMS_PER_PAGE}&offset=${offset}`;
-      const response = await fetch(
-        `/api/progress-check/results?${studentParam}${schoolParam}status=${statusFilter}${paginationParam}`
-      );
+
+      // Build query params properly using URLSearchParams
+      const params = new URLSearchParams();
+      if (selectedStudentId !== 'all') {
+        params.append('student_id', selectedStudentId);
+      }
+      if (selectedStudentId === 'all' && currentSchool?.school_id) {
+        params.append('school_id', currentSchool.school_id);
+      }
+      params.append('status', statusFilter);
+      params.append('limit', ITEMS_PER_PAGE.toString());
+      params.append('offset', offset.toString());
+
+      const response = await fetch(`/api/progress-check/results?${params.toString()}`);
 
       if (!response.ok) throw new Error('Failed to fetch progress checks');
 
