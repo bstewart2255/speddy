@@ -22,23 +22,60 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <h4 className="font-medium text-sm text-gray-700">Overall Performance</h4>
+        <h4 className="font-medium text-sm text-gray-700">STAR Math Scores</h4>
+        <p className="text-xs text-gray-500">Enter scores as shown in Renaissance reports</p>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="scaledScore">Scaled Score</Label>
+            <Label htmlFor="gradePlacement">GP (Grade Placement)</Label>
+            <Input
+              id="gradePlacement"
+              type="text"
+              value={data.gradePlacement ?? ''}
+              onChange={(e) => updateField('gradePlacement', e.target.value)}
+              placeholder="e.g., 3.5"
+            />
+            <p className="text-xs text-gray-500">Current grade placement</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="scaledScore">Score (Scaled Score)</Label>
             <Input
               id="scaledScore"
               type="number"
               value={data.scaledScore ?? ''}
               onChange={(e) => updateField('scaledScore', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="0-1400"
+              placeholder="e.g., 850"
             />
-            <p className="text-xs text-gray-500">STAR Math scaled scores range from 0-1400</p>
+            <p className="text-xs text-gray-500">STAR Math scaled score (0-1400)</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="percentileRank">Percentile Rank</Label>
+            <Label htmlFor="quantileMeasure">Quantile Measure</Label>
+            <Input
+              id="quantileMeasure"
+              type="text"
+              value={data.quantileMeasure ?? ''}
+              onChange={(e) => updateField('quantileMeasure', e.target.value)}
+              placeholder="e.g., 550Q"
+            />
+            <p className="text-xs text-gray-500">Quantile measure for math skills</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="gradeEquivalent">GE (Grade Equivalent)</Label>
+            <Input
+              id="gradeEquivalent"
+              type="text"
+              value={data.gradeEquivalent ?? ''}
+              onChange={(e) => updateField('gradeEquivalent', e.target.value)}
+              placeholder="e.g., 3.2"
+            />
+            <p className="text-xs text-gray-500">Grade equivalent score</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="percentileRank">PR (Percentile Rank)</Label>
             <Input
               id="percentileRank"
               type="number"
@@ -46,94 +83,21 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
               max="99"
               value={data.percentileRank ?? ''}
               onChange={(e) => updateField('percentileRank', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="1-99"
+              placeholder="e.g., 49"
             />
-            <p className="text-xs text-gray-500">Student's rank compared to peers (1-99)</p>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="gradeEquivalent">Grade Equivalent</Label>
-          <Input
-            id="gradeEquivalent"
-            type="text"
-            value={data.gradeEquivalent ?? ''}
-            onChange={(e) => updateField('gradeEquivalent', e.target.value)}
-            placeholder="e.g., 3.2"
-          />
-          <p className="text-xs text-gray-500">Format: grade.month (e.g., 3.2 = 3rd grade, 2nd month)</p>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h4 className="font-medium text-sm text-gray-700">Domain Scores (0-100)</h4>
-        <p className="text-xs text-gray-500">Percentage scores for specific math skills</p>
-
-        <div className="grid grid-cols-1 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="numbersAndOperations">Numbers and Operations</Label>
-            <Input
-              id="numbersAndOperations"
-              type="number"
-              min="0"
-              max="100"
-              value={data.numbersAndOperations ?? ''}
-              onChange={(e) => updateField('numbersAndOperations', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="0-100"
-            />
-            <p className="text-xs text-gray-500">
-              Understanding number concepts, arithmetic operations, and number properties
-            </p>
+            <p className="text-xs text-gray-500">Percentile rank (1-99)</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="algebra">Algebra</Label>
+            <Label htmlFor="normalCurveEquivalent">NCE (Normal Curve Equivalent)</Label>
             <Input
-              id="algebra"
+              id="normalCurveEquivalent"
               type="number"
-              min="0"
-              max="100"
-              value={data.algebra ?? ''}
-              onChange={(e) => updateField('algebra', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="0-100"
+              value={data.normalCurveEquivalent ?? ''}
+              onChange={(e) => updateField('normalCurveEquivalent', e.target.value ? parseFloat(e.target.value) : undefined)}
+              placeholder="e.g., 49.5"
             />
-            <p className="text-xs text-gray-500">
-              Patterns, expressions, equations, and algebraic thinking
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="geometryAndMeasurement">Geometry and Measurement</Label>
-            <Input
-              id="geometryAndMeasurement"
-              type="number"
-              min="0"
-              max="100"
-              value={data.geometryAndMeasurement ?? ''}
-              onChange={(e) => updateField('geometryAndMeasurement', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="0-100"
-            />
-            <p className="text-xs text-gray-500">
-              Shapes, spatial reasoning, units of measure, and measurement concepts
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="dataAnalysisStatisticsAndProbability">
-              Data Analysis, Statistics, and Probability
-            </Label>
-            <Input
-              id="dataAnalysisStatisticsAndProbability"
-              type="number"
-              min="0"
-              max="100"
-              value={data.dataAnalysisStatisticsAndProbability ?? ''}
-              onChange={(e) => updateField('dataAnalysisStatisticsAndProbability', e.target.value ? parseFloat(e.target.value) : undefined)}
-              placeholder="0-100"
-            />
-            <p className="text-xs text-gray-500">
-              Reading graphs, analyzing data, probability, and statistical concepts
-            </p>
+            <p className="text-xs text-gray-500">Normal curve equivalent</p>
           </div>
         </div>
       </div>

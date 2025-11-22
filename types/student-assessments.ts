@@ -36,29 +36,26 @@ export interface MClassAssessmentData {
 
 // STAR Reading Assessment Data
 export interface StarReadingAssessmentData {
-  scaledScore?: number
-  percentileRank?: number // 1-99
-  gradeEquivalent?: string // e.g., "3.2"
-  instructionalReadingLevel?: string // e.g., "3.5"
-  // Domain scores (0-100)
-  wordKnowledgeAndSkills?: number
-  comprehensionStrategiesAndConstructiveMeaning?: number
-  analyzingLiteraryText?: number
-  understandingAuthorscraft?: number
-  analyzingArgumentAndEvaluatingText?: number
+  gradePlacement?: string // GP - Current grade
+  scaledScore?: number // Score - e.g., 966
+  gradeEquivalent?: string // GE - Grade equivalent, e.g., "3.2"
+  percentileRank?: number // PR - Percentile rank, e.g., 49
+  normalCurveEquivalent?: number // NCE - Normal curve equivalent, e.g., 49.5
+  instructionalReadingLevel?: string // IRL - Instructional reading level, e.g., "3.8"
+  estimatedOralReadingFluency?: number // Est. ORF - Estimated oral reading fluency, e.g., 105
+  zpdLow?: string // ZPD lower bound - e.g., "3.1"
+  zpdHigh?: string // ZPD upper bound - e.g., "4.7"
   notes?: string
 }
 
 // STAR Math Assessment Data
 export interface StarMathAssessmentData {
-  scaledScore?: number
-  percentileRank?: number // 1-99
-  gradeEquivalent?: string // e.g., "3.2"
-  // Domain scores (0-100)
-  numbersAndOperations?: number
-  algebra?: number
-  geometryAndMeasurement?: number
-  dataAnalysisStatisticsAndProbability?: number
+  gradePlacement?: string // GP - Current grade
+  scaledScore?: number // Score - e.g., 850
+  quantileMeasure?: string // Quantile Measure - e.g., "550Q"
+  gradeEquivalent?: string // GE - Grade equivalent, e.g., "3.2"
+  percentileRank?: number // PR - Percentile rank, e.g., 49
+  normalCurveEquivalent?: number // NCE - Normal curve equivalent, e.g., 49.5
   notes?: string
 }
 
@@ -138,11 +135,11 @@ export function isMClassData(data: AssessmentData): data is MClassAssessmentData
 }
 
 export function isStarReadingData(data: AssessmentData): data is StarReadingAssessmentData {
-  return 'instructionalReadingLevel' in data || 'wordKnowledgeAndSkills' in data
+  return 'instructionalReadingLevel' in data || 'zpdLow' in data || 'estimatedOralReadingFluency' in data
 }
 
 export function isStarMathData(data: AssessmentData): data is StarMathAssessmentData {
-  return 'numbersAndOperations' in data || 'algebra' in data
+  return 'quantileMeasure' in data || ('scaledScore' in data && 'gradeEquivalent' in data)
 }
 
 export function isWiscVData(data: AssessmentData): data is WiscVAssessmentData {

@@ -140,10 +140,15 @@ export default function AssessmentList({ studentId, readOnly = false }: Assessme
         const starReadingData = data as StarReadingAssessmentData;
         return (
           <div className="text-sm text-gray-600 mt-2">
-            {starReadingData.scaledScore && <p>Scaled Score: {starReadingData.scaledScore}</p>}
-            {starReadingData.percentileRank && <p>Percentile: {starReadingData.percentileRank}</p>}
+            {starReadingData.scaledScore && <p>Score: {starReadingData.scaledScore}</p>}
+            {starReadingData.percentileRank && <p>PR: {starReadingData.percentileRank}</p>}
             {starReadingData.instructionalReadingLevel && (
-              <p>Instructional Level: {starReadingData.instructionalReadingLevel}</p>
+              <p>IRL: {starReadingData.instructionalReadingLevel}</p>
+            )}
+            {(starReadingData.zpdLow || starReadingData.zpdHigh) && (
+              <p>
+                ZPD: {starReadingData.zpdLow || '?'} - {starReadingData.zpdHigh || '?'}
+              </p>
             )}
           </div>
         );
@@ -153,9 +158,9 @@ export default function AssessmentList({ studentId, readOnly = false }: Assessme
         const starMathData = data as StarMathAssessmentData;
         return (
           <div className="text-sm text-gray-600 mt-2">
-            {starMathData.scaledScore && <p>Scaled Score: {starMathData.scaledScore}</p>}
-            {starMathData.percentileRank && <p>Percentile: {starMathData.percentileRank}</p>}
-            {starMathData.gradeEquivalent && <p>Grade Equivalent: {starMathData.gradeEquivalent}</p>}
+            {starMathData.scaledScore && <p>Score: {starMathData.scaledScore}</p>}
+            {starMathData.percentileRank && <p>PR: {starMathData.percentileRank}</p>}
+            {starMathData.quantileMeasure && <p>Quantile: {starMathData.quantileMeasure}</p>}
           </div>
         );
       }
