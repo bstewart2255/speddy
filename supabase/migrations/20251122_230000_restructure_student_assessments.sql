@@ -51,7 +51,7 @@ CREATE POLICY "Teachers can view student assessments in their school"
       SELECT 1 FROM students s
       JOIN teachers t ON s.school_id = t.school_id
       WHERE s.id = student_assessments.student_id
-        AND t.id = auth.uid()
+        AND t.account_id = auth.uid()
     )
   );
 
@@ -64,7 +64,7 @@ CREATE POLICY "Teachers can create student assessments in their school"
       SELECT 1 FROM students s
       JOIN teachers t ON s.school_id = t.school_id
       WHERE s.id = student_assessments.student_id
-        AND t.id = auth.uid()
+        AND t.account_id = auth.uid()
     )
   );
 
@@ -77,7 +77,7 @@ CREATE POLICY "Teachers can update student assessments in their school"
       SELECT 1 FROM students s
       JOIN teachers t ON s.school_id = t.school_id
       WHERE s.id = student_assessments.student_id
-        AND t.id = auth.uid()
+        AND t.account_id = auth.uid()
     )
   );
 
@@ -90,7 +90,7 @@ CREATE POLICY "Teachers can delete student assessments in their school"
       SELECT 1 FROM students s
       JOIN teachers t ON s.school_id = t.school_id
       WHERE s.id = student_assessments.student_id
-        AND t.id = auth.uid()
+        AND t.account_id = auth.uid()
     )
   );
 
