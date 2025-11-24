@@ -27,6 +27,8 @@ import StarReadingInputs from './assessments/star-reading-inputs';
 import StarMathInputs from './assessments/star-math-inputs';
 import WiscVInputs from './assessments/wisc-v-inputs';
 import BriefInputs from './assessments/brief-inputs';
+import Wiat4Inputs from './assessments/wiat-4-inputs';
+import WjIvInputs from './assessments/wj-iv-inputs';
 
 interface AssessmentSelectorProps {
   studentId: string;
@@ -40,6 +42,8 @@ const ASSESSMENT_OPTIONS: { value: AssessmentType; label: string }[] = [
   { value: 'star_math', label: 'STAR Math' },
   { value: 'wisc_v', label: 'WISC-V' },
   { value: 'brief', label: 'BRIEF (Executive Function)' },
+  { value: 'wiat_4', label: 'WIAT-4' },
+  { value: 'wj_iv', label: 'WJ-IV' },
 ];
 
 export default function AssessmentSelector({
@@ -124,6 +128,10 @@ export default function AssessmentSelector({
         return <WiscVInputs {...props} />;
       case 'brief':
         return <BriefInputs {...props} />;
+      case 'wiat_4':
+        return <Wiat4Inputs {...props} />;
+      case 'wj_iv':
+        return <WjIvInputs {...props} />;
       default:
         return null;
     }
