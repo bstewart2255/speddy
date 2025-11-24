@@ -14,6 +14,7 @@ import type {
   WiscVAssessmentData,
   BriefAssessmentData,
 } from '../../../types/student-assessments';
+import { ASSESSMENT_TYPE_LABELS } from '../../../types/student-assessments';
 import { Button } from '../ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -25,14 +26,6 @@ interface AssessmentListProps {
   studentId: string;
   readOnly?: boolean;
 }
-
-const ASSESSMENT_LABELS: Record<AssessmentType, string> = {
-  mclass: 'mClass (DIBELS)',
-  star_reading: 'STAR Reading',
-  star_math: 'STAR Math',
-  wisc_v: 'WISC-V',
-  brief: 'BRIEF (Executive Function)',
-};
 
 export default function AssessmentList({ studentId, readOnly = false }: AssessmentListProps) {
   const [assessments, setAssessments] = useState<StudentAssessment[]>([]);
@@ -237,14 +230,14 @@ export default function AssessmentList({ studentId, readOnly = false }: Assessme
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge className={getAssessmentBadgeColor(assessment.assessmentType)}>
-                        {ASSESSMENT_LABELS[assessment.assessmentType]}
+                        {ASSESSMENT_TYPE_LABELS[assessment.assessmentType]}
                       </Badge>
                       <span className="text-sm text-gray-500">
                         {format(new Date(assessment.assessmentDate), 'MMM d, yyyy')}
                       </span>
                     </div>
                     <CardTitle className="text-base">
-                      {ASSESSMENT_LABELS[assessment.assessmentType]}
+                      {ASSESSMENT_TYPE_LABELS[assessment.assessmentType]}
                     </CardTitle>
                   </div>
                   {!readOnly && (
