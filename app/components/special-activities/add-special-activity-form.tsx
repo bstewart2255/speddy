@@ -7,6 +7,7 @@ import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
+import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
 
 interface Props {
   teacherId?: string | null;
@@ -127,14 +128,19 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
         <label className="block text-sm font-medium mb-1">
           Activity Name*
         </label>
-        <input
-          type="text"
+        <select
           value={activityName}
           onChange={(e) => setActivityName(e.target.value)}
-          placeholder="e.g., PE, Library, Music"
           className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
-        />
+        >
+          <option value="">Select activity</option>
+          {SPECIAL_ACTIVITY_TYPES.map((activity) => (
+            <option key={activity} value={activity}>
+              {activity}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>

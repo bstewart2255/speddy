@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
+import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
 
 interface Props {
   onSuccess: () => void;
@@ -19,13 +20,14 @@ export default function BellScheduleCSVImport({ onSuccess }: Props) {
 
   const downloadTemplate = () => {
     const csvContent = `Grade,Activity,Start Time,End Time
-K,Morning Meeting,08:00,08:30
 K,Recess,10:00,10:15
+K,Lunch,12:00,12:45
 1,Recess,10:30,10:45
+1,Lunch Recess,12:45,13:00
 2,Lunch,12:00,12:45
 3,PE,13:00,13:45
-4,Library,14:00,14:45
-5,Music,09:00,09:45`;
+4,Snack,10:00,10:15
+5,Recess,09:00,09:15`;
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -83,13 +85,39 @@ K,Recess,10:00,10:15
               );
             }
 
+            // Validate activity values (case-insensitive)
+            const invalidActivities: string[] = [];
+            const normalizeActivity = (input: string): string | null => {
+              const trimmed = input.trim();
+              return BELL_SCHEDULE_ACTIVITIES.find(
+                (a) => a.toLowerCase() === trimmed.toLowerCase()
+              ) || null;
+            };
+
+            results.data.forEach((row: any, index: number) => {
+              if (row.activity) {
+                const normalized = normalizeActivity(row.activity);
+                if (!normalized) {
+                  invalidActivities.push(`Row ${index + 2}: "${row.activity.trim()}"`);
+                }
+              }
+            });
+
+            if (invalidActivities.length > 0) {
+              throw new Error(
+                `Invalid activity values found:\n${invalidActivities.join('\n')}\n\nValid activities are: ${BELL_SCHEDULE_ACTIVITIES.join(', ')}`
+              );
+            }
+
             const rawSchedules = results.data
               .filter((row: any) => row.grade && row.activity)
               .flatMap((row: any) => {
                 // Create entries for each day of the week (Monday-Friday)
+                // Use normalized activity name to ensure correct casing
+                const normalizedActivity = normalizeActivity(row.activity) || row.activity.trim();
                 return [1, 2, 3, 4, 5].map((dayNum) => ({
                   grade_level: row.grade.toString().toUpperCase().trim(),
-                  period_name: row.activity.trim(),
+                  period_name: normalizedActivity,
                   day_of_week: dayNum,
                   start_time: row["start time"]?.trim() || '',
                   end_time: row["end time"]?.trim() || ''
@@ -216,10 +244,10 @@ K,Recess,10:00,10:15
             CSV should include: Grade, Activity, Start Time, End Time
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Time format: HH:MM (24-hour format, e.g., 14:30 for 2:30 PM)
+            Valid activities: {BELL_SCHEDULE_ACTIVITIES.join(', ')}
           </p>
           <p className="text-xs text-gray-500">
-            Schedules will be applied to all weekdays (Monday-Friday)
+            Time format: HH:MM (24-hour). Schedules apply to all weekdays.
           </p>
         </div>
         <div className="flex justify-center gap-4">
