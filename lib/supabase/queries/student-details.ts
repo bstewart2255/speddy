@@ -12,7 +12,6 @@ export interface StudentDetails {
   upcoming_iep_date: string;
   upcoming_triennial_date: string;
   iep_goals: string[];
-  working_skills: string[];
 }
 
 /**
@@ -82,8 +81,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     district_id: data.district_id || '',
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
-    iep_goals: data.iep_goals || [],
-    working_skills: jsonToStringArray(data.working_skills)
+    iep_goals: data.iep_goals || []
   };
 }
 
@@ -100,8 +98,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
  * await upsertStudentDetails('student-uuid', {
  *   first_name: 'John',
  *   last_name: 'Doe',
- *   iep_goals: ['Reading comprehension', 'Math fluency'],
- *   working_skills: ['Addition', 'Subtraction']
+ *   iep_goals: ['Reading comprehension', 'Math fluency']
  * });
  * ```
  */
@@ -125,7 +122,6 @@ export async function upsertStudentDetails(
           upcoming_iep_date: details.upcoming_iep_date || null,
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
-          working_skills: details.working_skills,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'student_id'  // Add this to specify the conflict column
@@ -133,16 +129,15 @@ export async function upsertStudentDetails(
       if (error) throw error;
       return null;
     },
-    { 
-      operation: 'upsert_student_details', 
+    {
+      operation: 'upsert_student_details',
       studentId,
       hasFirstName: !!details.first_name,
       hasLastName: !!details.last_name,
       hasDateOfBirth: !!details.date_of_birth,
       hasIepDate: !!details.upcoming_iep_date,
       hasTriennialDate: !!details.upcoming_triennial_date,
-      iepGoalsCount: details.iep_goals.length,
-      workingSkillsCount: details.working_skills.length
+      iepGoalsCount: details.iep_goals.length
     }
   );
   upsertPerf.end({ success: !upsertResult.error });
