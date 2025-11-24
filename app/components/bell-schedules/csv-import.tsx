@@ -85,22 +85,27 @@ K,Lunch,12:00,12:45
               );
             }
 
-            // Validate activity values
-            const validActivities = BELL_SCHEDULE_ACTIVITIES as readonly string[];
+            // Validate activity values (case-insensitive)
             const invalidActivities: string[] = [];
+            const normalizeActivity = (input: string): string | null => {
+              const trimmed = input.trim();
+              return BELL_SCHEDULE_ACTIVITIES.find(
+                (a) => a.toLowerCase() === trimmed.toLowerCase()
+              ) || null;
+            };
 
             results.data.forEach((row: any, index: number) => {
               if (row.activity) {
-                const activity = row.activity.trim();
-                if (!validActivities.includes(activity)) {
-                  invalidActivities.push(`Row ${index + 2}: "${activity}"`);
+                const normalized = normalizeActivity(row.activity);
+                if (!normalized) {
+                  invalidActivities.push(`Row ${index + 2}: "${row.activity.trim()}"`);
                 }
               }
             });
 
             if (invalidActivities.length > 0) {
               throw new Error(
-                `Invalid activity values found:\n${invalidActivities.join(', ')}\n\nValid activities are: ${BELL_SCHEDULE_ACTIVITIES.join(', ')}`
+                `Invalid activity values found:\n${invalidActivities.join('\n')}\n\nValid activities are: ${BELL_SCHEDULE_ACTIVITIES.join(', ')}`
               );
             }
 
@@ -108,9 +113,11 @@ K,Lunch,12:00,12:45
               .filter((row: any) => row.grade && row.activity)
               .flatMap((row: any) => {
                 // Create entries for each day of the week (Monday-Friday)
+                // Use normalized activity name to ensure correct casing
+                const normalizedActivity = normalizeActivity(row.activity) || row.activity.trim();
                 return [1, 2, 3, 4, 5].map((dayNum) => ({
                   grade_level: row.grade.toString().toUpperCase().trim(),
-                  period_name: row.activity.trim(),
+                  period_name: normalizedActivity,
                   day_of_week: dayNum,
                   start_time: row["start time"]?.trim() || '',
                   end_time: row["end time"]?.trim() || ''

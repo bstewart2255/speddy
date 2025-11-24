@@ -102,22 +102,27 @@ Lee,Garden,Tuesday,10:00,10:45`;
               );
             }
 
-            // Validate activity values
-            const validActivities = SPECIAL_ACTIVITY_TYPES as readonly string[];
+            // Validate activity values (case-insensitive)
             const invalidActivities: string[] = [];
+            const normalizeActivity = (input: string): string | null => {
+              const trimmed = input.trim();
+              return SPECIAL_ACTIVITY_TYPES.find(
+                (a) => a.toLowerCase() === trimmed.toLowerCase()
+              ) || null;
+            };
 
             results.data.forEach((row: any, index: number) => {
               if (row.activity) {
-                const activity = row.activity.trim();
-                if (!validActivities.includes(activity)) {
-                  invalidActivities.push(`Row ${index + 2}: "${activity}"`);
+                const normalized = normalizeActivity(row.activity);
+                if (!normalized) {
+                  invalidActivities.push(`Row ${index + 2}: "${row.activity.trim()}"`);
                 }
               }
             });
 
             if (invalidActivities.length > 0) {
               throw new Error(
-                `Invalid activity values found:\n${invalidActivities.join(', ')}\n\nValid activities are: ${SPECIAL_ACTIVITY_TYPES.join(', ')}`
+                `Invalid activity values found:\n${invalidActivities.join('\n')}\n\nValid activities are: ${SPECIAL_ACTIVITY_TYPES.join(', ')}`
               );
             }
 
@@ -125,7 +130,8 @@ Lee,Garden,Tuesday,10:00,10:45`;
               .filter((row: any) => row.teacher && row.activity && row.day)
               .map((row: any) => ({
                 teacher_name: row.teacher.trim(),
-                activity_name: row.activity.trim(),
+                // Use normalized activity name to ensure correct casing
+                activity_name: normalizeActivity(row.activity) || row.activity.trim(),
                 day_of_week: dayNameToNumber(row.day),
                 start_time: row['start time']?.trim() || '',
                 end_time: row['end time']?.trim() || ''
