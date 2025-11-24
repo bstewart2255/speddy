@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
+import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
 
 interface Props {
   onSuccess: () => void;
@@ -19,13 +20,14 @@ export default function BellScheduleCSVImport({ onSuccess }: Props) {
 
   const downloadTemplate = () => {
     const csvContent = `Grade,Activity,Start Time,End Time
-K,Morning Meeting,08:00,08:30
 K,Recess,10:00,10:15
+K,Lunch,12:00,12:45
 1,Recess,10:30,10:45
+1,Lunch Recess,12:45,13:00
 2,Lunch,12:00,12:45
 3,PE,13:00,13:45
-4,Library,14:00,14:45
-5,Music,09:00,09:45`;
+4,Snack,10:00,10:15
+5,Recess,09:00,09:15`;
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -80,6 +82,25 @@ K,Recess,10:00,10:15
             if (!validateColumns(results.data)) {
               throw new Error(
                 "CSV missing required columns. Expected: Grade, Activity, Start Time, End Time",
+              );
+            }
+
+            // Validate activity values
+            const validActivities = BELL_SCHEDULE_ACTIVITIES as readonly string[];
+            const invalidActivities: string[] = [];
+
+            results.data.forEach((row: any, index: number) => {
+              if (row.activity) {
+                const activity = row.activity.trim();
+                if (!validActivities.includes(activity)) {
+                  invalidActivities.push(`Row ${index + 2}: "${activity}"`);
+                }
+              }
+            });
+
+            if (invalidActivities.length > 0) {
+              throw new Error(
+                `Invalid activity values found:\n${invalidActivities.join(', ')}\n\nValid activities are: ${BELL_SCHEDULE_ACTIVITIES.join(', ')}`
               );
             }
 
@@ -216,10 +237,10 @@ K,Recess,10:00,10:15
             CSV should include: Grade, Activity, Start Time, End Time
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Time format: HH:MM (24-hour format, e.g., 14:30 for 2:30 PM)
+            Valid activities: {BELL_SCHEDULE_ACTIVITIES.join(', ')}
           </p>
           <p className="text-xs text-gray-500">
-            Schedules will be applied to all weekdays (Monday-Friday)
+            Time format: HH:MM (24-hour). Schedules apply to all weekdays.
           </p>
         </div>
         <div className="flex justify-center gap-4">

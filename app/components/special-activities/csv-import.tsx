@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
+import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
 
 interface Props {
   onSuccess: () => void;
@@ -22,8 +23,10 @@ export default function SpecialActivitiesCSVImport({ onSuccess }: Props) {
 Smith,PE,Monday,10:00,11:00
 Johnson,Library,Tuesday,09:00,09:45
 Davis,Music,Wednesday,13:00,14:00
-Wilson,Art,Thursday,11:00,11:45
-Garcia,Computer Lab,Friday,14:00,14:45`;
+Wilson,ART,Thursday,11:00,11:45
+Garcia,STEAM,Friday,14:00,14:45
+Brown,STEM,Monday,09:00,09:45
+Lee,Garden,Tuesday,10:00,10:45`;
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -96,6 +99,25 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
             if (!validateColumns(results.data)) {
               throw new Error(
                 "CSV missing required columns. Expected: Teacher, Activity, Day, Start Time, End Time",
+              );
+            }
+
+            // Validate activity values
+            const validActivities = SPECIAL_ACTIVITY_TYPES as readonly string[];
+            const invalidActivities: string[] = [];
+
+            results.data.forEach((row: any, index: number) => {
+              if (row.activity) {
+                const activity = row.activity.trim();
+                if (!validActivities.includes(activity)) {
+                  invalidActivities.push(`Row ${index + 2}: "${activity}"`);
+                }
+              }
+            });
+
+            if (invalidActivities.length > 0) {
+              throw new Error(
+                `Invalid activity values found:\n${invalidActivities.join(', ')}\n\nValid activities are: ${SPECIAL_ACTIVITY_TYPES.join(', ')}`
               );
             }
 
@@ -228,6 +250,9 @@ Garcia,Computer Lab,Friday,14:00,14:45`;
             CSV should include: Teacher, Activity, Day, Start Time, End Time
           </p>
           <p className="text-xs text-gray-500 mt-1">
+            Valid activities: {SPECIAL_ACTIVITY_TYPES.join(', ')}
+          </p>
+          <p className="text-xs text-gray-500">
             Time format: HH:MM (24-hour format, e.g., 14:30 for 2:30 PM)
           </p>
         </div>

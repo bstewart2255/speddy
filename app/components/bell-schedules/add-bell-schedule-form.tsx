@@ -6,6 +6,7 @@ import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
+import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
 
 type Props = {
   gradeLevel: string;
@@ -234,14 +235,19 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Activity
         </label>
-        <input
-          type="text"
+        <select
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          placeholder="e.g., Recess, Lunch"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
-        />
+        >
+          <option value="">Select activity</option>
+          {BELL_SCHEDULE_ACTIVITIES.map((activity) => (
+            <option key={activity} value={activity}>
+              {activity}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex justify-end space-x-3 pt-4">

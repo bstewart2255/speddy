@@ -13,6 +13,7 @@ import { useSchool } from '../../../components/providers/school-context';
 import { FilterSelect } from '../../../components/schedule/filter-select';
 import { LastSaved } from '../../../components/ui/last-saved';
 import { getLastSavedSpecialActivity } from '../../../../lib/supabase/queries/last-saved';
+import { SPECIAL_ACTIVITY_TYPES } from '../../../../lib/constants/activity-types';
 
 interface SpecialActivity {
   id: string;
@@ -118,15 +119,25 @@ export default function SpecialActivitiesPage() {
     return days[day - 1] || 'Unknown';
   };
 
-  // Get activity type color
-  const getActivityColor = (activity: string) => {
-    const lowerActivity = activity.toLowerCase();
-    if (lowerActivity.includes('pe') || lowerActivity.includes('physical')) return 'blue';
-    if (lowerActivity.includes('music') || lowerActivity.includes('band')) return 'purple';
-    if (lowerActivity.includes('art')) return 'orange';
-    if (lowerActivity.includes('library')) return 'green';
-    if (lowerActivity.includes('computer') || lowerActivity.includes('tech')) return 'gray';
-    return 'gray';
+  // Get activity type color based on activity type
+  const getActivityColor = (activity: string): 'blue' | 'purple' | 'orange' | 'green' | 'red' | 'gray' => {
+    switch (activity) {
+      case 'PE':
+        return 'blue';
+      case 'Music':
+        return 'purple';
+      case 'ART':
+        return 'orange';
+      case 'Library':
+        return 'green';
+      case 'STEAM':
+      case 'STEM':
+        return 'blue';
+      case 'Garden':
+        return 'green';
+      default:
+        return 'gray';
+    }
   };
   
   // Filter special activities
@@ -148,12 +159,10 @@ export default function SpecialActivitiesPage() {
       .map(name => ({ value: name, label: name }));
   }, [specialActivities]);
   
+  // Activity options from predefined constants
   const activityOptions = useMemo(() => {
-    return [...new Set(specialActivities.map(a => a.activity_name))]
-      .filter(Boolean)
-      .sort()
-      .map(name => ({ value: name, label: name }));
-  }, [specialActivities]);
+    return SPECIAL_ACTIVITY_TYPES.map(activity => ({ value: activity, label: activity }));
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">

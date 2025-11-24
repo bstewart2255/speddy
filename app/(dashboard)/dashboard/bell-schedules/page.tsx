@@ -14,6 +14,7 @@ import SchoolHoursForm from '../../../components/bell-schedules/school-hours-for
 import { FilterSelect } from '../../../components/schedule/filter-select';
 import { LastSaved } from '../../../components/ui/last-saved';
 import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
+import { BELL_SCHEDULE_ACTIVITIES } from '../../../../lib/constants/activity-types';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -118,13 +119,10 @@ export default function BellSchedulesPage() {
     });
   }, [bellSchedules, gradeFilter, dayFilter, activityFilter]);
   
-  // Get unique activity options from bell schedules
+  // Activity options from predefined constants
   const activityOptions = useMemo(() => {
-    return [...new Set(bellSchedules.map(b => b.period_name))]
-      .filter(Boolean)
-      .sort()
-      .map(name => ({ value: name, label: name }));
-  }, [bellSchedules]);
+    return BELL_SCHEDULE_ACTIVITIES.map(activity => ({ value: activity, label: activity }));
+  }, []);
 
   if (loading || schoolLoading) {
     return (
