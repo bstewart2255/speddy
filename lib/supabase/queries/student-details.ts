@@ -98,8 +98,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
  * await upsertStudentDetails('student-uuid', {
  *   first_name: 'John',
  *   last_name: 'Doe',
- *   iep_goals: ['Reading comprehension', 'Math fluency'],
- *   working_skills: ['Addition', 'Subtraction']
+ *   iep_goals: ['Reading comprehension', 'Math fluency']
  * });
  * ```
  */

@@ -3376,6 +3376,9 @@ export const Constants = {
 
 // Convenience type exports for easier importing throughout the application
 export type Student = Database['public']['Tables']['students']['Row']
+export type Teacher = Database['public']['Tables']['teachers']['Row']
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type AdminPermission = Database['public']['Tables']['admin_permissions']['Row']
 export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row']
 export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row']
 export type SpecialActivity = Database['public']['Tables']['special_activities']['Row']

@@ -19,6 +19,12 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
     });
   };
 
+  const parseNumber = (value: string): number | undefined => {
+    if (!value) return undefined;
+    const num = parseFloat(value);
+    return isNaN(num) ? undefined : num;
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -44,7 +50,7 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
               id="scaledScore"
               type="number"
               value={data.scaledScore ?? ''}
-              onChange={(e) => updateField('scaledScore', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('scaledScore', parseNumber(e.target.value))}
               placeholder="e.g., 850"
             />
             <p className="text-xs text-gray-500">STAR Math scaled score (0-1400)</p>
@@ -82,7 +88,7 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
               min="1"
               max="99"
               value={data.percentileRank ?? ''}
-              onChange={(e) => updateField('percentileRank', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('percentileRank', parseNumber(e.target.value))}
               placeholder="e.g., 49"
             />
             <p className="text-xs text-gray-500">Percentile rank (1-99)</p>
@@ -94,7 +100,7 @@ export default function StarMathInputs({ data, onChange }: StarMathInputsProps) 
               id="normalCurveEquivalent"
               type="number"
               value={data.normalCurveEquivalent ?? ''}
-              onChange={(e) => updateField('normalCurveEquivalent', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('normalCurveEquivalent', parseNumber(e.target.value))}
               placeholder="e.g., 49.5"
             />
             <p className="text-xs text-gray-500">Normal curve equivalent</p>

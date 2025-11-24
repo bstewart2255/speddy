@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   getStudentAssessments,
   deleteAssessment,
@@ -41,11 +41,7 @@ export default function AssessmentList({ studentId, readOnly = false }: Assessme
   const [editingAssessment, setEditingAssessment] = useState<StudentAssessment | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadAssessments();
-  }, [studentId]);
-
-  const loadAssessments = async () => {
+  const loadAssessments = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getStudentAssessments(studentId);
@@ -55,7 +51,11 @@ export default function AssessmentList({ studentId, readOnly = false }: Assessme
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentId]);
+
+  useEffect(() => {
+    loadAssessments();
+  }, [loadAssessments]);
 
   const handleDelete = async (assessmentId: string) => {
     if (!confirm('Are you sure you want to delete this assessment?')) {

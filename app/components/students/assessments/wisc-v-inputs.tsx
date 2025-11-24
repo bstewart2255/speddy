@@ -19,6 +19,12 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
     });
   };
 
+  const parseNumber = (value: string): number | undefined => {
+    if (!value) return undefined;
+    const num = parseFloat(value);
+    return isNaN(num) ? undefined : num;
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -33,7 +39,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
             id="fullScaleIQ"
             type="number"
             value={data.fullScaleIQ ?? ''}
-            onChange={(e) => updateField('fullScaleIQ', e.target.value ? parseFloat(e.target.value) : undefined)}
+            onChange={(e) => updateField('fullScaleIQ', parseNumber(e.target.value))}
             placeholder="40-160"
           />
           <p className="text-xs text-gray-500">Overall cognitive ability measure</p>
@@ -53,7 +59,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="verbalComprehension"
               type="number"
               value={data.verbalComprehension ?? ''}
-              onChange={(e) => updateField('verbalComprehension', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('verbalComprehension', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">
@@ -67,7 +73,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="visualSpatial"
               type="number"
               value={data.visualSpatial ?? ''}
-              onChange={(e) => updateField('visualSpatial', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('visualSpatial', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">
@@ -81,7 +87,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="fluidReasoning"
               type="number"
               value={data.fluidReasoning ?? ''}
-              onChange={(e) => updateField('fluidReasoning', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('fluidReasoning', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">
@@ -95,7 +101,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="workingMemory"
               type="number"
               value={data.workingMemory ?? ''}
-              onChange={(e) => updateField('workingMemory', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('workingMemory', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">
@@ -109,7 +115,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="processingSpeed"
               type="number"
               value={data.processingSpeed ?? ''}
-              onChange={(e) => updateField('processingSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('processingSpeed', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">
@@ -129,7 +135,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="generalAbilityIndex"
               type="number"
               value={data.generalAbilityIndex ?? ''}
-              onChange={(e) => updateField('generalAbilityIndex', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('generalAbilityIndex', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">VCI + VSI + FRI (without WM and PS)</p>
@@ -141,7 +147,7 @@ export default function WiscVInputs({ data, onChange }: WiscVInputsProps) {
               id="cognitiveProfileIndex"
               type="number"
               value={data.cognitiveProfileIndex ?? ''}
-              onChange={(e) => updateField('cognitiveProfileIndex', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('cognitiveProfileIndex', parseNumber(e.target.value))}
               placeholder="40-160"
             />
             <p className="text-xs text-gray-500">WMI + PSI (efficiency of cognitive processing)</p>

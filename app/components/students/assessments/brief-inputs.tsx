@@ -19,6 +19,12 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
     });
   };
 
+  const parseNumber = (value: string): number | undefined => {
+    if (!value) return undefined;
+    const num = parseFloat(value);
+    return isNaN(num) ? undefined : num;
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -48,7 +54,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="inhibit"
               type="number"
               value={data.inhibit ?? ''}
-              onChange={(e) => updateField('inhibit', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('inhibit', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Ability to resist impulses and stop behavior</p>
@@ -60,7 +66,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="selfMonitor"
               type="number"
               value={data.selfMonitor ?? ''}
-              onChange={(e) => updateField('selfMonitor', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('selfMonitor', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Awareness of effect on others</p>
@@ -72,7 +78,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="shift"
               type="number"
               value={data.shift ?? ''}
-              onChange={(e) => updateField('shift', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('shift', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Ability to switch focus and adapt to changes</p>
@@ -84,7 +90,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="emotionalControl"
               type="number"
               value={data.emotionalControl ?? ''}
-              onChange={(e) => updateField('emotionalControl', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('emotionalControl', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Ability to modulate emotional responses</p>
@@ -96,7 +102,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="initiateTask"
               type="number"
               value={data.initiateTask ?? ''}
-              onChange={(e) => updateField('initiateTask', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('initiateTask', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Beginning tasks and generating ideas</p>
@@ -108,7 +114,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="workingMemory"
               type="number"
               value={data.workingMemory ?? ''}
-              onChange={(e) => updateField('workingMemory', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('workingMemory', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Holding information in mind while working</p>
@@ -120,7 +126,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="planOrganize"
               type="number"
               value={data.planOrganize ?? ''}
-              onChange={(e) => updateField('planOrganize', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('planOrganize', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Managing tasks and setting goals</p>
@@ -132,7 +138,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="taskMonitor"
               type="number"
               value={data.taskMonitor ?? ''}
-              onChange={(e) => updateField('taskMonitor', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('taskMonitor', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Checking and evaluating work</p>
@@ -144,7 +150,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="organizationOfMaterials"
               type="number"
               value={data.organizationOfMaterials ?? ''}
-              onChange={(e) => updateField('organizationOfMaterials', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('organizationOfMaterials', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Keeping workspace and materials organized</p>
@@ -164,7 +170,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="behavioralRegulationIndex"
               type="number"
               value={data.behavioralRegulationIndex ?? ''}
-              onChange={(e) => updateField('behavioralRegulationIndex', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('behavioralRegulationIndex', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Inhibit + Self-Monitor</p>
@@ -178,7 +184,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="emotionRegulationIndex"
               type="number"
               value={data.emotionRegulationIndex ?? ''}
-              onChange={(e) => updateField('emotionRegulationIndex', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('emotionRegulationIndex', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">Shift + Emotional Control</p>
@@ -192,7 +198,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="cognitiveRegulationIndex"
               type="number"
               value={data.cognitiveRegulationIndex ?? ''}
-              onChange={(e) => updateField('cognitiveRegulationIndex', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('cognitiveRegulationIndex', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">
@@ -208,7 +214,7 @@ export default function BriefInputs({ data, onChange }: BriefInputsProps) {
               id="globalExecutiveComposite"
               type="number"
               value={data.globalExecutiveComposite ?? ''}
-              onChange={(e) => updateField('globalExecutiveComposite', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('globalExecutiveComposite', parseNumber(e.target.value))}
               placeholder="20-80"
             />
             <p className="text-xs text-gray-500">

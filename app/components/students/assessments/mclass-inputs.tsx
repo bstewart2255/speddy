@@ -26,6 +26,12 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
     });
   };
 
+  const parseNumber = (value: string): number | undefined => {
+    if (!value) return undefined;
+    const num = parseFloat(value);
+    return isNaN(num) ? undefined : num;
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -38,7 +44,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               id="compositeScore"
               type="number"
               value={data.compositeScore ?? ''}
-              onChange={(e) => updateField('compositeScore', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('compositeScore', parseNumber(e.target.value))}
               placeholder="Enter composite score"
             />
           </div>
@@ -72,7 +78,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               id="letterNamingFluency"
               type="number"
               value={data.letterNamingFluency ?? ''}
-              onChange={(e) => updateField('letterNamingFluency', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('letterNamingFluency', parseNumber(e.target.value))}
               placeholder="Letters per minute"
             />
           </div>
@@ -83,7 +89,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               id="phonemeSegmentationFluency"
               type="number"
               value={data.phonemeSegmentationFluency ?? ''}
-              onChange={(e) => updateField('phonemeSegmentationFluency', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('phonemeSegmentationFluency', parseNumber(e.target.value))}
               placeholder="Correct phonemes per minute"
             />
           </div>
@@ -100,7 +106,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               id="nonsenseWordFluency"
               type="number"
               value={data.nonsenseWordFluency ?? ''}
-              onChange={(e) => updateField('nonsenseWordFluency', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('nonsenseWordFluency', parseNumber(e.target.value))}
               placeholder="Correct letter sounds per minute"
             />
           </div>
@@ -113,7 +119,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               min="0"
               max="100"
               value={data.nonsenseWordFluencyAccuracy ?? ''}
-              onChange={(e) => updateField('nonsenseWordFluencyAccuracy', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('nonsenseWordFluencyAccuracy', parseNumber(e.target.value))}
               placeholder="0-100"
             />
           </div>
@@ -132,7 +138,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               id="dorfWordsCorrect"
               type="number"
               value={data.dorfWordsCorrect ?? ''}
-              onChange={(e) => updateField('dorfWordsCorrect', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('dorfWordsCorrect', parseNumber(e.target.value))}
               placeholder="Words per minute"
             />
           </div>
@@ -145,7 +151,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
               min="0"
               max="100"
               value={data.dorfAccuracy ?? ''}
-              onChange={(e) => updateField('dorfAccuracy', e.target.value ? parseFloat(e.target.value) : undefined)}
+              onChange={(e) => updateField('dorfAccuracy', parseNumber(e.target.value))}
               placeholder="0-100"
             />
           </div>
@@ -161,7 +167,7 @@ export default function MClassInputs({ data, onChange }: MClassInputsProps) {
             id="mazeAdjustedScore"
             type="number"
             value={data.mazeAdjustedScore ?? ''}
-            onChange={(e) => updateField('mazeAdjustedScore', e.target.value ? parseFloat(e.target.value) : undefined)}
+            onChange={(e) => updateField('mazeAdjustedScore', parseNumber(e.target.value))}
             placeholder="Enter maze adjusted score"
           />
         </div>

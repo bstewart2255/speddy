@@ -130,22 +130,27 @@ export const ASSESSMENT_TYPE_LABELS: Record<AssessmentType, string> = {
 }
 
 // Type guards for discriminating assessment data types
+// Uses fields unique to each assessment type for reliable discrimination
 export function isMClassData(data: AssessmentData): data is MClassAssessmentData {
-  return 'compositeScore' in data || 'riskLevel' in data || 'dorfWordsCorrect' in data
+  return 'letterNamingFluency' in data || 'phonemeSegmentationFluency' in data ||
+         'nonsenseWordFluency' in data || 'dorfWordsCorrect' in data || 'mazeAdjustedScore' in data
 }
 
 export function isStarReadingData(data: AssessmentData): data is StarReadingAssessmentData {
-  return 'instructionalReadingLevel' in data || 'zpdLow' in data || 'estimatedOralReadingFluency' in data
+  return 'instructionalReadingLevel' in data || 'zpdLow' in data ||
+         'zpdHigh' in data || 'estimatedOralReadingFluency' in data
 }
 
 export function isStarMathData(data: AssessmentData): data is StarMathAssessmentData {
-  return 'quantileMeasure' in data || ('scaledScore' in data && 'gradeEquivalent' in data)
+  return 'quantileMeasure' in data
 }
 
 export function isWiscVData(data: AssessmentData): data is WiscVAssessmentData {
-  return 'fullScaleIQ' in data || 'verbalComprehension' in data
+  return 'fullScaleIQ' in data || 'verbalComprehension' in data ||
+         'visualSpatial' in data || 'fluidReasoning' in data
 }
 
 export function isBriefData(data: AssessmentData): data is BriefAssessmentData {
-  return 'behavioralRegulationIndex' in data || 'inhibit' in data
+  return 'behavioralRegulationIndex' in data || 'emotionRegulationIndex' in data ||
+         'cognitiveRegulationIndex' in data || 'globalExecutiveComposite' in data
 }

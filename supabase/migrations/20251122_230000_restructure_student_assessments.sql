@@ -28,6 +28,7 @@ CREATE INDEX idx_student_assessments_student_id ON student_assessments(student_i
 CREATE INDEX idx_student_assessments_type ON student_assessments(assessment_type);
 CREATE INDEX idx_student_assessments_date ON student_assessments(assessment_date DESC);
 CREATE INDEX idx_student_assessments_student_type ON student_assessments(student_id, assessment_type);
+CREATE INDEX idx_student_assessments_student_date ON student_assessments(student_id, assessment_date DESC);
 
 -- Add updated_at trigger
 CREATE TRIGGER set_updated_at_student_assessments
