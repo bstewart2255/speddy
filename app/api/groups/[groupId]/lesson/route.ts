@@ -133,11 +133,11 @@ export async function POST(
       state_id
     } = body;
 
-    // Validate required fields
-    if (!content) {
+    // Validate - at least content OR notes must be provided
+    if (!content && !notes) {
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'Content is required' },
+        { error: 'Content or notes is required' },
         { status: 400 }
       );
     }
@@ -189,7 +189,7 @@ export async function POST(
         .update({
           lesson_date: existingLesson.lesson_date ?? today,
           title: title || null,
-          content,
+          content: content || null,
           lesson_source: lesson_source || 'manual',
           subject: subject || null,
           grade_levels: grade_levels || null,
@@ -217,7 +217,7 @@ export async function POST(
           group_id: groupId,
           lesson_date: today,
           title: title || null,
-          content,
+          content: content || null,
           lesson_source: lesson_source || 'manual',
           subject: subject || null,
           grade_levels: grade_levels || null,

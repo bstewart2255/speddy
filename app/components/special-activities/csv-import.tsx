@@ -125,8 +125,10 @@ Lee,Garden,Tuesday,10:00,10:45`;
     if (lastFirstMatch) return lastFirstMatch;
 
     // Try partial match - if CSV name is contained in last name or vice versa
+    // Guard against empty names and require minimum length to avoid false positives
     const partialMatch = teachers.find(t => {
-      const lastName = t.last_name?.toLowerCase() || '';
+      const lastName = t.last_name?.toLowerCase();
+      if (!lastName || lastName.length < 3 || searchName.length < 3) return false;
       return lastName.includes(searchName) || searchName.includes(lastName);
     });
     if (partialMatch) return partialMatch;
