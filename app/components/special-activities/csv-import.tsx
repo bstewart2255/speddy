@@ -8,6 +8,12 @@ import { useSchool } from "../../components/providers/school-context";
 import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
 
+interface Teacher {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 interface Props {
   onSuccess: () => void;
 }
@@ -86,6 +92,48 @@ Lee,Garden,Tuesday,10:00,10:45`;
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
   };
 
+  // Match a CSV teacher name to a teacher in the database
+  // Handles: "Smith" (last name only), "John Smith", "Smith, John"
+  const matchTeacher = (csvName: string, teachers: Teacher[]): Teacher | null => {
+    const searchName = csvName.trim().toLowerCase();
+    if (!searchName) return null;
+
+    // Try exact match on last name
+    const lastNameMatch = teachers.find(
+      t => t.last_name?.toLowerCase() === searchName
+    );
+    if (lastNameMatch) return lastNameMatch;
+
+    // Try exact match on first name (less common but possible)
+    const firstNameMatch = teachers.find(
+      t => t.first_name?.toLowerCase() === searchName
+    );
+    if (firstNameMatch) return firstNameMatch;
+
+    // Try "First Last" format
+    const fullNameMatch = teachers.find(t => {
+      const fullName = `${t.first_name || ''} ${t.last_name || ''}`.trim().toLowerCase();
+      return fullName === searchName;
+    });
+    if (fullNameMatch) return fullNameMatch;
+
+    // Try "Last, First" format
+    const lastFirstMatch = teachers.find(t => {
+      const lastFirst = `${t.last_name || ''}, ${t.first_name || ''}`.trim().toLowerCase();
+      return lastFirst === searchName;
+    });
+    if (lastFirstMatch) return lastFirstMatch;
+
+    // Try partial match - if CSV name is contained in last name or vice versa
+    const partialMatch = teachers.find(t => {
+      const lastName = t.last_name?.toLowerCase() || '';
+      return lastName.includes(searchName) || searchName.includes(lastName);
+    });
+    if (partialMatch) return partialMatch;
+
+    return null;
+  };
+
   const validateColumns = (data: any[]) => {
     if (!data || data.length === 0) return false;
     const firstRow = data[0];
@@ -127,6 +175,15 @@ Lee,Garden,Tuesday,10:00,10:45`;
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error("Not authenticated");
 
+      // Fetch teachers for the current school
+      const { data: schoolTeachers } = await supabase
+        .from('teachers')
+        .select('id, first_name, last_name')
+        .eq('school_id', currentSchool?.school_id || '');
+
+      const teachers: Teacher[] = schoolTeachers || [];
+      console.log(`Found ${teachers.length} teachers for school`);
+
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
@@ -164,16 +221,31 @@ Lee,Garden,Tuesday,10:00,10:45`;
               );
             }
 
+            // Track unmatched teachers for reporting
+            const unmatchedTeachers = new Set<string>();
+
             const rawActivities = results.data
               .filter((row: any) => row.teacher && row.activity && row.day)
-              .map((row: any) => ({
-                teacher_name: row.teacher.trim(),
-                // Use normalized activity name to ensure correct casing
-                activity_name: normalizeActivity(row.activity) || row.activity.trim(),
-                day_of_week: dayNameToNumber(row.day),
-                start_time: convertTo24Hour(row['start time'] || ''),
-                end_time: convertTo24Hour(row['end time'] || '')
-              }));
+              .map((row: any) => {
+                const csvTeacherName = row.teacher.trim();
+                const matchedTeacher = matchTeacher(csvTeacherName, teachers);
+
+                if (!matchedTeacher) {
+                  unmatchedTeachers.add(csvTeacherName);
+                }
+
+                return {
+                  teacher_name: matchedTeacher
+                    ? `${matchedTeacher.first_name || ''} ${matchedTeacher.last_name || ''}`.trim()
+                    : csvTeacherName,
+                  teacher_id: matchedTeacher?.id || null,
+                  // Use normalized activity name to ensure correct casing
+                  activity_name: normalizeActivity(row.activity) || row.activity.trim(),
+                  day_of_week: dayNameToNumber(row.day),
+                  start_time: convertTo24Hour(row['start time'] || ''),
+                  end_time: convertTo24Hour(row['end time'] || '')
+                };
+              });
 
             console.log("Raw activities:", rawActivities);
 
@@ -205,9 +277,10 @@ Lee,Garden,Tuesday,10:00,10:45`;
 
             // Process each deduplicated activity
             for (const activity of dedupedActivities) {
-              const activityData = {
+              const activityData: any = {
                 provider_id: user.user!.id,
                 teacher_name: activity.teacher_name,
+                teacher_id: activity.teacher_id || null,
                 activity_name: activity.activity_name,
                 day_of_week: activity.day_of_week,
                 start_time: activity.start_time,
@@ -242,9 +315,21 @@ Lee,Garden,Tuesday,10:00,10:45`;
               }
             }
 
-            const message = `Import complete: ${summary.inserted} added, ${summary.updated} updated, ${summary.skipped} skipped${summary.errors.length > 0 ? `, ${summary.errors.length} errors` : ''}`;
+            // Build summary message
+            let message = `Import complete: ${summary.inserted} added, ${summary.updated} updated, ${summary.skipped} skipped`;
+            if (summary.errors.length > 0) {
+              message += `, ${summary.errors.length} errors`;
+            }
+
+            // Report unmatched teachers
+            if (unmatchedTeachers.size > 0) {
+              const unmatchedList = Array.from(unmatchedTeachers).join(', ');
+              message += `\n\n⚠️ ${unmatchedTeachers.size} teacher(s) not found in database: ${unmatchedList}\n\nThese activities were imported with text-only teacher names. To link them to teacher records, add the teachers in the Admin > Teachers page first.`;
+              console.warn("Unmatched teachers:", Array.from(unmatchedTeachers));
+            }
+
             alert(message);
-            
+
             if (summary.errors.length > 0) {
               console.error("Import errors:", summary.errors);
             }
