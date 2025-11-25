@@ -144,3 +144,6 @@ test-results/
 playwright-report/
 blob-report/
 html-report/
+
+# Local reference files (PDFs, Excel, CSV samples, etc.)
+/reference-local/

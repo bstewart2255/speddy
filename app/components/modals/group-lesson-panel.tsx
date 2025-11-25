@@ -41,9 +41,6 @@ export function GroupLessonPanel({
   const [editing, setEditing] = useState(false);
 
   // Form state for manual lesson creation/editing
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [subject, setSubject] = useState('');
   const [notes, setNotes] = useState('');
 
   // Curriculum tracking state
@@ -62,16 +59,7 @@ export function GroupLessonPanel({
       setLesson(data.lesson);
 
       if (data.lesson) {
-        setTitle(data.lesson.title || '');
-        setSubject(data.lesson.subject || '');
         setNotes(data.lesson.notes || '');
-
-        // Handle content based on type (JSONB or text)
-        if (typeof data.lesson.content === 'object') {
-          setContent(JSON.stringify(data.lesson.content, null, 2));
-        } else {
-          setContent(data.lesson.content || '');
-        }
       }
     } catch (error) {
       // Ignore abort errors - expected during cleanup
@@ -181,17 +169,12 @@ export function GroupLessonPanel({
   };
 
   const handleSaveLesson = async () => {
-    if (!content.trim()) {
-      showToast('Please enter lesson content', 'error');
-      return;
-    }
-
     try {
       const body: any = {
-        title: title.trim() || groupName,
-        content: content.trim(),
+        title: null,
+        content: null,
         lesson_source: 'manual',
-        subject: subject.trim() || null,
+        subject: null,
         notes: notes.trim() || null
       };
 
@@ -238,9 +221,6 @@ export function GroupLessonPanel({
       if (!response.ok) throw new Error('Failed to delete lesson');
 
       setLesson(null);
-      setTitle('');
-      setContent('');
-      setSubject('');
       setNotes('');
       setEditing(false);
 
@@ -265,13 +245,13 @@ export function GroupLessonPanel({
       <div className="space-y-4">
         <div className="text-center py-8">
           <p className="text-gray-600 mb-6">
-            No lesson plan created for this group yet
+            No notes created for this group yet
           </p>
           <button
             onClick={() => setEditing(true)}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            Create Lesson
+            Create Notes
           </button>
         </div>
       </div>
@@ -283,59 +263,20 @@ export function GroupLessonPanel({
     return (
       <div className="space-y-4">
         <h4 className="font-medium text-gray-900">
-          {lesson ? 'Edit Lesson Plan' : 'Create Lesson Plan'}
+          {lesson ? 'Edit Notes' : 'Create Notes'}
         </h4>
 
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={`Lesson for ${groupName}`}
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Subject
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="e.g., Reading, Math, Writing"
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lesson Content
-            </label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Enter your lesson plan content..."
-              rows={10}
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes (Optional)
+              Notes
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes or instructions..."
-              rows={3}
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your notes..."
+              rows={10}
+              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
             />
           </div>
 
@@ -409,14 +350,7 @@ export function GroupLessonPanel({
               setEditing(false);
               if (lesson) {
                 // Reset to saved values
-                setTitle(lesson.title || '');
-                setSubject(lesson.subject || '');
                 setNotes(lesson.notes || '');
-                if (typeof lesson.content === 'object') {
-                  setContent(JSON.stringify(lesson.content, null, 2));
-                } else {
-                  setContent(String(lesson.content || ''));
-                }
               }
             }}
             className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -427,7 +361,7 @@ export function GroupLessonPanel({
             onClick={handleSaveLesson}
             className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            Save Lesson
+            Save
           </button>
         </div>
       </div>
@@ -480,17 +414,7 @@ export function GroupLessonPanel({
 
       <div className="flex items-start justify-between">
         <div>
-          <h4 className="font-medium text-gray-900 text-lg">
-            {lesson.title || groupName}
-          </h4>
-          {lesson.subject && (
-            <p className="text-sm text-gray-600 mt-1">Subject: {lesson.subject}</p>
-          )}
-          {lesson.lesson_source && (
-            <p className="text-xs text-gray-500 mt-1">
-              {lesson.lesson_source === 'ai_generated' ? '✨ AI-Generated' : '📝 Manual'}
-            </p>
-          )}
+          <h4 className="font-medium text-gray-900 text-lg">Notes</h4>
         </div>
         <div className="flex gap-2">
           <button
@@ -508,18 +432,13 @@ export function GroupLessonPanel({
         </div>
       </div>
 
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-        <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700">
-          {typeof lesson.content === 'object'
-            ? JSON.stringify(lesson.content, null, 2)
-            : lesson.content}
-        </pre>
-      </div>
-
-      {lesson.notes && (
-        <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-          <h5 className="text-sm font-medium text-gray-900 mb-1">Notes</h5>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{lesson.notes}</p>
+      {lesson.notes ? (
+        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+          <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700">{lesson.notes}</pre>
+        </div>
+      ) : (
+        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 text-center">
+          <p className="text-sm text-gray-500">No notes yet</p>
         </div>
       )}
     </div>

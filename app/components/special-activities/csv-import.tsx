@@ -8,6 +8,12 @@ import { useSchool } from "../../components/providers/school-context";
 import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
 
+interface Teacher {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
 interface Props {
   onSuccess: () => void;
 }
@@ -46,6 +52,88 @@ Lee,Garden,Tuesday,10:00,10:45`;
       friday: 5,
     };
     return days[dayName.toLowerCase().trim()] || 1;
+  };
+
+  // Convert time to 24-hour format (HH:MM)
+  // Handles: "1:00 PM", "13:00", "1:00" (assumes PM for 1-6, AM for 7-11)
+  const convertTo24Hour = (timeStr: string): string => {
+    if (!timeStr) return '';
+    const cleaned = timeStr.trim().toUpperCase();
+
+    // Check for AM/PM suffix
+    const hasAM = cleaned.includes('AM');
+    const hasPM = cleaned.includes('PM');
+    const timeOnly = cleaned.replace(/\s*(AM|PM)\s*/gi, '').trim();
+
+    // Parse hours and minutes
+    const match = timeOnly.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return timeStr; // Return original if can't parse
+
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+
+    if (hasAM) {
+      // AM: 12 AM = 00, otherwise keep as-is
+      if (hours === 12) hours = 0;
+    } else if (hasPM) {
+      // PM: 12 PM = 12, otherwise add 12
+      if (hours !== 12) hours += 12;
+    } else {
+      // No AM/PM specified - use school schedule logic
+      // Times 1-6 are almost certainly PM for school schedules
+      // Times 7-11 are AM, 12 is PM
+      if (hours >= 1 && hours <= 6) {
+        hours += 12; // 1:00 -> 13:00, etc.
+      }
+      // Hours 7-11 stay as-is (AM)
+      // Hour 12 stays as-is (PM)
+    }
+
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  };
+
+  // Match a CSV teacher name to a teacher in the database
+  // Handles: "Smith" (last name only), "John Smith", "Smith, John"
+  const matchTeacher = (csvName: string, teachers: Teacher[]): Teacher | null => {
+    const searchName = csvName.trim().toLowerCase();
+    if (!searchName) return null;
+
+    // Try exact match on last name
+    const lastNameMatch = teachers.find(
+      t => t.last_name?.toLowerCase() === searchName
+    );
+    if (lastNameMatch) return lastNameMatch;
+
+    // Try exact match on first name (less common but possible)
+    const firstNameMatch = teachers.find(
+      t => t.first_name?.toLowerCase() === searchName
+    );
+    if (firstNameMatch) return firstNameMatch;
+
+    // Try "First Last" format
+    const fullNameMatch = teachers.find(t => {
+      const fullName = `${t.first_name || ''} ${t.last_name || ''}`.trim().toLowerCase();
+      return fullName === searchName;
+    });
+    if (fullNameMatch) return fullNameMatch;
+
+    // Try "Last, First" format
+    const lastFirstMatch = teachers.find(t => {
+      const lastFirst = `${t.last_name || ''}, ${t.first_name || ''}`.trim().toLowerCase();
+      return lastFirst === searchName;
+    });
+    if (lastFirstMatch) return lastFirstMatch;
+
+    // Try partial match - if CSV name is contained in last name or vice versa
+    // Guard against empty names and require minimum length to avoid false positives
+    const partialMatch = teachers.find(t => {
+      const lastName = t.last_name?.toLowerCase();
+      if (!lastName || lastName.length < 3 || searchName.length < 3) return false;
+      return lastName.includes(searchName) || searchName.includes(lastName);
+    });
+    if (partialMatch) return partialMatch;
+
+    return null;
   };
 
   const validateColumns = (data: any[]) => {
@@ -89,6 +177,14 @@ Lee,Garden,Tuesday,10:00,10:45`;
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error("Not authenticated");
 
+      // Fetch teachers for the current school
+      const { data: schoolTeachers } = await supabase
+        .from('teachers')
+        .select('id, first_name, last_name')
+        .eq('school_id', currentSchool?.school_id || '');
+
+      const teachers: Teacher[] = schoolTeachers || [];
+
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
@@ -126,16 +222,31 @@ Lee,Garden,Tuesday,10:00,10:45`;
               );
             }
 
+            // Track unmatched teachers for reporting
+            const unmatchedTeachers = new Set<string>();
+
             const rawActivities = results.data
               .filter((row: any) => row.teacher && row.activity && row.day)
-              .map((row: any) => ({
-                teacher_name: row.teacher.trim(),
-                // Use normalized activity name to ensure correct casing
-                activity_name: normalizeActivity(row.activity) || row.activity.trim(),
-                day_of_week: dayNameToNumber(row.day),
-                start_time: row['start time']?.trim() || '',
-                end_time: row['end time']?.trim() || ''
-              }));
+              .map((row: any) => {
+                const csvTeacherName = row.teacher.trim();
+                const matchedTeacher = matchTeacher(csvTeacherName, teachers);
+
+                if (!matchedTeacher) {
+                  unmatchedTeachers.add(csvTeacherName);
+                }
+
+                return {
+                  teacher_name: matchedTeacher
+                    ? `${matchedTeacher.first_name || ''} ${matchedTeacher.last_name || ''}`.trim()
+                    : csvTeacherName,
+                  teacher_id: matchedTeacher?.id || null,
+                  // Use normalized activity name to ensure correct casing
+                  activity_name: normalizeActivity(row.activity) || row.activity.trim(),
+                  day_of_week: dayNameToNumber(row.day),
+                  start_time: convertTo24Hour(row['start time'] || ''),
+                  end_time: convertTo24Hour(row['end time'] || '')
+                };
+              });
 
             console.log("Raw activities:", rawActivities);
 
@@ -167,9 +278,10 @@ Lee,Garden,Tuesday,10:00,10:45`;
 
             // Process each deduplicated activity
             for (const activity of dedupedActivities) {
-              const activityData = {
+              const activityData: any = {
                 provider_id: user.user!.id,
                 teacher_name: activity.teacher_name,
+                teacher_id: activity.teacher_id || null,
                 activity_name: activity.activity_name,
                 day_of_week: activity.day_of_week,
                 start_time: activity.start_time,
@@ -204,9 +316,21 @@ Lee,Garden,Tuesday,10:00,10:45`;
               }
             }
 
-            const message = `Import complete: ${summary.inserted} added, ${summary.updated} updated, ${summary.skipped} skipped${summary.errors.length > 0 ? `, ${summary.errors.length} errors` : ''}`;
+            // Build summary message
+            let message = `Import complete: ${summary.inserted} added, ${summary.updated} updated, ${summary.skipped} skipped`;
+            if (summary.errors.length > 0) {
+              message += `, ${summary.errors.length} errors`;
+            }
+
+            // Report unmatched teachers
+            if (unmatchedTeachers.size > 0) {
+              const unmatchedList = Array.from(unmatchedTeachers).join(', ');
+              message += `\n\n⚠️ ${unmatchedTeachers.size} teacher(s) not found in database: ${unmatchedList}\n\nThese activities were imported with text-only teacher names. To link them to teacher records, add the teachers in the Admin > Teachers page first.`;
+              console.warn("Unmatched teachers:", Array.from(unmatchedTeachers));
+            }
+
             alert(message);
-            
+
             if (summary.errors.length > 0) {
               console.error("Import errors:", summary.errors);
             }
@@ -259,7 +383,7 @@ Lee,Garden,Tuesday,10:00,10:45`;
             Valid activities: {SPECIAL_ACTIVITY_TYPES.join(', ')}
           </p>
           <p className="text-xs text-gray-500">
-            Time format: HH:MM (24-hour format, e.g., 14:30 for 2:30 PM)
+            Time format: HH:MM (e.g., 9:00, 1:30 PM, or 14:30)
           </p>
         </div>
         <div className="flex justify-center gap-4">
