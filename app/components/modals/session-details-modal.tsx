@@ -88,8 +88,7 @@ export function SessionDetailsModal({
 
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [notes, setNotes] = useState('');
 
   // Curriculum tracking state
   const [curriculumTracking, setCurriculumTracking] = useState<CurriculumTracking | null>(null);
@@ -201,8 +200,7 @@ export function SessionDetailsModal({
     if (isOpen) {
       // Reset form if no lesson exists
       if (!lesson) {
-        setTitle('');
-        setContent('');
+        setNotes('');
       }
 
       // Fetch documents and curriculum tracking
@@ -279,11 +277,6 @@ export function SessionDetailsModal({
   };
 
   const handleSaveLesson = async () => {
-    if (!content.trim()) {
-      showToast('Please enter lesson content', 'error');
-      return;
-    }
-
     try {
       // Ensure session is persisted before saving lesson
       await ensurePersistedSession();
@@ -294,10 +287,10 @@ export function SessionDetailsModal({
       const body = {
         timeSlot,
         students: [{ id: session.student_id, initials: student?.initials || '?' }],
-        content: content.trim(),
+        content: null,
         lessonDate: sessionDate,
-        notes: null,
-        title: title.trim() || `Lesson for ${student?.initials || '?'}`,
+        notes: notes.trim() || null,
+        title: null,
         subject: null
       };
 
@@ -342,8 +335,7 @@ export function SessionDetailsModal({
       if (!response.ok) throw new Error('Failed to delete lesson');
 
       setLesson(null);
-      setTitle('');
-      setContent('');
+      setNotes('');
 
       showToast('Lesson deleted successfully', 'success');
     } catch (error) {
@@ -955,9 +947,9 @@ export function SessionDetailsModal({
             </div>
           </div>
 
-          {/* Lesson Plan Section */}
+          {/* Notes Section */}
           <div className="p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Lesson Plan</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
 
             {lesson && lesson.lesson_source && (
               <p className="text-xs text-gray-500 mb-3">
@@ -965,32 +957,14 @@ export function SessionDetailsModal({
               </p>
             )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={`Lesson for ${student?.initials || '?'}`}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Lesson Content
-                </label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Enter your lesson plan content..."
-                  rows={15}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
-                />
-              </div>
+            <div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Enter your notes..."
+                rows={15}
+                className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
+              />
             </div>
           </div>
         </div>
@@ -1003,7 +977,7 @@ export function SessionDetailsModal({
                 onClick={handleDeleteLesson}
                 className="px-4 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors font-medium"
               >
-                Delete Lesson
+                Delete
               </button>
             )}
           </div>
@@ -1018,7 +992,7 @@ export function SessionDetailsModal({
               onClick={handleSaveLesson}
               className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              Save Lesson
+              Save
             </button>
           </div>
         </div>

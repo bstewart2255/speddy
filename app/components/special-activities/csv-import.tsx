@@ -48,6 +48,44 @@ Lee,Garden,Tuesday,10:00,10:45`;
     return days[dayName.toLowerCase().trim()] || 1;
   };
 
+  // Convert time to 24-hour format (HH:MM)
+  // Handles: "1:00 PM", "13:00", "1:00" (assumes PM for 1-6, AM for 7-11)
+  const convertTo24Hour = (timeStr: string): string => {
+    if (!timeStr) return '';
+    const cleaned = timeStr.trim().toUpperCase();
+
+    // Check for AM/PM suffix
+    const hasAM = cleaned.includes('AM');
+    const hasPM = cleaned.includes('PM');
+    const timeOnly = cleaned.replace(/\s*(AM|PM)\s*/gi, '').trim();
+
+    // Parse hours and minutes
+    const match = timeOnly.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return timeStr; // Return original if can't parse
+
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+
+    if (hasAM) {
+      // AM: 12 AM = 00, otherwise keep as-is
+      if (hours === 12) hours = 0;
+    } else if (hasPM) {
+      // PM: 12 PM = 12, otherwise add 12
+      if (hours !== 12) hours += 12;
+    } else {
+      // No AM/PM specified - use school schedule logic
+      // Times 1-6 are almost certainly PM for school schedules
+      // Times 7-11 are AM, 12 is PM
+      if (hours >= 1 && hours <= 6) {
+        hours += 12; // 1:00 -> 13:00, etc.
+      }
+      // Hours 7-11 stay as-is (AM)
+      // Hour 12 stays as-is (PM)
+    }
+
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  };
+
   const validateColumns = (data: any[]) => {
     if (!data || data.length === 0) return false;
     const firstRow = data[0];
@@ -133,8 +171,8 @@ Lee,Garden,Tuesday,10:00,10:45`;
                 // Use normalized activity name to ensure correct casing
                 activity_name: normalizeActivity(row.activity) || row.activity.trim(),
                 day_of_week: dayNameToNumber(row.day),
-                start_time: row['start time']?.trim() || '',
-                end_time: row['end time']?.trim() || ''
+                start_time: convertTo24Hour(row['start time'] || ''),
+                end_time: convertTo24Hour(row['end time'] || '')
               }));
 
             console.log("Raw activities:", rawActivities);
@@ -259,7 +297,7 @@ Lee,Garden,Tuesday,10:00,10:45`;
             Valid activities: {SPECIAL_ACTIVITY_TYPES.join(', ')}
           </p>
           <p className="text-xs text-gray-500">
-            Time format: HH:MM (24-hour format, e.g., 14:30 for 2:30 PM)
+            Time format: HH:MM (e.g., 9:00, 1:30 PM, or 14:30)
           </p>
         </div>
         <div className="flex justify-center gap-4">
