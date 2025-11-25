@@ -182,7 +182,6 @@ Lee,Garden,Tuesday,10:00,10:45`;
         .eq('school_id', currentSchool?.school_id || '');
 
       const teachers: Teacher[] = schoolTeachers || [];
-      console.log(`Found ${teachers.length} teachers for school`);
 
       Papa.parse(file, {
         header: true,
