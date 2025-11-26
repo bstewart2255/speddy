@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import { Card, StatCard, CardGrid } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -30,6 +30,9 @@ export function StudentProgressTab({ studentId, iepGoals }: StudentProgressTabPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Create stable key from iepGoals array to prevent unnecessary re-renders
+  const iepGoalsKey = useMemo(() => iepGoals.join('|'), [iepGoals]);
+
   useEffect(() => {
     const loadProgressData = async () => {
       setLoading(true);
@@ -46,7 +49,8 @@ export function StudentProgressTab({ studentId, iepGoals }: StudentProgressTabPr
     };
 
     loadProgressData();
-  }, [studentId, iepGoals]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId, iepGoalsKey]);
 
   if (loading) {
     return (

@@ -7,6 +7,9 @@ import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-stu
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
 
+// Constants moved outside component to avoid unnecessary re-renders
+const ITEMS_PER_PAGE = 50;
+
 interface Student {
   id: string;
   initials: string;
@@ -60,7 +63,6 @@ export default function ResultsTab() {
   const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const ITEMS_PER_PAGE = 50;
 
   // Cleanup success message timeout on unmount
   useEffect(() => {
@@ -123,7 +125,8 @@ export default function ResultsTab() {
     if (currentSchool) {
       fetchStudents();
     }
-  }, [currentSchool, fetchStudents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSchool]);
 
   const fetchTickets = useCallback(async (reset = false, pageNumber = 0) => {
     if (!selectedStudentId) return;
@@ -175,7 +178,7 @@ export default function ResultsTab() {
     } finally {
       setLoading(false);
     }
-  }, [selectedStudentId, statusFilter, currentSchool, ITEMS_PER_PAGE]);
+  }, [selectedStudentId, statusFilter, currentSchool]);
 
   const loadMore = useCallback(() => {
     const nextPage = page + 1;
@@ -188,7 +191,10 @@ export default function ResultsTab() {
     if (selectedStudentId) {
       fetchTickets(true, 0);
     }
-  }, [selectedStudentId, statusFilter, fetchTickets]);
+    // fetchTickets is intentionally omitted to avoid circular dependency
+    // The effect should only re-run when these filter values change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId, statusFilter, currentSchool]);
 
   const toggleTicket = (ticketId: string) => {
     setExpandedTickets(prev => ({

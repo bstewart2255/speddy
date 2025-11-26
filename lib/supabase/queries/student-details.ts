@@ -210,7 +210,6 @@ export async function getStudentProgressData(
   // Calculate 30 days ago for timeline filter
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
 
   // Fetch progress check and exit ticket results in parallel (both queries are independent)
   const [progressCheckResult, exitTicketResult] = await Promise.all([
@@ -349,20 +348,21 @@ export async function getStudentProgressData(
   // Build timeline (last 30 days)
   const timeline: TimelineItem[] = [];
 
-  // Group progress check results by progress_check_id for timeline
-  const pcByCheck = new Map<string, typeof progressCheckResults>();
+  // Group progress check results by progress_check_id AND iep_goal_index for timeline
+  // (a single progress check can have questions for multiple IEP goals)
+  const pcByCheckAndGoal = new Map<string, typeof progressCheckResults>();
   for (const result of progressCheckResults) {
     if (result.graded_at && new Date(result.graded_at) >= thirtyDaysAgo) {
-      const checkId = result.progress_check_id;
-      if (!pcByCheck.has(checkId)) {
-        pcByCheck.set(checkId, []);
+      const key = `${result.progress_check_id}-${result.iep_goal_index}`;
+      if (!pcByCheckAndGoal.has(key)) {
+        pcByCheckAndGoal.set(key, []);
       }
-      pcByCheck.get(checkId)!.push(result);
+      pcByCheckAndGoal.get(key)!.push(result);
     }
   }
 
-  // Add progress check timeline items
-  for (const [checkId, results] of pcByCheck) {
+  // Add progress check timeline items (one per goal per check)
+  for (const [key, results] of pcByCheckAndGoal) {
     if (results.length === 0) continue;
     const goalIndex = results[0].iep_goal_index;
     const goalText = goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`;
@@ -372,7 +372,7 @@ export async function getStudentProgressData(
     const notes = results.filter(r => r.notes).map(r => r.notes).join('; ') || undefined;
 
     timeline.push({
-      id: checkId,
+      id: key, // Use composite key for uniqueness
       type: 'progress_check',
       date: results[0].graded_at!,
       goalIndex,

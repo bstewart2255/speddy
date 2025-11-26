@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
 
       // Validate each result
       for (const result of results) {
-        if (typeof result.problem_index !== 'number') {
+        if (typeof result.problem_index !== 'number' || result.problem_index < 0) {
           return NextResponse.json(
-            { error: 'Invalid result format: problem_index is required' },
+            { error: 'Invalid result format: problem_index must be a non-negative number' },
             { status: 400 }
           );
         }
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       const content = (exitTicket?.content ?? {}) as {
         problems?: unknown[];
       };
-      const expectedProblemCount = content.problems?.length || 0;
+      const expectedProblemCount = Array.isArray(content.problems) ? content.problems.length : 0;
 
       if (expectedProblemCount === 0) {
         return NextResponse.json(
@@ -111,11 +111,11 @@ export async function POST(request: NextRequest) {
         iep_goal_index: exitTicket.iep_goal_index,
       }));
 
-      // Upsert all results
+      // Upsert all results (unique on exit_ticket_id, iep_goal_index, problem_index)
       const { data: savedResults, error: resultsError } = await supabase
         .from('exit_ticket_results')
         .upsert(upsertData, {
-          onConflict: 'exit_ticket_id,problem_index',
+          onConflict: 'exit_ticket_id,iep_goal_index,problem_index',
         })
         .select();
 
