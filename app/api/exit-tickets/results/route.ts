@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 
+interface ProblemResult {
+  problem_index: number;
+  status: 'correct' | 'incorrect' | 'excluded';
+  notes?: string;
+}
+
 export async function POST(request: NextRequest) {
   return withAuth(async (req: NextRequest, userId: string) => {
     try {
       const supabase = await createClient();
       const body = await req.json();
-      const { exit_ticket_id, rating, notes } = body;
+      const { exit_ticket_id, results } = body as {
+        exit_ticket_id: string;
+        results: ProblemResult[];
+      };
 
       // Validate required fields
       if (!exit_ticket_id) {
@@ -17,17 +26,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!rating || rating < 1 || rating > 10) {
+      if (!results || !Array.isArray(results) || results.length === 0) {
         return NextResponse.json(
-          { error: 'Rating must be between 1 and 10' },
+          { error: 'Results array is required' },
           { status: 400 }
         );
       }
 
-      // Fetch the exit ticket to get student and IEP goal info
+      // Validate each result
+      for (const result of results) {
+        if (typeof result.problem_index !== 'number') {
+          return NextResponse.json(
+            { error: 'Invalid result format: problem_index is required' },
+            { status: 400 }
+          );
+        }
+
+        if (!['correct', 'incorrect', 'excluded'].includes(result.status)) {
+          return NextResponse.json(
+            { error: 'Invalid status: must be correct, incorrect, or excluded' },
+            { status: 400 }
+          );
+        }
+
+        // Require notes for incorrect answers
+        if (result.status === 'incorrect' && (!result.notes || result.notes.trim() === '')) {
+          return NextResponse.json(
+            { error: 'Notes are required for incorrect answers' },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Fetch the exit ticket to get student and IEP goal info, including content for problem count
       const { data: exitTicket, error: ticketError } = await supabase
         .from('exit_tickets')
-        .select('id, student_id, iep_goal_index, iep_goal_text')
+        .select('id, student_id, iep_goal_index, iep_goal_text, content')
         .eq('id', exit_ticket_id)
         .single();
 
@@ -39,68 +73,70 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check if result already exists (prevent duplicates)
-      const { data: existingResult } = await supabase
-        .from('exit_ticket_results')
-        .select('id')
-        .eq('exit_ticket_id', exit_ticket_id)
-        .single();
+      // Validate that all problems are graded
+      const content = (exitTicket?.content ?? {}) as {
+        problems?: unknown[];
+      };
+      const expectedProblemCount = content.problems?.length || 0;
 
-      if (existingResult) {
-        // Update existing result
-        const { data: updatedResult, error: updateError } = await supabase
-          .from('exit_ticket_results')
-          .update({
-            rating,
-            notes: notes || null,
-            graded_at: new Date().toISOString(),
-          })
-          .eq('exit_ticket_id', exit_ticket_id)
-          .select()
-          .single();
-
-        if (updateError) {
-          console.error('Error updating result:', updateError);
-          return NextResponse.json(
-            { error: 'Failed to update result', details: updateError.message },
-            { status: 500 }
-          );
-        }
-
-        return NextResponse.json({
-          success: true,
-          result: updatedResult,
-          message: 'Result updated successfully',
-        });
+      if (expectedProblemCount === 0) {
+        return NextResponse.json(
+          { error: 'Exit ticket has no problems' },
+          { status: 400 }
+        );
       }
 
-      // Create new result
-      const { data: result, error: resultError } = await supabase
-        .from('exit_ticket_results')
-        .insert({
-          exit_ticket_id,
-          student_id: exitTicket.student_id,
-          rating,
-          notes: notes || null,
-          graded_by: userId,
-          iep_goal_text: exitTicket.iep_goal_text,
-          iep_goal_index: exitTicket.iep_goal_index,
-        })
-        .select()
-        .single();
+      const submittedIndices = new Set(results.map(r => r.problem_index));
+      const expectedIndices = new Set(Array.from({ length: expectedProblemCount }, (_, i) => i));
 
-      if (resultError) {
-        console.error('Error creating result:', resultError);
+      if (submittedIndices.size !== expectedIndices.size ||
+          [...expectedIndices].some(i => !submittedIndices.has(i))) {
         return NextResponse.json(
-          { error: 'Failed to create result', details: resultError.message },
+          { error: 'Incomplete grading', details: 'All problems must be graded before saving results.' },
+          { status: 400 }
+        );
+      }
+
+      // Prepare upsert data
+      const upsertData = results.map(result => ({
+        exit_ticket_id,
+        student_id: exitTicket.student_id,
+        problem_index: result.problem_index,
+        status: result.status,
+        notes: result.notes || null,
+        graded_by: userId,
+        graded_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        iep_goal_text: exitTicket.iep_goal_text,
+        iep_goal_index: exitTicket.iep_goal_index,
+      }));
+
+      // Upsert all results
+      const { data: savedResults, error: resultsError } = await supabase
+        .from('exit_ticket_results')
+        .upsert(upsertData, {
+          onConflict: 'exit_ticket_id,problem_index',
+        })
+        .select();
+
+      if (resultsError) {
+        console.error('Error saving results:', resultsError);
+        return NextResponse.json(
+          { error: 'Failed to save results', details: resultsError.message },
           { status: 500 }
         );
       }
 
+      // Update completed_at on the exit ticket
+      await supabase
+        .from('exit_tickets')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('id', exit_ticket_id);
+
       return NextResponse.json({
         success: true,
-        result,
-        message: 'Result saved successfully',
+        results: savedResults,
+        message: 'Results saved successfully',
       });
 
     } catch (error: any) {
@@ -134,7 +170,7 @@ export async function GET(request: NextRequest) {
         schoolStudentIds = schoolStudents?.map(s => s.id) || [];
       }
 
-      // Fetch exit tickets (optionally filtered by student)
+      // Fetch exit tickets (optionally filtered by student) with per-problem results
       let query = supabase
         .from('exit_tickets')
         .select(`
@@ -144,10 +180,12 @@ export async function GET(request: NextRequest) {
           iep_goal_text,
           content,
           created_at,
+          completed_at,
           discarded_at,
           exit_ticket_results (
             id,
-            rating,
+            problem_index,
+            status,
             notes,
             graded_at,
             graded_by
@@ -186,15 +224,11 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Transform and filter results based on status
+      // Transform results - now returns array of per-problem results
       const transformedTickets = tickets.map(ticket => {
-        // Supabase returns an object (not array) when there's a unique constraint
-        // and returns null when there's no related row
-        // TypeScript infers this as an array, so we handle both cases
-        const rawResult = ticket.exit_ticket_results;
-        const result = rawResult
-          ? (Array.isArray(rawResult) ? rawResult[0] : rawResult)
-          : null;
+        const results = Array.isArray(ticket.exit_ticket_results)
+          ? ticket.exit_ticket_results
+          : [];
 
         return {
           id: ticket.id,
@@ -203,15 +237,10 @@ export async function GET(request: NextRequest) {
           iep_goal_text: ticket.iep_goal_text,
           content: ticket.content,
           created_at: ticket.created_at,
+          completed_at: ticket.completed_at,
           discarded_at: ticket.discarded_at,
-          is_graded: !!result,
-          result: result ? {
-            id: result.id,
-            rating: result.rating,
-            notes: result.notes,
-            graded_at: result.graded_at,
-            graded_by: result.graded_by,
-          } : null,
+          is_graded: Boolean(ticket.completed_at),
+          results,  // Array of per-problem results
         };
       });
 
