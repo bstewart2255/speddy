@@ -84,24 +84,45 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
 
       const studentIEPGoals = (studentDetails?.iep_goals as string[]) || [];
 
-      // Get exit ticket results for this student
+      // Get exit ticket results for this student (per-problem grading)
       const { data: exitTicketResults } = await supabase
         .from('exit_ticket_results')
-        .select('rating, graded_at, iep_goal_text, iep_goal_index')
+        .select('status, graded_at, iep_goal_text, iep_goal_index, exit_ticket_id')
         .eq('student_id', studentId)
         .order('graded_at', { ascending: true });
 
-      // Group results by IEP goal and calculate trends
-      const goalResultsMap: Record<number, Array<{ rating: number; date: string }>> = {};
+      // Group results by IEP goal and exit ticket, then calculate accuracy per assessment
+      const goalResultsMap: Record<number, Array<{ value: number; date: string }>> = {};
+
+      // First, group by exit_ticket_id and iep_goal_index to calculate per-assessment accuracy
+      const assessmentMap: Record<string, { correct: number; total: number; date: string; goalIndex: number }> = {};
 
       exitTicketResults?.forEach(result => {
-        if (!goalResultsMap[result.iep_goal_index]) {
-          goalResultsMap[result.iep_goal_index] = [];
+        const key = `${result.exit_ticket_id}-${result.iep_goal_index}`;
+        if (!assessmentMap[key]) {
+          assessmentMap[key] = { correct: 0, total: 0, date: result.graded_at, goalIndex: result.iep_goal_index };
         }
-        goalResultsMap[result.iep_goal_index].push({
-          rating: result.rating,
-          date: result.graded_at,
-        });
+        // Only count correct and incorrect, not excluded
+        if (result.status === 'correct' || result.status === 'incorrect') {
+          assessmentMap[key].total++;
+          if (result.status === 'correct') {
+            assessmentMap[key].correct++;
+          }
+        }
+      });
+
+      // Convert to accuracy percentages grouped by goal
+      Object.values(assessmentMap).forEach(assessment => {
+        if (assessment.total > 0) {
+          const accuracy = (assessment.correct / assessment.total) * 100;
+          if (!goalResultsMap[assessment.goalIndex]) {
+            goalResultsMap[assessment.goalIndex] = [];
+          }
+          goalResultsMap[assessment.goalIndex].push({
+            value: accuracy,
+            date: assessment.date,
+          });
+        }
       });
 
       // Calculate trends for each IEP goal
@@ -247,7 +268,7 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
   ------------------
   ${progressData.iepGoals.map((goal, i) =>
   `${i + 1}. ${goal.goal}
-   Recent Average: ${goal.recentAverage.toFixed(1)}/10 | Trend: ${goal.trend}
+   Recent Average: ${goal.recentAverage.toFixed(0)}% | Trend: ${goal.trend}
    Assessments: ${goal.dataPoints}`
   ).join('\n\n')}
   `;
@@ -417,23 +438,23 @@ export function StudentProgressDashboard({ studentId }: { studentId: string }) {
                     </span>
                   </div>
 
-                  {/* Rating Bar */}
+                  {/* Accuracy Bar */}
                   {goal.dataPoints > 0 && (
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-gray-500">Recent Avg</span>
-                        <span className="font-medium">{goal.recentAverage.toFixed(1)}/10</span>
+                        <span className="font-medium">{goal.recentAverage.toFixed(0)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full transition-all ${
-                            goal.recentAverage >= 8
+                            goal.recentAverage >= 80
                               ? 'bg-green-600'
-                              : goal.recentAverage >= 6
+                              : goal.recentAverage >= 60
                               ? 'bg-yellow-600'
                               : 'bg-red-600'
                           }`}
-                          style={{ width: `${(goal.recentAverage / 10) * 100}%` }}
+                          style={{ width: `${goal.recentAverage}%` }}
                         ></div>
                       </div>
                     </div>

@@ -1,9 +1,10 @@
 /**
  * Progress calculation utilities for IEP goal tracking
+ * Supports percentage-based accuracy (0-100) from per-problem grading
  */
 
 export interface ProgressDataPoint {
-  rating: number;
+  value: number; // Accuracy percentage (0-100)
   date: Date | string;
 }
 
@@ -13,19 +14,19 @@ export interface TrendResult {
   trend: TrendDirection;
   confidence: number; // 0-1, how confident we are in the trend
   slope: number; // Rate of change
-  averageRating: number;
-  recentAverage: number; // Average of last 3 ratings
-  overallAverage: number; // Average of all ratings
+  averageValue: number; // Overall average (0-100)
+  recentAverage: number; // Average of last 3 values (0-100)
+  overallAverage: number; // Average of all values (0-100)
   dataPoints: number; // Number of data points used
 }
 
 const MIN_DATA_POINTS = 3;
-const STABLE_THRESHOLD = 0.15; // If slope is within ±0.15 per data point, consider stable
+const STABLE_THRESHOLD = 1.5; // If slope is within ±1.5% per data point, consider stable (for 0-100 scale)
 const RECENT_WINDOW = 3; // Number of recent points to use for recent average
 
 /**
  * Calculate the trend for a student's progress toward an IEP goal
- * Uses simple linear regression on the ratings over time
+ * Uses simple linear regression on accuracy percentages over time
  */
 export function calculateTrend(dataPoints: ProgressDataPoint[]): TrendResult {
   // Sort by date (oldest first)
@@ -37,32 +38,32 @@ export function calculateTrend(dataPoints: ProgressDataPoint[]): TrendResult {
 
   // Insufficient data
   if (n < MIN_DATA_POINTS) {
-    const avgRating = n > 0
-      ? sortedPoints.reduce((sum, p) => sum + p.rating, 0) / n
+    const avgValue = n > 0
+      ? sortedPoints.reduce((sum, p) => sum + p.value, 0) / n
       : 0;
 
     return {
       trend: 'insufficient_data',
       confidence: 0,
       slope: 0,
-      averageRating: avgRating,
-      recentAverage: avgRating,
-      overallAverage: avgRating,
+      averageValue: avgValue,
+      recentAverage: avgValue,
+      overallAverage: avgValue,
       dataPoints: n,
     };
   }
 
   // Calculate overall average
-  const overallAverage = sortedPoints.reduce((sum, p) => sum + p.rating, 0) / n;
+  const overallAverage = sortedPoints.reduce((sum, p) => sum + p.value, 0) / n;
 
   // Calculate recent average (last RECENT_WINDOW points)
   const recentPoints = sortedPoints.slice(-RECENT_WINDOW);
-  const recentAverage = recentPoints.reduce((sum, p) => sum + p.rating, 0) / recentPoints.length;
+  const recentAverage = recentPoints.reduce((sum, p) => sum + p.value, 0) / recentPoints.length;
 
   // Simple linear regression
   // We'll use index as x-axis (0, 1, 2, ...) since we care about sequential progress
   const xValues = sortedPoints.map((_, i) => i);
-  const yValues = sortedPoints.map(p => p.rating);
+  const yValues = sortedPoints.map(p => p.value);
 
   // Calculate means
   const xMean = xValues.reduce((sum, x) => sum + x, 0) / n;
@@ -111,7 +112,7 @@ export function calculateTrend(dataPoints: ProgressDataPoint[]): TrendResult {
     trend,
     confidence,
     slope,
-    averageRating: overallAverage,
+    averageValue: overallAverage,
     recentAverage,
     overallAverage,
     dataPoints: n,
@@ -129,15 +130,15 @@ export function getTrendDescription(trendResult: TrendResult): string {
   }
 
   const confidenceLevel = confidence > 0.7 ? 'strong' : confidence > 0.4 ? 'moderate' : 'weak';
-  const avgText = `Current average: ${recentAverage.toFixed(1)}/10`;
+  const avgText = `Current average: ${recentAverage.toFixed(0)}%`;
 
   switch (trend) {
     case 'improving':
-      return `📈 ${confidenceLevel === 'strong' ? 'Strong' : 'Showing'} improvement (${avgText})`;
+      return `${confidenceLevel === 'strong' ? 'Strong' : 'Showing'} improvement (${avgText})`;
     case 'stable':
-      return `➡️ Performance is stable (${avgText})`;
+      return `Performance is stable (${avgText})`;
     case 'declining':
-      return `📉 ${confidenceLevel === 'strong' ? 'Needs support' : 'Slight decline'} (${avgText})`;
+      return `${confidenceLevel === 'strong' ? 'Needs support' : 'Slight decline'} (${avgText})`;
     default:
       return avgText;
   }

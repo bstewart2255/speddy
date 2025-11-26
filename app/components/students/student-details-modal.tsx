@@ -8,6 +8,7 @@ import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
 import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
+import { StudentProgressTab } from './student-progress-tab';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function StudentDetailsModal({
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments'>('current');
+  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress'>('current');
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -227,6 +228,16 @@ export function StudentDetailsModal({
                 }`}
               >
                 Assessments
+              </button>
+              <button
+                onClick={() => setActiveTab('progress')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'progress'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Progress
               </button>
             </nav>
           </div>
@@ -514,6 +525,14 @@ export function StudentDetailsModal({
               <AssessmentList
                 studentId={student.id}
                 readOnly={readOnly}
+              />
+            )}
+
+            {/* Progress Tab */}
+            {activeTab === 'progress' && (
+              <StudentProgressTab
+                studentId={student.id}
+                iepGoals={details.iep_goals}
               />
             )}
           </div>

@@ -546,7 +546,8 @@ export type Database = {
           iep_goal_index: number
           iep_goal_text: string
           notes: string | null
-          rating: number
+          problem_index: number
+          status: string
           student_id: string
           updated_at: string | null
         }
@@ -559,7 +560,8 @@ export type Database = {
           iep_goal_index: number
           iep_goal_text: string
           notes?: string | null
-          rating: number
+          problem_index: number
+          status: string
           student_id: string
           updated_at?: string | null
         }
@@ -572,7 +574,8 @@ export type Database = {
           iep_goal_index?: number
           iep_goal_text?: string
           notes?: string | null
-          rating?: number
+          problem_index?: number
+          status?: string
           student_id?: string
           updated_at?: string | null
         }
@@ -580,7 +583,7 @@ export type Database = {
           {
             foreignKeyName: "exit_ticket_results_exit_ticket_id_fkey"
             columns: ["exit_ticket_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "exit_tickets"
             referencedColumns: ["id"]
           },
