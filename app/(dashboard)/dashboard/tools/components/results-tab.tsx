@@ -405,10 +405,12 @@ export default function ResultsTab() {
                 }`}
               >
                 {/* Ticket Header */}
-                <div
-                  className={`px-4 py-3 flex items-center justify-between cursor-pointer ${
+                <button
+                  type="button"
+                  aria-expanded={isExpanded}
+                  className={`w-full px-4 py-3 flex items-center justify-between cursor-pointer text-left ${
                     ticket.discarded_at ? 'bg-gray-100 hover:bg-gray-200' : 'bg-gray-50 hover:bg-gray-100'
-                  }`}
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset`}
                   onClick={() => toggleTicket(ticket.id)}
                 >
                   <div className="flex-1">
@@ -425,10 +427,19 @@ export default function ResultsTab() {
                           Graded
                         </span>
                       ) : null}
-                      <button
+                      <span
+                        role="button"
+                        tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDiscard(ticket.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDiscard(ticket.id);
+                          }
                         }}
                         className={`ml-2 text-xs font-medium ${
                           ticket.discarded_at
@@ -437,7 +448,7 @@ export default function ResultsTab() {
                         }`}
                       >
                         {ticket.discarded_at ? 'Restore' : 'Discard'}
-                      </button>
+                      </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
                       {ticket.content.problems?.length || 0} problem(s)
@@ -448,7 +459,7 @@ export default function ResultsTab() {
                   ) : (
                     <ChevronDownIcon className="w-5 h-5 text-gray-400" />
                   )}
-                </div>
+                </button>
 
                 {/* Ticket Content */}
                 {isExpanded && (

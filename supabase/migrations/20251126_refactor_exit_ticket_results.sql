@@ -21,8 +21,8 @@ CREATE TABLE exit_ticket_results (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
-    -- One result per problem per exit ticket
-    UNIQUE(exit_ticket_id, problem_index)
+    -- One result per problem per IEP goal per exit ticket (matches progress_check_results structure)
+    UNIQUE(exit_ticket_id, iep_goal_index, problem_index)
 );
 
 -- Add indexes for common queries

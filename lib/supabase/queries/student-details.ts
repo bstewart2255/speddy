@@ -212,31 +212,31 @@ export async function getStudentProgressData(
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
 
-  // Fetch progress check results (all-time)
-  const progressCheckResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('progress_check_results')
-        .select('id, iep_goal_index, status, notes, graded_at, progress_check_id')
-        .eq('student_id', studentId);
-      if (error) throw error;
-      return data || [];
-    },
-    { operation: 'fetch_progress_check_results', studentId }
-  );
-
-  // Fetch exit ticket results (all-time)
-  const exitTicketResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('exit_ticket_results')
-        .select('id, iep_goal_index, iep_goal_text, status, notes, graded_at, exit_ticket_id')
-        .eq('student_id', studentId);
-      if (error) throw error;
-      return data || [];
-    },
-    { operation: 'fetch_exit_ticket_results', studentId }
-  );
+  // Fetch progress check and exit ticket results in parallel (both queries are independent)
+  const [progressCheckResult, exitTicketResult] = await Promise.all([
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('progress_check_results')
+          .select('id, iep_goal_index, status, notes, graded_at, progress_check_id')
+          .eq('student_id', studentId);
+        if (error) throw error;
+        return data || [];
+      },
+      { operation: 'fetch_progress_check_results', studentId }
+    ),
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('exit_ticket_results')
+          .select('id, iep_goal_index, iep_goal_text, status, notes, graded_at, exit_ticket_id')
+          .eq('student_id', studentId);
+        if (error) throw error;
+        return data || [];
+      },
+      { operation: 'fetch_exit_ticket_results', studentId }
+    ),
+  ]);
 
   fetchPerf.end({ success: !progressCheckResult.error && !exitTicketResult.error });
 
