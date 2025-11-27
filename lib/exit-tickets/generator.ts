@@ -1,4 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { isReadingFluencyGoal } from '@/lib/shared/question-types';
+import { generateFallbackFluencyPassage } from '@/lib/shared/fallback-passages';
 
 interface ExitTicketRequest {
   studentInitials: string;
@@ -12,7 +14,7 @@ interface AnswerFormat {
 }
 
 interface ExitTicketProblem {
-  type: 'multiple_choice' | 'short_answer' | 'problem' | 'fill_in_blank';
+  type: 'multiple_choice' | 'short_answer' | 'problem';
   question?: string;
   prompt?: string;
   problem?: string;
@@ -32,10 +34,15 @@ export async function generateExitTicket(request: ExitTicketRequest): Promise<Ex
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
 
+  // Check if this is a fluency goal - handle separately
+  if (isReadingFluencyGoal(request.iepGoal)) {
+    return generateFluencyExitTicket(request);
+  }
+
   const client = new Anthropic({ apiKey });
 
   // Create a focused prompt for exit ticket generation
-  const prompt = `Generate a brief exit ticket assessment for a student. This should be completable in 3-5 minutes.
+  const prompt = `Generate an exit ticket assessment for a student. This should be completable in 3-5 minutes and fit on ONE page.
 
 Student Information:
 - Initials: ${request.studentInitials}
@@ -44,19 +51,29 @@ Student Information:
 Target IEP Goal:
 "${request.iepGoal}"
 
-Requirements:
-1. Create 2-4 problems that directly assess progress toward this IEP goal
+CRITICAL REQUIREMENTS:
+1. Create EXACTLY 3 problems that directly assess progress toward this IEP goal
 2. Problems should be appropriate for grade ${request.gradeLevel}
-3. Mix problem types (multiple choice, short answer, or computation)
-4. Each problem should be solvable independently in 1-2 minutes
-5. Language should be clear and grade-appropriate
-6. For multiple choice, provide 3-4 options
+3. Each problem should be solvable independently in 1-2 minutes
+4. Language should be clear and grade-appropriate
+5. Content must fit on ONE printed page
+
+ALLOWED PROBLEM TYPES (use only these 3 types):
+- "multiple_choice" - Questions with 4 answer choices (include "options" array)
+- "short_answer" - Open-ended questions requiring written responses
+- "problem" - Math problems or exercises requiring work space
 
 SPECIAL INSTRUCTIONS FOR READING COMPREHENSION:
 - If the IEP goal involves reading comprehension, include a "passage" field with a short text (3-5 sentences)
 - The passage should be appropriate for grade ${request.gradeLevel}
-- All comprehension questions should reference "the passage above"
-- Make the passage interesting and engaging for students
+- All comprehension questions should reference "the passage"
+- Keep passages brief to fit on one page
+
+CONTENT VARIETY (for reading passages):
+- Use diverse themes: science, history, sports, animals, friendship, adventure, mystery
+- Avoid overused patterns like "lost pet" stories or common names like Maya/Alex
+- Vary settings: different countries, time periods, environments
+- Each passage should feel unique and fresh
 
 FOR OTHER GOALS:
 - Each problem must be completely self-contained with all needed information
@@ -64,20 +81,12 @@ FOR OTHER GOALS:
 - Never reference external materials
 
 ANSWER FORMAT SPECIFICATIONS:
-For short_answer and fill_in_blank problems, include an "answer_format" object when needed:
-- If the problem asks for drawing/sketching: add "drawing_space": true
+For short_answer problems, include an "answer_format" object:
 - Specify "lines" based on expected response:
   - 1 line for single words or numbers
   - 2 lines for one sentence
-  - 3 lines for multiple sentences (e.g., "write 3 sentences")
-  - 5-6 lines for a paragraph
-  - If both drawing and writing are needed, include both fields
-
-Examples:
-- "Draw a picture and write 2 sentences" → {"drawing_space": true, "lines": 2}
-- "Write a paragraph about..." → {"lines": 5}
-- "Write three facts about..." → {"lines": 3}
-- "What is 5 + 3?" → {"lines": 1} or omit answer_format
+  - 3 lines for multiple sentences
+- If the problem asks for drawing/sketching: add "drawing_space": true
 
 Return the response in this exact JSON format:
 
@@ -87,14 +96,17 @@ For reading comprehension goals:
   "problems": [
     {
       "type": "multiple_choice",
-      "question": "Based on the passage above, what...",
-      "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
-      "answer": "A"
+      "question": "Based on the passage, what...",
+      "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"]
     },
     {
       "type": "short_answer",
       "question": "According to the passage, why did...",
-      "answer": "Expected answer",
+      "answer_format": {"lines": 2}
+    },
+    {
+      "type": "short_answer",
+      "question": "What do you think...",
       "answer_format": {"lines": 2}
     }
   ]
@@ -105,18 +117,28 @@ For other goals (no passage needed):
   "problems": [
     {
       "type": "problem",
-      "problem": "Complete self-contained problem with all information",
-      "answer": "Solution"
+      "problem": "Solve: 5 + 3 = ___",
+      "answer_format": {"lines": 1}
+    },
+    {
+      "type": "multiple_choice",
+      "question": "Which number is greater?",
+      "options": ["A) 5", "B) 8", "C) 3", "D) 2"]
+    },
+    {
+      "type": "short_answer",
+      "question": "Explain how you solved the first problem.",
+      "answer_format": {"lines": 2}
     }
   ]
 }
 
-Important:
-- Keep problems concise and focused on the IEP goal
-- Ensure all problems are solvable with paper and pencil only
-- Do not include images or complex diagrams
-- Make sure the difficulty is appropriate for independent work
-- For reading comprehension, use the "passage" field once, then reference it in questions`;
+VALIDATION CHECKLIST:
+✓ Exactly 3 problems
+✓ All problems use one of the 3 allowed types
+✓ Multiple choice has exactly 4 options
+✓ Content is brief enough to fit on one page
+✓ No teacher-facing notes or scoring criteria`;
 
   try {
     const response = await client.messages.create({
@@ -187,32 +209,56 @@ Important:
         {
           type: 'short_answer',
           question: generateFallbackProblem(request.iepGoal, request.gradeLevel),
-          answer: 'Student answer'
+          answer_format: { lines: 2 }
+        },
+        {
+          type: 'multiple_choice',
+          question: `Which skill does this goal focus on?`,
+          options: ['A) Reading', 'B) Writing', 'C) Math', 'D) Other']
+        },
+        {
+          type: 'short_answer',
+          question: 'What is one thing you learned today?',
+          answer_format: { lines: 2 }
         }
       ];
     }
 
-    // Ensure we have 2-4 problems
-    if (content.problems.length > 4) {
-      content.problems = content.problems.slice(0, 4);
+    // Ensure we have exactly 3 problems
+    if (content.problems.length > 3) {
+      content.problems = content.problems.slice(0, 3);
+    } else if (content.problems.length < 3) {
+      // Pad with generic problems if needed
+      while (content.problems.length < 3) {
+        content.problems.push({
+          type: 'short_answer',
+          question: 'What is one thing you want to practice more?',
+          answer_format: { lines: 2 }
+        });
+      }
     }
 
     return content;
   } catch (error) {
     console.error('Error generating exit ticket:', error);
 
-    // Return a fallback exit ticket
+    // Return a fallback exit ticket with exactly 3 problems
     return {
       problems: [
         {
           type: 'short_answer',
           question: generateFallbackProblem(request.iepGoal, request.gradeLevel),
-          answer: 'Student answer'
+          answer_format: { lines: 2 }
         },
         {
-          type: 'problem',
-          problem: `Show your work for a problem related to: ${request.iepGoal}`,
-          answer: 'Work shown'
+          type: 'multiple_choice',
+          question: 'Which skill does this goal focus on?',
+          options: ['A) Reading', 'B) Writing', 'C) Math', 'D) Other']
+        },
+        {
+          type: 'short_answer',
+          question: 'What is one thing you learned today?',
+          answer_format: { lines: 2 }
         }
       ]
     };
@@ -235,5 +281,68 @@ function generateFallbackProblem(iepGoal: string, gradeLevel: number): string {
     return `Count by ${gradeLevel <= 2 ? '2s' : '5s'} from 0 to ${gradeLevel <= 2 ? '20' : '50'}.`;
   } else {
     return `Complete this task related to: ${iepGoal.substring(0, 100)}...`;
+  }
+}
+
+/**
+ * Generate a fluency exit ticket with a reading passage for teacher assessment
+ */
+async function generateFluencyExitTicket(
+  request: ExitTicketRequest
+): Promise<ExitTicketContent> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      passage: generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [],
+    };
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 500,
+      system:
+        'Generate a grade-appropriate reading passage for fluency assessment. Return valid JSON only.',
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a short reading passage (50-75 words) for grade ${request.gradeLevel} fluency assessment.
+
+The passage should be:
+- Engaging and age-appropriate
+- Suitable for timed oral reading
+- Use diverse themes (science, history, animals, adventure - NOT lost pet stories)
+
+Return JSON: { "passage": "..." }`,
+        },
+      ],
+    });
+
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text content');
+    }
+
+    let jsonText = textContent.text;
+    const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1];
+    }
+
+    const { passage } = JSON.parse(jsonText);
+
+    return {
+      passage: passage || generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [], // No problems for fluency - teacher assesses oral reading
+    };
+  } catch (error) {
+    console.error('Error generating fluency exit ticket:', error);
+    return {
+      passage: generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [],
+    };
   }
 }

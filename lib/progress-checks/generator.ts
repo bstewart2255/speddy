@@ -1,14 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { isReadingFluencyGoal } from '@/lib/shared/question-types';
+import { generateFallbackFluencyPassage } from '@/lib/shared/fallback-passages';
+
+export interface AnswerFormat {
+  lines?: number;
+  drawing_space?: boolean;
+}
 
 export interface AssessmentItem {
   type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
-  passage?: string;
   options?: string[];
+  answer_format?: AnswerFormat;
 }
 
 export interface IEPGoalAssessment {
   goal: string;
+  passage?: string; // Top-level passage for reading comprehension goals
   assessmentItems: AssessmentItem[];
 }
 
@@ -31,7 +39,26 @@ export async function generateProgressCheck(request: ProgressCheckRequest): Prom
 
   const client = new Anthropic({ apiKey });
 
-  // Create detailed system prompt
+  // Separate fluency goals from regular goals
+  const fluencyGoals = request.iepGoals.filter((g) => isReadingFluencyGoal(g));
+  const regularGoals = request.iepGoals.filter((g) => !isReadingFluencyGoal(g));
+
+  // Generate fluency assessments (passages with teacher instruction)
+  const fluencyAssessments = await generateFluencyAssessments(
+    fluencyGoals,
+    request.gradeLevel,
+    client
+  );
+
+  // If no regular goals, return just fluency assessments
+  if (regularGoals.length === 0) {
+    return {
+      studentInitials: request.studentInitials,
+      iepGoals: fluencyAssessments,
+    };
+  }
+
+  // Create detailed system prompt for regular goals
   const systemPrompt = `You are an expert special education assessment designer. Create assessment items to evaluate student progress on IEP goals.
 
 CRITICAL RULES:
@@ -47,33 +74,42 @@ REQUIREMENTS:
 3. Vary formats based on goal type
 4. Keep language grade-appropriate and student-friendly
 5. For reading comprehension goals:
+   - Include a "passage" field at the GOAL level (not on individual items)
    - Create ONE substantial passage (100-150 words, grade-appropriate)
-   - Place the passage in the FIRST assessment item only
-   - Subsequent items for that same goal should reference that passage with their questions
-   - Questions should explore different aspects of comprehension (understanding details, making inferences, vocabulary in context, main idea, etc.)
-   - Only the first item gets the "passage" field; remaining items are just questions about that passage
+   - All 5 questions for that goal should reference this passage
+   - Questions should explore different aspects: details, inferences, vocabulary, main idea
 6. For writing goals, specify how many sentences or paragraphs to write
 
 ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 3 TYPES:
 1. "multiple_choice" - Questions with 4 answer choices (must include "options" array with exactly 4 options)
-2. "short_answer" - Open-ended questions requiring written responses (specify length: "Write 3-5 sentences...")
+2. "short_answer" - Open-ended questions requiring written responses
 3. "problem" - Math problems or exercises requiring work space
+
+ANSWER FORMAT SPECIFICATIONS:
+For short_answer and problem types, include an "answer_format" object:
+- Specify "lines" based on expected response:
+  - 1 line for single words or numbers
+  - 2 lines for one sentence
+  - 3-4 lines for multiple sentences
+  - 5-6 lines for a paragraph
+- If the problem asks for drawing/sketching: add "drawing_space": true
 
 CRITICAL: DO NOT USE "observation" type questions. All questions must be completable on the worksheet itself without teacher interaction.
 
 MAPPING GOALS TO ASSESSMENT TYPES:
-- Reading comprehension → Use "short_answer" with passage field
-- Writing goals → Use "short_answer" (specify number of sentences: "Write 5 sentences about...")
+- Reading comprehension → Use "short_answer" with goal-level passage
+- Writing goals → Use "short_answer" (specify number of sentences in prompt)
 - Math goals → Use "problem" or "multiple_choice"
-- Behavioral/Social goals → Convert to written reflection using "short_answer" (e.g., "Write 3 sentences describing how you show respect to your teacher and classmates")
-- Phonics/Decoding goals → Use "multiple_choice" for sound/word identification or "short_answer" for writing words with specific patterns
+- Behavioral/Social goals → Convert to written reflection using "short_answer"
+- Phonics/Decoding goals → Use "multiple_choice" for identification or "short_answer" for writing words
 - Knowledge recall → Use "multiple_choice" or "short_answer"
 
-PHONICS/DECODING GOALS - PAPER-BASED ASSESSMENT:
-- For phonics goals → Use "multiple_choice" to identify words with specific sound patterns
-- For word building → Use "short_answer" asking students to write words (e.g., "Write 5 words that start with the 'ch' sound")
-- For sound identification → Use "multiple_choice" (e.g., "Which word has the same ending sound as 'cat'?")
-- NEVER use observation-based assessments that require reading aloud to the teacher
+CONTENT VARIETY REQUIREMENTS (for reading passages):
+- Use diverse themes: science, history, sports, animals, friendship, adventure, mystery, nature
+- Avoid overused patterns like "lost pet" stories or common names like Maya/Alex/Sam
+- Vary settings: different countries, time periods, environments, seasons
+- Mix narrative and informational text styles
+- Each passage should feel unique and fresh
 
 OUTPUT FORMAT (valid JSON):
 {
@@ -81,12 +117,22 @@ OUTPUT FORMAT (valid JSON):
   "iepGoals": [
     {
       "goal": "[exact IEP goal text - for internal tracking only, NOT shown to student]",
+      "passage": "ONLY for reading comprehension goals - place passage here at goal level",
       "assessmentItems": [
         {
-          "type": "multiple_choice" | "short_answer" | "problem",
-          "passage": "ONLY include for reading comprehension questions in FIRST item only",
-          "prompt": "The actual instruction/question the student will read",
+          "type": "multiple_choice",
+          "prompt": "Based on the passage, what happened first?",
           "options": ["Option A", "Option B", "Option C", "Option D"]
+        },
+        {
+          "type": "short_answer",
+          "prompt": "Write 2 sentences explaining why the character felt sad.",
+          "answer_format": {"lines": 3}
+        },
+        {
+          "type": "problem",
+          "prompt": "Solve: 24 ÷ 6 = ___",
+          "answer_format": {"lines": 1}
         }
       ]
     }
@@ -97,23 +143,23 @@ VALIDATION CHECKLIST BEFORE RESPONDING:
 ✓ No teacher-facing notes or scoring criteria anywhere
 ✓ All prompts are student-readable instructions
 ✓ Multiple choice items have exactly 4 options
-✓ Short answer items specify expected length (number of sentences)
+✓ Short answer items specify expected length in prompt AND have answer_format
 ✓ NO observation-type questions - all questions must be completable on paper
-✓ Reading comprehension items include the passage in the "passage" field (first item only)
+✓ Reading comprehension: passage at GOAL level, not on individual items
 ✓ Behavioral/social goals converted to written reflections, not observations
 
 CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", or "problem". Do NOT use "observation" type.
 
 You must respond with ONLY a valid JSON object. No other text.`;
 
-  // Create user prompt
+  // Create user prompt (only for regular goals, fluency handled separately)
   const userPrompt = `Create a progress check assessment for:
 
 Student: ${request.studentInitials}
 Grade: ${request.gradeLevel}
 
 IEP Goals:
-${request.iepGoals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n')}
+${regularGoals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n')}
 
 For EACH goal, create exactly 5 assessment items. Mix types appropriately:
 - Multiple choice for knowledge/comprehension
@@ -187,9 +233,83 @@ IMPORTANT: Do NOT use observation-type questions. All questions must be completa
       }
     }
 
-    return worksheet;
+    // Combine regular assessments with fluency assessments
+    return {
+      studentInitials: request.studentInitials,
+      iepGoals: [...worksheet.iepGoals, ...fluencyAssessments],
+    };
   } catch (error) {
     console.error('Error generating progress check:', error);
     throw error;
+  }
+}
+
+/**
+ * Generate fluency assessments for reading fluency goals
+ * These create passages for teacher-timed oral reading assessment
+ */
+async function generateFluencyAssessments(
+  goals: string[],
+  gradeLevel: number,
+  client: Anthropic
+): Promise<IEPGoalAssessment[]> {
+  if (goals.length === 0) return [];
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 2000,
+      system:
+        'Generate grade-appropriate reading passages for fluency assessment. Return valid JSON only.',
+      messages: [
+        {
+          role: 'user',
+          content: `Generate ${goals.length} reading passage(s) for grade ${gradeLevel} fluency assessment.
+
+Each passage should be:
+- 100-150 words for progress checks
+- Age and grade appropriate vocabulary and content
+- Engaging (narrative or informational text)
+- Suitable for timed oral reading
+
+CONTENT VARIETY:
+- Use diverse themes: science, history, sports, animals, adventure, mystery
+- Avoid common patterns like "lost pet" stories
+- Vary settings and characters
+
+Return JSON:
+{
+  "passages": ["passage 1 text", "passage 2 text", ...]
+}`,
+        },
+      ],
+    });
+
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text content in fluency response');
+    }
+
+    let jsonText = textContent.text;
+    const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1];
+    }
+
+    const { passages } = JSON.parse(jsonText);
+
+    return goals.map((goal, index) => ({
+      goal,
+      passage: passages[index] || passages[0] || generateFallbackFluencyPassage(gradeLevel),
+      assessmentItems: [], // No questions for fluency - teacher observes
+    }));
+  } catch (error) {
+    console.error('Error generating fluency assessments:', error);
+    // Return fallback passages on error
+    return goals.map((goal) => ({
+      goal,
+      passage: generateFallbackFluencyPassage(gradeLevel),
+      assessmentItems: [],
+    }));
   }
 }
