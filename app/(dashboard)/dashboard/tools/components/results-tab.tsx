@@ -17,7 +17,7 @@ interface Student {
 }
 
 interface Problem {
-  type: 'multiple_choice' | 'short_answer' | 'problem' | 'fill_in_blank';
+  type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt?: string;
   question?: string;
   options?: string[];

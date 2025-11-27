@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { isReadingFluencyGoal } from '@/lib/shared/question-types';
+import { generateFallbackFluencyPassage } from '@/lib/shared/fallback-passages';
 
 interface ExitTicketRequest {
   studentInitials: string;
@@ -343,18 +344,5 @@ Return JSON: { "passage": "..." }`,
       passage: generateFallbackFluencyPassage(request.gradeLevel),
       problems: [],
     };
-  }
-}
-
-/**
- * Generate a fallback fluency passage if AI generation fails
- */
-function generateFallbackFluencyPassage(gradeLevel: number): string {
-  if (gradeLevel <= 2) {
-    return `The sun came up over the farm. A little bird woke up in its nest. It was time to find food. The bird flew to the ground and found a worm. What a good morning!`;
-  } else if (gradeLevel <= 4) {
-    return `Deep in the forest, a family of deer lived near a quiet stream. Every morning, they walked to the water to drink. The youngest deer liked to splash in the shallow parts. One day, they discovered a meadow full of wildflowers.`;
-  } else {
-    return `Scientists recently discovered a remarkable octopus species in the deep ocean. Unlike most octopuses that prefer warm waters, this creature thrives in freezing temperatures near underwater volcanoes. Researchers believe studying it could lead to breakthroughs in medicine.`;
   }
 }

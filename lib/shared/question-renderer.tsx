@@ -70,7 +70,7 @@ export function QuestionRenderer({
   const manyLinesClass = lineCount >= 6 ? 'question-many-lines' : '';
 
   return (
-    <div className={`question-item ${format.cssClass} ${manyLinesClass} ${className}`.trim()}>
+    <div className={['question-item', format.cssClass, manyLinesClass, className].filter(Boolean).join(' ')}>
       {/* Question content with optional numbering - skip for types that have custom display */}
       {type !== QuestionType.PASSAGE && type !== QuestionType.WRITING_PROMPT && (
         <div className="question-prompt">
@@ -225,7 +225,8 @@ export function generateQuestionHTML(
   // Add many-lines class for page break handling when 6+ lines
   const manyLinesClass = lineCount >= 6 ? 'question-many-lines' : '';
 
-  let html = `<div class="question-item ${format.cssClass} ${manyLinesClass}">`.replace(/\s+/g, ' ');
+  const classes = ['question-item', format.cssClass, manyLinesClass].filter(Boolean).join(' ');
+  let html = `<div class="${classes}">`;
 
   // Question prompt - skip for types that have custom display
   if (type !== QuestionType.PASSAGE && type !== QuestionType.WRITING_PROMPT) {

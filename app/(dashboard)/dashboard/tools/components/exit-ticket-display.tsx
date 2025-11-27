@@ -193,7 +193,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
       type: problem.type || 'short-answer',
       content: problem.question || problem.prompt || problem.problem || problem.text || 'Problem content not available',
       choices: problem.options || problem.choices,
-      blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' || problem.type === 'fill_in_blank' ? 2 : undefined),
+      blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' ? 2 : undefined),
     };
   };
 
