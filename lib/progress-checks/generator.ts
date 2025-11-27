@@ -1,14 +1,20 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+export interface AnswerFormat {
+  lines?: number;
+  drawing_space?: boolean;
+}
+
 export interface AssessmentItem {
   type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
-  passage?: string;
   options?: string[];
+  answer_format?: AnswerFormat;
 }
 
 export interface IEPGoalAssessment {
   goal: string;
+  passage?: string; // Top-level passage for reading comprehension goals
   assessmentItems: AssessmentItem[];
 }
 
@@ -47,33 +53,35 @@ REQUIREMENTS:
 3. Vary formats based on goal type
 4. Keep language grade-appropriate and student-friendly
 5. For reading comprehension goals:
+   - Include a "passage" field at the GOAL level (not on individual items)
    - Create ONE substantial passage (100-150 words, grade-appropriate)
-   - Place the passage in the FIRST assessment item only
-   - Subsequent items for that same goal should reference that passage with their questions
-   - Questions should explore different aspects of comprehension (understanding details, making inferences, vocabulary in context, main idea, etc.)
-   - Only the first item gets the "passage" field; remaining items are just questions about that passage
+   - All 5 questions for that goal should reference this passage
+   - Questions should explore different aspects: details, inferences, vocabulary, main idea
 6. For writing goals, specify how many sentences or paragraphs to write
 
 ALLOWED ASSESSMENT TYPES - YOU MUST USE ONLY THESE 3 TYPES:
 1. "multiple_choice" - Questions with 4 answer choices (must include "options" array with exactly 4 options)
-2. "short_answer" - Open-ended questions requiring written responses (specify length: "Write 3-5 sentences...")
+2. "short_answer" - Open-ended questions requiring written responses
 3. "problem" - Math problems or exercises requiring work space
+
+ANSWER FORMAT SPECIFICATIONS:
+For short_answer and problem types, include an "answer_format" object:
+- Specify "lines" based on expected response:
+  - 1 line for single words or numbers
+  - 2 lines for one sentence
+  - 3-4 lines for multiple sentences
+  - 5-6 lines for a paragraph
+- If the problem asks for drawing/sketching: add "drawing_space": true
 
 CRITICAL: DO NOT USE "observation" type questions. All questions must be completable on the worksheet itself without teacher interaction.
 
 MAPPING GOALS TO ASSESSMENT TYPES:
-- Reading comprehension → Use "short_answer" with passage field
-- Writing goals → Use "short_answer" (specify number of sentences: "Write 5 sentences about...")
+- Reading comprehension → Use "short_answer" with goal-level passage
+- Writing goals → Use "short_answer" (specify number of sentences in prompt)
 - Math goals → Use "problem" or "multiple_choice"
-- Behavioral/Social goals → Convert to written reflection using "short_answer" (e.g., "Write 3 sentences describing how you show respect to your teacher and classmates")
-- Phonics/Decoding goals → Use "multiple_choice" for sound/word identification or "short_answer" for writing words with specific patterns
+- Behavioral/Social goals → Convert to written reflection using "short_answer"
+- Phonics/Decoding goals → Use "multiple_choice" for identification or "short_answer" for writing words
 - Knowledge recall → Use "multiple_choice" or "short_answer"
-
-PHONICS/DECODING GOALS - PAPER-BASED ASSESSMENT:
-- For phonics goals → Use "multiple_choice" to identify words with specific sound patterns
-- For word building → Use "short_answer" asking students to write words (e.g., "Write 5 words that start with the 'ch' sound")
-- For sound identification → Use "multiple_choice" (e.g., "Which word has the same ending sound as 'cat'?")
-- NEVER use observation-based assessments that require reading aloud to the teacher
 
 OUTPUT FORMAT (valid JSON):
 {
@@ -81,12 +89,22 @@ OUTPUT FORMAT (valid JSON):
   "iepGoals": [
     {
       "goal": "[exact IEP goal text - for internal tracking only, NOT shown to student]",
+      "passage": "ONLY for reading comprehension goals - place passage here at goal level",
       "assessmentItems": [
         {
-          "type": "multiple_choice" | "short_answer" | "problem",
-          "passage": "ONLY include for reading comprehension questions in FIRST item only",
-          "prompt": "The actual instruction/question the student will read",
+          "type": "multiple_choice",
+          "prompt": "Based on the passage, what happened first?",
           "options": ["Option A", "Option B", "Option C", "Option D"]
+        },
+        {
+          "type": "short_answer",
+          "prompt": "Write 2 sentences explaining why the character felt sad.",
+          "answer_format": {"lines": 3}
+        },
+        {
+          "type": "problem",
+          "prompt": "Solve: 24 ÷ 6 = ___",
+          "answer_format": {"lines": 1}
         }
       ]
     }
@@ -97,9 +115,9 @@ VALIDATION CHECKLIST BEFORE RESPONDING:
 ✓ No teacher-facing notes or scoring criteria anywhere
 ✓ All prompts are student-readable instructions
 ✓ Multiple choice items have exactly 4 options
-✓ Short answer items specify expected length (number of sentences)
+✓ Short answer items specify expected length in prompt AND have answer_format
 ✓ NO observation-type questions - all questions must be completable on paper
-✓ Reading comprehension items include the passage in the "passage" field (first item only)
+✓ Reading comprehension: passage at GOAL level, not on individual items
 ✓ Behavioral/social goals converted to written reflections, not observations
 
 CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice", "short_answer", or "problem". Do NOT use "observation" type.

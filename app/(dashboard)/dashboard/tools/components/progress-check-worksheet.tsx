@@ -7,15 +7,21 @@ import {
   escapeHtml,
 } from '@/lib/shared/print-styles';
 
+interface AnswerFormat {
+  lines?: number;
+  drawing_space?: boolean;
+}
+
 interface AssessmentItem {
   type: 'multiple_choice' | 'short_answer' | 'problem';
   prompt: string;
-  passage?: string;
   options?: string[];
+  answer_format?: AnswerFormat;
 }
 
 interface IEPGoalAssessment {
   goal: string;
+  passage?: string; // Top-level passage for reading comprehension goals
   assessmentItems: AssessmentItem[];
 }
 
@@ -61,21 +67,22 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           let itemsHTML = '';
           let questionNumber = 1;
 
-          goalAssessment.assessmentItems.forEach((item) => {
-            // Handle passages separately (don't number them)
-            if (item.passage) {
-              const passageQuestion: QuestionData = {
-                type: 'passage',
-                content: item.passage
-              };
-              itemsHTML += generateQuestionHTML(passageQuestion, undefined, false);
-            }
+          // Handle goal-level passage (for reading comprehension)
+          if (goalAssessment.passage) {
+            const passageQuestion: QuestionData = {
+              type: 'passage',
+              content: goalAssessment.passage
+            };
+            itemsHTML += generateQuestionHTML(passageQuestion, undefined, false);
+          }
 
+          goalAssessment.assessmentItems.forEach((item) => {
             // Convert item to QuestionData
             const questionData: QuestionData = {
               type: item.type || 'short-answer',
               content: item.prompt,
               choices: item.options,
+              blankLines: item.answer_format?.lines,
             };
 
             itemsHTML += generateQuestionHTML(questionData, questionNumber++, true);
@@ -162,7 +169,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
       type: item.type || 'short-answer',
       content: item.prompt,
       choices: item.options,
-      passage: item.passage,
+      blankLines: item.answer_format?.lines,
     };
   };
 
@@ -206,35 +213,26 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
             </h3>
           </div>
 
+          {/* Goal-level passage (for reading comprehension) */}
+          {goalAssessment.passage && (
+            <div className="mb-4">
+              <QuestionRenderer
+                question={{ type: 'passage', content: goalAssessment.passage }}
+                showNumber={false}
+              />
+            </div>
+          )}
+
           {/* Assessment Items for this Goal using QuestionRenderer */}
           <div className="ml-2">
-            {goalAssessment.assessmentItems.map((item, itemIndex) => {
-              // Render passage separately if present
-              if (item.passage) {
-                return (
-                  <div key={`passage-${itemIndex}`} className="mb-4">
-                    <QuestionRenderer
-                      question={{ type: 'passage', content: item.passage }}
-                      showNumber={false}
-                    />
-                    <QuestionRenderer
-                      question={convertItemToQuestionData(item)}
-                      questionNumber={itemIndex + 1}
-                      showNumber={true}
-                    />
-                  </div>
-                );
-              }
-
-              return (
-                <QuestionRenderer
-                  key={itemIndex}
-                  question={convertItemToQuestionData(item)}
-                  questionNumber={itemIndex + 1}
-                  showNumber={true}
-                />
-              );
-            })}
+            {goalAssessment.assessmentItems.map((item, itemIndex) => (
+              <QuestionRenderer
+                key={itemIndex}
+                question={convertItemToQuestionData(item)}
+                questionNumber={itemIndex + 1}
+                showNumber={true}
+              />
+            ))}
           </div>
         </div>
       ))}
