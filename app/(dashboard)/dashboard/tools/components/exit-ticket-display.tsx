@@ -84,18 +84,30 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           return generateQuestionHTML(questionData, pIndex + 1, true);
         }).join('');
 
-        // Add passage if present
-        const passageHTML = ticket.content.passage ? `
-          <div class="passage-section">
-            <div class="passage-header">Read the following passage:</div>
-            <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
-          </div>
-        ` : '';
+        // Add passage if present (different style for fluency vs comprehension)
+        const isFluency = problems.length === 0 && ticket.content.passage;
+        const passageHTML = ticket.content.passage
+          ? isFluency
+            ? `
+              <div class="reading-fluency-section">
+                <div class="fluency-instruction">
+                  <strong>Work with your teacher to read the passage below aloud.</strong>
+                </div>
+                <div class="fluency-passage">${escapeHtml(ticket.content.passage)}</div>
+              </div>
+            `
+            : `
+              <div class="passage-section">
+                <div class="passage-header">Read the following passage:</div>
+                <div class="passage-text">${escapeHtml(ticket.content.passage)}</div>
+              </div>
+            `
+          : '';
 
         // Add footer
         const footerHTML = `
           <div class="worksheet-footer">
-            Complete all problems. Show your work.
+            ${isFluency ? 'Your teacher will assess your reading.' : 'Complete all problems. Show your work.'}
           </div>
         `;
 
@@ -103,9 +115,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           <div class="page-break-after">
             ${headerHTML}
             ${passageHTML}
-            <div class="worksheet-section">
-              ${problemsHTML}
-            </div>
+            ${problems.length > 0 ? `<div class="worksheet-section">${problemsHTML}</div>` : ''}
             ${footerHTML}
           </div>
         `;
@@ -234,34 +244,53 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
 
               {/* Reading Passage (if present) */}
               {ticket.content.passage && (
-                <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
-                  <h3 className="text-sm font-semibold text-blue-900 mb-2">Read the following passage:</h3>
-                  <div className="text-gray-800 leading-relaxed whitespace-pre-line">
+                <div
+                  className={`mb-6 p-4 rounded ${
+                    problems.length === 0
+                      ? 'bg-amber-50 border-l-4 border-amber-400'
+                      : 'bg-blue-50 border-l-4 border-blue-400'
+                  }`}
+                >
+                  {problems.length === 0 ? (
+                    // Fluency assessment - teacher instruction
+                    <p className="text-sm font-medium text-amber-900 mb-2">
+                      Work with your teacher to read the passage below aloud.
+                    </p>
+                  ) : (
+                    // Regular comprehension
+                    <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                      Read the following passage:
+                    </h3>
+                  )}
+                  <div
+                    className="text-gray-800 leading-relaxed whitespace-pre-line"
+                    style={{ lineHeight: problems.length === 0 ? '2' : undefined }}
+                  >
                     {ticket.content.passage}
                   </div>
                 </div>
               )}
 
               {/* Problems using shared QuestionRenderer */}
-              <div className="space-y-6">
-                {problems.length > 0 ? (
-                  problems.map((problem, index) => (
+              {problems.length > 0 && (
+                <div className="space-y-6">
+                  {problems.map((problem, index) => (
                     <QuestionRenderer
                       key={index}
                       question={convertProblemToQuestionData(problem)}
                       questionNumber={index + 1}
                       showNumber={true}
                     />
-                  ))
-                ) : (
-                  <div className="text-gray-500">No problems generated</div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
 
               {/* Footer */}
               <div className="mt-8 pt-4 border-t-2 border-gray-200">
                 <p className="text-xs text-gray-500 text-center italic">
-                  Complete all problems. Show your work.
+                  {problems.length === 0
+                    ? 'Your teacher will assess your reading.'
+                    : 'Complete all problems. Show your work.'}
                 </p>
               </div>
             </div>

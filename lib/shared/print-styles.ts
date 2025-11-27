@@ -101,6 +101,16 @@ export function generatePrintStyles(): string {
         page-break-inside: auto;
       }
 
+      /* Allow page breaks inside questions with many answer lines (6+) */
+      .question-many-lines {
+        page-break-inside: auto;
+      }
+
+      /* Keep individual answer lines together (don't break mid-line) */
+      .question-many-lines .answer-line {
+        page-break-inside: avoid;
+      }
+
       .question-prompt {
         font-size: 11pt;
         margin-bottom: 8pt;
@@ -182,6 +192,35 @@ export function generatePrintStyles(): string {
         font-size: 9pt;
         font-style: italic;
         color: #555;
+      }
+
+      /* Reading fluency assessment */
+      .reading-fluency-section {
+        margin-bottom: 20pt;
+        page-break-inside: avoid;
+      }
+
+      .fluency-instruction {
+        background-color: #fef3c7;
+        border-left: 4pt solid #f59e0b;
+        padding: 10pt;
+        margin-bottom: 12pt;
+        border-radius: 3pt;
+      }
+
+      .fluency-instruction strong {
+        color: #92400e;
+        font-size: 10pt;
+      }
+
+      .fluency-passage {
+        padding: 12pt;
+        background-color: #f9fafb;
+        border: 1pt solid #e5e7eb;
+        border-radius: 3pt;
+        font-size: 11pt;
+        line-height: 2;
+        white-space: pre-wrap;
       }
 
       /* Passage display */

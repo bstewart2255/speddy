@@ -353,31 +353,108 @@ export function isNumberSequenceTask(content: string): boolean {
 export function isMathProblem(content: string): boolean {
   const contentLower = content.toLowerCase();
 
-  // First check: If explicitly asking for written sentences/paragraphs, it's NOT a math problem
-  // This prevents false positives from phrases like "Write 3-5 sentences" or "Write about how many..."
+  // Exclude written response requests - these are NOT math problems
   if (/write\s+\d+(-\d+)?\s+(sentences?|paragraphs?)/i.test(content)) {
     return false;
   }
+  if (/explain\s+(in\s+words|your\s+(thinking|reasoning))/i.test(content)) {
+    return false;
+  }
 
-  // Math operation keywords
+  // Math operation keywords - expanded list
   const mathKeywords = [
-    'solve', 'calculate', 'add', 'subtract', 'multiply', 'divide',
-    'sum', 'difference', 'product', 'quotient', 'total', 'remainder',
-    'equation', 'expression', 'how many', 'how much',
+    'solve',
+    'calculate',
+    'add',
+    'subtract',
+    'multiply',
+    'divide',
+    'sum',
+    'difference',
+    'product',
+    'quotient',
+    'total',
+    'remainder',
+    'equation',
+    'expression',
+    'how many',
+    'how much',
+    'equals',
+    'equal to',
+    'greater than',
+    'less than',
+    'plus',
+    'minus',
+    'times',
+    'divided by',
+    'find the',
+    'what is',
+    'compute',
   ];
 
   // Check for math keywords
-  const hasMathKeyword = mathKeywords.some(keyword => contentLower.includes(keyword));
+  const hasMathKeyword = mathKeywords.some((keyword) =>
+    contentLower.includes(keyword)
+  );
 
   // Check for numbers with math operators (e.g., "5 + 3", "10 - 2")
   const hasMathExpression = /\d+\s*[+\-×÷=<>]\s*\d+/.test(content);
 
-  // Check for word problem patterns with numbers
-  const hasNumbersWithContext = /\d+/.test(content) && (
-    /apples|books|students|dollars|cents|minutes|hours|feet|inches/.test(contentLower)
-  );
+  // Expanded word problem context words
+  const wordProblemContextWords = [
+    'apples',
+    'books',
+    'students',
+    'dollars',
+    'cents',
+    'minutes',
+    'hours',
+    'feet',
+    'inches',
+    'meters',
+    'miles',
+    'pounds',
+    'ounces',
+    'pieces',
+    'cookies',
+    'candies',
+    'balls',
+    'toys',
+    'cards',
+    'stickers',
+    'marbles',
+    'pencils',
+    'crayons',
+    'chairs',
+    'tables',
+    'groups',
+    'rows',
+    'boxes',
+    'bags',
+    'packs',
+    'sets',
+    'each',
+    'altogether',
+    'in all',
+    'left',
+    'remaining',
+    'more',
+    'fewer',
+    'gave away',
+    'shared',
+    'split',
+  ];
 
-  return hasMathKeyword || hasMathExpression || hasNumbersWithContext;
+  const hasNumbersWithContext =
+    /\d+/.test(content) &&
+    wordProblemContextWords.some((word) => contentLower.includes(word));
+
+  // "Show your work" is a strong indicator of math problem
+  const showWorkPattern = /show\s+(your\s+)?work/i.test(content);
+
+  return (
+    hasMathKeyword || hasMathExpression || hasNumbersWithContext || showWorkPattern
+  );
 }
 
 /**
@@ -420,6 +497,27 @@ export function isReadingOnlyTask(content: string): boolean {
   const asksQuestions = /(\?|what|how|why|when|where|who|which)/i.test(contentLower);
 
   return hasReadingInstruction && !asksForWriting && !asksQuestions;
+}
+
+/**
+ * Detect if an IEP goal is for reading fluency assessment
+ * These goals require teacher observation/timing and cannot be self-assessed by students
+ */
+export function isReadingFluencyGoal(goalText: string): boolean {
+  const fluencyPatterns = [
+    /\bwcpm\b/i, // Words Correct Per Minute
+    /words\s+(correct\s+)?per\s+minute/i, // Written out WCPM
+    /\breading\s+fluency\b/i, // Reading fluency
+    /\boral\s+reading\b/i, // Oral reading
+    /\bread(s|ing)?\s+(aloud|out\s+loud)/i, // Read aloud
+    /\bfluency\s+rate\b/i, // Fluency rate
+    /\breading\s+(rate|speed)\b/i, // Reading rate/speed
+    /\bexpression\s+(and|&)?\s*prosody\b/i, // Expression and prosody
+    /\bprosody\b/i, // Prosody alone
+    /\b\d+\s*wpm\b/i, // Numeric WPM like "100 wpm"
+  ];
+
+  return fluencyPatterns.some((pattern) => pattern.test(goalText));
 }
 
 /**

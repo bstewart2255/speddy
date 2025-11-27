@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { isReadingFluencyGoal } from '@/lib/shared/question-types';
 
 export interface AnswerFormat {
   lines?: number;
@@ -37,7 +38,26 @@ export async function generateProgressCheck(request: ProgressCheckRequest): Prom
 
   const client = new Anthropic({ apiKey });
 
-  // Create detailed system prompt
+  // Separate fluency goals from regular goals
+  const fluencyGoals = request.iepGoals.filter((g) => isReadingFluencyGoal(g));
+  const regularGoals = request.iepGoals.filter((g) => !isReadingFluencyGoal(g));
+
+  // Generate fluency assessments (passages with teacher instruction)
+  const fluencyAssessments = await generateFluencyAssessments(
+    fluencyGoals,
+    request.gradeLevel,
+    client
+  );
+
+  // If no regular goals, return just fluency assessments
+  if (regularGoals.length === 0) {
+    return {
+      studentInitials: request.studentInitials,
+      iepGoals: fluencyAssessments,
+    };
+  }
+
+  // Create detailed system prompt for regular goals
   const systemPrompt = `You are an expert special education assessment designer. Create assessment items to evaluate student progress on IEP goals.
 
 CRITICAL RULES:
@@ -83,6 +103,13 @@ MAPPING GOALS TO ASSESSMENT TYPES:
 - Phonics/Decoding goals → Use "multiple_choice" for identification or "short_answer" for writing words
 - Knowledge recall → Use "multiple_choice" or "short_answer"
 
+CONTENT VARIETY REQUIREMENTS (for reading passages):
+- Use diverse themes: science, history, sports, animals, friendship, adventure, mystery, nature
+- Avoid overused patterns like "lost pet" stories or common names like Maya/Alex/Sam
+- Vary settings: different countries, time periods, environments, seasons
+- Mix narrative and informational text styles
+- Each passage should feel unique and fresh
+
 OUTPUT FORMAT (valid JSON):
 {
   "studentInitials": "J.D.",
@@ -124,14 +151,14 @@ CRITICAL: The "type" field MUST be one of these EXACT strings: "multiple_choice"
 
 You must respond with ONLY a valid JSON object. No other text.`;
 
-  // Create user prompt
+  // Create user prompt (only for regular goals, fluency handled separately)
   const userPrompt = `Create a progress check assessment for:
 
 Student: ${request.studentInitials}
 Grade: ${request.gradeLevel}
 
 IEP Goals:
-${request.iepGoals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n')}
+${regularGoals.map((goal, idx) => `${idx + 1}. ${goal}`).join('\n')}
 
 For EACH goal, create exactly 5 assessment items. Mix types appropriately:
 - Multiple choice for knowledge/comprehension
@@ -205,9 +232,96 @@ IMPORTANT: Do NOT use observation-type questions. All questions must be completa
       }
     }
 
-    return worksheet;
+    // Combine regular assessments with fluency assessments
+    return {
+      studentInitials: request.studentInitials,
+      iepGoals: [...worksheet.iepGoals, ...fluencyAssessments],
+    };
   } catch (error) {
     console.error('Error generating progress check:', error);
     throw error;
+  }
+}
+
+/**
+ * Generate fluency assessments for reading fluency goals
+ * These create passages for teacher-timed oral reading assessment
+ */
+async function generateFluencyAssessments(
+  goals: string[],
+  gradeLevel: number,
+  client: Anthropic
+): Promise<IEPGoalAssessment[]> {
+  if (goals.length === 0) return [];
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 2000,
+      system:
+        'Generate grade-appropriate reading passages for fluency assessment. Return valid JSON only.',
+      messages: [
+        {
+          role: 'user',
+          content: `Generate ${goals.length} reading passage(s) for grade ${gradeLevel} fluency assessment.
+
+Each passage should be:
+- 100-150 words for progress checks
+- Age and grade appropriate vocabulary and content
+- Engaging (narrative or informational text)
+- Suitable for timed oral reading
+
+CONTENT VARIETY:
+- Use diverse themes: science, history, sports, animals, adventure, mystery
+- Avoid common patterns like "lost pet" stories
+- Vary settings and characters
+
+Return JSON:
+{
+  "passages": ["passage 1 text", "passage 2 text", ...]
+}`,
+        },
+      ],
+    });
+
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text content in fluency response');
+    }
+
+    let jsonText = textContent.text;
+    const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1];
+    }
+
+    const { passages } = JSON.parse(jsonText);
+
+    return goals.map((goal, index) => ({
+      goal,
+      passage: passages[index] || passages[0] || generateFallbackFluencyPassage(gradeLevel),
+      assessmentItems: [], // No questions for fluency - teacher observes
+    }));
+  } catch (error) {
+    console.error('Error generating fluency assessments:', error);
+    // Return fallback passages on error
+    return goals.map((goal) => ({
+      goal,
+      passage: generateFallbackFluencyPassage(gradeLevel),
+      assessmentItems: [],
+    }));
+  }
+}
+
+/**
+ * Generate a fallback fluency passage if AI generation fails
+ */
+function generateFallbackFluencyPassage(gradeLevel: number): string {
+  if (gradeLevel <= 2) {
+    return `The sun came up over the farm. A little bird woke up in its nest. It was time to find food. The bird flew down to the ground. It found a worm near the fence. The bird was happy. It flew back to the nest to eat. What a good morning!`;
+  } else if (gradeLevel <= 4) {
+    return `Deep in the forest, a family of deer made their home near a quiet stream. Every morning, they would walk to the water to drink. The youngest deer liked to splash in the shallow parts. One day, the deer found a new path through the trees. They followed it and discovered a meadow full of wildflowers. The deer spent the whole afternoon exploring their new favorite spot.`;
+  } else {
+    return `Scientists recently discovered a remarkable species of octopus living in the deep ocean. Unlike most octopuses that prefer warm, shallow waters, this creature thrives in freezing temperatures near underwater volcanoes. The octopus has developed special proteins in its blood that prevent it from freezing. Researchers believe studying this adaptation could lead to breakthroughs in medicine and technology. The discovery reminds us how much we still have to learn about life in Earth's oceans.`;
   }
 }

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { isReadingFluencyGoal } from '@/lib/shared/question-types';
 
 interface ExitTicketRequest {
   studentInitials: string;
@@ -32,6 +33,11 @@ export async function generateExitTicket(request: ExitTicketRequest): Promise<Ex
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
 
+  // Check if this is a fluency goal - handle separately
+  if (isReadingFluencyGoal(request.iepGoal)) {
+    return generateFluencyExitTicket(request);
+  }
+
   const client = new Anthropic({ apiKey });
 
   // Create a focused prompt for exit ticket generation
@@ -61,6 +67,12 @@ SPECIAL INSTRUCTIONS FOR READING COMPREHENSION:
 - The passage should be appropriate for grade ${request.gradeLevel}
 - All comprehension questions should reference "the passage"
 - Keep passages brief to fit on one page
+
+CONTENT VARIETY (for reading passages):
+- Use diverse themes: science, history, sports, animals, friendship, adventure, mystery
+- Avoid overused patterns like "lost pet" stories or common names like Maya/Alex
+- Vary settings: different countries, time periods, environments
+- Each passage should feel unique and fresh
 
 FOR OTHER GOALS:
 - Each problem must be completely self-contained with all needed information
@@ -268,5 +280,81 @@ function generateFallbackProblem(iepGoal: string, gradeLevel: number): string {
     return `Count by ${gradeLevel <= 2 ? '2s' : '5s'} from 0 to ${gradeLevel <= 2 ? '20' : '50'}.`;
   } else {
     return `Complete this task related to: ${iepGoal.substring(0, 100)}...`;
+  }
+}
+
+/**
+ * Generate a fluency exit ticket with a reading passage for teacher assessment
+ */
+async function generateFluencyExitTicket(
+  request: ExitTicketRequest
+): Promise<ExitTicketContent> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      passage: generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [],
+    };
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 500,
+      system:
+        'Generate a grade-appropriate reading passage for fluency assessment. Return valid JSON only.',
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a short reading passage (50-75 words) for grade ${request.gradeLevel} fluency assessment.
+
+The passage should be:
+- Engaging and age-appropriate
+- Suitable for timed oral reading
+- Use diverse themes (science, history, animals, adventure - NOT lost pet stories)
+
+Return JSON: { "passage": "..." }`,
+        },
+      ],
+    });
+
+    const textContent = response.content.find((block) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text content');
+    }
+
+    let jsonText = textContent.text;
+    const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1];
+    }
+
+    const { passage } = JSON.parse(jsonText);
+
+    return {
+      passage: passage || generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [], // No problems for fluency - teacher assesses oral reading
+    };
+  } catch (error) {
+    console.error('Error generating fluency exit ticket:', error);
+    return {
+      passage: generateFallbackFluencyPassage(request.gradeLevel),
+      problems: [],
+    };
+  }
+}
+
+/**
+ * Generate a fallback fluency passage if AI generation fails
+ */
+function generateFallbackFluencyPassage(gradeLevel: number): string {
+  if (gradeLevel <= 2) {
+    return `The sun came up over the farm. A little bird woke up in its nest. It was time to find food. The bird flew to the ground and found a worm. What a good morning!`;
+  } else if (gradeLevel <= 4) {
+    return `Deep in the forest, a family of deer lived near a quiet stream. Every morning, they walked to the water to drink. The youngest deer liked to splash in the shallow parts. One day, they discovered a meadow full of wildflowers.`;
+  } else {
+    return `Scientists recently discovered a remarkable octopus species in the deep ocean. Unlike most octopuses that prefer warm waters, this creature thrives in freezing temperatures near underwater volcanoes. Researchers believe studying it could lead to breakthroughs in medicine.`;
   }
 }
