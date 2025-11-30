@@ -891,7 +891,7 @@ export function CalendarDayView({
                                       ? 'bg-purple-100 text-purple-700'
                                       : 'bg-blue-100 text-blue-700'
                                 }`}>
-                                  {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Provider'}
+                                  {session.delivered_by === 'sea' ? 'SEA' : session.delivered_by === 'specialist' ? 'Specialist' : 'Me'}
                                 </span>
                               );
                             })()}

@@ -593,7 +593,7 @@ export function GroupDetailsModal({
                           ? 'SEA'
                           : session.delivered_by === 'specialist'
                             ? 'Specialist'
-                            : 'Provider'}
+                            : 'Me'}
                       </span>
                     </div>
                   );

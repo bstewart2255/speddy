@@ -583,7 +583,7 @@ export function SessionDetailsModal({
                   ? 'SEA'
                   : session.delivered_by === 'specialist'
                     ? 'Specialist'
-                    : 'Provider'}
+                    : 'Me'}
               </span>
               {session.service_type && (
                 <>

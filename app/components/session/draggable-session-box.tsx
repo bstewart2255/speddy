@@ -130,7 +130,7 @@ export function DraggableSessionBox({
       }}
       role={onClick ? "button" : undefined}
       tabIndex={onClick || canEdit ? 0 : -1}
-      aria-label={`${isSeaSession ? 'SEA' : 'Provider'} session for ${student.initials}, grade ${student.grade_level}, ${session.service_type} from ${session.start_time} to ${session.end_time}`}
+      aria-label={`${isSeaSession ? 'SEA' : 'My'} session for ${student.initials}, grade ${student.grade_level}, ${session.service_type} from ${session.start_time} to ${session.end_time}`}
       aria-grabbed={isDragging}
       aria-disabled={!canEdit}
       title={`${student.initials} - ${session.service_type} (${session.start_time}-${session.end_time})`}
