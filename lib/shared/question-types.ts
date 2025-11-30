@@ -113,13 +113,35 @@ function applyContentBasedCorrections(type: QuestionType, content: string): Ques
     return QuestionType.OBSERVATION;
   }
 
-  // Priority 3: Math problems should have work space instead of lines
+  // Priority 3: Writing prompts should have answer lines, not work space
+  // This catches writing tasks that AI incorrectly marked as "problem" type
+  if (type === QuestionType.MATH_WORK && isWritingPrompt(content)) {
+    return QuestionType.SHORT_ANSWER;
+  }
+
+  // Priority 4: Math problems should have work space instead of lines
   // This catches word problems that AI marked as short_answer
   if (type === QuestionType.SHORT_ANSWER && isMathProblem(content)) {
     return QuestionType.MATH_WORK;
   }
 
   return type;
+}
+
+/**
+ * Detect if content is a writing prompt that needs answer lines
+ */
+export function isWritingPrompt(content: string): boolean {
+  const writingPatterns = [
+    /write\s+(a\s+)?\d+\s+sentence/i,           // "Write a 5 sentence" or "Write 5 sentence"
+    /write\s+(a\s+)?\d+\s+paragraph/i,          // "Write a 2 paragraph"
+    /write\s+(a\s+)?paragraph/i,                // "Write a paragraph"
+    /write\s+(a\s+)?sentence/i,                 // "Write a sentence"
+    /write\s+(about|describing|explaining)/i,   // "Write about", "Write describing"
+    /write\s+your\s+(own|answer|response)/i,    // "Write your own"
+  ];
+
+  return writingPatterns.some(pattern => pattern.test(content));
 }
 
 /**
@@ -348,6 +370,17 @@ export function isNumberSequenceTask(content: string): boolean {
 }
 
 /**
+ * Check if content is a computation problem set with inline answer blanks
+ * These problems have blanks built into the text (e.g., "15 + 8 = ___")
+ * and don't need additional work space rendered
+ */
+export function isInlineComputationProblemSet(content: string): boolean {
+  // Pattern matches: number operator number = blanks (e.g., "15 + 8 = ___")
+  const inlineBlankPattern = /\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+/;
+  return inlineBlankPattern.test(content);
+}
+
+/**
  * Detect if content is a math problem based on keywords and patterns
  */
 export function isMathProblem(content: string): boolean {
@@ -523,38 +556,45 @@ export function isReadingFluencyGoal(goalText: string): boolean {
 /**
  * Format multiple computation problems that are crammed on one line
  *
- * Detects patterns like "5+8=____6-4=____8x3=____" and adds line breaks
- * between each problem for better readability.
+ * Detects patterns like "5+8=____6-4=____8x3=____" or numbered problems
+ * like "1. 15+8=___ 2. 42-7=___" and adds line breaks for readability.
  *
  * @param content - The question text to format
  * @returns Formatted text with line breaks between computation problems
  */
 export function formatMultipleComputationProblems(content: string): string {
-  // Pattern to match computation problems: number operator number = blanks
-  // Matches: 5+8=____, 12 + 3 = ____, 4×5=_____, etc.
+  let formatted = content;
+
+  // Pattern 1: Handle numbered computation problems (e.g., "1. 15 + 8 = ___ 2. 42 - 7 = ___")
+  // Add line break before each numbered problem (2., 3., etc.) that follows a blank
+  formatted = formatted.replace(
+    /(_+)\s+(\d+)\.\s+(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
+    '$1\n$2. $3'
+  );
+
+  // Pattern 2: Add line break before first numbered problem when it follows instruction text
+  // Matches: "Show your work. 1. 15 + 8 = ___" -> "Show your work.\n1. 15 + 8 = ___"
+  formatted = formatted.replace(
+    /([.!?])\s+(1)\.\s+(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
+    '$1\n$2. $3'
+  );
+
+  // Pattern 3: Handle unnumbered cramped problems (e.g., "5+8=____6-4=____")
   const computationPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g;
+  const problems = formatted.match(computationPattern);
 
-  // Find all computation problems in the content
-  const problems = content.match(computationPattern);
-
-  // If we found multiple problems, check if they're adjacent (no line breaks between them)
   if (problems && problems.length > 1) {
-    // Check if problems are crammed together (minimal spacing, no line breaks)
     const crammedPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)\s*(\d+\s*[+\-×÷x*\/])/;
 
-    if (crammedPattern.test(content)) {
-      // Insert line break before each problem that follows another
-      // This handles: ____6-4 -> ____\n6-4
-      let formatted = content.replace(
+    if (crammedPattern.test(formatted)) {
+      formatted = formatted.replace(
         /(_+)\s*(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
         '$1\n$2'
       );
-
-      return formatted;
     }
   }
 
-  return content;
+  return formatted;
 }
 
 /**
@@ -639,4 +679,116 @@ export type QuestionTypeString =
 export function isValidQuestionType(type: string): type is QuestionTypeString {
   return Object.values(QuestionType).includes(type as QuestionType) ||
          type in LEGACY_TYPE_MAPPINGS;
+}
+
+/**
+ * Generate a fluency assessment instruction based on IEP goal criteria
+ * Extracts what the teacher should assess (WCPM, accuracy, expression) from the goal text
+ */
+export function getFluencyInstruction(goalText: string): string {
+  const criteria: string[] = [];
+
+  // Check for WCPM/reading rate
+  if (/wcpm|words.*(correct|per).*minute|reading\s*(rate|speed)/i.test(goalText)) {
+    criteria.push('words-correct-per-minute');
+  }
+
+  // Check for accuracy
+  if (/accuracy|%\s*correct|\d+\s*%/i.test(goalText)) {
+    criteria.push('overall accuracy');
+  }
+
+  // Check for prosody/expression
+  if (/prosody|expression|phrasing|intonation/i.test(goalText)) {
+    criteria.push('appropriate expression');
+  }
+
+  const base = 'Work with your teacher to read the passage below aloud.';
+
+  if (criteria.length === 0) {
+    return base;
+  }
+
+  // Format criteria list with proper grammar
+  let criteriaText: string;
+  if (criteria.length === 1) {
+    criteriaText = criteria[0];
+  } else if (criteria.length === 2) {
+    criteriaText = `${criteria[0]} and ${criteria[1]}`;
+  } else {
+    criteriaText = `${criteria.slice(0, -1).join(', ')}, and ${criteria[criteria.length - 1]}`;
+  }
+
+  return `${base} Your teacher will check for ${criteriaText}.`;
+}
+
+/**
+ * Fluency assessment item structure
+ */
+export interface FluencyAssessmentItem {
+  type: 'multiple_choice';
+  prompt: string;
+  options: string[];
+}
+
+/**
+ * Generate assessment items for fluency goals based on measurable criteria
+ * Returns yes/no questions for each criterion found in the goal
+ */
+export function generateFluencyAssessmentItems(goalText: string): FluencyAssessmentItem[] {
+  const items: FluencyAssessmentItem[] = [];
+
+  // Extract accuracy percentage if present (e.g., "90% accuracy", "with 85% accuracy")
+  const accuracyMatch = goalText.match(/(\d+)\s*%\s*(accuracy|correct)/i);
+  if (accuracyMatch) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: `Did the student read the text orally with ${accuracyMatch[1]}% accuracy?`,
+      options: ['Yes', 'No'],
+    });
+  } else if (/accuracy|%\s*correct/i.test(goalText)) {
+    // Accuracy mentioned but no specific percentage
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read the text orally with appropriate accuracy?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // Extract WCPM rate if present (e.g., "72 WCPM", "72 words correct per minute")
+  const wcpmMatch = goalText.match(/(\d+)\s*(wcpm|words.{0,20}(correct|per).{0,10}minute)/i);
+  if (wcpmMatch) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: `Did the student read at a rate of ${wcpmMatch[1]} words-correct-per-minute or higher?`,
+      options: ['Yes', 'No'],
+    });
+  } else if (/wcpm|words.*(correct|per).*minute|reading\s*(rate|speed)/i.test(goalText)) {
+    // WCPM mentioned but no specific rate
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read at an appropriate rate (words-correct-per-minute)?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // Check for prosody/expression
+  if (/prosody|expression|phrasing|intonation/i.test(goalText)) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read with appropriate expression and phrasing?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // If no specific criteria found, add a general fluency question
+  if (items.length === 0) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student demonstrate appropriate oral reading fluency?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  return items;
 }

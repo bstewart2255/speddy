@@ -1,12 +1,14 @@
 'use client';
 
 import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
-import { QuestionRenderer, type QuestionData } from '@/lib/shared/question-renderer';
+import { QuestionRenderer, type QuestionData, type GoalSubject } from '@/lib/shared/question-renderer';
+import { classifySingleGoal } from '@/lib/utils/subject-classifier';
 import {
   generatePrintDocument,
   escapeHtml,
 } from '@/lib/shared/print-styles';
 import { generateQuestionHTML } from '@/lib/shared/question-renderer';
+import { getFluencyInstruction, generateFluencyAssessmentItems } from '@/lib/shared/question-types';
 
 interface ExitTicket {
   id: string;
@@ -44,6 +46,17 @@ interface ExitTicketDisplayProps {
   onBack: () => void;
 }
 
+/**
+ * Helper to determine goal subject for consistent section formatting
+ */
+function getGoalSubject(goalText: string): GoalSubject {
+  const classification = classifySingleGoal(goalText);
+  if (classification.isMath && !classification.isELA) return 'math';
+  if (classification.isELA && !classification.isMath) return 'ela';
+  // If both or neither, default to null (use content-based detection)
+  return null;
+}
+
 export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplayProps) {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -59,6 +72,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     const generatePrintHTML = () => {
       const ticketsHTML = tickets.map((ticket) => {
         const problems = ticket.content.problems || ticket.content.items || [];
+
+        // Determine goal subject for consistent section formatting
+        const goalSubject = getGoalSubject(ticket.iep_goal_text);
 
         // Convert exit ticket header to shared format
         const headerHTML = `
@@ -81,17 +97,18 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' ? 2 : undefined),
           };
 
-          return generateQuestionHTML(questionData, pIndex + 1, true);
+          return generateQuestionHTML(questionData, pIndex + 1, true, goalSubject);
         }).join('');
 
         // Add passage if present (different style for fluency vs comprehension)
         const isFluency = problems.length === 0 && ticket.content.passage;
+        const fluencyInstruction = isFluency ? getFluencyInstruction(ticket.iep_goal_text) : '';
         const passageHTML = ticket.content.passage
           ? isFluency
             ? `
               <div class="reading-fluency-section">
                 <div class="fluency-instruction">
-                  <strong>Work with your teacher to read the passage below aloud.</strong>
+                  <strong>${escapeHtml(fluencyInstruction)}</strong>
                 </div>
                 <div class="fluency-passage">${escapeHtml(ticket.content.passage)}</div>
               </div>
@@ -104,10 +121,24 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             `
           : '';
 
+        // Generate fluency assessment questions if this is a fluency assessment
+        let fluencyQuestionsHTML = '';
+        if (isFluency) {
+          const fluencyItems = generateFluencyAssessmentItems(ticket.iep_goal_text);
+          fluencyQuestionsHTML = fluencyItems.map((item, idx) => {
+            const questionData: QuestionData = {
+              type: 'multiple_choice',
+              content: item.prompt,
+              choices: item.options,
+            };
+            return generateQuestionHTML(questionData, idx + 1, true, goalSubject);
+          }).join('');
+        }
+
         // Add footer
         const footerHTML = `
           <div class="worksheet-footer">
-            ${isFluency ? 'Your teacher will assess your reading.' : 'Complete all problems. Show your work.'}
+            ${isFluency ? 'Complete the questions below based on the student\'s reading.' : 'Complete all problems. Show your work.'}
           </div>
         `;
 
@@ -115,6 +146,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           <div class="page-break-after">
             ${headerHTML}
             ${passageHTML}
+            ${isFluency && fluencyQuestionsHTML ? `<div class="worksheet-section">${fluencyQuestionsHTML}</div>` : ''}
             ${problems.length > 0 ? `<div class="worksheet-section">${problemsHTML}</div>` : ''}
             ${footerHTML}
           </div>
@@ -223,6 +255,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
         {tickets.map((ticket) => {
           const problems = ticket.content.problems || ticket.content.items || [];
 
+          // Determine goal subject for consistent section formatting
+          const goalSubject = getGoalSubject(ticket.iep_goal_text);
+
           return (
             <div key={ticket.id} className="bg-white border-2 border-gray-300 rounded-lg p-8 mb-6">
               {/* Header */}
@@ -252,9 +287,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   }`}
                 >
                   {problems.length === 0 ? (
-                    // Fluency assessment - teacher instruction
+                    // Fluency assessment - teacher instruction with goal-specific criteria
                     <p className="text-sm font-medium text-amber-900 mb-2">
-                      Work with your teacher to read the passage below aloud.
+                      {getFluencyInstruction(ticket.iep_goal_text)}
                     </p>
                   ) : (
                     // Regular comprehension
@@ -271,6 +306,25 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                 </div>
               )}
 
+              {/* Fluency assessment questions */}
+              {problems.length === 0 && ticket.content.passage && (
+                <div className="space-y-6">
+                  {generateFluencyAssessmentItems(ticket.iep_goal_text).map((item, index) => (
+                    <QuestionRenderer
+                      key={index}
+                      question={{
+                        type: 'multiple_choice',
+                        content: item.prompt,
+                        choices: item.options,
+                      }}
+                      questionNumber={index + 1}
+                      showNumber={true}
+                      goalSubject={goalSubject}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Problems using shared QuestionRenderer */}
               {problems.length > 0 && (
                 <div className="space-y-6">
@@ -280,6 +334,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                       question={convertProblemToQuestionData(problem)}
                       questionNumber={index + 1}
                       showNumber={true}
+                      goalSubject={goalSubject}
                     />
                   ))}
                 </div>
@@ -289,7 +344,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               <div className="mt-8 pt-4 border-t-2 border-gray-200">
                 <p className="text-xs text-gray-500 text-center italic">
                   {problems.length === 0
-                    ? 'Your teacher will assess your reading.'
+                    ? 'Complete the questions above based on the student\'s reading.'
                     : 'Complete all problems. Show your work.'}
                 </p>
               </div>
