@@ -11,6 +11,7 @@ import {
   calculateLineCount,
   normalizeQuestionType,
   isNumberSequenceTask,
+  isInlineComputationProblemSet,
   cleanQuestionContent,
 } from './question-types';
 import { escapeHtml } from './print-styles';
@@ -98,6 +99,9 @@ export function QuestionRenderer({
         <>
           {isNumberSequenceTask(cleanedContent) ? (
             <AnswerLines count={Math.min(lineCount, 8)} />
+          ) : isInlineComputationProblemSet(cleanedContent) ? (
+            // Inline computation problems have blanks in the text, no extra space needed
+            null
           ) : (
             <MathWorkSpace />
           )}
@@ -269,6 +273,8 @@ export function generateQuestionHTML(
       for (let i = 0; i < Math.min(lineCount, 8); i++) {
         html += '<div class="answer-line"></div>';
       }
+    } else if (isInlineComputationProblemSet(cleanedContent)) {
+      // Inline computation problems have blanks in the text, no extra space needed
     } else {
       html += '<div class="work-space"></div>';
     }

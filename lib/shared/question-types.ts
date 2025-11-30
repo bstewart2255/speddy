@@ -348,6 +348,17 @@ export function isNumberSequenceTask(content: string): boolean {
 }
 
 /**
+ * Check if content is a computation problem set with inline answer blanks
+ * These problems have blanks built into the text (e.g., "15 + 8 = ___")
+ * and don't need additional work space rendered
+ */
+export function isInlineComputationProblemSet(content: string): boolean {
+  // Pattern matches: number operator number = blanks (e.g., "15 + 8 = ___")
+  const inlineBlankPattern = /\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+/;
+  return inlineBlankPattern.test(content);
+}
+
+/**
  * Detect if content is a math problem based on keywords and patterns
  */
 export function isMathProblem(content: string): boolean {
@@ -523,38 +534,45 @@ export function isReadingFluencyGoal(goalText: string): boolean {
 /**
  * Format multiple computation problems that are crammed on one line
  *
- * Detects patterns like "5+8=____6-4=____8x3=____" and adds line breaks
- * between each problem for better readability.
+ * Detects patterns like "5+8=____6-4=____8x3=____" or numbered problems
+ * like "1. 15+8=___ 2. 42-7=___" and adds line breaks for readability.
  *
  * @param content - The question text to format
  * @returns Formatted text with line breaks between computation problems
  */
 export function formatMultipleComputationProblems(content: string): string {
-  // Pattern to match computation problems: number operator number = blanks
-  // Matches: 5+8=____, 12 + 3 = ____, 4×5=_____, etc.
+  let formatted = content;
+
+  // Pattern 1: Handle numbered computation problems (e.g., "1. 15 + 8 = ___ 2. 42 - 7 = ___")
+  // Add line break before each numbered problem (2., 3., etc.) that follows a blank
+  formatted = formatted.replace(
+    /(_+)\s+(\d+)\.\s+(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
+    '$1\n$2. $3'
+  );
+
+  // Pattern 2: Add line break before first numbered problem when it follows instruction text
+  // Matches: "Show your work. 1. 15 + 8 = ___" -> "Show your work.\n1. 15 + 8 = ___"
+  formatted = formatted.replace(
+    /([.!?])\s+(1)\.\s+(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
+    '$1\n$2. $3'
+  );
+
+  // Pattern 3: Handle unnumbered cramped problems (e.g., "5+8=____6-4=____")
   const computationPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g;
+  const problems = formatted.match(computationPattern);
 
-  // Find all computation problems in the content
-  const problems = content.match(computationPattern);
-
-  // If we found multiple problems, check if they're adjacent (no line breaks between them)
   if (problems && problems.length > 1) {
-    // Check if problems are crammed together (minimal spacing, no line breaks)
     const crammedPattern = /(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)\s*(\d+\s*[+\-×÷x*\/])/;
 
-    if (crammedPattern.test(content)) {
-      // Insert line break before each problem that follows another
-      // This handles: ____6-4 -> ____\n6-4
-      let formatted = content.replace(
+    if (crammedPattern.test(formatted)) {
+      formatted = formatted.replace(
         /(_+)\s*(\d+\s*[+\-×÷x*\/]\s*\d+\s*=\s*_+)/g,
         '$1\n$2'
       );
-
-      return formatted;
     }
   }
 
-  return content;
+  return formatted;
 }
 
 /**
