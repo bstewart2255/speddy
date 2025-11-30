@@ -1364,7 +1364,7 @@ export function CalendarWeekView({
                   )}
                   <div>
                     <p className="text-sm text-gray-600">Delivered by</p>
-                    <p className="font-medium">{selectedSession.delivered_by === 'sea' ? 'SEA' : 'Provider'}</p>
+                    <p className="font-medium">{selectedSession.delivered_by === 'sea' ? 'SEA' : selectedSession.delivered_by === 'specialist' ? 'Specialist' : 'Me'}</p>
                   </div>
                 </div>
 

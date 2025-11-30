@@ -109,6 +109,9 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     teacher_name?: string;
   } | null>(null);
 
+  // Filter view state for "Me" vs "Others"
+  const [filterView, setFilterView] = useState<'me' | 'others'>('me');
+
   // Helper function to determine session background color based on assignment
   const getSessionColor = (session: ScheduleSession): string => {
     if (!currentUser) return 'bg-white';
@@ -161,6 +164,37 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     // Default: My Sessions (not assigned out)
     return 'bg-gray-50';
   };
+
+  // Filter sessions based on "Me" vs "Others" view
+  const filterSessionsByView = useCallback((sessions: ScheduleSession[], view: 'me' | 'others'): ScheduleSession[] => {
+    if (!currentUser) return sessions;
+
+    if (view === 'me') {
+      // "Me" view: Sessions I'm responsible for delivering
+      // - Sessions I own AND deliver myself (not assigned to anyone else)
+      // - Sessions assigned to me by another specialist
+      return sessions.filter(session => {
+        // Sessions assigned to me by another specialist
+        if (session.assigned_to_specialist_id === currentUser.id && session.provider_id !== currentUser.id) {
+          return true;
+        }
+        // My sessions that I deliver myself (not assigned out)
+        if (session.provider_id === currentUser.id) {
+          const assignedOut = session.assigned_to_sea_id !== null || session.assigned_to_specialist_id !== null;
+          return !assignedOut;
+        }
+        return false;
+      });
+    } else {
+      // "Others" view: My sessions that I've assigned to SEA or Specialist
+      return sessions.filter(session => {
+        // Must be my session (I own it)
+        if (session.provider_id !== currentUser.id) return false;
+        // And assigned to someone else
+        return session.assigned_to_sea_id !== null || session.assigned_to_specialist_id !== null;
+      });
+    }
+  }, [currentUser]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -440,10 +474,16 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     // Filter to only scheduled sessions (with non-null day/time fields)
     const scheduledSessions = sessions.filter(isScheduledSession);
 
-    scheduledSessions.forEach((session) => {
+    // Apply the "Me" vs "Others" filter (skip for SEA users - they see all their assigned sessions)
+    const filteredSessions = viewMode === 'sea'
+      ? scheduledSessions
+      : filterSessionsByView(scheduledSessions, filterView);
+
+    filteredSessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
-      const timeIndex = getTimeSlotIndex(session.start_time);
-      const span = getSessionSpan(session.start_time, session.end_time);
+      // After isScheduledSession filter, start_time and end_time are guaranteed non-null
+      const timeIndex = getTimeSlotIndex(session.start_time!);
+      const span = getSessionSpan(session.start_time!, session.end_time!);
 
       if (dayIndex >= 0 && dayIndex < 5 && timeIndex >= 0) {
         const key = `${dayIndex}-${timeIndex}`;
@@ -459,7 +499,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     });
 
     return grouped;
-  }, [sessions]);
+  }, [sessions, filterView, filterSessionsByView, viewMode]);
 
   React.useEffect(() => {
     let visibleCount = 0;
@@ -523,9 +563,44 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold">
-          Today's Schedule
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            Today's Schedule
+          </h2>
+          {/* Filter toggle for Me vs Others - only show for providers, not SEAs */}
+          {viewMode !== 'sea' && (
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setFilterView('me')}
+                aria-label="Show sessions I deliver"
+                aria-pressed={filterView === 'me'}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  filterView === 'me'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                )}
+              >
+                Me
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterView('others')}
+                aria-label="Show sessions assigned to others"
+                aria-pressed={filterView === 'others'}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  filterView === 'others'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                )}
+              >
+                Others
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
