@@ -113,13 +113,35 @@ function applyContentBasedCorrections(type: QuestionType, content: string): Ques
     return QuestionType.OBSERVATION;
   }
 
-  // Priority 3: Math problems should have work space instead of lines
+  // Priority 3: Writing prompts should have answer lines, not work space
+  // This catches writing tasks that AI incorrectly marked as "problem" type
+  if (type === QuestionType.MATH_WORK && isWritingPrompt(content)) {
+    return QuestionType.SHORT_ANSWER;
+  }
+
+  // Priority 4: Math problems should have work space instead of lines
   // This catches word problems that AI marked as short_answer
   if (type === QuestionType.SHORT_ANSWER && isMathProblem(content)) {
     return QuestionType.MATH_WORK;
   }
 
   return type;
+}
+
+/**
+ * Detect if content is a writing prompt that needs answer lines
+ */
+export function isWritingPrompt(content: string): boolean {
+  const writingPatterns = [
+    /write\s+(a\s+)?\d+\s+sentence/i,           // "Write a 5 sentence" or "Write 5 sentence"
+    /write\s+(a\s+)?\d+\s+paragraph/i,          // "Write a 2 paragraph"
+    /write\s+(a\s+)?paragraph/i,                // "Write a paragraph"
+    /write\s+(a\s+)?sentence/i,                 // "Write a sentence"
+    /write\s+(about|describing|explaining)/i,   // "Write about", "Write describing"
+    /write\s+your\s+(own|answer|response)/i,    // "Write your own"
+  ];
+
+  return writingPatterns.some(pattern => pattern.test(content));
 }
 
 /**
