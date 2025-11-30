@@ -474,8 +474,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     // Filter to only scheduled sessions (with non-null day/time fields)
     const scheduledSessions = sessions.filter(isScheduledSession);
 
-    // Apply the "Me" vs "Others" filter
-    const filteredSessions = filterSessionsByView(scheduledSessions, filterView);
+    // Apply the "Me" vs "Others" filter (skip for SEA users - they see all their assigned sessions)
+    const filteredSessions = viewMode === 'sea'
+      ? scheduledSessions
+      : filterSessionsByView(scheduledSessions, filterView);
 
     filteredSessions.forEach((session) => {
       const dayIndex = getDayIndex(session); // Pass session, not session.date
@@ -497,7 +499,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     });
 
     return grouped;
-  }, [sessions, filterView, filterSessionsByView]);
+  }, [sessions, filterView, filterSessionsByView, viewMode]);
 
   React.useEffect(() => {
     let visibleCount = 0;
@@ -565,33 +567,39 @@ return (
           <h2 className="text-lg font-semibold">
             Today's Schedule
           </h2>
-          {/* Filter toggle for Me vs Others */}
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <button
-              type="button"
-              onClick={() => setFilterView('me')}
-              className={cn(
-                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                filterView === 'me'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              )}
-            >
-              Me
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterView('others')}
-              className={cn(
-                'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-                filterView === 'others'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              )}
-            >
-              Others
-            </button>
-          </div>
+          {/* Filter toggle for Me vs Others - only show for providers, not SEAs */}
+          {viewMode !== 'sea' && (
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setFilterView('me')}
+                aria-label="Show sessions I deliver"
+                aria-pressed={filterView === 'me'}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  filterView === 'me'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                )}
+              >
+                Me
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterView('others')}
+                aria-label="Show sessions assigned to others"
+                aria-pressed={filterView === 'others'}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  filterView === 'others'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                )}
+              >
+                Others
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
