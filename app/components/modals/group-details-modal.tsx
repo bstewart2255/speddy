@@ -893,9 +893,6 @@ export function GroupDetailsModal({
           <div className="p-6 border-b border-gray-200 bg-gray-50">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Curriculum Tracking</h3>
             <div className="space-y-3 bg-white p-4 rounded-lg border border-gray-200">
-              <h5 className="text-sm font-medium text-gray-900 mb-3">
-                Curriculum Tracking (Optional)
-              </h5>
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
