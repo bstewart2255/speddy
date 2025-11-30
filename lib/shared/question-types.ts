@@ -640,3 +640,44 @@ export function isValidQuestionType(type: string): type is QuestionTypeString {
   return Object.values(QuestionType).includes(type as QuestionType) ||
          type in LEGACY_TYPE_MAPPINGS;
 }
+
+/**
+ * Generate a fluency assessment instruction based on IEP goal criteria
+ * Extracts what the teacher should assess (WCPM, accuracy, expression) from the goal text
+ */
+export function getFluencyInstruction(goalText: string): string {
+  const criteria: string[] = [];
+
+  // Check for WCPM/reading rate
+  if (/wcpm|words.*(correct|per).*minute|reading\s*(rate|speed)/i.test(goalText)) {
+    criteria.push('words-correct-per-minute');
+  }
+
+  // Check for accuracy
+  if (/accuracy|%\s*correct|\d+\s*%/i.test(goalText)) {
+    criteria.push('overall accuracy');
+  }
+
+  // Check for prosody/expression
+  if (/prosody|expression|phrasing|intonation/i.test(goalText)) {
+    criteria.push('appropriate expression');
+  }
+
+  const base = 'Work with your teacher to read the passage below aloud.';
+
+  if (criteria.length === 0) {
+    return base;
+  }
+
+  // Format criteria list with proper grammar
+  let criteriaText: string;
+  if (criteria.length === 1) {
+    criteriaText = criteria[0];
+  } else if (criteria.length === 2) {
+    criteriaText = `${criteria[0]} and ${criteria[1]}`;
+  } else {
+    criteriaText = `${criteria.slice(0, -1).join(', ')}, and ${criteria[criteria.length - 1]}`;
+  }
+
+  return `${base} Your teacher will check for ${criteriaText}.`;
+}

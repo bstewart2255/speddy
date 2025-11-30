@@ -7,6 +7,7 @@ import {
   escapeHtml,
 } from '@/lib/shared/print-styles';
 import { generateQuestionHTML } from '@/lib/shared/question-renderer';
+import { getFluencyInstruction } from '@/lib/shared/question-types';
 
 interface ExitTicket {
   id: string;
@@ -86,12 +87,13 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
 
         // Add passage if present (different style for fluency vs comprehension)
         const isFluency = problems.length === 0 && ticket.content.passage;
+        const fluencyInstruction = isFluency ? getFluencyInstruction(ticket.iep_goal_text) : '';
         const passageHTML = ticket.content.passage
           ? isFluency
             ? `
               <div class="reading-fluency-section">
                 <div class="fluency-instruction">
-                  <strong>Work with your teacher to read the passage below aloud.</strong>
+                  <strong>${escapeHtml(fluencyInstruction)}</strong>
                 </div>
                 <div class="fluency-passage">${escapeHtml(ticket.content.passage)}</div>
               </div>
@@ -252,9 +254,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                   }`}
                 >
                   {problems.length === 0 ? (
-                    // Fluency assessment - teacher instruction
+                    // Fluency assessment - teacher instruction with goal-specific criteria
                     <p className="text-sm font-medium text-amber-900 mb-2">
-                      Work with your teacher to read the passage below aloud.
+                      {getFluencyInstruction(ticket.iep_goal_text)}
                     </p>
                   ) : (
                     // Regular comprehension

@@ -6,6 +6,7 @@ import {
   generatePrintDocument,
   escapeHtml,
 } from '@/lib/shared/print-styles';
+import { getFluencyInstruction } from '@/lib/shared/question-types';
 
 interface AnswerFormat {
   lines?: number;
@@ -70,11 +71,12 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           // Handle goal-level passage
           if (goalAssessment.passage) {
             if (goalAssessment.assessmentItems.length === 0) {
-              // Fluency assessment - show with teacher instruction
+              // Fluency assessment - show with teacher instruction based on IEP goal
+              const fluencyInstruction = getFluencyInstruction(goalAssessment.goal);
               itemsHTML += `
                 <div class="reading-fluency-section">
                   <div class="fluency-instruction">
-                    <strong>Work with your teacher to read the passage below aloud.</strong>
+                    <strong>${escapeHtml(fluencyInstruction)}</strong>
                   </div>
                   <div class="fluency-passage">${escapeHtml(goalAssessment.passage)}</div>
                 </div>
@@ -230,11 +232,11 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           {goalAssessment.passage && (
             <div className="mb-4">
               {goalAssessment.assessmentItems.length === 0 ? (
-                // Fluency assessment - show with teacher instruction
+                // Fluency assessment - show with teacher instruction based on IEP goal
                 <div className="reading-fluency-section">
                   <div className="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 rounded">
                     <p className="text-sm font-medium text-amber-900">
-                      Work with your teacher to read the passage below aloud.
+                      {getFluencyInstruction(goalAssessment.goal)}
                     </p>
                   </div>
                   <div className="p-4 bg-gray-50 border border-gray-200 rounded">
