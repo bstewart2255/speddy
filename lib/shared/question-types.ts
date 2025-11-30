@@ -721,3 +721,74 @@ export function getFluencyInstruction(goalText: string): string {
 
   return `${base} Your teacher will check for ${criteriaText}.`;
 }
+
+/**
+ * Fluency assessment item structure
+ */
+export interface FluencyAssessmentItem {
+  type: 'multiple_choice';
+  prompt: string;
+  options: string[];
+}
+
+/**
+ * Generate assessment items for fluency goals based on measurable criteria
+ * Returns yes/no questions for each criterion found in the goal
+ */
+export function generateFluencyAssessmentItems(goalText: string): FluencyAssessmentItem[] {
+  const items: FluencyAssessmentItem[] = [];
+
+  // Extract accuracy percentage if present (e.g., "90% accuracy", "with 85% accuracy")
+  const accuracyMatch = goalText.match(/(\d+)\s*%\s*(accuracy|correct)/i);
+  if (accuracyMatch) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: `Did the student read the text orally with ${accuracyMatch[1]}% accuracy?`,
+      options: ['Yes', 'No'],
+    });
+  } else if (/accuracy|%\s*correct/i.test(goalText)) {
+    // Accuracy mentioned but no specific percentage
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read the text orally with appropriate accuracy?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // Extract WCPM rate if present (e.g., "72 WCPM", "72 words correct per minute")
+  const wcpmMatch = goalText.match(/(\d+)\s*(wcpm|words.{0,20}(correct|per).{0,10}minute)/i);
+  if (wcpmMatch) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: `Did the student read at a rate of ${wcpmMatch[1]} words-correct-per-minute or higher?`,
+      options: ['Yes', 'No'],
+    });
+  } else if (/wcpm|words.*(correct|per).*minute|reading\s*(rate|speed)/i.test(goalText)) {
+    // WCPM mentioned but no specific rate
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read at an appropriate rate (words-correct-per-minute)?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // Check for prosody/expression
+  if (/prosody|expression|phrasing|intonation/i.test(goalText)) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student read with appropriate expression and phrasing?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  // If no specific criteria found, add a general fluency question
+  if (items.length === 0) {
+    items.push({
+      type: 'multiple_choice',
+      prompt: 'Did the student demonstrate appropriate oral reading fluency?',
+      options: ['Yes', 'No'],
+    });
+  }
+
+  return items;
+}

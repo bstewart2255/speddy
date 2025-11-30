@@ -8,7 +8,7 @@ import {
   escapeHtml,
 } from '@/lib/shared/print-styles';
 import { generateQuestionHTML } from '@/lib/shared/question-renderer';
-import { getFluencyInstruction } from '@/lib/shared/question-types';
+import { getFluencyInstruction, generateFluencyAssessmentItems } from '@/lib/shared/question-types';
 
 interface ExitTicket {
   id: string;
@@ -121,10 +121,24 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             `
           : '';
 
+        // Generate fluency assessment questions if this is a fluency assessment
+        let fluencyQuestionsHTML = '';
+        if (isFluency) {
+          const fluencyItems = generateFluencyAssessmentItems(ticket.iep_goal_text);
+          fluencyQuestionsHTML = fluencyItems.map((item, idx) => {
+            const questionData: QuestionData = {
+              type: 'multiple_choice',
+              content: item.prompt,
+              choices: item.options,
+            };
+            return generateQuestionHTML(questionData, idx + 1, true, goalSubject);
+          }).join('');
+        }
+
         // Add footer
         const footerHTML = `
           <div class="worksheet-footer">
-            ${isFluency ? 'Your teacher will assess your reading.' : 'Complete all problems. Show your work.'}
+            ${isFluency ? 'Complete the questions below based on the student\'s reading.' : 'Complete all problems. Show your work.'}
           </div>
         `;
 
@@ -132,6 +146,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
           <div class="page-break-after">
             ${headerHTML}
             ${passageHTML}
+            ${isFluency && fluencyQuestionsHTML ? `<div class="worksheet-section">${fluencyQuestionsHTML}</div>` : ''}
             ${problems.length > 0 ? `<div class="worksheet-section">${problemsHTML}</div>` : ''}
             ${footerHTML}
           </div>
@@ -291,6 +306,25 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                 </div>
               )}
 
+              {/* Fluency assessment questions */}
+              {problems.length === 0 && ticket.content.passage && (
+                <div className="space-y-6">
+                  {generateFluencyAssessmentItems(ticket.iep_goal_text).map((item, index) => (
+                    <QuestionRenderer
+                      key={index}
+                      question={{
+                        type: 'multiple_choice',
+                        content: item.prompt,
+                        choices: item.options,
+                      }}
+                      questionNumber={index + 1}
+                      showNumber={true}
+                      goalSubject={goalSubject}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Problems using shared QuestionRenderer */}
               {problems.length > 0 && (
                 <div className="space-y-6">
@@ -310,7 +344,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
               <div className="mt-8 pt-4 border-t-2 border-gray-200">
                 <p className="text-xs text-gray-500 text-center italic">
                   {problems.length === 0
-                    ? 'Your teacher will assess your reading.'
+                    ? 'Complete the questions above based on the student\'s reading.'
                     : 'Complete all problems. Show your work.'}
                 </p>
               </div>
