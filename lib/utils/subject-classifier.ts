@@ -51,7 +51,7 @@ const ELA_PATTERNS = ELA_KEYWORDS.map(keyword =>
  * @param goal The IEP goal text to classify
  * @returns Object with boolean flags for math and ELA presence
  */
-function classifySingleGoal(goal: string): { isMath: boolean; isELA: boolean } {
+export function classifySingleGoal(goal: string): { isMath: boolean; isELA: boolean } {
   const lowerGoal = goal.toLowerCase();
   
   // Check for math keywords using pre-compiled patterns

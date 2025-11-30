@@ -1,7 +1,8 @@
 'use client';
 
 import { PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { QuestionRenderer, generateQuestionHTML, type QuestionData } from '@/lib/shared/question-renderer';
+import { QuestionRenderer, generateQuestionHTML, type QuestionData, type GoalSubject } from '@/lib/shared/question-renderer';
+import { classifySingleGoal } from '@/lib/utils/subject-classifier';
 import {
   generatePrintDocument,
   escapeHtml,
@@ -38,6 +39,17 @@ interface ProgressCheckWorksheetProps {
   onClose: () => void;
 }
 
+/**
+ * Helper to determine goal subject for consistent section formatting
+ */
+function getGoalSubject(goalText: string): GoalSubject {
+  const classification = classifySingleGoal(goalText);
+  if (classification.isMath && !classification.isELA) return 'math';
+  if (classification.isELA && !classification.isMath) return 'ela';
+  // If both or neither, default to null (use content-based detection)
+  return null;
+}
+
 export default function ProgressCheckWorksheet({ worksheets, onClose }: ProgressCheckWorksheetProps) {
   const handlePrint = () => {
     // Generate print HTML using shared utilities
@@ -68,6 +80,9 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           let itemsHTML = '';
           let questionNumber = 1;
 
+          // Determine goal subject for consistent section formatting
+          const goalSubject = getGoalSubject(goalAssessment.goal);
+
           // Handle goal-level passage
           if (goalAssessment.passage) {
             if (goalAssessment.assessmentItems.length === 0) {
@@ -87,7 +102,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
                 type: 'passage',
                 content: goalAssessment.passage
               };
-              itemsHTML += generateQuestionHTML(passageQuestion, undefined, false);
+              itemsHTML += generateQuestionHTML(passageQuestion, undefined, false, goalSubject);
             }
           }
 
@@ -100,7 +115,7 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
               blankLines: item.answer_format?.lines,
             };
 
-            itemsHTML += generateQuestionHTML(questionData, questionNumber++, true);
+            itemsHTML += generateQuestionHTML(questionData, questionNumber++, true, goalSubject);
           });
 
           return `
@@ -219,60 +234,67 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
       </div>
 
       {/* Assessment Items (without showing IEP goals) */}
-      {worksheet.iepGoals.map((goalAssessment, goalIndex) => (
-        <div key={goalIndex} className="mb-8">
-          {/* Section Header */}
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Section {goalIndex + 1}
-            </h3>
-          </div>
+      {worksheet.iepGoals.map((goalAssessment, goalIndex) => {
+        // Determine goal subject for consistent section formatting
+        const goalSubject = getGoalSubject(goalAssessment.goal);
 
-          {/* Goal-level passage (for reading comprehension or fluency) */}
-          {goalAssessment.passage && (
+        return (
+          <div key={goalIndex} className="mb-8">
+            {/* Section Header */}
             <div className="mb-4">
-              {goalAssessment.assessmentItems.length === 0 ? (
-                // Fluency assessment - show with teacher instruction based on IEP goal
-                <div className="reading-fluency-section">
-                  <div className="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 rounded">
-                    <p className="text-sm font-medium text-amber-900">
-                      {getFluencyInstruction(goalAssessment.goal)}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded">
-                    <p
-                      className="text-gray-800 leading-relaxed whitespace-pre-wrap"
-                      style={{ lineHeight: '2' }}
-                    >
-                      {goalAssessment.passage}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                // Regular reading comprehension - show passage normally
-                <QuestionRenderer
-                  question={{ type: 'passage', content: goalAssessment.passage }}
-                  showNumber={false}
-                />
-              )}
+              <h3 className="text-lg font-semibold text-gray-900">
+                Section {goalIndex + 1}
+              </h3>
             </div>
-          )}
 
-          {/* Assessment Items for this Goal using QuestionRenderer */}
-          {goalAssessment.assessmentItems.length > 0 && (
-            <div className="ml-2">
-              {goalAssessment.assessmentItems.map((item, itemIndex) => (
-                <QuestionRenderer
-                  key={itemIndex}
-                  question={convertItemToQuestionData(item)}
-                  questionNumber={itemIndex + 1}
-                  showNumber={true}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+            {/* Goal-level passage (for reading comprehension or fluency) */}
+            {goalAssessment.passage && (
+              <div className="mb-4">
+                {goalAssessment.assessmentItems.length === 0 ? (
+                  // Fluency assessment - show with teacher instruction based on IEP goal
+                  <div className="reading-fluency-section">
+                    <div className="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 rounded">
+                      <p className="text-sm font-medium text-amber-900">
+                        {getFluencyInstruction(goalAssessment.goal)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded">
+                      <p
+                        className="text-gray-800 leading-relaxed whitespace-pre-wrap"
+                        style={{ lineHeight: '2' }}
+                      >
+                        {goalAssessment.passage}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  // Regular reading comprehension - show passage normally
+                  <QuestionRenderer
+                    question={{ type: 'passage', content: goalAssessment.passage }}
+                    showNumber={false}
+                    goalSubject={goalSubject}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Assessment Items for this Goal using QuestionRenderer */}
+            {goalAssessment.assessmentItems.length > 0 && (
+              <div className="ml-2">
+                {goalAssessment.assessmentItems.map((item, itemIndex) => (
+                  <QuestionRenderer
+                    key={itemIndex}
+                    question={convertItemToQuestionData(item)}
+                    questionNumber={itemIndex + 1}
+                    showNumber={true}
+                    goalSubject={goalSubject}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 

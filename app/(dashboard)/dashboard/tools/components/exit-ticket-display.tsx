@@ -1,7 +1,8 @@
 'use client';
 
 import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
-import { QuestionRenderer, type QuestionData } from '@/lib/shared/question-renderer';
+import { QuestionRenderer, type QuestionData, type GoalSubject } from '@/lib/shared/question-renderer';
+import { classifySingleGoal } from '@/lib/utils/subject-classifier';
 import {
   generatePrintDocument,
   escapeHtml,
@@ -45,6 +46,17 @@ interface ExitTicketDisplayProps {
   onBack: () => void;
 }
 
+/**
+ * Helper to determine goal subject for consistent section formatting
+ */
+function getGoalSubject(goalText: string): GoalSubject {
+  const classification = classifySingleGoal(goalText);
+  if (classification.isMath && !classification.isELA) return 'math';
+  if (classification.isELA && !classification.isMath) return 'ela';
+  // If both or neither, default to null (use content-based detection)
+  return null;
+}
+
 export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplayProps) {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -60,6 +72,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
     const generatePrintHTML = () => {
       const ticketsHTML = tickets.map((ticket) => {
         const problems = ticket.content.problems || ticket.content.items || [];
+
+        // Determine goal subject for consistent section formatting
+        const goalSubject = getGoalSubject(ticket.iep_goal_text);
 
         // Convert exit ticket header to shared format
         const headerHTML = `
@@ -82,7 +97,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
             blankLines: problem.answer_format?.lines || (problem.type === 'short_answer' ? 2 : undefined),
           };
 
-          return generateQuestionHTML(questionData, pIndex + 1, true);
+          return generateQuestionHTML(questionData, pIndex + 1, true, goalSubject);
         }).join('');
 
         // Add passage if present (different style for fluency vs comprehension)
@@ -225,6 +240,9 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
         {tickets.map((ticket) => {
           const problems = ticket.content.problems || ticket.content.items || [];
 
+          // Determine goal subject for consistent section formatting
+          const goalSubject = getGoalSubject(ticket.iep_goal_text);
+
           return (
             <div key={ticket.id} className="bg-white border-2 border-gray-300 rounded-lg p-8 mb-6">
               {/* Header */}
@@ -282,6 +300,7 @@ export default function ExitTicketDisplay({ tickets, onBack }: ExitTicketDisplay
                       question={convertProblemToQuestionData(problem)}
                       questionNumber={index + 1}
                       showNumber={true}
+                      goalSubject={goalSubject}
                     />
                   ))}
                 </div>

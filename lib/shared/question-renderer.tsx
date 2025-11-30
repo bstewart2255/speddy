@@ -35,6 +35,11 @@ export interface QuestionData {
 }
 
 /**
+ * Goal subject type for section-level formatting
+ */
+export type GoalSubject = 'math' | 'ela' | null;
+
+/**
  * Props for QuestionRenderer
  */
 export interface QuestionRendererProps {
@@ -42,6 +47,7 @@ export interface QuestionRendererProps {
   questionNumber?: number;
   showNumber?: boolean;
   className?: string;
+  goalSubject?: GoalSubject;
 }
 
 /**
@@ -52,6 +58,7 @@ export function QuestionRenderer({
   questionNumber,
   showNumber = true,
   className = '',
+  goalSubject,
 }: QuestionRendererProps) {
   // Clean and normalize question content
   const cleanedContent = cleanQuestionContent(question.content);
@@ -97,7 +104,10 @@ export function QuestionRenderer({
 
       {type === QuestionType.MATH_WORK && (
         <>
-          {isNumberSequenceTask(cleanedContent) ? (
+          {goalSubject === 'ela' ? (
+            // ELA goal: render answer lines for writing responses
+            <AnswerLines count={lineCount} />
+          ) : isNumberSequenceTask(cleanedContent) ? (
             <AnswerLines count={Math.min(lineCount, 8)} />
           ) : isInlineComputationProblemSet(cleanedContent) ? (
             // Inline computation problems have blanks in the text, no extra space needed
@@ -210,7 +220,8 @@ export function PassageDisplay({ content }: { content: string }) {
 export function generateQuestionHTML(
   question: QuestionData,
   questionNumber?: number,
-  showNumber: boolean = true
+  showNumber: boolean = true,
+  goalSubject?: GoalSubject
 ): string {
   // Clean and normalize question content
   const cleanedContent = cleanQuestionContent(question.content);
@@ -269,7 +280,12 @@ export function generateQuestionHTML(
   } else if (type === QuestionType.VISUAL_MATH) {
     html += '<div class="work-space compact"></div>';
   } else if (type === QuestionType.MATH_WORK) {
-    if (isNumberSequenceTask(cleanedContent)) {
+    if (goalSubject === 'ela') {
+      // ELA goal: render answer lines for writing responses
+      for (let i = 0; i < lineCount; i++) {
+        html += '<div class="answer-line"></div>';
+      }
+    } else if (isNumberSequenceTask(cleanedContent)) {
       for (let i = 0; i < Math.min(lineCount, 8); i++) {
         html += '<div class="answer-line"></div>';
       }
