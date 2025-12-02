@@ -69,13 +69,9 @@ export class SessionGenerator {
     userRole?: string
   ): Promise<SessionWithCurriculum[]> {
     // First, get all instance sessions (where session_date is NOT NULL)
-    // Include curriculum_tracking data via LEFT JOIN for badge display
     let instancesQuery = this.supabase
       .from('schedule_sessions')
-      .select(`
-        *,
-        curriculum_tracking(curriculum_type, curriculum_level)
-      `)
+      .select('*')
       .gte('session_date', formatLocalDate(startDate))
       .lte('session_date', formatLocalDate(endDate))
       .not('session_date', 'is', null);
@@ -101,13 +97,9 @@ export class SessionGenerator {
 
     // Get template sessions (where session_date is NULL)
     // Only fetch templates for days we actually need (performance optimization)
-    // Include curriculum_tracking data via LEFT JOIN for badge display
     let templatesQuery = this.supabase
       .from('schedule_sessions')
-      .select(`
-        *,
-        curriculum_tracking(curriculum_type, curriculum_level)
-      `)
+      .select('*')
       .is('session_date', null)
       .in('day_of_week', Array.from(neededDays));
 
@@ -211,6 +203,62 @@ export class SessionGenerator {
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Fetch curriculum tracking data separately (no FK relationship exists for implicit joins)
+    // Curriculum can be linked via session_id (individual) or group_id (group sessions)
+    const sessionIds = sessions.map(s => s.id).filter(id => !id.startsWith('temp-'));
+    const groupIds = sessions.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined);
+
+    // Only fetch if we have IDs to look up
+    if (sessionIds.length > 0 || groupIds.length > 0) {
+      // Build OR query for session_id and group_id
+      let curriculumQuery = this.supabase
+        .from('curriculum_tracking')
+        .select('session_id, group_id, curriculum_type, curriculum_level');
+
+      if (sessionIds.length > 0 && groupIds.length > 0) {
+        // Both individual and group sessions
+        curriculumQuery = curriculumQuery.or(`session_id.in.(${sessionIds.join(',')}),group_id.in.(${groupIds.join(',')})`);
+      } else if (sessionIds.length > 0) {
+        curriculumQuery = curriculumQuery.in('session_id', sessionIds);
+      } else if (groupIds.length > 0) {
+        curriculumQuery = curriculumQuery.in('group_id', groupIds);
+      }
+
+      const { data: curriculumData, error: curriculumError } = await curriculumQuery;
+
+      if (curriculumError) {
+        console.error('[SessionGenerator] Failed to fetch curriculum tracking:', curriculumError);
+      } else if (curriculumData && curriculumData.length > 0) {
+        // Create lookup maps for efficient merging
+        const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+        const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+
+        for (const ct of curriculumData) {
+          const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+          if (ct.session_id) {
+            const existing = curriculumBySessionId.get(ct.session_id) || [];
+            existing.push(entry);
+            curriculumBySessionId.set(ct.session_id, existing);
+          }
+          if (ct.group_id) {
+            const existing = curriculumByGroupId.get(ct.group_id) || [];
+            existing.push(entry);
+            curriculumByGroupId.set(ct.group_id, existing);
+          }
+        }
+
+        // Merge curriculum data into sessions
+        for (const session of sessions) {
+          // Check group_id first (for group sessions), then session_id (for individual)
+          if (session.group_id && curriculumByGroupId.has(session.group_id)) {
+            session.curriculum_tracking = curriculumByGroupId.get(session.group_id);
+          } else if (!session.id.startsWith('temp-') && curriculumBySessionId.has(session.id)) {
+            session.curriculum_tracking = curriculumBySessionId.get(session.id);
+          }
+        }
+      }
     }
 
     return sessions;

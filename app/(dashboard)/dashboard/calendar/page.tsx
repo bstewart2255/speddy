@@ -158,7 +158,6 @@ export default function CalendarPage() {
       // Fetch session INSTANCES (not templates) filtered by current school
       // Instances have actual session_date values
       // For SEAs: filter by assigned_to_sea_id, for others: filter by provider_id
-      // Include curriculum_tracking data via LEFT JOIN for badge display
       let sessionQuery = supabase
         .from('schedule_sessions')
         .select(`
@@ -168,8 +167,7 @@ export default function CalendarPage() {
             district_id,
             school_site,
             school_district
-          ),
-          curriculum_tracking(curriculum_type, curriculum_level)
+          )
         `)
         .not('session_date', 'is', null); // Only fetch instances, not templates
 
@@ -200,13 +198,65 @@ export default function CalendarPage() {
       const { data: sessionData, error: sessionError } = await sessionQuery;
 
       if (sessionError) throw sessionError;
-      
-      // Extract just the session data (without the joined student data, but keep curriculum_tracking)
-      const sessionRows = sessionData?.map(item => {
+
+      // Extract just the session data (without the joined student data)
+      const sessionRows: SessionWithCurriculum[] = sessionData?.map(item => {
         const { students, ...session } = item;
-        return session;
+        return session as SessionWithCurriculum;
       }) || [];
-      
+
+      // Fetch curriculum tracking data separately (no FK relationship exists for implicit joins)
+      // Curriculum can be linked via session_id (individual) or group_id (group sessions)
+      const sessionIds = sessionRows.map(s => s.id);
+      const groupIds = sessionRows.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined);
+
+      if (sessionIds.length > 0 || groupIds.length > 0) {
+        let curriculumQuery = supabase
+          .from('curriculum_tracking')
+          .select('session_id, group_id, curriculum_type, curriculum_level');
+
+        if (sessionIds.length > 0 && groupIds.length > 0) {
+          curriculumQuery = curriculumQuery.or(`session_id.in.(${sessionIds.join(',')}),group_id.in.(${groupIds.join(',')})`);
+        } else if (sessionIds.length > 0) {
+          curriculumQuery = curriculumQuery.in('session_id', sessionIds);
+        } else if (groupIds.length > 0) {
+          curriculumQuery = curriculumQuery.in('group_id', groupIds);
+        }
+
+        const { data: curriculumData, error: curriculumError } = await curriculumQuery;
+
+        if (curriculumError) {
+          console.error('Error fetching curriculum tracking:', curriculumError);
+        } else if (curriculumData && curriculumData.length > 0) {
+          // Create lookup maps for efficient merging
+          const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+          const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+
+          for (const ct of curriculumData) {
+            const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+            if (ct.session_id) {
+              const existing = curriculumBySessionId.get(ct.session_id) || [];
+              existing.push(entry);
+              curriculumBySessionId.set(ct.session_id, existing);
+            }
+            if (ct.group_id) {
+              const existing = curriculumByGroupId.get(ct.group_id) || [];
+              existing.push(entry);
+              curriculumByGroupId.set(ct.group_id, existing);
+            }
+          }
+
+          // Merge curriculum data into sessions
+          for (const session of sessionRows) {
+            if (session.group_id && curriculumByGroupId.has(session.group_id)) {
+              session.curriculum_tracking = curriculumByGroupId.get(session.group_id);
+            } else if (curriculumBySessionId.has(session.id)) {
+              session.curriculum_tracking = curriculumBySessionId.get(session.id);
+            }
+          }
+        }
+      }
+
       setSessions(sessionRows);
 
       // Fetch students filtered by current school
