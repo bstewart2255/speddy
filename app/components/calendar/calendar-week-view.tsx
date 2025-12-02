@@ -2092,7 +2092,6 @@ export function CalendarWeekView({
                                   {formatTime(earliestStart)} - {formatTime(latestEnd)}
                                 </div>
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                  <span className="text-gray-700 text-xs">Students:</span>
                                   {uniqueStudentSessions.map((session, sidx) => {
                                     const student = allStudents.get(session.student_id);
                                     const colors = getSessionIndicatorColor(session);
