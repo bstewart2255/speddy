@@ -232,7 +232,11 @@ export function GroupDetailsModal({
         })
       });
 
-      if (!response.ok) throw new Error('Failed to save curriculum tracking');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Curriculum tracking API error:', response.status, errorData);
+        throw new Error(errorData.error || 'Failed to save curriculum tracking');
+      }
 
       const { data } = await response.json();
       setCurriculumTracking(data);
@@ -276,40 +280,63 @@ export function GroupDetailsModal({
 
   const handleSaveLesson = async () => {
     try {
-      // Ensure all sessions in the group are persisted before saving lesson
+      // Ensure all sessions in the group are persisted before saving
       await ensureGroupSessionsPersisted();
 
-      const body: any = {
-        title: null,
-        content: null,
-        lesson_source: 'manual',
-        subject: null,
-        notes: notes.trim() || null
-      };
+      const hasNotes = notes.trim().length > 0;
+      const hasCurriculum = curriculumType && curriculumLevel && currentLesson;
+      // Check if we need to clear existing notes (lesson exists but notes are now empty)
+      const shouldClearNotes = lesson !== null && !hasNotes;
 
-      const response = await fetch(`/api/groups/${groupId}/lesson`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      // Save lesson if there are notes OR if we need to clear existing notes
+      if (hasNotes || shouldClearNotes) {
+        const body: any = {
+          title: null,
+          content: null,
+          lesson_source: 'manual',
+          subject: null,
+          notes: hasNotes ? notes.trim() : null
+        };
 
-      if (!response.ok) throw new Error('Failed to save lesson');
+        const response = await fetch(`/api/groups/${groupId}/lesson`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
 
-      const data = await response.json();
-      setLesson(data.lesson);
+        if (!response.ok) throw new Error('Failed to save lesson');
 
-      // Save curriculum tracking if provided
-      if (curriculumType && curriculumLevel && currentLesson) {
+        const data = await response.json();
+        setLesson(data.lesson);
+      }
+
+      // Save curriculum tracking if provided (independent of lesson)
+      if (hasCurriculum) {
         try {
           await saveCurriculumTracking();
         } catch (currError) {
-          // Lesson saved but curriculum failed - warn user
-          showToast('Lesson saved, but curriculum tracking failed', 'warning');
+          // Curriculum failed
+          if (hasNotes) {
+            showToast('Lesson saved, but curriculum tracking failed', 'warning');
+          } else {
+            showToast('Failed to save curriculum tracking', 'error');
+          }
           return;
         }
       }
 
-      showToast('Lesson saved successfully', 'success');
+      // Show appropriate success message
+      if ((hasNotes || shouldClearNotes) && hasCurriculum) {
+        showToast('Lesson and curriculum saved successfully', 'success');
+      } else if (hasNotes) {
+        showToast('Lesson saved successfully', 'success');
+      } else if (shouldClearNotes) {
+        showToast('Notes cleared successfully', 'success');
+      } else if (hasCurriculum) {
+        showToast('Curriculum saved successfully', 'success');
+      } else {
+        showToast('Nothing to save', 'info');
+      }
     } catch (error) {
       console.error('Error saving lesson:', error);
       showToast('Failed to save lesson', 'error');
