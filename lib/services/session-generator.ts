@@ -208,56 +208,91 @@ export class SessionGenerator {
     // Fetch curriculum tracking data separately (no FK relationship exists for implicit joins)
     // Curriculum can be linked via session_id (individual) or group_id (group sessions)
     const sessionIds = sessions.map(s => s.id).filter(id => !id.startsWith('temp-'));
-    const groupIds = sessions.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined);
+    const groupIds = [...new Set(sessions.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined))];
 
-    // Only fetch if we have IDs to look up
-    if (sessionIds.length > 0 || groupIds.length > 0) {
-      // Build OR query for session_id and group_id
-      let curriculumQuery = this.supabase
-        .from('curriculum_tracking')
-        .select('session_id, group_id, curriculum_type, curriculum_level');
+    // Create lookup maps for efficient merging
+    const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+    const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
 
-      if (sessionIds.length > 0 && groupIds.length > 0) {
-        // Both individual and group sessions
-        curriculumQuery = curriculumQuery.or(`session_id.in.(${sessionIds.join(',')}),group_id.in.(${groupIds.join(',')})`);
-      } else if (sessionIds.length > 0) {
-        curriculumQuery = curriculumQuery.in('session_id', sessionIds);
-      } else if (groupIds.length > 0) {
-        curriculumQuery = curriculumQuery.in('group_id', groupIds);
+    // Batch size to avoid URL length limits (400 Bad Request)
+    const BATCH_SIZE = 100;
+
+    // Helper to batch an array into chunks
+    const batchArray = <T>(arr: T[], size: number): T[][] => {
+      const batches: T[][] = [];
+      for (let i = 0; i < arr.length; i += size) {
+        batches.push(arr.slice(i, i + size));
       }
+      return batches;
+    };
 
-      const { data: curriculumData, error: curriculumError } = await curriculumQuery;
+    // Run batched queries for session_id and group_id
+    const curriculumPromises: Promise<void>[] = [];
 
-      if (curriculumError) {
-        console.error('[SessionGenerator] Failed to fetch curriculum tracking:', curriculumError);
-      } else if (curriculumData && curriculumData.length > 0) {
-        // Create lookup maps for efficient merging
-        const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
-        const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+    // Batch session ID queries
+    const sessionIdBatches = batchArray(sessionIds, BATCH_SIZE);
+    for (const batch of sessionIdBatches) {
+      curriculumPromises.push(
+        (async () => {
+          const { data, error } = await this.supabase
+            .from('curriculum_tracking')
+            .select('session_id, group_id, curriculum_type, curriculum_level')
+            .in('session_id', batch);
 
-        for (const ct of curriculumData) {
-          const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
-          if (ct.session_id) {
-            const existing = curriculumBySessionId.get(ct.session_id) || [];
-            existing.push(entry);
-            curriculumBySessionId.set(ct.session_id, existing);
+          if (data) {
+            for (const ct of data) {
+              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+              if (ct.session_id) {
+                const existing = curriculumBySessionId.get(ct.session_id) || [];
+                existing.push(entry);
+                curriculumBySessionId.set(ct.session_id, existing);
+              }
+            }
           }
-          if (ct.group_id) {
-            const existing = curriculumByGroupId.get(ct.group_id) || [];
-            existing.push(entry);
-            curriculumByGroupId.set(ct.group_id, existing);
+          if (error && error.message) {
+            console.error('[SessionGenerator] Failed to fetch curriculum by session_id:', error.message);
           }
-        }
+        })()
+      );
+    }
 
-        // Merge curriculum data into sessions
-        for (const session of sessions) {
-          // Check group_id first (for group sessions), then session_id (for individual)
-          if (session.group_id && curriculumByGroupId.has(session.group_id)) {
-            session.curriculum_tracking = curriculumByGroupId.get(session.group_id);
-          } else if (!session.id.startsWith('temp-') && curriculumBySessionId.has(session.id)) {
-            session.curriculum_tracking = curriculumBySessionId.get(session.id);
+    // Batch group ID queries
+    const groupIdBatches = batchArray(groupIds, BATCH_SIZE);
+    for (const batch of groupIdBatches) {
+      curriculumPromises.push(
+        (async () => {
+          const { data, error } = await this.supabase
+            .from('curriculum_tracking')
+            .select('session_id, group_id, curriculum_type, curriculum_level')
+            .in('group_id', batch);
+
+          if (data) {
+            for (const ct of data) {
+              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+              if (ct.group_id) {
+                const existing = curriculumByGroupId.get(ct.group_id) || [];
+                existing.push(entry);
+                curriculumByGroupId.set(ct.group_id, existing);
+              }
+            }
           }
-        }
+          if (error && error.message) {
+            console.error('[SessionGenerator] Failed to fetch curriculum by group_id:', error.message);
+          }
+        })()
+      );
+    }
+
+    // Wait for all batched queries to complete
+    await Promise.all(curriculumPromises);
+
+    // Merge curriculum data into sessions
+    for (const session of sessions) {
+      // Check group_id first (for group sessions), then session_id (for individual)
+      if (session.group_id && curriculumByGroupId.has(session.group_id)) {
+        session.curriculum_tracking = curriculumByGroupId.get(session.group_id);
+      } else if (!session.id.startsWith('temp-') && curriculumBySessionId.has(session.id)) {
+        session.curriculum_tracking = curriculumBySessionId.get(session.id);
       }
     }
 

@@ -285,15 +285,17 @@ export function GroupDetailsModal({
 
       const hasNotes = notes.trim().length > 0;
       const hasCurriculum = curriculumType && curriculumLevel && currentLesson;
+      // Check if we need to clear existing notes (lesson exists but notes are now empty)
+      const shouldClearNotes = lesson !== null && !hasNotes;
 
-      // Only save lesson if there are notes to save
-      if (hasNotes) {
+      // Save lesson if there are notes OR if we need to clear existing notes
+      if (hasNotes || shouldClearNotes) {
         const body: any = {
           title: null,
           content: null,
           lesson_source: 'manual',
           subject: null,
-          notes: notes.trim()
+          notes: hasNotes ? notes.trim() : null
         };
 
         const response = await fetch(`/api/groups/${groupId}/lesson`, {
@@ -324,10 +326,12 @@ export function GroupDetailsModal({
       }
 
       // Show appropriate success message
-      if (hasNotes && hasCurriculum) {
+      if ((hasNotes || shouldClearNotes) && hasCurriculum) {
         showToast('Lesson and curriculum saved successfully', 'success');
       } else if (hasNotes) {
         showToast('Lesson saved successfully', 'success');
+      } else if (shouldClearNotes) {
+        showToast('Notes cleared successfully', 'success');
       } else if (hasCurriculum) {
         showToast('Curriculum saved successfully', 'success');
       } else {

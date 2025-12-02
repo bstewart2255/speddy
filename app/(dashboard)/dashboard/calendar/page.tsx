@@ -12,21 +12,13 @@ import { ToastProvider } from "../../../contexts/toast-context";
 import { exportWeekToPDF } from "@/lib/utils/export-week-to-pdf";
 import type { Database } from "../../../../src/types/database";
 import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
+import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
 
 type ViewType = 'day' | 'week' | 'month';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 type Holiday = Database['public']['Tables']['holidays']['Row'];
-
-// Enriched session type with curriculum tracking data from LEFT JOIN
-// Supabase returns joined data as an array
-type SessionWithCurriculum = ScheduleSession & {
-  curriculum_tracking?: {
-    curriculum_type: string;
-    curriculum_level: string;
-  }[] | null;
-};
 
 interface Student {
   id: string;
@@ -130,7 +122,7 @@ export default function CalendarPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      // Get user profile
+      // Get user profile first (needed for role-based decisions)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -145,8 +137,6 @@ export default function CalendarPage() {
 
         // If user works at multiple schools, wait for school context to be selected
         if (profile.works_at_multiple_schools && !currentSchool) {
-          console.log('[DEBUG] User works at multiple schools, waiting for school selection');
-          // Still set the provider ID so other things can work
           setProviderId(user.id);
           setLoading(false);
           return;
@@ -155,223 +145,85 @@ export default function CalendarPage() {
 
       setProviderId(user.id);
 
-      // Fetch session INSTANCES (not templates) filtered by current school
-      // Instances have actual session_date values
-      // For SEAs: filter by assigned_to_sea_id, for others: filter by provider_id
-      let sessionQuery = supabase
-        .from('schedule_sessions')
-        .select(`
-          *,
-          students!inner(
-            school_id,
-            district_id,
-            school_site,
-            school_district
-          )
-        `)
-        .not('session_date', 'is', null); // Only fetch instances, not templates
+      // Extract school context once
+      const schoolSite = currentSchool ? getSchoolSite(currentSchool) : null;
+      const schoolDistrict = currentSchool ? getSchoolDistrict(currentSchool) : null;
 
-      if (profile?.role === 'sea') {
-        sessionQuery = sessionQuery
-          .eq('assigned_to_sea_id', user.id)
-          .eq('delivered_by', 'sea');
-      } else {
-        sessionQuery = sessionQuery.eq('provider_id', user.id);
-      }
+      // Use SessionGenerator to get sessions with curriculum data (avoids code duplication)
+      const sessionGenerator = new SessionGenerator();
 
-      // Apply school filter if currentSchool is available (normalize aliases)
-      if (currentSchool) {
-        const schoolId = currentSchool.school_id ?? null;
-        const schoolSite = getSchoolSite(currentSchool);
-        const schoolDistrict = getSchoolDistrict(currentSchool);
+      // Get a broad date range for sessions (e.g., 6 months back and forward)
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 6);
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + 6);
 
-        if (schoolSite && schoolDistrict) {
-          // Filter by school_site and school_district which includes all students at this school
-          // This works for both legacy (NULL school_id) and migrated (populated school_id) students
-          // since all students at the same school share these text field values
-          sessionQuery = sessionQuery
-            .eq('students.school_site', schoolSite)
-            .eq('students.school_district', schoolDistrict);
-        }
-      }
-
-      const { data: sessionData, error: sessionError } = await sessionQuery;
-
-      if (sessionError) throw sessionError;
-
-      // Extract just the session data (without the joined student data)
-      const sessionRows: SessionWithCurriculum[] = sessionData?.map(item => {
-        const { students, ...session } = item;
-        return session as SessionWithCurriculum;
-      }) || [];
-
-      // Fetch curriculum tracking data separately (no FK relationship exists for implicit joins)
-      // Curriculum can be linked via session_id (individual) or group_id (group sessions)
-      const sessionIds = sessionRows.map(s => s.id);
-      const groupIds = sessionRows.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined);
-
-      if (sessionIds.length > 0 || groupIds.length > 0) {
-        let curriculumQuery = supabase
-          .from('curriculum_tracking')
-          .select('session_id, group_id, curriculum_type, curriculum_level');
-
-        if (sessionIds.length > 0 && groupIds.length > 0) {
-          curriculumQuery = curriculumQuery.or(`session_id.in.(${sessionIds.join(',')}),group_id.in.(${groupIds.join(',')})`);
-        } else if (sessionIds.length > 0) {
-          curriculumQuery = curriculumQuery.in('session_id', sessionIds);
-        } else if (groupIds.length > 0) {
-          curriculumQuery = curriculumQuery.in('group_id', groupIds);
-        }
-
-        const { data: curriculumData, error: curriculumError } = await curriculumQuery;
-
-        if (curriculumError) {
-          console.error('Error fetching curriculum tracking:', curriculumError);
-        } else if (curriculumData && curriculumData.length > 0) {
-          // Create lookup maps for efficient merging
-          const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
-          const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
-
-          for (const ct of curriculumData) {
-            const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
-            if (ct.session_id) {
-              const existing = curriculumBySessionId.get(ct.session_id) || [];
-              existing.push(entry);
-              curriculumBySessionId.set(ct.session_id, existing);
-            }
-            if (ct.group_id) {
-              const existing = curriculumByGroupId.get(ct.group_id) || [];
-              existing.push(entry);
-              curriculumByGroupId.set(ct.group_id, existing);
-            }
-          }
-
-          // Merge curriculum data into sessions
-          for (const session of sessionRows) {
-            if (session.group_id && curriculumByGroupId.has(session.group_id)) {
-              session.curriculum_tracking = curriculumByGroupId.get(session.group_id);
-            } else if (curriculumBySessionId.has(session.id)) {
-              session.curriculum_tracking = curriculumBySessionId.get(session.id);
-            }
-          }
-        }
-      }
-
-      setSessions(sessionRows);
-
-      // Fetch students filtered by current school
-      // For SEAs: use get_sea_students RPC, for others: query students table
-      let studentData;
-      let studentError;
-
-      if (profile?.role === 'sea') {
-        // SEAs use RPC function to get their students
-        // Pass both school_id and legacy school_site+district for migration compatibility
-        const schoolId = currentSchool?.school_id ?? undefined;
-        const schoolSite = getSchoolSite(currentSchool) ?? undefined;
-        const schoolDistrict = getSchoolDistrict(currentSchool) ?? undefined;
-
-        const result = await supabase
-          .rpc('get_sea_students', {
-            p_school_id: schoolId,
-            p_school_site: schoolSite,
-            p_school_district: schoolDistrict
+      // Prepare parallel queries for data that doesn't depend on sessions
+      const fetchStudents = async () => {
+        if (profile?.role === 'sea') {
+          const result = await supabase.rpc('get_sea_students', {
+            p_school_id: currentSchool?.school_id ?? undefined,
+            p_school_site: schoolSite ?? undefined,
+            p_school_district: schoolDistrict ?? undefined
           });
-        studentData = result.data;
-        studentError = result.error;
-      } else {
-        // Other roles fetch students by provider_id
-        let studentQuery = supabase
-          .from('students')
-          .select('id, initials, grade_level')
-          .eq('provider_id', user.id);
-
-        // Apply school filter if currentSchool is available (normalize aliases)
-        if (currentSchool) {
-          const schoolId = currentSchool.school_id ?? null;
-          const schoolSite = getSchoolSite(currentSchool);
-          const schoolDistrict = getSchoolDistrict(currentSchool);
-
-          if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
-            console.log('[DEBUG] Filtering students with school context:', {
-              currentSchool,
-              schoolId,
-              schoolSite,
-              schoolDistrict
-            });
-          }
+          return result;
+        } else {
+          let studentQuery = supabase
+            .from('students')
+            .select('id, initials, grade_level')
+            .eq('provider_id', user.id);
 
           if (schoolSite && schoolDistrict) {
-            if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
-              console.log('[DEBUG] Filtering students by school_site and district:', schoolSite, schoolDistrict);
-            }
-            // Filter by school_site and school_district which includes all students at this school
-            // This works for both legacy (NULL school_id) and migrated (populated school_id) students
             studentQuery = studentQuery
               .eq('school_site', schoolSite)
               .eq('school_district', schoolDistrict);
-          } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
-            console.warn('[DEBUG] No valid school filter criteria, students may include all schools');
           }
-        } else if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
-          console.warn('[DEBUG] No currentSchool context, loading all students for provider');
+
+          return studentQuery;
         }
+      };
 
-        const result = await studentQuery;
-        studentData = result.data;
-        studentError = result.error;
-      }
-
-      if (studentError) throw studentError;
-
-      // Only log aggregate counts in debug mode, never expose PII
-      if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_LOGGING === 'true') {
-        console.log('[DEBUG] Students loaded - Count:', studentData?.length || 0);
-      }
-
-      const studentMap = new Map<string, Student>();
-      studentData?.forEach(student => {
-        studentMap.set(student.id, student);
-      });
-      setStudents(studentMap);
-
-      // Fetch calendar events using the helper
-      const eventsData = await getCalendarEvents(user.id);
-      setCalendarEvents(eventsData);
-
-      // Fetch holidays - add better error handling and logging
-      if (currentSchool) {
-        // Log to see what properties currentSchool actually has
-        console.log('Current school object:', currentSchool);
-        console.log('Current school keys:', Object.keys(currentSchool));
-
-        // Check which properties exist (handles both legacy and current field names)
-        const schoolSite = getSchoolSite(currentSchool);
-        const schoolDistrict = getSchoolDistrict(currentSchool);
-
-        if (schoolSite && schoolDistrict) {
-          console.log('Fetching holidays for:', { schoolSite, schoolDistrict });
-
-          const { data: holidayData, error: holidayError } = await supabase
+      const fetchHolidays = async () => {
+        if (currentSchool && schoolSite && schoolDistrict) {
+          return supabase
             .from('holidays')
             .select('*')
             .eq('school_site', schoolSite)
             .eq('school_district', schoolDistrict);
-
-          if (holidayError) {
-            console.error('Error fetching holidays:', holidayError);
-          } else {
-            console.log('Holidays fetched:', holidayData);
-            setHolidays(holidayData || []);
-          }
-        } else {
-          console.log('School site or district missing');
-          setHolidays([]);
         }
-      } else {
-        console.log('No currentSchool available yet');
-        setHolidays([]);
+        return { data: [], error: null };
+      };
+
+      // Run sessions, students, calendar events, and holidays queries in parallel
+      const [sessionsResult, studentsResult, eventsResult, holidaysResult] = await Promise.all([
+        sessionGenerator.getSessionsForDateRange(user.id, startDate, endDate, profile?.role),
+        fetchStudents(),
+        getCalendarEvents(user.id),
+        fetchHolidays()
+      ]);
+
+      // Process sessions
+      setSessions(sessionsResult);
+
+      // Process students
+      if (studentsResult.error) {
+        throw studentsResult.error;
       }
+      const studentMap = new Map<string, Student>();
+      studentsResult.data?.forEach(student => {
+        studentMap.set(student.id, student);
+      });
+      setStudents(studentMap);
+
+      // Process calendar events
+      setCalendarEvents(eventsResult);
+
+      // Process holidays
+      if (holidaysResult.error) {
+        console.error('Error fetching holidays:', holidaysResult.error);
+      }
+      setHolidays(holidaysResult.data || []);
+
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {

@@ -22,33 +22,12 @@ import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { Printer } from "lucide-react";
+import { SessionWithCurriculum } from '@/lib/services/session-generator';
+import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
-
-// Enriched session type with curriculum tracking data from LEFT JOIN
-// Supabase returns joined data as an array
-type SessionWithCurriculum = ScheduleSession & {
-  curriculum_tracking?: {
-    curriculum_type: string;
-    curriculum_level: string;
-  }[] | null;
-};
-
-// Helper function to format curriculum badge text
-const formatCurriculumBadge = (curriculum: { curriculum_type: string; curriculum_level: string }) => {
-  const type = curriculum.curriculum_type === 'SPIRE' ? 'SPIRE' : 'Reveal';
-  const level = curriculum.curriculum_type === 'SPIRE'
-    ? `L${curriculum.curriculum_level}`
-    : `G${curriculum.curriculum_level}`;
-  return `${type} ${level}`;
-};
-
-// Helper to get first curriculum from array (Supabase returns array for LEFT JOIN)
-const getFirstCurriculum = (curriculumArray: { curriculum_type: string; curriculum_level: string }[] | null | undefined) => {
-  return curriculumArray && curriculumArray.length > 0 ? curriculumArray[0] : null;
-};
 
 interface CalendarWeekViewProps {
   sessions: SessionWithCurriculum[];

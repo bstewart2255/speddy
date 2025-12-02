@@ -12,20 +12,7 @@ import { GroupDetailsModal } from '@/app/components/modals/group-details-modal';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
 import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
-
-// Helper function to format curriculum badge text
-const formatCurriculumBadge = (curriculum: { curriculum_type: string; curriculum_level: string }) => {
-  const type = curriculum.curriculum_type === 'SPIRE' ? 'SPIRE' : 'Reveal';
-  const level = curriculum.curriculum_type === 'SPIRE'
-    ? `L${curriculum.curriculum_level}`
-    : `G${curriculum.curriculum_level}`;
-  return `${type} ${level}`;
-};
-
-// Helper to get first curriculum from array (Supabase returns array for LEFT JOIN)
-const getFirstCurriculum = (curriculumArray: { curriculum_type: string; curriculum_level: string }[] | null | undefined) => {
-  return curriculumArray && curriculumArray.length > 0 ? curriculumArray[0] : null;
-};
+import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
 
 interface Holiday {
   date: string;
@@ -720,7 +707,7 @@ return (
                               {formatTime(earliestStart)} - {formatTime(latestEnd)}
                             </div>
                             <div className="text-gray-700 mt-1">
-                              Students: {studentInitials}
+                              {studentInitials}
                             </div>
                             {/* Curriculum badge for group */}
                             {groupCurriculum && (
@@ -738,6 +725,8 @@ return (
                           grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
                           teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
                         };
+
+                        const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
 
                         return (
                           <button
@@ -757,9 +746,9 @@ return (
                               )}
                             </div>
                             {/* Curriculum badge */}
-                            {getFirstCurriculum(session.curriculum_tracking) && (
+                            {sessionCurriculum && (
                               <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(getFirstCurriculum(session.curriculum_tracking)!)}
+                                {formatCurriculumBadge(sessionCurriculum)}
                               </span>
                             )}
                           </button>
@@ -852,7 +841,7 @@ return (
                               {formatTime(earliestStart)} - {formatTime(latestEnd)}
                             </div>
                             <div className="text-gray-700 mt-1">
-                              Students: {studentInitials}
+                              {studentInitials}
                             </div>
                             {/* Curriculum badge for group */}
                             {groupCurriculum && (
@@ -870,6 +859,7 @@ return (
                           grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
                           teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
                         };
+                        const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
 
                         return (
                           <button
@@ -889,9 +879,9 @@ return (
                               )}
                             </div>
                             {/* Curriculum badge */}
-                            {getFirstCurriculum(session.curriculum_tracking) && (
+                            {sessionCurriculum && (
                               <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(getFirstCurriculum(session.curriculum_tracking)!)}
+                                {formatCurriculumBadge(sessionCurriculum)}
                               </span>
                             )}
                           </button>
