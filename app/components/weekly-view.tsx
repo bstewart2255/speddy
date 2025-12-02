@@ -10,8 +10,22 @@ import { ScheduleSession } from '@/src/types/database';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { GroupDetailsModal } from '@/app/components/modals/group-details-modal';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
-import { SessionGenerator } from '@/lib/services/session-generator';
+import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
+
+// Helper function to format curriculum badge text
+const formatCurriculumBadge = (curriculum: { curriculum_type: string; curriculum_level: string }) => {
+  const type = curriculum.curriculum_type === 'SPIRE' ? 'SPIRE' : 'Reveal';
+  const level = curriculum.curriculum_type === 'SPIRE'
+    ? `L${curriculum.curriculum_level}`
+    : `G${curriculum.curriculum_level}`;
+  return `${type} ${level}`;
+};
+
+// Helper to get first curriculum from array (Supabase returns array for LEFT JOIN)
+const getFirstCurriculum = (curriculumArray: { curriculum_type: string; curriculum_level: string }[] | null | undefined) => {
+  return curriculumArray && curriculumArray.length > 0 ? curriculumArray[0] : null;
+};
 
 interface Holiday {
   date: string;
@@ -52,13 +66,13 @@ interface WeeklyViewProps {
 interface GroupBlockData {
   groupId: string;
   groupName: string;
-  sessions: ScheduleSession[];
+  sessions: SessionWithCurriculum[];
   earliestStart: string;
   latestEnd: string;
 }
 
 interface SessionBlockData {
-  session: ScheduleSession;
+  session: SessionWithCurriculum;
 }
 
 type SessionBlock =
@@ -81,7 +95,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
   const sessionGenerator = React.useMemo(() => new SessionGenerator(), []);
 
-  const [sessions, setSessions] = React.useState<ScheduleSession[]>([]);
+  const [sessions, setSessions] = React.useState<SessionWithCurriculum[]>([]);
   const [students, setStudents] = React.useState<Record<string, {
     id: string;
     initials: string;
@@ -98,10 +112,10 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedGroupName, setSelectedGroupName] = useState<string>('');
-  const [selectedGroupSessions, setSelectedGroupSessions] = useState<ScheduleSession[]>([]);
+  const [selectedGroupSessions, setSelectedGroupSessions] = useState<SessionWithCurriculum[]>([]);
 
   const [sessionModalOpen, setSessionModalOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<ScheduleSession | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionWithCurriculum | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<{
     id: string;
     initials: string;
@@ -113,7 +127,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [filterView, setFilterView] = useState<'me' | 'others'>('me');
 
   // Helper function to determine session background color based on assignment
-  const getSessionColor = (session: ScheduleSession): string => {
+  const getSessionColor = (session: SessionWithCurriculum): string => {
     if (!currentUser) return 'bg-white';
 
     // Priority order: Assigned to Me > Assigned to SEA > Assigned to Specialist > My Sessions
@@ -138,7 +152,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   // Helper function to determine group session solid color based on sessions
-  const getGroupColor = (sessions: ScheduleSession[]): string => {
+  const getGroupColor = (sessions: SessionWithCurriculum[]): string => {
     if (!currentUser || sessions.length === 0) return 'bg-gray-50';
 
     // Check if any session is assigned to me from another specialist
@@ -166,7 +180,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   // Filter sessions based on "Me" vs "Others" view
-  const filterSessionsByView = useCallback((sessions: ScheduleSession[], view: 'me' | 'others'): ScheduleSession[] => {
+  const filterSessionsByView = useCallback((sessions: SessionWithCurriculum[], view: 'me' | 'others'): SessionWithCurriculum[] => {
     if (!currentUser) return sessions;
 
     if (view === 'me') {
@@ -254,7 +268,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         );
 
         // Apply view mode filtering
-        let sessionData: ScheduleSession[];
+        let sessionData: SessionWithCurriculum[];
         if (userRole === 'sea') {
           // SEA users: Only show sessions assigned to them (already filtered by SessionGenerator)
           sessionData = allSessions.filter(s => s.assigned_to_sea_id === user.id);
@@ -354,9 +368,9 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   // Helper function to aggregate sessions into groups and individual blocks
-  const aggregateSessionsForDisplay = useCallback((sessions: ScheduleSession[]) => {
-    const groups = new Map<string, ScheduleSession[]>();
-    const ungroupedSessions: ScheduleSession[] = [];
+  const aggregateSessionsForDisplay = useCallback((sessions: SessionWithCurriculum[]) => {
+    const groups = new Map<string, SessionWithCurriculum[]>();
+    const ungroupedSessions: SessionWithCurriculum[] = [];
 
     sessions.forEach(session => {
       if (session.group_id) {
@@ -409,21 +423,21 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   };
 
   // Modal handlers for groups and sessions
-  const handleOpenGroupModal = useCallback((groupId: string, groupName: string, sessions: ScheduleSession[]) => {
+  const handleOpenGroupModal = useCallback((groupId: string, groupName: string, sessions: SessionWithCurriculum[]) => {
     setSelectedGroupId(groupId);
     setSelectedGroupName(groupName);
     setSelectedGroupSessions(sessions);
     setGroupModalOpen(true);
   }, []);
 
-  const handleOpenSessionModal = useCallback((session: ScheduleSession, student: { id: string; initials: string; grade_level: string; teacher_name?: string }) => {
+  const handleOpenSessionModal = useCallback((session: SessionWithCurriculum, student: { id: string; initials: string; grade_level: string; teacher_name?: string }) => {
     setSelectedSession(session);
     setSelectedStudent(student);
     setSessionModalOpen(true);
   }, []);
 
   // Helper function to calculate time range with null safety
-  const getGroupTimeRange = useCallback((groupSessions: ScheduleSession[]) => {
+  const getGroupTimeRange = useCallback((groupSessions: SessionWithCurriculum[]) => {
     const validSessions = groupSessions.filter(s => s.start_time && s.end_time);
     if (validSessions.length === 0) {
       return { earliestStart: '', latestEnd: '' };
@@ -443,7 +457,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   }, []);
 
   // Helper function to get unique student initials with Set for better performance
-  const getUniqueStudentInitials = useCallback((groupSessions: ScheduleSession[]) => {
+  const getUniqueStudentInitials = useCallback((groupSessions: SessionWithCurriculum[]) => {
     const initialsSet = new Set(
       groupSessions.map((s: ScheduleSession) => s.student_id ? students[s.student_id]?.initials || '?' : '?')
     );
@@ -633,7 +647,7 @@ return (
                     }
 
                     // Get all morning sessions for this day
-                    const morningSessions: ScheduleSession[] = [];
+                    const morningSessions: SessionWithCurriculum[] = [];
                     MORNING_SLOTS.forEach((time) => {
                       const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
                       const sessionKey = `${dayIndex}-${timeIndex}`;
@@ -686,13 +700,16 @@ return (
                       if (block.type === 'group') {
                         const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
                         const studentInitials = getUniqueStudentInitials(groupSessions);
+                        // Check if any session in the group has curriculum tracking
+                        const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+                        const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
 
                         return (
                           <button
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getGroupColor(groupSessions)}`}
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getGroupColor(groupSessions)}`}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -705,6 +722,12 @@ return (
                             <div className="text-gray-700 mt-1">
                               Students: {studentInitials}
                             </div>
+                            {/* Curriculum badge for group */}
+                            {groupCurriculum && (
+                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                                {formatCurriculumBadge(groupCurriculum)}
+                              </span>
+                            )}
                           </button>
                         );
                       } else {
@@ -721,7 +744,7 @@ return (
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getSessionColor(session)}`}
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getSessionColor(session)}`}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
@@ -733,6 +756,12 @@ return (
                                 <span className="ml-1 text-xs">(SEA)</span>
                               )}
                             </div>
+                            {/* Curriculum badge */}
+                            {getFirstCurriculum(session.curriculum_tracking) && (
+                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                                {formatCurriculumBadge(getFirstCurriculum(session.curriculum_tracking)!)}
+                              </span>
+                            )}
                           </button>
                         );
                       }
@@ -750,7 +779,7 @@ return (
                     }
 
                     // Get all afternoon sessions for this day
-                    const afternoonSessions: ScheduleSession[] = [];
+                    const afternoonSessions: SessionWithCurriculum[] = [];
                     AFTERNOON_SLOTS.forEach((time) => {
                       const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
                       const sessionKey = `${dayIndex}-${timeIndex}`;
@@ -803,13 +832,16 @@ return (
                       if (block.type === 'group') {
                         const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
                         const studentInitials = getUniqueStudentInitials(groupSessions);
+                        // Check if any session in the group has curriculum tracking
+                        const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+                        const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
 
                         return (
                           <button
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getGroupColor(groupSessions)}`}
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getGroupColor(groupSessions)}`}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -822,6 +854,12 @@ return (
                             <div className="text-gray-700 mt-1">
                               Students: {studentInitials}
                             </div>
+                            {/* Curriculum badge for group */}
+                            {groupCurriculum && (
+                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                                {formatCurriculumBadge(groupCurriculum)}
+                              </span>
+                            )}
                           </button>
                         );
                       } else {
@@ -838,7 +876,7 @@ return (
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors ${getSessionColor(session)}`}
+                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getSessionColor(session)}`}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
@@ -850,6 +888,12 @@ return (
                                 <span className="ml-1 text-xs">(SEA)</span>
                               )}
                             </div>
+                            {/* Curriculum badge */}
+                            {getFirstCurriculum(session.curriculum_tracking) && (
+                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                                {formatCurriculumBadge(getFirstCurriculum(session.curriculum_tracking)!)}
+                              </span>
+                            )}
                           </button>
                         );
                       }

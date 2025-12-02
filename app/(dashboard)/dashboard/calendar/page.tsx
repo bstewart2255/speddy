@@ -19,6 +19,15 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
 type Holiday = Database['public']['Tables']['holidays']['Row'];
 
+// Enriched session type with curriculum tracking data from LEFT JOIN
+// Supabase returns joined data as an array
+type SessionWithCurriculum = ScheduleSession & {
+  curriculum_tracking?: {
+    curriculum_type: string;
+    curriculum_level: string;
+  }[] | null;
+};
+
 interface Student {
   id: string;
   initials: string;
@@ -27,7 +36,7 @@ interface Student {
 
 export default function CalendarPage() {
   const [currentView, setCurrentView] = useState<ViewType>('day');
-  const [sessions, setSessions] = useState<ScheduleSession[]>([]);
+  const [sessions, setSessions] = useState<SessionWithCurriculum[]>([]);
   const [students, setStudents] = useState<Map<string, Student>>(new Map());
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +158,7 @@ export default function CalendarPage() {
       // Fetch session INSTANCES (not templates) filtered by current school
       // Instances have actual session_date values
       // For SEAs: filter by assigned_to_sea_id, for others: filter by provider_id
+      // Include curriculum_tracking data via LEFT JOIN for badge display
       let sessionQuery = supabase
         .from('schedule_sessions')
         .select(`
@@ -158,7 +168,8 @@ export default function CalendarPage() {
             district_id,
             school_site,
             school_district
-          )
+          ),
+          curriculum_tracking(curriculum_type, curriculum_level)
         `)
         .not('session_date', 'is', null); // Only fetch instances, not templates
 
@@ -190,7 +201,7 @@ export default function CalendarPage() {
 
       if (sessionError) throw sessionError;
       
-      // Extract just the session data (without the joined student data)
+      // Extract just the session data (without the joined student data, but keep curriculum_tracking)
       const sessionRows = sessionData?.map(item => {
         const { students, ...session } = item;
         return session;
@@ -422,7 +433,7 @@ export default function CalendarPage() {
     }
   };
 
-  const handleSessionClick = (session: ScheduleSession) => {
+  const handleSessionClick = (session: SessionWithCurriculum) => {
     // You can implement session details popup here
     console.log('Session clicked:', session);
   };

@@ -5,6 +5,15 @@ import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
+// Enriched session type with curriculum tracking data from LEFT JOIN
+// Supabase returns joined data as an array
+export type SessionWithCurriculum = ScheduleSession & {
+  curriculum_tracking?: {
+    curriculum_type: string;
+    curriculum_level: string;
+  }[] | null;
+};
+
 // Interface for Supabase query builder methods we use
 // Note: This is a simplified interface for our specific use case.
 // Supabase's actual types use specialized builder classes (PostgrestFilterBuilder, etc.)
@@ -58,11 +67,15 @@ export class SessionGenerator {
     startDate: Date,
     endDate: Date,
     userRole?: string
-  ): Promise<ScheduleSession[]> {
+  ): Promise<SessionWithCurriculum[]> {
     // First, get all instance sessions (where session_date is NOT NULL)
+    // Include curriculum_tracking data via LEFT JOIN for badge display
     let instancesQuery = this.supabase
       .from('schedule_sessions')
-      .select('*')
+      .select(`
+        *,
+        curriculum_tracking(curriculum_type, curriculum_level)
+      `)
       .gte('session_date', formatLocalDate(startDate))
       .lte('session_date', formatLocalDate(endDate))
       .not('session_date', 'is', null);
@@ -88,9 +101,13 @@ export class SessionGenerator {
 
     // Get template sessions (where session_date is NULL)
     // Only fetch templates for days we actually need (performance optimization)
+    // Include curriculum_tracking data via LEFT JOIN for badge display
     let templatesQuery = this.supabase
       .from('schedule_sessions')
-      .select('*')
+      .select(`
+        *,
+        curriculum_tracking(curriculum_type, curriculum_level)
+      `)
       .is('session_date', null)
       .in('day_of_week', Array.from(neededDays));
 
@@ -113,7 +130,7 @@ export class SessionGenerator {
     // AUTO-CLEANUP: Detect and remove orphaned instances
     // An instance is orphaned if its start_time doesn't match any template for that student+day
     const orphanedInstanceIds: string[] = [];
-    const validInstances: ScheduleSession[] = [];
+    const validInstances: SessionWithCurriculum[] = [];
     const today = formatLocalDate(new Date());
 
     for (const instance of (instances || [])) {
@@ -163,7 +180,7 @@ export class SessionGenerator {
     }
 
     // For each day in range, check if we need to create instances
-    const sessions: ScheduleSession[] = validInstances;
+    const sessions: SessionWithCurriculum[] = validInstances;
     const currentDate = new Date(startDate);
 
     while (currentDate <= endDate) {
@@ -182,8 +199,8 @@ export class SessionGenerator {
         );
 
         if (!existingInstance) {
-          // Create instance from template
-          const instance: ScheduleSession = {
+          // Create instance from template (inherit curriculum_tracking from template)
+          const instance: SessionWithCurriculum = {
             ...template,
             id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
             session_date: dateStr,
