@@ -46,7 +46,7 @@ RESPONSE FORMAT (JSON):
   "metadata": {
     "contentGenerated": true,
     "estimatedDuration": ${request.duration},
-    "gradeLevel": "${grade}"
+    "gradeLevel": "${contentLevel}"
   }
 }
 
