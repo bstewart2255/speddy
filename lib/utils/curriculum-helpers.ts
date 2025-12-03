@@ -6,19 +6,20 @@
 interface CurriculumData {
   curriculum_type: string;
   curriculum_level: string;
+  current_lesson: number;
 }
 
 /**
  * Format curriculum badge text for display
- * @param curriculum - The curriculum data with type and level
- * @returns Formatted string like "SPIRE L3" or "Reveal G2"
+ * @param curriculum - The curriculum data with type, level, and lesson
+ * @returns Formatted string like "SPIRE L3.5" or "Reveal G2.10"
  */
 export const formatCurriculumBadge = (curriculum: CurriculumData): string => {
   const type = curriculum.curriculum_type === 'SPIRE' ? 'SPIRE' : 'Reveal';
   const level = curriculum.curriculum_type === 'SPIRE'
     ? `L${curriculum.curriculum_level}`
     : `G${curriculum.curriculum_level}`;
-  return `${type} ${level}`;
+  return `${type} ${level}.${curriculum.current_lesson}`;
 };
 
 /**

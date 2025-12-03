@@ -139,35 +139,6 @@ export function GroupLessonPanel({
     }
   };
 
-  const handleNextLesson = async () => {
-    if (!curriculumTracking) {
-      showToast('Please save curriculum information first', 'error');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/curriculum-tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          groupId,
-          action: 'next'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to advance lesson');
-
-      const { data } = await response.json();
-      setCurriculumTracking(data);
-      setCurrentLesson(data.current_lesson);
-
-      showToast(`Advanced to Lesson ${data.current_lesson}`, 'success');
-    } catch (error) {
-      console.error('Error advancing lesson:', error);
-      showToast('Failed to advance lesson', 'error');
-    }
-  };
-
   const handleSaveLesson = async () => {
     try {
       const body: any = {
@@ -388,26 +359,66 @@ export function GroupLessonPanel({
       {curriculumTracking && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📚</span>
-                <div>
-                  <h5 className="font-medium text-gray-900">
-                    {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
-                    {getLevelLabel()} {curriculumTracking.curriculum_level}
-                  </h5>
-                  <p className="text-sm text-gray-600">
-                    Lesson {curriculumTracking.current_lesson}
-                  </p>
-                </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📚</span>
+              <div>
+                <h5 className="font-medium text-gray-900">
+                  {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
+                  {getLevelLabel()} {curriculumTracking.curriculum_level}
+                </h5>
               </div>
             </div>
-            <button
-              onClick={handleNextLesson}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              Next Lesson →
-            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-gray-600 mr-1">Lesson</span>
+              <button
+                onClick={async () => {
+                  if (currentLesson > 1) {
+                    const newLesson = currentLesson - 1;
+                    setCurrentLesson(newLesson);
+                    await fetch('/api/curriculum-tracking', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        groupId,
+                        curriculumType,
+                        curriculumLevel,
+                        currentLesson: newLesson
+                      })
+                    });
+                  }
+                }}
+                className="w-7 h-7 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 font-medium"
+              >
+                ←
+              </button>
+              <input
+                type="number"
+                min="1"
+                value={currentLesson}
+                onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
+                onBlur={saveCurriculumTracking}
+                className="w-14 h-7 text-center text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={async () => {
+                  const newLesson = currentLesson + 1;
+                  setCurrentLesson(newLesson);
+                  await fetch('/api/curriculum-tracking', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      groupId,
+                      curriculumType,
+                      curriculumLevel,
+                      currentLesson: newLesson
+                    })
+                  });
+                }}
+                className="w-7 h-7 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 font-medium"
+              >
+                →
+              </button>
+            </div>
           </div>
         </div>
       )}

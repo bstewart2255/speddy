@@ -244,38 +244,6 @@ export function SessionDetailsModal({
     }
   };
 
-  const handleNextLesson = async () => {
-    if (!curriculumTracking) {
-      showToast('Please save curriculum information first', 'error');
-      return;
-    }
-
-    try {
-      // Ensure session is persisted before advancing lesson
-      const sessionId = await ensurePersistedSession();
-
-      const response = await fetch('/api/curriculum-tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          action: 'next'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to advance lesson');
-
-      const { data } = await response.json();
-      setCurriculumTracking(data);
-      setCurrentLesson(data.current_lesson);
-
-      showToast(`Advanced to Lesson ${data.current_lesson}`, 'success');
-    } catch (error) {
-      console.error('Error advancing lesson:', error);
-      showToast('Failed to advance lesson', 'error');
-    }
-  };
-
   const handleSaveLesson = async () => {
     try {
       // Ensure session is persisted before saving lesson
@@ -607,17 +575,61 @@ export function SessionDetailsModal({
                         ? (curriculumTracking.curriculum_level === 'Foundations' ? '' : 'Level ')
                         : 'Grade '}{curriculumTracking.curriculum_level}
                     </h5>
-                    <p className="text-xs text-gray-600">
-                      Lesson {curriculumTracking.current_lesson}
-                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={handleNextLesson}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"
-                >
-                  Next Lesson →
-                </button>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-600 mr-1">Lesson</span>
+                  <button
+                    onClick={async () => {
+                      if (currentLesson > 1) {
+                        const newLesson = currentLesson - 1;
+                        setCurrentLesson(newLesson);
+                        const sessionId = await ensurePersistedSession();
+                        await fetch('/api/curriculum-tracking', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            sessionId,
+                            curriculumType,
+                            curriculumLevel,
+                            currentLesson: newLesson
+                          })
+                        });
+                      }
+                    }}
+                    className="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 text-sm font-medium"
+                  >
+                    ←
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    value={currentLesson}
+                    onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
+                    onBlur={saveCurriculumTracking}
+                    className="w-12 h-6 text-center text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={async () => {
+                      const newLesson = currentLesson + 1;
+                      setCurrentLesson(newLesson);
+                      const sessionId = await ensurePersistedSession();
+                      await fetch('/api/curriculum-tracking', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          sessionId,
+                          curriculumType,
+                          curriculumLevel,
+                          currentLesson: newLesson
+                        })
+                      });
+                    }}
+                    className="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 text-sm font-medium"
+                  >
+                    →
+                  </button>
+                </div>
               </div>
             </div>
           )}
