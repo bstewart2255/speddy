@@ -11,6 +11,7 @@ import {
 } from '@/lib/document-utils';
 import { formatTime } from '@/lib/utils/time-options';
 import { ensureSessionPersisted } from '@/lib/services/session-persistence';
+import { LessonControl } from '@/app/components/lesson-control';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -241,38 +242,6 @@ export function SessionDetailsModal({
     } catch (error) {
       console.error('Error saving curriculum tracking:', error);
       throw error;
-    }
-  };
-
-  const handleNextLesson = async () => {
-    if (!curriculumTracking) {
-      showToast('Please save curriculum information first', 'error');
-      return;
-    }
-
-    try {
-      // Ensure session is persisted before advancing lesson
-      const sessionId = await ensurePersistedSession();
-
-      const response = await fetch('/api/curriculum-tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          action: 'next'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to advance lesson');
-
-      const { data } = await response.json();
-      setCurriculumTracking(data);
-      setCurrentLesson(data.current_lesson);
-
-      showToast(`Advanced to Lesson ${data.current_lesson}`, 'success');
-    } catch (error) {
-      console.error('Error advancing lesson:', error);
-      showToast('Failed to advance lesson', 'error');
     }
   };
 
@@ -607,17 +576,18 @@ export function SessionDetailsModal({
                         ? (curriculumTracking.curriculum_level === 'Foundations' ? '' : 'Level ')
                         : 'Grade '}{curriculumTracking.curriculum_level}
                     </h5>
-                    <p className="text-xs text-gray-600">
-                      Lesson {curriculumTracking.current_lesson}
-                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={handleNextLesson}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"
-                >
-                  Next Lesson →
-                </button>
+                <LessonControl
+                  currentLesson={currentLesson}
+                  setCurrentLesson={setCurrentLesson}
+                  curriculumType={curriculumType}
+                  curriculumLevel={curriculumLevel}
+                  getIdentifier={ensurePersistedSession}
+                  identifierKey="sessionId"
+                  onError={(message) => showToast(message, 'error')}
+                  size="small"
+                />
               </div>
             </div>
           )}

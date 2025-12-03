@@ -11,6 +11,7 @@ export type SessionWithCurriculum = ScheduleSession & {
   curriculum_tracking?: {
     curriculum_type: string;
     curriculum_level: string;
+    current_lesson: number;
   }[] | null;
 };
 
@@ -211,8 +212,8 @@ export class SessionGenerator {
     const groupIds = [...new Set(sessions.map(s => s.group_id).filter((id): id is string => id !== null && id !== undefined))];
 
     // Create lookup maps for efficient merging
-    const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
-    const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string }[]>();
+    const curriculumBySessionId = new Map<string, { curriculum_type: string; curriculum_level: string; current_lesson: number }[]>();
+    const curriculumByGroupId = new Map<string, { curriculum_type: string; curriculum_level: string; current_lesson: number }[]>();
 
     // Batch size to avoid URL length limits (400 Bad Request)
     const BATCH_SIZE = 100;
@@ -236,12 +237,12 @@ export class SessionGenerator {
         (async () => {
           const { data, error } = await this.supabase
             .from('curriculum_tracking')
-            .select('session_id, group_id, curriculum_type, curriculum_level')
+            .select('session_id, group_id, curriculum_type, curriculum_level, current_lesson')
             .in('session_id', batch);
 
           if (data) {
             for (const ct of data) {
-              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level, current_lesson: ct.current_lesson };
               if (ct.session_id) {
                 const existing = curriculumBySessionId.get(ct.session_id) || [];
                 existing.push(entry);
@@ -263,12 +264,12 @@ export class SessionGenerator {
         (async () => {
           const { data, error } = await this.supabase
             .from('curriculum_tracking')
-            .select('session_id, group_id, curriculum_type, curriculum_level')
+            .select('session_id, group_id, curriculum_type, curriculum_level, current_lesson')
             .in('group_id', batch);
 
           if (data) {
             for (const ct of data) {
-              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level };
+              const entry = { curriculum_type: ct.curriculum_type, curriculum_level: ct.curriculum_level, current_lesson: ct.current_lesson };
               if (ct.group_id) {
                 const existing = curriculumByGroupId.get(ct.group_id) || [];
                 existing.push(entry);

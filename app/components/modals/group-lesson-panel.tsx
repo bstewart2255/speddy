@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
+import { LessonControl } from '@/app/components/lesson-control';
 import type { Database } from '../../../src/types/database';
 
 type Lesson = Database['public']['Tables']['lessons']['Row'];
@@ -136,35 +137,6 @@ export function GroupLessonPanel({
     } catch (error) {
       console.error('Error saving curriculum tracking:', error);
       throw error;
-    }
-  };
-
-  const handleNextLesson = async () => {
-    if (!curriculumTracking) {
-      showToast('Please save curriculum information first', 'error');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/curriculum-tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          groupId,
-          action: 'next'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to advance lesson');
-
-      const { data } = await response.json();
-      setCurriculumTracking(data);
-      setCurrentLesson(data.current_lesson);
-
-      showToast(`Advanced to Lesson ${data.current_lesson}`, 'success');
-    } catch (error) {
-      console.error('Error advancing lesson:', error);
-      showToast('Failed to advance lesson', 'error');
     }
   };
 
@@ -388,26 +360,25 @@ export function GroupLessonPanel({
       {curriculumTracking && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📚</span>
-                <div>
-                  <h5 className="font-medium text-gray-900">
-                    {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
-                    {getLevelLabel()} {curriculumTracking.curriculum_level}
-                  </h5>
-                  <p className="text-sm text-gray-600">
-                    Lesson {curriculumTracking.current_lesson}
-                  </p>
-                </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📚</span>
+              <div>
+                <h5 className="font-medium text-gray-900">
+                  {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
+                  {getLevelLabel()} {curriculumTracking.curriculum_level}
+                </h5>
               </div>
             </div>
-            <button
-              onClick={handleNextLesson}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              Next Lesson →
-            </button>
+            <LessonControl
+              currentLesson={currentLesson}
+              setCurrentLesson={setCurrentLesson}
+              curriculumType={curriculumType}
+              curriculumLevel={curriculumLevel}
+              getIdentifier={() => groupId}
+              identifierKey="groupId"
+              onError={(message) => showToast(message, 'error')}
+              size="medium"
+            />
           </div>
         </div>
       )}
