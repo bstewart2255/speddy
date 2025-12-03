@@ -75,16 +75,29 @@ export function GroupDetailsModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper to ensure all sessions in the group are persisted before operations
-  const ensureGroupSessionsPersisted = async (): Promise<void> => {
+  /**
+   * Ensures all temp sessions in the group are persisted.
+   * Returns the first persisted session ID (for curriculum tracking).
+   */
+  const ensureGroupSessionsPersisted = async (): Promise<string | undefined> => {
+    // Check for already persisted sessions first
+    const alreadyPersisted = sessions.find(s => !s.id.startsWith('temp-'));
+    if (alreadyPersisted) {
+      return alreadyPersisted.id;
+    }
+
     // Filter temp sessions
     const tempSessions = sessions.filter(s => s.id.startsWith('temp-'));
 
     if (tempSessions.length === 0) {
-      return; // All sessions already persisted
+      return undefined; // No sessions at all
     }
 
-    // Persist all temp sessions
-    await ensureSessionsPersisted(tempSessions);
+    // Persist all temp sessions and get the results
+    const persistedSessions = await ensureSessionsPersisted(tempSessions);
+
+    // Return the first persisted session ID
+    return persistedSessions[0]?.id;
   };
 
   // Lesson state
@@ -172,9 +185,22 @@ export function GroupDetailsModal({
     }
   }, [groupId, showToast]);
 
+  // Get first persisted session ID for curriculum tracking
+  const getPersistedSessionId = useCallback(() => {
+    const persistedSession = sessions.find(s => !s.id.startsWith('temp-'));
+    return persistedSession?.id;
+  }, [sessions]);
+
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch(`/api/curriculum-tracking?groupId=${groupId}`, { signal });
+      // Find first persisted session to use for curriculum lookup
+      const sessionId = getPersistedSessionId();
+      if (!sessionId) {
+        // No persisted sessions yet, no curriculum to fetch
+        return;
+      }
+
+      const response = await fetch(`/api/curriculum-tracking?sessionId=${sessionId}`, { signal });
       if (!response.ok) {
         if (response.status === 404) {
           // No curriculum tracking exists yet, which is fine
@@ -198,7 +224,7 @@ export function GroupDetailsModal({
       // Silently fail for curriculum tracking - it's optional
       console.error('Error fetching curriculum tracking:', error);
     }
-  }, [groupId]);
+  }, [getPersistedSessionId]);
 
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
@@ -212,21 +238,35 @@ export function GroupDetailsModal({
     return () => controller.abort();
   }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking]);
 
-  const saveCurriculumTracking = async () => {
+  /**
+   * Saves curriculum tracking for the group.
+   * @param persistedSessionId - Optional session ID to use. If not provided, will try to get one.
+   * @returns true if saved successfully, false if no session available
+   * @throws Error if API call fails
+   */
+  const saveCurriculumTracking = async (persistedSessionId?: string): Promise<boolean> => {
     // Only save if all curriculum fields are provided
     if (!curriculumType || !curriculumLevel || !currentLesson) {
-      return;
+      return false;
     }
 
     try {
-      // Ensure all sessions in the group are persisted before saving curriculum
-      await ensureGroupSessionsPersisted();
+      // Use provided sessionId or try to get one
+      let sessionId = persistedSessionId;
+      if (!sessionId) {
+        sessionId = await ensureGroupSessionsPersisted();
+      }
+
+      if (!sessionId) {
+        console.error('No persisted session found for curriculum tracking');
+        return false;
+      }
 
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          groupId,
+          sessionId,
           curriculumType,
           curriculumLevel,
           currentLesson
@@ -241,6 +281,7 @@ export function GroupDetailsModal({
 
       const { data } = await response.json();
       setCurriculumTracking(data);
+      return true;
     } catch (error) {
       console.error('Error saving curriculum tracking:', error);
       throw error;
@@ -250,7 +291,8 @@ export function GroupDetailsModal({
   const handleSaveLesson = async () => {
     try {
       // Ensure all sessions in the group are persisted before saving
-      await ensureGroupSessionsPersisted();
+      // and get the persisted session ID for curriculum tracking
+      const persistedSessionId = await ensureGroupSessionsPersisted();
 
       const hasNotes = notes.trim().length > 0;
       const hasCurriculum = curriculumType && curriculumLevel && currentLesson;
@@ -282,10 +324,19 @@ export function GroupDetailsModal({
       // Save curriculum tracking if provided (independent of lesson)
       if (hasCurriculum) {
         try {
-          await saveCurriculumTracking();
+          const curriculumSaved = await saveCurriculumTracking(persistedSessionId);
+          if (!curriculumSaved) {
+            // No session available to save curriculum to
+            if (hasNotes || shouldClearNotes) {
+              showToast('Lesson saved, but no session available for curriculum', 'warning');
+            } else {
+              showToast('No session available to save curriculum', 'error');
+            }
+            return;
+          }
         } catch (currError) {
-          // Curriculum failed
-          if (hasNotes) {
+          // Curriculum API call failed
+          if (hasNotes || shouldClearNotes) {
             showToast('Lesson saved, but curriculum tracking failed', 'warning');
           } else {
             showToast('Failed to save curriculum tracking', 'error');
@@ -618,8 +669,8 @@ export function GroupDetailsModal({
                   setCurrentLesson={setCurrentLesson}
                   curriculumType={curriculumType}
                   curriculumLevel={curriculumLevel}
-                  getIdentifier={() => groupId}
-                  identifierKey="groupId"
+                  getIdentifier={ensureGroupSessionsPersisted}
+                  identifierKey="sessionId"
                   onError={(message) => showToast(message, 'error')}
                   size="small"
                 />

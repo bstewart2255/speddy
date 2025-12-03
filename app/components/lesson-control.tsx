@@ -7,8 +7,8 @@ interface LessonControlProps {
   setCurrentLesson: (lesson: number) => void;
   curriculumType: string;
   curriculumLevel: string;
-  /** Async function that returns the identifier (sessionId or groupId) */
-  getIdentifier: () => Promise<string> | string;
+  /** Async function that returns the identifier (sessionId or groupId). Returns undefined if not available. */
+  getIdentifier: () => Promise<string | undefined> | string | undefined;
   /** The key name for the identifier in the API request */
   identifierKey: 'sessionId' | 'groupId';
   /** Callback for error handling (e.g., showing toast) */
@@ -43,6 +43,11 @@ export function LessonControl({
   const saveLessonNumber = useCallback(async (newLesson: number): Promise<boolean> => {
     try {
       const identifier = await getIdentifier();
+      if (!identifier) {
+        // No persisted session yet, skip saving
+        console.log('LessonControl: No identifier available, skipping save');
+        return true; // Don't treat as error, just skip
+      }
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
