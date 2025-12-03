@@ -129,6 +129,21 @@ export function QuestionRenderer({
           <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{question.content}</p>
         </div>
       )}
+
+      {/* Fallback: render answer lines for any unhandled types (e.g., TRUE_FALSE, EXAMPLE) */}
+      {![
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.SHORT_ANSWER,
+        QuestionType.LONG_ANSWER,
+        QuestionType.FILL_BLANK,
+        QuestionType.VISUAL_MATH,
+        QuestionType.MATH_WORK,
+        QuestionType.OBSERVATION,
+        QuestionType.PASSAGE,
+        QuestionType.WRITING_PROMPT,
+      ].includes(type) && lineCount > 0 && (
+        <AnswerLines count={lineCount} />
+      )}
     </div>
   );
 }
@@ -313,6 +328,14 @@ export function generateQuestionHTML(
         <p class="writing-prompt-text">${escapeHtml(question.content)}</p>
       </div>
     `;
+  } else {
+    // Fallback: render answer lines for any unhandled types (e.g., TRUE_FALSE, EXAMPLE)
+    // This ensures students always have space to write their answers
+    if (lineCount > 0) {
+      for (let i = 0; i < lineCount; i++) {
+        html += '<div class="answer-line"></div>';
+      }
+    }
   }
 
   html += '</div>';
