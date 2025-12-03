@@ -910,6 +910,10 @@ return (
           groupName={selectedGroupName}
           sessions={selectedGroupSessions}
           students={new Map(Object.entries(students))}
+          initialCurriculum={(() => {
+            const sessionWithCurriculum = selectedGroupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+            return sessionWithCurriculum ? getFirstCurriculum(sessionWithCurriculum.curriculum_tracking) : null;
+          })()}
         />
       )}
 
@@ -927,6 +931,7 @@ return (
             initials: selectedStudent.initials,
             grade_level: selectedStudent.grade_level || '',
           }}
+          initialCurriculum={getFirstCurriculum(selectedSession.curriculum_tracking)}
         />
       )}
     </div>
