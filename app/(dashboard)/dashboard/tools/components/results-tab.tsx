@@ -51,7 +51,7 @@ export default function ResultsTab() {
   const { currentSchool } = useSchool();
   const { showToast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('all');
   const [tickets, setTickets] = useState<ExitTicket[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(true);

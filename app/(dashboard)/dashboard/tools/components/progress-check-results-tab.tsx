@@ -56,7 +56,7 @@ export default function ProgressCheckResultsTab() {
   const { currentSchool } = useSchool();
   const { showToast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('all');
   const [checks, setChecks] = useState<ProgressCheck[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(true);
