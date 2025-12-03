@@ -94,7 +94,6 @@ export async function POST(request: NextRequest) {
 
     // Fetch student data if studentIds provided
     let students: Student[] | undefined;
-    let studentFetchError: string | undefined;
     if (body.studentIds && Array.isArray(body.studentIds) && body.studentIds.length > 0) {
       const supabase = await createClient();
       const { data: studentsData, error: studentsError } = await supabase
@@ -104,7 +103,6 @@ export async function POST(request: NextRequest) {
 
       if (studentsError) {
         console.error('[V2 API] Error fetching students:', studentsError);
-        studentFetchError = studentsError.message;
         // If no grade provided and student fetch failed, return error
         if (!body.grade) {
           return NextResponse.json(

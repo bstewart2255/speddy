@@ -53,12 +53,30 @@ export async function generateV2Worksheet(
   const startTime = Date.now();
   const MAX_RETRIES = 2;
 
+  // Track accumulated token usage across retries
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let lastResult: V2GenerationResult | null = null;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const result = await generateV2WorksheetAttempt(request, apiKey, startTime, attempt);
 
-    // If successful or not a validation error, return immediately
+    // Accumulate token usage from this attempt
+    totalPromptTokens += result.metadata.promptTokens;
+    totalCompletionTokens += result.metadata.completionTokens;
+    lastResult = result;
+
+    // If successful or not a validation error, return with accumulated tokens
     if (result.success || !result.error?.includes('Content validation failed')) {
-      return result;
+      return {
+        ...result,
+        metadata: {
+          ...result.metadata,
+          promptTokens: totalPromptTokens,
+          completionTokens: totalCompletionTokens,
+          totalTokens: totalPromptTokens + totalCompletionTokens,
+        },
+      };
     }
 
     // Log retry attempt
@@ -67,17 +85,15 @@ export async function generateV2Worksheet(
     }
   }
 
-  // If we get here, all retries failed - return the last error
+  // Return the last failed result with accumulated token usage
   return {
-    success: false,
-    error: 'Content generation failed after multiple attempts. Please try again.',
+    ...lastResult!,
     metadata: {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
+      ...lastResult!.metadata,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+      totalTokens: totalPromptTokens + totalCompletionTokens,
       generationTime: Date.now() - startTime,
-      model: 'error',
-      generationVersion: 'v2',
     },
   };
 }
