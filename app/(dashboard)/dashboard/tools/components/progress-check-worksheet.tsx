@@ -7,7 +7,7 @@ import {
   generatePrintDocument,
   escapeHtml,
 } from '@/lib/shared/print-styles';
-import { getFluencyInstruction, generateFluencyAssessmentItems } from '@/lib/shared/question-types';
+import { getFluencyInstruction } from '@/lib/shared/question-types';
 
 interface AnswerFormat {
   lines?: number;
@@ -86,7 +86,8 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
           // Handle goal-level passage
           if (goalAssessment.passage) {
             if (goalAssessment.assessmentItems.length === 0) {
-              // Fluency assessment - show with teacher instruction based on IEP goal
+              // Fluency assessment - show passage with teacher instruction (no questions for student)
+              // Teachers will grade fluency criteria on the results page
               const fluencyInstruction = getFluencyInstruction(goalAssessment.goal);
               itemsHTML += `
                 <div class="reading-fluency-section">
@@ -96,17 +97,6 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
                   <div class="fluency-passage">${escapeHtml(goalAssessment.passage)}</div>
                 </div>
               `;
-
-              // Generate and render fluency assessment questions
-              const fluencyItems = generateFluencyAssessmentItems(goalAssessment.goal);
-              fluencyItems.forEach((item) => {
-                const questionData: QuestionData = {
-                  type: 'multiple_choice',
-                  content: item.prompt,
-                  choices: item.options,
-                };
-                itemsHTML += generateQuestionHTML(questionData, questionNumber++, true, goalSubject);
-              });
             } else {
               // Regular reading comprehension - show passage normally
               const passageQuestion: QuestionData = {
@@ -262,40 +252,23 @@ export default function ProgressCheckWorksheet({ worksheets, onClose }: Progress
             {goalAssessment.passage && (
               <div className="mb-4">
                 {goalAssessment.assessmentItems.length === 0 ? (
-                  // Fluency assessment - show with teacher instruction based on IEP goal
-                  <>
-                    <div className="reading-fluency-section">
-                      <div className="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 rounded">
-                        <p className="text-sm font-medium text-amber-900">
-                          {getFluencyInstruction(goalAssessment.goal)}
-                        </p>
-                      </div>
-                      <div className="p-4 bg-gray-50 border border-gray-200 rounded">
-                        <p
-                          className="text-gray-800 leading-relaxed whitespace-pre-wrap"
-                          style={{ lineHeight: '2' }}
-                        >
-                          {goalAssessment.passage}
-                        </p>
-                      </div>
+                  // Fluency assessment - show passage with teacher instruction (no questions for student)
+                  // Teachers will grade fluency criteria on the results page
+                  <div className="reading-fluency-section">
+                    <div className="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 rounded">
+                      <p className="text-sm font-medium text-amber-900">
+                        {getFluencyInstruction(goalAssessment.goal)}
+                      </p>
                     </div>
-                    {/* Fluency assessment questions */}
-                    <div className="ml-2 mt-4">
-                      {generateFluencyAssessmentItems(goalAssessment.goal).map((item, itemIndex) => (
-                        <QuestionRenderer
-                          key={itemIndex}
-                          question={{
-                            type: 'multiple_choice',
-                            content: item.prompt,
-                            choices: item.options,
-                          }}
-                          questionNumber={itemIndex + 1}
-                          showNumber={true}
-                          goalSubject={goalSubject}
-                        />
-                      ))}
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded">
+                      <p
+                        className="text-gray-800 leading-relaxed whitespace-pre-wrap"
+                        style={{ lineHeight: '2' }}
+                      >
+                        {goalAssessment.passage}
+                      </p>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   // Regular reading comprehension - show passage normally
                   <QuestionRenderer
