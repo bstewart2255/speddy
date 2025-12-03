@@ -302,8 +302,8 @@ export default function ProgressCheckResultsTab() {
         successTimeoutRef.current = null;
       }, 3000);
 
-      // Refresh checks
-      await fetchChecks();
+      // Refresh checks (reset=true to replace, not append)
+      await fetchChecks(true, 0);
     } catch (error) {
       console.error('Error saving results:', error);
       showToast(error instanceof Error ? error.message : 'Failed to save results', 'error');
@@ -322,8 +322,8 @@ export default function ProgressCheckResultsTab() {
 
       if (data.success) {
         showToast(data.message, 'success');
-        // Refresh checks to show updated status
-        await fetchChecks();
+        // Refresh checks to show updated status (reset=true to replace, not append)
+        await fetchChecks(true, 0);
       } else {
         showToast('Failed to update progress check: ' + data.error, 'error');
       }
