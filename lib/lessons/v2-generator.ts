@@ -51,7 +51,46 @@ export async function generateV2Worksheet(
   apiKey: string
 ): Promise<V2GenerationResult> {
   const startTime = Date.now();
+  const MAX_RETRIES = 2;
 
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const result = await generateV2WorksheetAttempt(request, apiKey, startTime, attempt);
+
+    // If successful or not a validation error, return immediately
+    if (result.success || !result.error?.includes('Content validation failed')) {
+      return result;
+    }
+
+    // Log retry attempt
+    if (attempt < MAX_RETRIES) {
+      console.log(`[V2 Generator] Validation failed on attempt ${attempt}, retrying...`);
+    }
+  }
+
+  // If we get here, all retries failed - return the last error
+  return {
+    success: false,
+    error: 'Content generation failed after multiple attempts. Please try again.',
+    metadata: {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      generationTime: Date.now() - startTime,
+      model: 'error',
+      generationVersion: 'v2',
+    },
+  };
+}
+
+/**
+ * Single attempt at worksheet generation
+ */
+async function generateV2WorksheetAttempt(
+  request: V2GenerationRequest,
+  apiKey: string,
+  startTime: number,
+  attempt: number
+): Promise<V2GenerationResult> {
   try {
     // Step 1: Determine ability level from students or grade
     const abilityProfile = determineContentLevel(
@@ -60,6 +99,9 @@ export async function generateV2Worksheet(
       request.subjectType
     );
 
+    if (attempt > 1) {
+      console.log(`[V2 Generator] Retry attempt ${attempt}`);
+    }
     console.log('[V2 Generator] Ability profile:', abilityProfile);
 
     // Step 2: Select template and calculate problem count

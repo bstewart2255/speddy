@@ -56,6 +56,13 @@ IMPORTANT RULES:
 3. Content only - we handle all formatting and structure
 4. Focus on educational quality and grade-appropriate language
 5. Make content engaging and relevant to students' lives
+6. CRITICAL: Every question MUST have a non-empty "answer" field:
+   - For multiple-choice: the correct choice text (must match one of the choices exactly)
+   - For short-answer: the expected correct answer
+   - For long-answer: a sample/model response or key points students should include
+   - For fill-blank: the word or phrase that fills the blank
+   - For true-false: "True" or "False"
+   - For visual-math/math-work: the numerical answer
 
 Generate the content now.`;
 }
@@ -80,7 +87,9 @@ Passage guidelines:
 Questions should include a mix of:
 ${questionTypes.map((type) => `- ${type}`).join('\n')}
 
-Use a variety of question types: multiple-choice, short-answer, and 1-2 long-answer questions.`;
+Use a variety of question types: multiple-choice, short-answer, and 1-2 long-answer questions.
+
+IMPORTANT: For long-answer questions, the "answer" field must contain a model response or key points the student should include (never leave it empty).`;
 
     case 'phonics-decoding':
       return `TOPIC: Phonics & Decoding
