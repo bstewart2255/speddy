@@ -51,7 +51,62 @@ export async function generateV2Worksheet(
   apiKey: string
 ): Promise<V2GenerationResult> {
   const startTime = Date.now();
+  const MAX_RETRIES = 2;
 
+  // Track accumulated token usage across retries
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let lastResult: V2GenerationResult | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const result = await generateV2WorksheetAttempt(request, apiKey, startTime, attempt);
+
+    // Accumulate token usage from this attempt
+    totalPromptTokens += result.metadata.promptTokens;
+    totalCompletionTokens += result.metadata.completionTokens;
+    lastResult = result;
+
+    // If successful or not a validation error, return with accumulated tokens
+    if (result.success || !result.error?.includes('Content validation failed')) {
+      return {
+        ...result,
+        metadata: {
+          ...result.metadata,
+          promptTokens: totalPromptTokens,
+          completionTokens: totalCompletionTokens,
+          totalTokens: totalPromptTokens + totalCompletionTokens,
+        },
+      };
+    }
+
+    // Log retry attempt
+    if (attempt < MAX_RETRIES) {
+      console.log(`[V2 Generator] Validation failed on attempt ${attempt}, retrying...`);
+    }
+  }
+
+  // Return the last failed result with accumulated token usage
+  return {
+    ...lastResult!,
+    metadata: {
+      ...lastResult!.metadata,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+      totalTokens: totalPromptTokens + totalCompletionTokens,
+      generationTime: Date.now() - startTime,
+    },
+  };
+}
+
+/**
+ * Single attempt at worksheet generation
+ */
+async function generateV2WorksheetAttempt(
+  request: V2GenerationRequest,
+  apiKey: string,
+  startTime: number,
+  attempt: number
+): Promise<V2GenerationResult> {
   try {
     // Step 1: Determine ability level from students or grade
     const abilityProfile = determineContentLevel(
@@ -60,6 +115,9 @@ export async function generateV2Worksheet(
       request.subjectType
     );
 
+    if (attempt > 1) {
+      console.log(`[V2 Generator] Retry attempt ${attempt}`);
+    }
     console.log('[V2 Generator] Ability profile:', abilityProfile);
 
     // Step 2: Select template and calculate problem count

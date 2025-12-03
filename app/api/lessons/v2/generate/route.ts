@@ -102,8 +102,17 @@ export async function POST(request: NextRequest) {
         .in('id', body.studentIds);
 
       if (studentsError) {
-        console.error('Error fetching students:', studentsError);
-      } else if (studentsData) {
+        console.error('[V2 API] Error fetching students:', studentsError);
+        // If no grade provided and student fetch failed, return error
+        if (!body.grade) {
+          return NextResponse.json(
+            { error: `Unable to load student data: ${studentsError.message}. Please try selecting a grade level or refresh the page.` },
+            { status: 500 }
+          );
+        }
+        // If grade is provided, continue with grade-only generation
+        console.log('[V2 API] Continuing with grade-only generation due to student fetch error');
+      } else if (studentsData && studentsData.length > 0) {
         // Transform to Student type
         students = studentsData.map((s: any) => {
           // Parse grade level
@@ -146,6 +155,17 @@ export async function POST(request: NextRequest) {
         });
 
         console.log(`[V2 API] Fetched ${students.length} students with IEP data`);
+      } else if (studentsData && studentsData.length === 0) {
+        // No students found - could be RLS issue or invalid IDs
+        console.warn('[V2 API] No students found for provided IDs:', body.studentIds);
+        if (!body.grade) {
+          return NextResponse.json(
+            { error: 'Unable to access the selected students. Please select a grade level or ensure you have permission to view these students.' },
+            { status: 403 }
+          );
+        }
+        // Continue with grade-only generation
+        console.log('[V2 API] Continuing with grade-only generation since no student data found');
       }
     }
 
@@ -179,6 +199,15 @@ export async function POST(request: NextRequest) {
       studentInitials: body.studentInitials,
       students,  // Pass student data for IEP-aware generation
     };
+
+    console.log('[V2 API] Generation request:', {
+      topic: body.topic,
+      subjectType: body.subjectType,
+      grade: body.grade,
+      duration: body.duration,
+      studentCount: students?.length ?? 0,
+      hasStudentIds: !!body.studentIds?.length,
+    });
 
     // Generate worksheet
     const result = await generateV2Worksheet(generationRequest, apiKey);
