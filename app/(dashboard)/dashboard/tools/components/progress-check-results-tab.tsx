@@ -6,6 +6,7 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { loadStudentsForUser, getUserRole } from '@/lib/supabase/queries/sea-students';
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/contexts/toast-context';
+import { isReadingFluencyGoal, generateFluencyAssessmentItems } from '@/lib/shared/question-types';
 
 interface Student {
   id: string;
@@ -22,6 +23,7 @@ interface AssessmentItem {
 
 interface IEPGoalAssessment {
   goal: string;
+  passage?: string;
   assessmentItems: AssessmentItem[];
 }
 
@@ -244,8 +246,13 @@ export default function ProgressCheckResultsTab() {
       const check = checks.find(c => c.id === checkId);
       if (!check) return;
 
-      // Count total questions
-      const totalQuestions = check.content.iepGoals.reduce((sum, goal) => sum + goal.assessmentItems.length, 0);
+      // Count total questions (including dynamically generated fluency items)
+      const totalQuestions = check.content.iepGoals.reduce((sum, goal) => {
+        if (isReadingFluencyGoal(goal.goal) && goal.assessmentItems.length === 0) {
+          return sum + generateFluencyAssessmentItems(goal.goal).length;
+        }
+        return sum + goal.assessmentItems.length;
+      }, 0);
 
       const checkStates = questionStates[checkId] || {};
       const results = Object.values(checkStates);
@@ -461,7 +468,13 @@ export default function ProgressCheckResultsTab() {
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      {check.content.iepGoals.length} goal(s), {check.content.iepGoals.reduce((sum, g) => sum + g.assessmentItems.length, 0)} question(s)
+                      {check.content.iepGoals.length} goal(s), {check.content.iepGoals.reduce((sum, g) => {
+                        // For fluency goals, count dynamically generated items
+                        if (isReadingFluencyGoal(g.goal) && g.assessmentItems.length === 0) {
+                          return sum + generateFluencyAssessmentItems(g.goal).length;
+                        }
+                        return sum + g.assessmentItems.length;
+                      }, 0)} question(s)
                     </p>
                   </div>
                   {isExpanded ? (
@@ -474,97 +487,117 @@ export default function ProgressCheckResultsTab() {
                 {/* Check Content */}
                 {isExpanded && (
                   <div className="p-4 space-y-6">
-                    {check.content.iepGoals.map((goal, goalIndex) => (
-                      <div key={goalIndex} className="space-y-4">
-                        <div className="bg-blue-50 px-4 py-2 rounded-md">
-                          <h4 className="text-sm font-semibold text-blue-900">
-                            Goal {goalIndex + 1}: {goal.goal}
-                          </h4>
-                        </div>
+                    {check.content.iepGoals.map((goal, goalIndex) => {
+                      // For fluency goals, generate assessment items dynamically
+                      const isFluencyGoal = isReadingFluencyGoal(goal.goal) && goal.assessmentItems.length === 0;
+                      const itemsToRender = isFluencyGoal
+                        ? generateFluencyAssessmentItems(goal.goal).map(item => ({
+                            type: 'multiple_choice' as const,
+                            prompt: item.prompt,
+                            options: item.options,
+                          }))
+                        : goal.assessmentItems;
 
-                        {goal.assessmentItems.map((item, questionIndex) => {
-                          const key = `${goalIndex}-${questionIndex}`;
-                          const state = checkStates[key] || { notes: '' };
+                      return (
+                        <div key={goalIndex} className="space-y-4">
+                          <div className="bg-blue-50 px-4 py-2 rounded-md">
+                            <h4 className="text-sm font-semibold text-blue-900">
+                              Goal {goalIndex + 1}: {goal.goal}
+                            </h4>
+                          </div>
 
-                          return (
-                            <div key={questionIndex} className="ml-4 space-y-2 pb-4 border-b border-gray-200 last:border-b-0">
-                              <p className="text-sm text-gray-700 font-medium">
-                                Question {questionIndex + 1}: {item.prompt}
-                              </p>
-
-                              {item.passage && (
-                                <div className="bg-gray-50 p-2 rounded text-xs text-gray-600">
-                                  <strong>Passage:</strong> {item.passage}
-                                </div>
-                              )}
-
-                              {item.options && (
-                                <div className="text-xs text-gray-600 ml-2">
-                                  {item.options.map((opt, idx) => (
-                                    <div key={idx}>• {opt}</div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Status Selection */}
-                              <div className="flex gap-3 mt-2">
-                                <label className="inline-flex items-center">
-                                  <input
-                                    type="radio"
-                                    name={`${check.id}-${key}`}
-                                    value="correct"
-                                    checked={state.status === 'correct'}
-                                    onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'correct', notes: '' })}
-                                    className="form-radio text-green-600"
-                                  />
-                                  <span className="ml-2 text-sm text-gray-700">Correct</span>
-                                </label>
-
-                                <label className="inline-flex items-center">
-                                  <input
-                                    type="radio"
-                                    name={`${check.id}-${key}`}
-                                    value="incorrect"
-                                    checked={state.status === 'incorrect'}
-                                    onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'incorrect' })}
-                                    className="form-radio text-red-600"
-                                  />
-                                  <span className="ml-2 text-sm text-gray-700">Incorrect</span>
-                                </label>
-
-                                <label className="inline-flex items-center">
-                                  <input
-                                    type="radio"
-                                    name={`${check.id}-${key}`}
-                                    value="excluded"
-                                    checked={state.status === 'excluded'}
-                                    onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'excluded', notes: '' })}
-                                    className="form-radio text-gray-600"
-                                  />
-                                  <span className="ml-2 text-sm text-gray-700">Excluded</span>
-                                </label>
-                              </div>
-
-                              {/* Notes field (only for incorrect) */}
-                              {state.status === 'incorrect' && (
-                                <div className="mt-2">
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                                    Notes (required for incorrect answers)
-                                  </label>
-                                  <textarea
-                                    value={state.notes || ''}
-                                    onChange={(e) => updateQuestionState(check.id, goalIndex, questionIndex, { notes: e.target.value })}
-                                    placeholder="Explain what the student did/didn't do..."
-                                    rows={2}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                  />
-                                </div>
-                              )}
+                          {/* Show passage for fluency goals */}
+                          {isFluencyGoal && goal.passage && (
+                            <div className="ml-4 bg-gray-50 p-3 rounded border border-gray-200">
+                              <p className="text-xs font-medium text-gray-500 mb-2">Reading Passage:</p>
+                              <p className="text-sm text-gray-700 leading-relaxed">{goal.passage}</p>
                             </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                          )}
+
+                          {itemsToRender.map((item, questionIndex) => {
+                            const key = `${goalIndex}-${questionIndex}`;
+                            const state = checkStates[key] || { notes: '' };
+
+                            return (
+                              <div key={questionIndex} className="ml-4 space-y-2 pb-4 border-b border-gray-200 last:border-b-0">
+                                <p className="text-sm text-gray-700 font-medium">
+                                  Question {questionIndex + 1}: {item.prompt}
+                                </p>
+
+                                {item.passage && (
+                                  <div className="bg-gray-50 p-2 rounded text-xs text-gray-600">
+                                    <strong>Passage:</strong> {item.passage}
+                                  </div>
+                                )}
+
+                                {item.options && (
+                                  <div className="text-xs text-gray-600 ml-2">
+                                    {item.options.map((opt, idx) => (
+                                      <div key={idx}>• {opt}</div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Status Selection */}
+                                <div className="flex gap-3 mt-2">
+                                  <label className="inline-flex items-center">
+                                    <input
+                                      type="radio"
+                                      name={`${check.id}-${key}`}
+                                      value="correct"
+                                      checked={state.status === 'correct'}
+                                      onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'correct', notes: '' })}
+                                      className="form-radio text-green-600"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">Correct</span>
+                                  </label>
+
+                                  <label className="inline-flex items-center">
+                                    <input
+                                      type="radio"
+                                      name={`${check.id}-${key}`}
+                                      value="incorrect"
+                                      checked={state.status === 'incorrect'}
+                                      onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'incorrect' })}
+                                      className="form-radio text-red-600"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">Incorrect</span>
+                                  </label>
+
+                                  <label className="inline-flex items-center">
+                                    <input
+                                      type="radio"
+                                      name={`${check.id}-${key}`}
+                                      value="excluded"
+                                      checked={state.status === 'excluded'}
+                                      onChange={() => updateQuestionState(check.id, goalIndex, questionIndex, { status: 'excluded', notes: '' })}
+                                      className="form-radio text-gray-600"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">Excluded</span>
+                                  </label>
+                                </div>
+
+                                {/* Notes field (only for incorrect) */}
+                                {state.status === 'incorrect' && (
+                                  <div className="mt-2">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                      Notes (required for incorrect answers)
+                                    </label>
+                                    <textarea
+                                      value={state.notes || ''}
+                                      onChange={(e) => updateQuestionState(check.id, goalIndex, questionIndex, { notes: e.target.value })}
+                                      placeholder="Explain what the student did/didn't do..."
+                                      rows={2}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
 
                     {/* Save Button */}
                     <div className="flex justify-end pt-4 border-t">
