@@ -172,9 +172,22 @@ export function GroupDetailsModal({
     }
   }, [groupId, showToast]);
 
+  // Get first persisted session ID for curriculum tracking
+  const getPersistedSessionId = useCallback(() => {
+    const persistedSession = sessions.find(s => !s.id.startsWith('temp-'));
+    return persistedSession?.id;
+  }, [sessions]);
+
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch(`/api/curriculum-tracking?groupId=${groupId}`, { signal });
+      // Find first persisted session to use for curriculum lookup
+      const sessionId = getPersistedSessionId();
+      if (!sessionId) {
+        // No persisted sessions yet, no curriculum to fetch
+        return;
+      }
+
+      const response = await fetch(`/api/curriculum-tracking?sessionId=${sessionId}`, { signal });
       if (!response.ok) {
         if (response.status === 404) {
           // No curriculum tracking exists yet, which is fine
@@ -198,7 +211,7 @@ export function GroupDetailsModal({
       // Silently fail for curriculum tracking - it's optional
       console.error('Error fetching curriculum tracking:', error);
     }
-  }, [groupId]);
+  }, [getPersistedSessionId]);
 
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
@@ -222,11 +235,18 @@ export function GroupDetailsModal({
       // Ensure all sessions in the group are persisted before saving curriculum
       await ensureGroupSessionsPersisted();
 
+      // Get first persisted session ID
+      const sessionId = getPersistedSessionId();
+      if (!sessionId) {
+        console.error('No persisted session found for curriculum tracking');
+        return;
+      }
+
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          groupId,
+          sessionId,
           curriculumType,
           curriculumLevel,
           currentLesson
@@ -618,8 +638,8 @@ export function GroupDetailsModal({
                   setCurrentLesson={setCurrentLesson}
                   curriculumType={curriculumType}
                   curriculumLevel={curriculumLevel}
-                  getIdentifier={() => groupId}
-                  identifierKey="groupId"
+                  getIdentifier={getPersistedSessionId}
+                  identifierKey="sessionId"
                   onError={(message) => showToast(message, 'error')}
                   size="small"
                 />

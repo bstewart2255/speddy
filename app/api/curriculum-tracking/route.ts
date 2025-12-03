@@ -4,7 +4,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 
-// GET - Fetch curriculum tracking by group_id or session_id
+// GET - Fetch curriculum tracking by session_id
 export async function GET(request: NextRequest) {
   const perf = measurePerformanceWithAlerts('get_curriculum_tracking', 'api');
   let userId: string | undefined;
@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
-    const groupId = searchParams.get('groupId');
     const sessionId = searchParams.get('sessionId');
 
     // Check authentication
@@ -23,38 +22,29 @@ export async function GET(request: NextRequest) {
     }
     userId = user.id;
 
-    // Validate that either groupId or sessionId is provided
-    if (!groupId && !sessionId) {
+    // Validate that sessionId is provided
+    if (!sessionId) {
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'Either groupId or sessionId is required' },
+        { error: 'sessionId is required' },
         { status: 400 }
       );
     }
 
     log.info('Fetching curriculum tracking', {
       userId,
-      groupId,
       sessionId
     });
 
-    // Build query based on groupId or sessionId
-    let query = supabase
+    const { data, error } = await supabase
       .from('curriculum_tracking')
-      .select('*');
-
-    if (groupId) {
-      query = query.eq('group_id', groupId);
-    } else if (sessionId) {
-      query = query.eq('session_id', sessionId);
-    }
-
-    const { data, error } = await query.maybeSingle();
+      .select('*')
+      .eq('session_id', sessionId)
+      .maybeSingle();
 
     if (error) {
       log.error('Error fetching curriculum tracking', error, {
         userId,
-        groupId,
         sessionId
       });
       perf.end({ success: false });
@@ -66,7 +56,6 @@ export async function GET(request: NextRequest) {
 
     log.info('Curriculum tracking fetched successfully', {
       userId,
-      groupId,
       sessionId,
       hasData: !!data
     });
@@ -101,7 +90,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      groupId,
       sessionId,
       curriculumType,
       curriculumLevel,
@@ -117,87 +105,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate that either groupId or sessionId is provided
-    if (!groupId && !sessionId) {
+    // Validate that sessionId is provided
+    if (!sessionId) {
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'Either groupId or sessionId is required' },
-        { status: 400 }
-      );
-    }
-
-    // Validate that only one is provided
-    if (groupId && sessionId) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Cannot provide both groupId and sessionId' },
+        { error: 'sessionId is required' },
         { status: 400 }
       );
     }
 
     log.info('Creating/updating curriculum tracking', {
       userId,
-      groupId,
       sessionId,
       curriculumType,
       curriculumLevel,
       currentLesson
     });
 
-    // Verify user has access to the group or session
-    if (groupId) {
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
+    // Verify user has access to the session
+    const { data: session, error: accessError } = await supabase
+      .from('schedule_sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
+      .limit(1)
+      .maybeSingle();
 
-      if (accessError || !groupSessions || groupSessions.length === 0) {
-        log.warn('User does not have access to group', {
-          userId,
-          groupId
-        });
-        perf.end({ success: false });
-        return NextResponse.json(
-          { error: 'Access denied' },
-          { status: 403 }
-        );
-      }
-    } else if (sessionId) {
-      const { data: session, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('id', sessionId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1)
-        .maybeSingle();
-
-      if (accessError || !session) {
-        log.warn('User does not have access to session', {
-          userId,
-          sessionId
-        });
-        perf.end({ success: false });
-        return NextResponse.json(
-          { error: 'Access denied' },
-          { status: 403 }
-        );
-      }
+    if (accessError || !session) {
+      log.warn('User does not have access to session', {
+        userId,
+        sessionId
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Access denied' },
+        { status: 403 }
+      );
     }
 
-    // Check if curriculum tracking already exists
-    let query = supabase
+    // Check if curriculum tracking already exists for this session
+    const { data: existing } = await supabase
       .from('curriculum_tracking')
-      .select('*');
-
-    if (groupId) {
-      query = query.eq('group_id', groupId).eq('curriculum_type', curriculumType);
-    } else if (sessionId) {
-      query = query.eq('session_id', sessionId).eq('curriculum_type', curriculumType);
-    }
-
-    const { data: existing } = await query.maybeSingle();
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('curriculum_type', curriculumType)
+      .maybeSingle();
 
     let data;
     let error;
@@ -224,8 +176,7 @@ export async function POST(request: NextRequest) {
       const result = await supabase
         .from('curriculum_tracking')
         .insert({
-          group_id: groupId || null,
-          session_id: sessionId || null,
+          session_id: sessionId,
           curriculum_type: curriculumType,
           curriculum_level: curriculumLevel,
           current_lesson: currentLesson
@@ -240,7 +191,6 @@ export async function POST(request: NextRequest) {
     if (error) {
       log.error('Error saving curriculum tracking', error, {
         userId,
-        groupId,
         sessionId
       });
       perf.end({ success: false });
@@ -252,7 +202,6 @@ export async function POST(request: NextRequest) {
 
     log.info('Curriculum tracking saved successfully', {
       userId,
-      groupId,
       sessionId,
       trackingId: data.id,
       isUpdate: !!existing
@@ -260,7 +209,6 @@ export async function POST(request: NextRequest) {
 
     track.event(existing ? 'curriculum_tracking_updated' : 'curriculum_tracking_created', {
       userId,
-      groupId,
       sessionId,
       curriculumType,
       curriculumLevel,
@@ -279,123 +227,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update lesson number (for "Next Lesson" functionality)
-export async function PUT(request: NextRequest) {
-  const perf = measurePerformanceWithAlerts('advance_curriculum_lesson', 'api');
-  let userId: string | undefined;
-
-  try {
-    const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    const body = await request.json();
-    const { groupId, sessionId, action } = body;
-
-    // Validate action
-    if (action !== 'next') {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Only "next" action is currently supported' },
-        { status: 400 }
-      );
-    }
-
-    // Validate that either groupId or sessionId is provided
-    if (!groupId && !sessionId) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Either groupId or sessionId is required' },
-        { status: 400 }
-      );
-    }
-
-    log.info('Advancing curriculum lesson', {
-      userId,
-      groupId,
-      sessionId
-    });
-
-    // Fetch current curriculum tracking
-    let query = supabase
-      .from('curriculum_tracking')
-      .select('*');
-
-    if (groupId) {
-      query = query.eq('group_id', groupId);
-    } else if (sessionId) {
-      query = query.eq('session_id', sessionId);
-    }
-
-    const { data: current, error: fetchError } = await query.maybeSingle();
-
-    if (fetchError || !current) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Curriculum tracking not found' },
-        { status: 404 }
-      );
-    }
-
-    // Increment lesson number
-    const updatePerf = measurePerformanceWithAlerts('increment_lesson_number_db', 'database');
-    const { data, error } = await supabase
-      .from('curriculum_tracking')
-      .update({
-        current_lesson: current.current_lesson + 1,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', current.id)
-      .select('*')
-      .single();
-    updatePerf.end({ success: !error });
-
-    if (error) {
-      log.error('Error advancing curriculum lesson', error, {
-        userId,
-        groupId,
-        sessionId
-      });
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Failed to advance lesson' },
-        { status: 500 }
-      );
-    }
-
-    log.info('Curriculum lesson advanced successfully', {
-      userId,
-      groupId,
-      sessionId,
-      newLesson: data.current_lesson
-    });
-
-    track.event('curriculum_lesson_advanced', {
-      userId,
-      groupId,
-      sessionId,
-      previousLesson: current.current_lesson,
-      newLesson: data.current_lesson
-    });
-
-    perf.end({ success: true, newLesson: data.current_lesson });
-    return NextResponse.json({ data });
-  } catch (error) {
-    log.error('Error in advance-curriculum-lesson route', error, { userId });
-    perf.end({ success: false });
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
 // DELETE - Delete curriculum tracking
 export async function DELETE(request: NextRequest) {
   const perf = measurePerformanceWithAlerts('delete_curriculum_tracking', 'api');
@@ -404,7 +235,6 @@ export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
-    const groupId = searchParams.get('groupId');
     const sessionId = searchParams.get('sessionId');
 
     // Check authentication
@@ -415,40 +245,30 @@ export async function DELETE(request: NextRequest) {
     }
     userId = user.id;
 
-    // Validate that either groupId or sessionId is provided
-    if (!groupId && !sessionId) {
+    // Validate that sessionId is provided
+    if (!sessionId) {
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'Either groupId or sessionId is required' },
+        { error: 'sessionId is required' },
         { status: 400 }
       );
     }
 
     log.info('Deleting curriculum tracking', {
       userId,
-      groupId,
       sessionId
     });
 
-    // Build delete query
-    let query = supabase
-      .from('curriculum_tracking')
-      .delete();
-
-    if (groupId) {
-      query = query.eq('group_id', groupId);
-    } else if (sessionId) {
-      query = query.eq('session_id', sessionId);
-    }
-
     const deletePerf = measurePerformanceWithAlerts('delete_curriculum_tracking_db', 'database');
-    const { error } = await query;
+    const { error } = await supabase
+      .from('curriculum_tracking')
+      .delete()
+      .eq('session_id', sessionId);
     deletePerf.end({ success: !error });
 
     if (error) {
       log.error('Error deleting curriculum tracking', error, {
         userId,
-        groupId,
         sessionId
       });
       perf.end({ success: false });
@@ -460,13 +280,11 @@ export async function DELETE(request: NextRequest) {
 
     log.info('Curriculum tracking deleted successfully', {
       userId,
-      groupId,
       sessionId
     });
 
     track.event('curriculum_tracking_deleted', {
       userId,
-      groupId,
       sessionId
     });
 
