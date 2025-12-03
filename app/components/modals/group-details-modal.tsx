@@ -45,6 +45,13 @@ interface Document {
   updated_at: string;
 }
 
+// Simplified curriculum data passed from parent (matches SessionWithCurriculum)
+interface CurriculumData {
+  curriculum_type: string;
+  curriculum_level: string;
+  current_lesson: number;
+}
+
 interface GroupDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -52,6 +59,8 @@ interface GroupDetailsModalProps {
   groupName: string;
   sessions: ScheduleSession[];
   students: Map<string, { initials: string; grade_level?: string }>;
+  /** Optional curriculum data from parent to avoid redundant API call */
+  initialCurriculum?: CurriculumData | null;
 }
 
 // Curriculum options
@@ -69,7 +78,8 @@ export function GroupDetailsModal({
   groupId,
   groupName,
   sessions,
-  students
+  students,
+  initialCurriculum
 }: GroupDetailsModalProps) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,11 +115,12 @@ export function GroupDetailsModal({
   const [loadingLesson, setLoadingLesson] = useState(true);
   const [notes, setNotes] = useState('');
 
-  // Curriculum tracking state
+  // Curriculum tracking state - initialize from prop if provided
   const [curriculumTracking, setCurriculumTracking] = useState<CurriculumTracking | null>(null);
-  const [curriculumType, setCurriculumType] = useState('');
-  const [curriculumLevel, setCurriculumLevel] = useState('');
-  const [currentLesson, setCurrentLesson] = useState<number>(1);
+  const [curriculumType, setCurriculumType] = useState(initialCurriculum?.curriculum_type || '');
+  const [curriculumLevel, setCurriculumLevel] = useState(initialCurriculum?.curriculum_level || '');
+  const [currentLesson, setCurrentLesson] = useState<number>(initialCurriculum?.current_lesson || 1);
+  const [curriculumInitialized, setCurriculumInitialized] = useState(!!initialCurriculum);
 
   // Documents state
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -192,6 +203,11 @@ export function GroupDetailsModal({
   }, [sessions]);
 
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
+    // Skip if curriculum was already initialized from props
+    if (curriculumInitialized) {
+      return;
+    }
+
     try {
       // Find first persisted session to use for curriculum lookup
       const sessionId = getPersistedSessionId();
@@ -215,6 +231,7 @@ export function GroupDetailsModal({
         setCurriculumType(data.curriculum_type);
         setCurriculumLevel(data.curriculum_level);
         setCurrentLesson(data.current_lesson);
+        setCurriculumInitialized(true);
       }
     } catch (error) {
       // Ignore abort errors - expected during cleanup
@@ -224,7 +241,7 @@ export function GroupDetailsModal({
       // Silently fail for curriculum tracking - it's optional
       console.error('Error fetching curriculum tracking:', error);
     }
-  }, [getPersistedSessionId]);
+  }, [getPersistedSessionId, curriculumInitialized]);
 
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {

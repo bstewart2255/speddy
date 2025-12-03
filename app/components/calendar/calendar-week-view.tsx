@@ -2273,6 +2273,10 @@ export function CalendarWeekView({
           groupName={selectedGroupName}
           sessions={selectedGroupSessions}
           students={allStudents}
+          initialCurriculum={(() => {
+            const sessionWithCurriculum = selectedGroupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+            return sessionWithCurriculum ? getFirstCurriculum(sessionWithCurriculum.curriculum_tracking) : null;
+          })()}
         />
       )}
 
@@ -2286,6 +2290,7 @@ export function CalendarWeekView({
           }}
           session={selectedSession}
           student={selectedSession.student_id ? allStudents.get(selectedSession.student_id) : undefined}
+          initialCurriculum={getFirstCurriculum(selectedSession.curriculum_tracking)}
         />
       )}
     </div>
