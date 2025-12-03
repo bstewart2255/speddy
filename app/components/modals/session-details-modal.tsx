@@ -11,6 +11,7 @@ import {
 } from '@/lib/document-utils';
 import { formatTime } from '@/lib/utils/time-options';
 import { ensureSessionPersisted } from '@/lib/services/session-persistence';
+import { LessonControl } from '@/app/components/lesson-control';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -577,59 +578,16 @@ export function SessionDetailsModal({
                     </h5>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-600 mr-1">Lesson</span>
-                  <button
-                    onClick={async () => {
-                      if (currentLesson > 1) {
-                        const newLesson = currentLesson - 1;
-                        setCurrentLesson(newLesson);
-                        const sessionId = await ensurePersistedSession();
-                        await fetch('/api/curriculum-tracking', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            sessionId,
-                            curriculumType,
-                            curriculumLevel,
-                            currentLesson: newLesson
-                          })
-                        });
-                      }
-                    }}
-                    className="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 text-sm font-medium"
-                  >
-                    ←
-                  </button>
-                  <input
-                    type="number"
-                    min="1"
-                    value={currentLesson}
-                    onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
-                    onBlur={saveCurriculumTracking}
-                    className="w-12 h-6 text-center text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={async () => {
-                      const newLesson = currentLesson + 1;
-                      setCurrentLesson(newLesson);
-                      const sessionId = await ensurePersistedSession();
-                      await fetch('/api/curriculum-tracking', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          sessionId,
-                          curriculumType,
-                          curriculumLevel,
-                          currentLesson: newLesson
-                        })
-                      });
-                    }}
-                    className="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded text-gray-700 text-sm font-medium"
-                  >
-                    →
-                  </button>
-                </div>
+                <LessonControl
+                  currentLesson={currentLesson}
+                  setCurrentLesson={setCurrentLesson}
+                  curriculumType={curriculumType}
+                  curriculumLevel={curriculumLevel}
+                  getIdentifier={ensurePersistedSession}
+                  identifierKey="sessionId"
+                  onError={(message) => showToast(message, 'error')}
+                  size="small"
+                />
               </div>
             </div>
           )}
