@@ -1,6 +1,11 @@
 -- Update import_student_atomic function to support schedule and teacher assignment
 -- Adds optional parameters for sessions_per_week, minutes_per_session, and teacher_id
 
+-- Drop the existing function with the old signature first
+DROP FUNCTION IF EXISTS public.import_student_atomic(
+  uuid, text, text, text, text, text, text, text, text, text[]
+);
+
 CREATE OR REPLACE FUNCTION public.import_student_atomic(
   p_provider_id uuid,
   p_initials text,
@@ -80,6 +85,8 @@ EXCEPTION
 END;
 $$;
 
--- Update comment
-COMMENT ON FUNCTION public.import_student_atomic IS
+-- Update comment (must specify full signature)
+COMMENT ON FUNCTION public.import_student_atomic(
+  uuid, text, text, text, text, text, text, text, text, text[], integer, integer, uuid
+) IS
   'Atomically creates a student and student_details record in a single transaction. Supports optional schedule (sessions_per_week, minutes_per_session) and teacher assignment. Used by bulk import to prevent orphaned records.';
