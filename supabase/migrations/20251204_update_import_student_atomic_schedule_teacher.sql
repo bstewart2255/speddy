@@ -90,3 +90,8 @@ COMMENT ON FUNCTION public.import_student_atomic(
   uuid, text, text, text, text, text, text, text, text, text[], integer, integer, uuid
 ) IS
   'Atomically creates a student and student_details record in a single transaction. Supports optional schedule (sessions_per_week, minutes_per_session) and teacher assignment. Used by bulk import to prevent orphaned records.';
+
+-- Restore execute grant for authenticated users (dropping function clears prior grants)
+GRANT EXECUTE ON FUNCTION public.import_student_atomic(
+  uuid, text, text, text, text, text, text, text, text, text[], integer, integer, uuid
+) TO authenticated;

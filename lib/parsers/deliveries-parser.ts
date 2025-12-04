@@ -55,7 +55,7 @@ export function parseFrequency(frequency: string): { weeklyMinutes: number; rawM
     if (period === 'daily') {
       weeklyMinutes = minutes * 5; // 5 school days
     } else if (period === 'yearly') {
-      weeklyMinutes = Math.ceil(minutes / 52); // Approximate weeks in school year
+      weeklyMinutes = Math.ceil(minutes / 36); // ~36 instructional weeks in school year
     }
 
     return { weeklyMinutes, rawMinutes: minutes, period };
@@ -71,7 +71,7 @@ export function parseFrequency(frequency: string): { weeklyMinutes: number; rawM
     if (period === 'daily') {
       weeklyMinutes = totalMinutes * 5; // 5 school days
     } else if (period === 'yearly') {
-      weeklyMinutes = Math.ceil(totalMinutes / 52);
+      weeklyMinutes = Math.ceil(totalMinutes / 36); // ~36 instructional weeks in school year
     }
 
     return { weeklyMinutes, rawMinutes: totalMinutes, period };

@@ -148,7 +148,7 @@ export function SeisUploadWizardModal({
         {/* Backdrop */}
         <div
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-          onClick={handleClose}
+          onClick={uploading ? undefined : handleClose}
         />
 
         {/* Modal */}
