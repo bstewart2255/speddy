@@ -154,7 +154,7 @@ export function SeisUploadWizardModal({
         {/* Modal */}
         <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b">
+          <div className="flex items-start justify-between gap-4 p-6 border-b">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
                 SEIS Multi-File Upload
@@ -165,7 +165,7 @@ export function SeisUploadWizardModal({
             </div>
             <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-500 text-2xl font-light leading-none pb-1"
+              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-2xl font-light"
             >
               &times;
             </button>

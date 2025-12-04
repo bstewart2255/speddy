@@ -315,13 +315,21 @@ export default function StudentsPage() {
             <div className="flex items-center gap-3">
               <Button
                 variant="secondary"
-                onClick={() => setShowImportSection(!showImportSection)}
+                onClick={() => {
+                  setShowImportSection(!showImportSection);
+                  setShowBulkImportSection(false);
+                  setShowAddForm(false);
+                }}
               >
                 Import CSV
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => setShowBulkImportSection(!showBulkImportSection)}
+                onClick={() => {
+                  setShowBulkImportSection(!showBulkImportSection);
+                  setShowImportSection(false);
+                  setShowAddForm(false);
+                }}
               >
                 SEIS Upload
               </Button>
@@ -333,7 +341,11 @@ export default function StudentsPage() {
               </div>
               <Button
                 variant="primary"
-                onClick={() => setShowAddForm(true)}
+                onClick={() => {
+                  setShowAddForm(true);
+                  setShowImportSection(false);
+                  setShowBulkImportSection(false);
+                }}
               >
                 + Add Student
               </Button>
@@ -363,7 +375,7 @@ export default function StudentsPage() {
           <div className="mb-6">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <CardTitle>SEIS Upload</CardTitle>
                   <Button
                     variant="secondary"
