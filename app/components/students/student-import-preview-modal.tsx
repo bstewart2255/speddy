@@ -3,6 +3,20 @@
 import { useState } from 'react';
 import { Button } from '../ui/button';
 
+interface ScheduleData {
+  sessionsPerWeek: number;
+  minutesPerSession: number;
+  weeklyMinutes: number;
+  frequency: string;
+}
+
+interface TeacherMatch {
+  teacherId: string | null;
+  teacherName: string | null;
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  reason: string;
+}
+
 interface StudentPreview {
   firstName: string;
   lastName: string;
@@ -18,6 +32,14 @@ interface StudentPreview {
   matchedStudentInitials?: string;
   matchConfidence?: 'high' | 'medium' | 'low';
   matchReason?: string;
+  // New fields from multi-file upload
+  schedule?: ScheduleData;
+  teacher?: TeacherMatch;
+}
+
+interface UnmatchedStudent {
+  name: string;
+  source: 'deliveries' | 'classList';
 }
 
 interface ImportData {
@@ -26,9 +48,12 @@ interface ImportData {
     total: number;
     new: number;
     duplicates: number;
+    withSchedule?: number;
+    withTeacher?: number;
   };
+  unmatchedStudents?: UnmatchedStudent[];
   parseErrors?: Array<{ row: number; message: string }>;
-  parseWarnings?: Array<{ row: number; message: string }>;
+  parseWarnings?: Array<{ row: number; message: string; source?: string }>;
   scrubErrors?: string[];
 }
 
@@ -165,7 +190,12 @@ export function StudentImportPreviewModal({
           schoolId: currentSchool?.school_id,
           schoolSite: currentSchool?.school_site,
           districtId: currentSchool?.district_id,
-          stateId: currentSchool?.state_id
+          stateId: currentSchool?.state_id,
+          // Include schedule data from Deliveries file
+          sessionsPerWeek: student.schedule?.sessionsPerWeek,
+          minutesPerSession: student.schedule?.minutesPerSession,
+          // Include teacher assignment from Class List file
+          teacherId: student.teacher?.teacherId || undefined
         };
       });
 
@@ -269,6 +299,12 @@ export function StudentImportPreviewModal({
                 <div>
                   <p className="text-blue-700">Selected for import: {selectedCount}</p>
                   <p className="text-green-700">Total IEP goals: {totalGoals}</p>
+                  {data.summary.withSchedule !== undefined && data.summary.withSchedule > 0 && (
+                    <p className="text-blue-700">📅 With schedule: {data.summary.withSchedule}</p>
+                  )}
+                  {data.summary.withTeacher !== undefined && data.summary.withTeacher > 0 && (
+                    <p className="text-blue-700">👩‍🏫 With teacher: {data.summary.withTeacher}</p>
+                  )}
                   {currentSchool && (
                     <p className="text-blue-700 mt-1">
                       📍 School: {currentSchool.display_name || currentSchool.school_site || 'Current School'}
@@ -277,6 +313,28 @@ export function StudentImportPreviewModal({
                 </div>
               </div>
             </div>
+
+            {/* Unmatched Students Warning */}
+            {data.unmatchedStudents && data.unmatchedStudents.length > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <h3 className="font-medium text-yellow-900 mb-2">Unmatched Students</h3>
+                <p className="text-sm text-yellow-700 mb-2">
+                  The following students were found in the Deliveries or Class List files but not in the Student Goals file:
+                </p>
+                <div className="max-h-32 overflow-y-auto">
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    {data.unmatchedStudents.map((s, idx) => (
+                      <li key={idx} className="flex items-center gap-2">
+                        <span className="text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded">
+                          {s.source === 'deliveries' ? 'Deliveries' : 'Class List'}
+                        </span>
+                        {s.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
 
             {/* Errors/Warnings */}
             {error && (
@@ -333,7 +391,7 @@ export function StudentImportPreviewModal({
                             className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300"
                           />
 
-                          <div className="flex-1 grid grid-cols-4 gap-4">
+                          <div className="flex-1 grid grid-cols-6 gap-3">
                             {/* Name */}
                             <div>
                               <p className="text-xs text-gray-500">Name</p>
@@ -349,7 +407,7 @@ export function StudentImportPreviewModal({
                                 type="text"
                                 value={currentInitials}
                                 onChange={(e) => handleInitialsChange(idx, e.target.value)}
-                                className="text-sm font-medium border border-gray-300 rounded px-2 py-1 w-20"
+                                className="text-sm font-medium border border-gray-300 rounded px-2 py-1 w-16"
                                 maxLength={4}
                                 placeholder="XX"
                               />
@@ -361,6 +419,35 @@ export function StudentImportPreviewModal({
                               <p className="text-sm font-medium text-gray-900">{student.gradeLevel}</p>
                             </div>
 
+                            {/* Schedule */}
+                            <div>
+                              <p className="text-xs text-gray-500">Schedule</p>
+                              {student.schedule ? (
+                                <p className="text-sm font-medium text-gray-900">
+                                  {student.schedule.sessionsPerWeek}x/{student.schedule.minutesPerSession}min
+                                </p>
+                              ) : (
+                                <p className="text-sm text-gray-400 italic">Not set</p>
+                              )}
+                            </div>
+
+                            {/* Teacher */}
+                            <div>
+                              <p className="text-xs text-gray-500">Teacher</p>
+                              {student.teacher ? (
+                                <div className="flex items-center gap-1">
+                                  <p className="text-sm font-medium text-gray-900 truncate" title={student.teacher.teacherName || undefined}>
+                                    {student.teacher.teacherName || 'Unknown'}
+                                  </p>
+                                  {student.teacher.confidence === 'none' && (
+                                    <span className="text-yellow-600" title={student.teacher.reason}>⚠</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-400 italic">Not set</p>
+                              )}
+                            </div>
+
                             {/* Goals Count */}
                             <div>
                               <p className="text-xs text-gray-500">IEP Goals</p>
@@ -369,7 +456,7 @@ export function StudentImportPreviewModal({
                                 className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
                               >
                                 <span>
-                                  {(selectedGoals[idx] || new Set()).size} of {student.goals.length} selected
+                                  {(selectedGoals[idx] || new Set()).size}/{student.goals.length}
                                 </span>
                                 {(selectedGoals[idx] || new Set()).size > 0 &&
                                   (selectedGoals[idx] || new Set()).size < student.goals.length && (
