@@ -177,9 +177,12 @@ export default function SpecialActivitiesPage() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">
-                <Button 
-                  variant="secondary" 
-                  onClick={() => setShowImportSection(!showImportSection)}
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowImportSection(!showImportSection);
+                    setShowAddForm(false);
+                  }}
                 >
                   Import CSV
                 </Button>
@@ -192,9 +195,12 @@ export default function SpecialActivitiesPage() {
                   }}
                 />
                 */}
-                <Button 
-                  variant="primary" 
-                  onClick={() => setShowAddForm(!showAddForm)}
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setShowAddForm(!showAddForm);
+                    setShowImportSection(false);
+                  }}
                 >
                   + Add Activity
                 </Button>

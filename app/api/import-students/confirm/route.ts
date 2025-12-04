@@ -22,6 +22,10 @@ interface StudentToImport {
   schoolId?: string;
   districtId?: string;
   stateId?: string;
+  // New fields from multi-file upload
+  sessionsPerWeek?: number;
+  minutesPerSession?: number;
+  teacherId?: string;
 }
 
 interface ImportResult {
@@ -164,7 +168,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             p_state_id: stateId,
             p_first_name: student.firstName,
             p_last_name: student.lastName,
-            p_iep_goals: student.goals
+            p_iep_goals: student.goals,
+            p_sessions_per_week: student.sessionsPerWeek || null,
+            p_minutes_per_session: student.minutesPerSession || null,
+            p_teacher_id: student.teacherId || null
           })
           .single();
 
