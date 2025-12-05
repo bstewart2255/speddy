@@ -55,18 +55,50 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       studentCount: students.length
     });
 
-    // Get user's profile to determine school context
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('school_id, district_id, state_id, school_site')
-      .eq('id', userId)
-      .single();
+    // OPTIMIZATION: Batch fetch all required data upfront (3 queries instead of 3N)
+    const [
+      { data: userProfile },
+      { data: existingStudents },
+      { data: accessibleSchools, error: schoolsError }
+    ] = await Promise.all([
+      // 1. Get user's profile
+      supabase
+        .from('profiles')
+        .select('school_id, district_id, state_id, school_site')
+        .eq('id', userId)
+        .single(),
+      // 2. Batch fetch ALL existing students for this provider (for duplicate checking)
+      supabase
+        .from('students')
+        .select('id, initials, grade_level')
+        .eq('provider_id', userId),
+      // 3. Fetch accessible schools once
+      supabase.rpc('user_accessible_school_ids')
+    ]);
+
+    // Build lookup map for O(1) duplicate detection: key = "INITIALS-GRADE"
+    const existingStudentMap = new Map<string, boolean>();
+    for (const student of existingStudents || []) {
+      const key = `${student.initials}-${student.grade_level}`;
+      existingStudentMap.set(key, true);
+    }
+
+    // Build Set for O(1) school access checks
+    const accessibleSchoolSet = new Set<string>();
+    if (!schoolsError && accessibleSchools) {
+      for (const school of accessibleSchools) {
+        accessibleSchoolSet.add(school.school_id);
+      }
+    }
 
     const results: ImportResult[] = [];
     let successCount = 0;
     let errorCount = 0;
 
-    // Import each student
+    // Track newly added students to detect duplicates within the same import batch
+    const addedInThisBatch = new Set<string>();
+
+    // Import each student (validation is now O(1) per student)
     for (const student of students) {
       try {
         // Normalize and validate initials
@@ -83,20 +115,24 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           continue;
         }
 
-        // Check for duplicate initials in the same grade
-        const { data: existingStudent } = await supabase
-          .from('students')
-          .select('id, initials')
-          .eq('provider_id', userId)
-          .eq('initials', initialsNormalized)
-          .eq('grade_level', student.gradeLevel)
-          .maybeSingle();
-
-        if (existingStudent) {
+        // Check for duplicate using Map - O(1) instead of database query
+        const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
+        if (existingStudentMap.has(duplicateKey)) {
           results.push({
             success: false,
             initials: initialsNormalized,
             error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+          });
+          errorCount++;
+          continue;
+        }
+
+        // Check for duplicate within the same import batch
+        if (addedInThisBatch.has(duplicateKey)) {
+          results.push({
+            success: false,
+            initials: initialsNormalized,
+            error: `Duplicate in import: "${initialsNormalized}" in grade ${student.gradeLevel} appears multiple times`
           });
           errorCount++;
           continue;
@@ -107,11 +143,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         // IMPORTANT: Must validate user has access to the school for security
         const requestedSchoolId = student.schoolId || userProfile?.school_id || null;
 
-        // Validate user has access to the requested school
+        // Validate user has access to the requested school using Set - O(1)
         if (requestedSchoolId) {
-          const { data: accessibleSchools, error: schoolsError } = await supabase
-            .rpc('user_accessible_school_ids');
-
           if (schoolsError) {
             log.error('Failed to fetch accessible schools', schoolsError, {
               userId,
@@ -126,8 +159,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             continue;
           }
 
-          const hasAccess = accessibleSchools?.some(s => s.school_id === requestedSchoolId);
-          if (!hasAccess) {
+          if (!accessibleSchoolSet.has(requestedSchoolId)) {
             log.error('User does not have access to requested school', null, {
               userId,
               requestedSchoolId,
@@ -246,6 +278,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           initials: initialsNormalized
         });
         successCount++;
+
+        // Track successful import for batch duplicate detection
+        addedInThisBatch.add(duplicateKey);
       } catch (error: any) {
         const errorInitials = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '') ||
                              `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
