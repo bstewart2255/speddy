@@ -72,7 +72,12 @@ export default function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      method="POST"
+      action="/api/auth/login"
+      className="space-y-6"
+    >
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
           {error}
@@ -85,6 +90,7 @@ export default function LoginForm() {
         </label>
         <input
           id="email"
+          name="email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
