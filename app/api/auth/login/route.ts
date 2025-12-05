@@ -11,7 +11,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const perf = measurePerformance('login_attempt');
 
   let email, password;
-  const contentType = request.headers.get('content-type') || '';
+  const contentType = (request.headers.get('content-type') || '').toLowerCase();
   const isFormSubmission = contentType.includes('application/x-www-form-urlencoded');
 
   try {
@@ -25,16 +25,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       email = formData.get('email') as string;
       password = formData.get('password') as string;
     } else {
-      // Fallback: try JSON first, then form data
-      try {
-        const body = await request.json();
-        email = body.email;
-        password = body.password;
-      } catch {
-        const formData = await request.formData();
-        email = formData.get('email') as string;
-        password = formData.get('password') as string;
-      }
+      // Unsupported content type
+      log.warn('Unsupported content type in login', { contentType });
+      return NextResponse.json(
+        { error: 'Unsupported content type' },
+        { status: 415 }
+      );
     }
   } catch (error) {
     log.warn('Invalid request body in login', { error: (error as Error).message });
@@ -208,7 +204,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const redirectUrl = needsPayment
         ? '/signup?step=payment&subscription_required=true'
         : '/dashboard';
-      return NextResponse.redirect(new URL(redirectUrl, request.url));
+      return NextResponse.redirect(new URL(redirectUrl, request.url), 303);
     }
 
     return NextResponse.json({
@@ -232,7 +228,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     // For native form submissions, redirect to dashboard
     if (isFormSubmission) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      return NextResponse.redirect(new URL('/dashboard', request.url), 303);
     }
 
     // Return success but indicate potential issues
