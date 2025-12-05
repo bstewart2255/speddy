@@ -11,12 +11,33 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const perf = measurePerformance('login_attempt');
 
   let email, password;
+  const contentType = request.headers.get('content-type') || '';
+  const isFormSubmission = contentType.includes('application/x-www-form-urlencoded');
+
   try {
-    const body = await request.json();
-    email = body.email;
-    password = body.password;
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      email = body.email;
+      password = body.password;
+    } else if (isFormSubmission) {
+      // Handle native form submission (progressive enhancement fallback)
+      const formData = await request.formData();
+      email = formData.get('email') as string;
+      password = formData.get('password') as string;
+    } else {
+      // Fallback: try JSON first, then form data
+      try {
+        const body = await request.json();
+        email = body.email;
+        password = body.password;
+      } catch {
+        const formData = await request.formData();
+        email = formData.get('email') as string;
+        password = formData.get('password') as string;
+      }
+    }
   } catch (error) {
-    log.warn('Invalid JSON in login request', { error: (error as Error).message });
+    log.warn('Invalid request body in login', { error: (error as Error).message });
     return NextResponse.json(
       { error: 'Invalid request body' },
       { status: 400 }
@@ -182,6 +203,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       role: profile?.role
     });
 
+    // For native form submissions (progressive enhancement fallback), redirect instead of JSON
+    if (isFormSubmission) {
+      const redirectUrl = needsPayment
+        ? '/signup?step=payment&subscription_required=true'
+        : '/dashboard';
+      return NextResponse.redirect(new URL(redirectUrl, request.url));
+    }
+
     return NextResponse.json({
       success: true,
       needsPayment,
@@ -200,6 +229,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       email,
       userId
     });
+
+    // For native form submissions, redirect to dashboard
+    if (isFormSubmission) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
 
     // Return success but indicate potential issues
     return NextResponse.json({
