@@ -1,8 +1,10 @@
 /**
  * Student Import Preview API
  * Handles bulk student import from SEIS/CSV files
- * Supports multi-file upload: Student Goals (required), Deliveries (optional), Class List (optional)
- * Returns preview data for user review before creating students
+ * Supports multi-file upload: Student Goals, Deliveries, Class List (all optional, at least one required)
+ * - With Student Goals: Creates/updates students with goals, optionally enriched with deliveries/teacher data
+ * - Without Student Goals: Updates existing students with deliveries/teacher data only
+ * Returns preview data for user review before creating/updating students
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -61,6 +63,276 @@ interface UnmatchedStudent {
   source: 'deliveries' | 'classList';
 }
 
+// Helper function to handle when only deliveries or class list files are uploaded
+async function handleDeliveriesOrClassListOnly(
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  deliveriesFile: File | null,
+  classListFile: File | null,
+  currentSchoolId: string | null,
+  perf: ReturnType<typeof measurePerformanceWithAlerts>
+) {
+  log.info('Processing deliveries/classList only mode', {
+    userId,
+    hasDeliveries: !!deliveriesFile,
+    hasClassList: !!classListFile
+  });
+
+  // Get existing students with their details (names) for matching
+  const { data: dbStudents, error: dbError } = await supabase
+    .from('students')
+    .select(`
+      id,
+      initials,
+      grade_level,
+      school_site,
+      school_id,
+      student_details!inner(first_name, last_name)
+    `)
+    .eq('provider_id', userId);
+
+  if (dbError) {
+    log.error('Failed to fetch students', dbError, { userId });
+    return NextResponse.json(
+      { error: 'Failed to fetch your students from database' },
+      { status: 500 }
+    );
+  }
+
+  if (!dbStudents || dbStudents.length === 0) {
+    return NextResponse.json(
+      { error: 'No existing students found. Please upload a Student Goals file first to create students.' },
+      { status: 400 }
+    );
+  }
+
+  // Build a map of normalized names -> student for matching
+  const studentsByName = new Map<string, typeof dbStudents[0]>();
+  for (const student of dbStudents) {
+    const details = student.student_details as unknown as { first_name: string | null; last_name: string | null } | null;
+    if (details?.first_name && details?.last_name) {
+      const normalizedKey = createNormalizedKey(details.first_name, details.last_name);
+      studentsByName.set(normalizedKey, student);
+    }
+  }
+
+  // Parse deliveries file if provided
+  let deliveriesData: Map<string, DeliveryRecord> | null = null;
+  const deliveriesWarnings: Array<{ row: number; message: string }> = [];
+  if (deliveriesFile) {
+    try {
+      const deliveriesBytes = await deliveriesFile.arrayBuffer();
+      const deliveriesBuffer = Buffer.from(deliveriesBytes);
+      const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer);
+      deliveriesData = deliveriesResult.deliveries;
+      deliveriesWarnings.push(...deliveriesResult.warnings);
+
+      log.info('Deliveries file parsed (standalone)', {
+        userId,
+        totalStudents: deliveriesResult.metadata.uniqueStudents,
+        filtered330Rows: deliveriesResult.metadata.filtered330Rows
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      log.error('Failed to parse deliveries file', error instanceof Error ? error : null, { userId });
+      return NextResponse.json(
+        { error: `Failed to parse deliveries file: ${message}` },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Parse class list file if provided
+  let classListData: Map<string, ClassListStudent> | null = null;
+  const classListWarnings: Array<{ row: number; message: string }> = [];
+  if (classListFile) {
+    try {
+      const classListBytes = await classListFile.arrayBuffer();
+      const classListBuffer = Buffer.from(classListBytes);
+      const classListResult = await parseClassListTXT(classListBuffer);
+      classListData = classListResult.students;
+      classListWarnings.push(...classListResult.warnings);
+
+      log.info('Class list file parsed (standalone)', {
+        userId,
+        totalStudents: classListResult.metadata.totalStudents,
+        totalTeachers: classListResult.metadata.totalTeachers
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      log.error('Failed to parse class list file', error instanceof Error ? error : null, { userId });
+      return NextResponse.json(
+        { error: `Failed to parse class list file: ${message}` },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Get teachers from database for matching
+  let dbTeachers: Array<{ id: string; first_name: string | null; last_name: string | null }> = [];
+  if (classListData && classListData.size > 0) {
+    const { data: teachers } = await supabase
+      .from('teachers')
+      .select('id, first_name, last_name')
+      .eq('school_id', currentSchoolId || '');
+
+    dbTeachers = teachers || [];
+  }
+
+  // Build student updates preview
+  interface StudentUpdate {
+    studentId: string;
+    initials: string;
+    firstName: string;
+    lastName: string;
+    gradeLevel: string | null;
+    schedule?: {
+      sessionsPerWeek: number;
+      minutesPerSession: number;
+      weeklyMinutes: number;
+      frequency: string;
+    };
+    teacher?: {
+      teacherId: string | null;
+      teacherName: string | null;
+      confidence: 'high' | 'medium' | 'low' | 'none';
+      reason: string;
+    };
+  }
+
+  const studentUpdates: StudentUpdate[] = [];
+  const matchedDeliveryNames = new Set<string>();
+  const matchedClassListNames = new Set<string>();
+  const unmatchedStudents: UnmatchedStudent[] = [];
+
+  // Match deliveries to existing students
+  if (deliveriesData) {
+    for (const [normalizedName, record] of deliveriesData) {
+      const existingStudent = studentsByName.get(normalizedName);
+      if (existingStudent) {
+        matchedDeliveryNames.add(normalizedName);
+        const details = existingStudent.student_details as unknown as { first_name: string; last_name: string };
+
+        // Find or create update entry
+        let update = studentUpdates.find(u => u.studentId === existingStudent.id);
+        if (!update) {
+          update = {
+            studentId: existingStudent.id,
+            initials: existingStudent.initials || '',
+            firstName: details.first_name,
+            lastName: details.last_name,
+            gradeLevel: existingStudent.grade_level
+          };
+          studentUpdates.push(update);
+        }
+
+        update.schedule = {
+          sessionsPerWeek: record.sessionsPerWeek,
+          minutesPerSession: record.minutesPerSession,
+          weeklyMinutes: record.weeklyMinutes,
+          frequency: record.sessionsFrequency
+        };
+      } else {
+        unmatchedStudents.push({
+          name: record.name,
+          source: 'deliveries'
+        });
+      }
+    }
+  }
+
+  // Match class list to existing students
+  if (classListData) {
+    for (const [normalizedName, student] of classListData) {
+      const existingStudent = studentsByName.get(normalizedName);
+      if (existingStudent) {
+        matchedClassListNames.add(normalizedName);
+        const details = existingStudent.student_details as unknown as { first_name: string; last_name: string };
+
+        // Find or create update entry
+        let update = studentUpdates.find(u => u.studentId === existingStudent.id);
+        if (!update) {
+          update = {
+            studentId: existingStudent.id,
+            initials: existingStudent.initials || '',
+            firstName: details.first_name,
+            lastName: details.last_name,
+            gradeLevel: existingStudent.grade_level
+          };
+          studentUpdates.push(update);
+        }
+
+        // Match teacher to database
+        const teacherMatch = matchTeacher(student.teacher, dbTeachers);
+        let teacherName: string | null = null;
+        if (teacherMatch.teacherId) {
+          const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
+          if (dbTeacher) {
+            teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
+          }
+        }
+
+        update.teacher = {
+          teacherId: teacherMatch.teacherId,
+          teacherName: teacherName || student.teacher.rawName,
+          confidence: teacherMatch.confidence,
+          reason: teacherMatch.reason
+        };
+      } else {
+        unmatchedStudents.push({
+          name: student.name,
+          source: 'classList'
+        });
+      }
+    }
+  }
+
+  // Track event
+  track.event('student_update_preview_generated', {
+    userId,
+    totalUpdates: studentUpdates.length,
+    withSchedule: studentUpdates.filter(s => s.schedule).length,
+    withTeacher: studentUpdates.filter(s => s.teacher).length,
+    unmatchedCount: unmatchedStudents.length,
+    hasDeliveriesFile: !!deliveriesFile,
+    hasClassListFile: !!classListFile
+  });
+
+  log.info('Preparing update preview response', {
+    userId,
+    totalUpdates: studentUpdates.length,
+    unmatchedCount: unmatchedStudents.length
+  });
+
+  perf.end({ success: true });
+
+  // Combine warnings
+  const allWarnings = [
+    ...deliveriesWarnings.map(w => ({ ...w, source: 'deliveries' as const })),
+    ...classListWarnings.map(w => ({ ...w, source: 'classList' as const }))
+  ];
+
+  // Return update preview
+  return NextResponse.json({
+    success: true,
+    mode: 'update', // Indicate this is an update-only operation
+    data: {
+      students: studentUpdates,
+      summary: {
+        total: studentUpdates.length,
+        new: 0,
+        duplicates: 0,
+        withSchedule: studentUpdates.filter(s => s.schedule).length,
+        withTeacher: studentUpdates.filter(s => s.teacher).length
+      },
+      unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
+      parseErrors: [],
+      parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : [],
+      scrubErrors: []
+    }
+  });
+}
+
 export const POST = withAuth(async (request: NextRequest, userId: string) => {
   const perf = measurePerformanceWithAlerts('import_students_preview', 'api');
 
@@ -88,9 +360,22 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       currentSchoolSite
     });
 
+    // Check if at least one file is provided
+    if (!file && !deliveriesFile && !classListFile) {
+      log.warn('No files provided in student import request', { userId });
+      return NextResponse.json({ error: 'No files provided' }, { status: 400 });
+    }
+
+    // If no students file, handle deliveries/classList only mode
     if (!file) {
-      log.warn('No students file provided in student import request', { userId });
-      return NextResponse.json({ error: 'No students file provided' }, { status: 400 });
+      return await handleDeliveriesOrClassListOnly(
+        userId,
+        supabase,
+        deliveriesFile,
+        classListFile,
+        currentSchoolId,
+        perf
+      );
     }
 
     // Validate file type for students file

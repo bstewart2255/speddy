@@ -92,7 +92,9 @@ export function StudentImportPreviewModal({
     // By default, select all goals for all students
     const goalSelections: { [studentIndex: number]: Set<number> } = {};
     data.students.forEach((student, idx) => {
-      goalSelections[idx] = new Set(student.goals.map((_, goalIdx) => goalIdx));
+      // Goals may not exist in update mode (deliveries/classList only)
+      const goals = student.goals || [];
+      goalSelections[idx] = new Set(goals.map((_, goalIdx) => goalIdx));
     });
     return goalSelections;
   });
@@ -149,17 +151,18 @@ export function StudentImportPreviewModal({
 
   const toggleAllGoalsForStudent = (studentIndex: number) => {
     const student = data.students[studentIndex];
+    const goals = student.goals || [];
     const currentlySelected = selectedGoals[studentIndex] || new Set();
 
     setSelectedGoals(prev => {
-      if (currentlySelected.size === student.goals.length) {
+      if (currentlySelected.size === goals.length) {
         // Deselect all goals
         return { ...prev, [studentIndex]: new Set() };
       } else {
         // Select all goals
         return {
           ...prev,
-          [studentIndex]: new Set(student.goals.map((_, idx) => idx))
+          [studentIndex]: new Set(goals.map((_, idx) => idx))
         };
       }
     });
@@ -175,10 +178,12 @@ export function StudentImportPreviewModal({
         const student = data.students[idx];
         const studentSelectedGoals = selectedGoals[idx] || new Set();
 
-        // Only include selected goals
+        // Only include selected goals (goals may not exist in update mode)
+        const goals = student.goals || [];
         const goalsToImport = Array.from(studentSelectedGoals)
           .sort((a, b) => a - b) // Keep original order
-          .map(goalIdx => student.goals[goalIdx].scrubbed);
+          .filter(goalIdx => goalIdx < goals.length)
+          .map(goalIdx => goals[goalIdx].scrubbed);
 
         return {
           firstName: student.firstName,
@@ -448,23 +453,25 @@ export function StudentImportPreviewModal({
                               )}
                             </div>
 
-                            {/* Goals Count */}
-                            <div>
-                              <p className="text-xs text-gray-500">IEP Goals</p>
-                              <button
-                                onClick={() => setExpandedStudent(isExpanded ? null : idx)}
-                                className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                              >
-                                <span>
-                                  {(selectedGoals[idx] || new Set()).size}/{student.goals.length}
-                                </span>
-                                {(selectedGoals[idx] || new Set()).size > 0 &&
-                                  (selectedGoals[idx] || new Set()).size < student.goals.length && (
-                                    <span className="text-yellow-600" title="Some goals deselected">⚠</span>
-                                  )}
-                                {isExpanded ? '▼' : '▶'}
-                              </button>
-                            </div>
+                            {/* Goals Count - only show if student has goals */}
+                            {(student.goals?.length ?? 0) > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-500">IEP Goals</p>
+                                <button
+                                  onClick={() => setExpandedStudent(isExpanded ? null : idx)}
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                >
+                                  <span>
+                                    {(selectedGoals[idx] || new Set()).size}/{student.goals.length}
+                                  </span>
+                                  {(selectedGoals[idx] || new Set()).size > 0 &&
+                                    (selectedGoals[idx] || new Set()).size < student.goals.length && (
+                                      <span className="text-yellow-600" title="Some goals deselected">⚠</span>
+                                    )}
+                                  {isExpanded ? '▼' : '▶'}
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           {/* Status Badge */}
@@ -493,16 +500,16 @@ export function StudentImportPreviewModal({
                           </div>
                         )}
 
-                        {/* No Goals Selected Warning */}
-                        {isSelected && (selectedGoals[idx] || new Set()).size === 0 && (
+                        {/* No Goals Selected Warning - only show if student has goals */}
+                        {isSelected && (student.goals?.length ?? 0) > 0 && (selectedGoals[idx] || new Set()).size === 0 && (
                           <div className="mt-2 text-xs text-red-700 bg-red-50 p-2 rounded">
                             ⚠ No IEP goals selected - student will be imported without any goals
                           </div>
                         )}
                       </div>
 
-                      {/* Expanded Goals */}
-                      {isExpanded && (
+                      {/* Expanded Goals - only show if student has goals */}
+                      {isExpanded && (student.goals?.length ?? 0) > 0 && (
                         <div className="px-4 pb-4 space-y-3 bg-white border-t">
                           <div className="flex justify-between items-center mt-3">
                             <p className="text-xs font-medium text-gray-700">IEP Goals:</p>
@@ -510,12 +517,12 @@ export function StudentImportPreviewModal({
                               onClick={() => toggleAllGoalsForStudent(idx)}
                               className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                             >
-                              {(selectedGoals[idx] || new Set()).size === student.goals.length
+                              {(selectedGoals[idx] || new Set()).size === student.goals!.length
                                 ? 'Deselect All'
                                 : 'Select All'}
                             </button>
                           </div>
-                          {student.goals.map((goal, goalIdx) => {
+                          {student.goals!.map((goal, goalIdx) => {
                             const isGoalSelected = (selectedGoals[idx] || new Set()).has(goalIdx);
                             return (
                               <div
