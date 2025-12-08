@@ -17,6 +17,24 @@ interface TeacherMatch {
   reason: string;
 }
 
+interface GoalChange {
+  added: string[];
+  removed: string[];
+  unchanged: string[];
+}
+
+interface StudentChanges {
+  goals?: GoalChange;
+  schedule?: {
+    old: { sessionsPerWeek?: number; minutesPerSession?: number } | null;
+    new: { sessionsPerWeek: number; minutesPerSession: number } | null;
+  };
+  teacher?: {
+    old: { teacherId?: string; teacherName?: string } | null;
+    new: { teacherId: string | null; teacherName: string | null } | null;
+  };
+}
+
 interface StudentPreview {
   firstName: string;
   lastName: string;
@@ -27,11 +45,18 @@ interface StudentPreview {
     piiDetected: string[];
     confidence: 'high' | 'medium' | 'low';
   }>;
+  // UPSERT action
+  action: 'insert' | 'update' | 'skip';
+  // Legacy field for backward compatibility
   matchStatus: 'new' | 'duplicate';
   matchedStudentId?: string;
   matchedStudentInitials?: string;
   matchConfidence?: 'high' | 'medium' | 'low';
   matchReason?: string;
+  // Changes tracking for updates
+  changes?: StudentChanges;
+  // Warning if goals are being removed
+  goalsRemoved?: string[];
   // New fields from multi-file upload
   schedule?: ScheduleData;
   teacher?: TeacherMatch;
@@ -46,8 +71,15 @@ interface ImportData {
   students: StudentPreview[];
   summary: {
     total: number;
+    // Legacy fields
     new: number;
     duplicates: number;
+    // UPSERT counts
+    inserts?: number;
+    updates?: number;
+    skips?: number;
+    withGoalsRemoved?: number;
+    // Enrichment counts
     withSchedule?: number;
     withTeacher?: number;
   };
@@ -77,10 +109,12 @@ export function StudentImportPreviewModal({
 
   // Track which students are selected for import
   const [selectedStudents, setSelectedStudents] = useState<Set<number>>(() => {
-    // By default, select all new students (not duplicates)
+    // By default, select all students with insert or update actions (not skips)
     const selected = new Set<number>();
     data.students.forEach((student, idx) => {
-      if (student.matchStatus === 'new') {
+      // Use action field if available, otherwise fall back to matchStatus
+      const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
+      if (action === 'insert' || action === 'update') {
         selected.add(idx);
       }
     });
@@ -173,7 +207,7 @@ export function StudentImportPreviewModal({
     setError(null);
 
     try {
-      // Prepare students for import
+      // Prepare students for import with UPSERT action
       const studentsToImport = Array.from(selectedStudents).map(idx => {
         const student = data.students[idx];
         const studentSelectedGoals = selectedGoals[idx] || new Set();
@@ -185,12 +219,18 @@ export function StudentImportPreviewModal({
           .filter(goalIdx => goalIdx < goals.length)
           .map(goalIdx => goals[goalIdx].scrubbed);
 
+        // Determine action (default to insert for backward compatibility)
+        const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'insert');
+
         return {
           firstName: student.firstName,
           lastName: student.lastName,
           initials: getInitials(idx),
           gradeLevel: student.gradeLevel,
           goals: goalsToImport,
+          // UPSERT fields
+          action,
+          studentId: student.matchedStudentId, // For update actions
           // Include current school context for assignment
           schoolId: currentSchool?.school_id,
           schoolSite: currentSchool?.school_site,
@@ -296,14 +336,28 @@ export function StudentImportPreviewModal({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-blue-700">Total students: {data.summary.total}</p>
-                  <p className="text-green-700">✓ New students: {data.summary.new}</p>
-                  {data.summary.duplicates > 0 && (
-                    <p className="text-orange-700">⚠ Possible duplicates: {data.summary.duplicates}</p>
+                  {/* Show UPSERT counts if available */}
+                  {data.summary.inserts !== undefined ? (
+                    <>
+                      <p className="text-green-700">+ New: {data.summary.inserts}</p>
+                      <p className="text-blue-700">↻ Update: {data.summary.updates || 0}</p>
+                      <p className="text-gray-500">○ No changes: {data.summary.skips || 0}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-green-700">✓ New students: {data.summary.new}</p>
+                      {data.summary.duplicates > 0 && (
+                        <p className="text-orange-700">⚠ Possible duplicates: {data.summary.duplicates}</p>
+                      )}
+                    </>
                   )}
                 </div>
                 <div>
                   <p className="text-blue-700">Selected for import: {selectedCount}</p>
                   <p className="text-green-700">Total IEP goals: {totalGoals}</p>
+                  {data.summary.withGoalsRemoved !== undefined && data.summary.withGoalsRemoved > 0 && (
+                    <p className="text-orange-700">⚠ With goals removed: {data.summary.withGoalsRemoved}</p>
+                  )}
                   {data.summary.withSchedule !== undefined && data.summary.withSchedule > 0 && (
                     <p className="text-blue-700">📅 With schedule: {data.summary.withSchedule}</p>
                   )}
@@ -383,7 +437,11 @@ export function StudentImportPreviewModal({
                     <div
                       key={idx}
                       className={`border rounded-md overflow-hidden ${
-                        isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                        student.action === 'skip'
+                          ? 'border-gray-200 bg-gray-50 opacity-60'
+                          : isSelected
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-gray-200'
                       }`}
                     >
                       {/* Student Row */}
@@ -393,7 +451,10 @@ export function StudentImportPreviewModal({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleStudentSelection(idx)}
-                            className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300"
+                            disabled={student.action === 'skip'}
+                            className={`mt-1 h-4 w-4 rounded border-gray-300 ${
+                              student.action === 'skip' ? 'opacity-50 cursor-not-allowed' : 'text-blue-600'
+                            }`}
                           />
 
                           <div className="flex-1 grid grid-cols-6 gap-3">
@@ -474,9 +535,22 @@ export function StudentImportPreviewModal({
                             )}
                           </div>
 
-                          {/* Status Badge */}
-                          <div>
-                            {student.matchStatus === 'duplicate' && (
+                          {/* Action Badge */}
+                          <div className="flex flex-col items-end gap-1">
+                            {/* Show action badge */}
+                            {student.action === 'insert' ? (
+                              <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">
+                                New
+                              </span>
+                            ) : student.action === 'update' ? (
+                              <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
+                                Update
+                              </span>
+                            ) : student.action === 'skip' ? (
+                              <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                                No Changes
+                              </span>
+                            ) : student.matchStatus === 'duplicate' ? (
                               <span
                                 className={`text-xs px-2 py-1 rounded ${
                                   student.matchConfidence === 'high'
@@ -489,12 +563,46 @@ export function StudentImportPreviewModal({
                               >
                                 Possible Duplicate
                               </span>
+                            ) : null}
+                            {/* Goal removal warning badge */}
+                            {student.goalsRemoved && student.goalsRemoved.length > 0 && (
+                              <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">
+                                ⚠ {student.goalsRemoved.length} goal{student.goalsRemoved.length !== 1 ? 's' : ''} removed
+                              </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Duplicate Warning */}
-                        {student.matchStatus === 'duplicate' && (
+                        {/* Update info - show what will change */}
+                        {student.action === 'update' && student.matchedStudentInitials && (
+                          <div className="mt-2 text-xs text-blue-700 bg-blue-50 p-2 rounded">
+                            ↻ Updating existing student: {student.matchedStudentInitials}
+                            {student.changes && (
+                              <span className="ml-2">
+                                ({[
+                                  student.changes.goals && 'goals',
+                                  student.changes.schedule && 'schedule',
+                                  student.changes.teacher && 'teacher'
+                                ].filter(Boolean).join(', ')})
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Goal removal warning - show which goals will be removed */}
+                        {student.goalsRemoved && student.goalsRemoved.length > 0 && (
+                          <div className="mt-2 text-xs text-orange-700 bg-orange-50 p-2 rounded">
+                            <p className="font-medium mb-1">⚠ The following goals will be removed:</p>
+                            <ul className="list-disc list-inside space-y-0.5 max-h-20 overflow-y-auto">
+                              {student.goalsRemoved.map((goal, gIdx) => (
+                                <li key={gIdx} className="truncate" title={goal}>{goal}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Legacy duplicate warning (fallback) */}
+                        {!student.action && student.matchStatus === 'duplicate' && (
                           <div className="mt-2 text-xs text-orange-700 bg-orange-50 p-2 rounded">
                             ⚠ Matches existing student: {student.matchedStudentInitials} ({student.matchReason})
                           </div>
@@ -565,9 +673,10 @@ export function StudentImportPreviewModal({
             <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md p-3">
               <p className="font-medium">What happens next?</p>
               <ul className="list-disc list-inside space-y-1 mt-1 ml-2">
-                <li>Students will be created with their names, grades, and selected IEP goals</li>
-                <li>Only goals with checkmarks will be imported for each student</li>
-                <li>You'll need to assign teachers and configure schedules later</li>
+                <li><span className="text-green-700 font-medium">New</span> students will be created with their data</li>
+                <li><span className="text-blue-700 font-medium">Update</span> students will have their data synced from the import file</li>
+                <li><span className="text-gray-500 font-medium">No Changes</span> students are already up to date</li>
+                <li>Goals marked for removal (⚠) will be replaced by the import file</li>
                 <li>You can edit all student details after import</li>
               </ul>
             </div>
@@ -575,9 +684,26 @@ export function StudentImportPreviewModal({
 
           {/* Footer */}
           <div className="flex justify-between items-center gap-3 px-6 py-4 border-t bg-gray-50">
-            <p className="text-sm text-gray-600">
-              {selectedCount} student{selectedCount !== 1 ? 's' : ''} with {totalGoals} goal{totalGoals !== 1 ? 's' : ''} will be imported
-            </p>
+            <div className="text-sm text-gray-600">
+              {(() => {
+                // Calculate counts for selected students by action
+                const selectedInserts = Array.from(selectedStudents).filter(idx => {
+                  const s = data.students[idx];
+                  return s.action === 'insert' || (!s.action && s.matchStatus === 'new');
+                }).length;
+                const selectedUpdates = Array.from(selectedStudents).filter(idx =>
+                  data.students[idx].action === 'update'
+                ).length;
+
+                if (selectedInserts > 0 && selectedUpdates > 0) {
+                  return `${selectedInserts} new + ${selectedUpdates} update${selectedUpdates !== 1 ? 's' : ''} • ${totalGoals} goal${totalGoals !== 1 ? 's' : ''}`;
+                } else if (selectedUpdates > 0) {
+                  return `${selectedUpdates} student${selectedUpdates !== 1 ? 's' : ''} to update • ${totalGoals} goal${totalGoals !== 1 ? 's' : ''}`;
+                } else {
+                  return `${selectedCount} student${selectedCount !== 1 ? 's' : ''} • ${totalGoals} goal${totalGoals !== 1 ? 's' : ''}`;
+                }
+              })()}
+            </div>
             <div className="flex gap-3">
               <Button variant="secondary" onClick={onClose} disabled={importing}>
                 Cancel
@@ -587,7 +713,7 @@ export function StudentImportPreviewModal({
                 onClick={handleImport}
                 disabled={importing || selectedCount === 0}
               >
-                {importing ? 'Importing...' : `Import ${selectedCount} Student${selectedCount !== 1 ? 's' : ''}`}
+                {importing ? 'Processing...' : `Confirm ${selectedCount} Student${selectedCount !== 1 ? 's' : ''}`}
               </Button>
             </div>
           </div>

@@ -26,12 +26,16 @@ interface StudentToImport {
   sessionsPerWeek?: number;
   minutesPerSession?: number;
   teacherId?: string;
+  // UPSERT fields
+  action?: 'insert' | 'update' | 'skip'; // Defaults to 'insert' for backward compatibility
+  studentId?: string; // Required for 'update' action
 }
 
 interface ImportResult {
   success: boolean;
   studentId?: string;
   initials: string;
+  action: 'inserted' | 'updated' | 'skipped' | 'error';
   error?: string;
 }
 
@@ -92,7 +96,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     }
 
     const results: ImportResult[] = [];
-    let successCount = 0;
+    let insertedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
     let errorCount = 0;
 
     // Track newly added students to detect duplicates within the same import batch
@@ -101,41 +107,74 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // Import each student (validation is now O(1) per student)
     for (const student of students) {
       try {
+        // Determine action (default to 'insert' for backward compatibility)
+        const action = student.action || 'insert';
+
         // Normalize and validate initials
         const initialsNormalized = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '');
         const fallbackInitials = `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
+
+        // Handle skip action
+        if (action === 'skip') {
+          results.push({
+            success: true,
+            studentId: student.studentId,
+            initials: initialsNormalized || fallbackInitials,
+            action: 'skipped'
+          });
+          skippedCount++;
+          continue;
+        }
 
         if (initialsNormalized.length < 2 || initialsNormalized.length > 4) {
           results.push({
             success: false,
             initials: initialsNormalized || fallbackInitials,
+            action: 'error',
             error: 'Invalid initials: must be 2-4 characters'
           });
           errorCount++;
           continue;
         }
 
-        // Check for duplicate using Map - O(1) instead of database query
-        const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
-        if (existingStudentMap.has(duplicateKey)) {
+        // For updates, validate studentId is provided
+        if (action === 'update' && !student.studentId) {
           results.push({
             success: false,
             initials: initialsNormalized,
-            error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+            action: 'error',
+            error: 'Student ID required for update action'
           });
           errorCount++;
           continue;
         }
 
-        // Check for duplicate within the same import batch
-        if (addedInThisBatch.has(duplicateKey)) {
-          results.push({
-            success: false,
-            initials: initialsNormalized,
-            error: `Duplicate in import: "${initialsNormalized}" in grade ${student.gradeLevel} appears multiple times`
-          });
-          errorCount++;
-          continue;
+        // For inserts, check for duplicates
+        if (action === 'insert') {
+          // Check for duplicate using Map - O(1) instead of database query
+          const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
+          if (existingStudentMap.has(duplicateKey)) {
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              action: 'error',
+              error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+            });
+            errorCount++;
+            continue;
+          }
+
+          // Check for duplicate within the same import batch
+          if (addedInThisBatch.has(duplicateKey)) {
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              action: 'error',
+              error: `Duplicate in import: "${initialsNormalized}" in grade ${student.gradeLevel} appears multiple times`
+            });
+            errorCount++;
+            continue;
+          }
         }
 
         // Determine school context
@@ -153,6 +192,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             results.push({
               success: false,
               initials: initialsNormalized,
+              action: 'error',
               error: 'Failed to validate school access'
             });
             errorCount++;
@@ -168,6 +208,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             results.push({
               success: false,
               initials: initialsNormalized,
+              action: 'error',
               error: `User does not have access to school ${requestedSchoolId}`
             });
             errorCount++;
@@ -180,107 +221,190 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         const districtId = student.districtId || userProfile?.district_id || null;
         const stateId = student.stateId || userProfile?.state_id || null;
 
-        log.info('Assigning student to school', {
+        log.info(`${action === 'update' ? 'Updating' : 'Creating'} student`, {
           userId,
           studentInitials: initialsNormalized,
+          action,
           schoolId,
           schoolSite
         });
 
-        // Create student and student_details atomically using RPC function
-        // This prevents orphaned student records if student_details insert fails
-        const { data: importResult, error: importError } = await supabase
-          .rpc('import_student_atomic', {
-            p_provider_id: userId,
-            p_initials: initialsNormalized,
-            p_grade_level: student.gradeLevel,
-            p_school_site: schoolSite,
-            p_school_id: schoolId,
-            p_district_id: districtId,
-            p_state_id: stateId,
-            p_first_name: student.firstName,
-            p_last_name: student.lastName,
-            p_iep_goals: student.goals,
-            p_sessions_per_week: student.sessionsPerWeek || null,
-            p_minutes_per_session: student.minutesPerSession || null,
-            p_teacher_id: student.teacherId || null
-          })
-          .single();
+        if (action === 'update') {
+          // UPDATE: Update existing student using upsert_students_atomic RPC
+          const { data: updateResult, error: updateError } = await supabase
+            .rpc('upsert_students_atomic', {
+              p_provider_id: userId,
+              p_students: [{
+                action: 'update',
+                studentId: student.studentId,
+                initials: initialsNormalized,
+                gradeLevel: student.gradeLevel,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                goals: student.goals,
+                sessionsPerWeek: student.sessionsPerWeek || null,
+                minutesPerSession: student.minutesPerSession || null,
+                teacherId: student.teacherId || null
+              }]
+            });
 
-        // Check for RPC call errors
-        if (importError) {
-          log.error('Failed to call import_student_atomic', importError, {
+          if (updateError) {
+            log.error('Failed to call upsert_students_atomic for update', updateError, {
+              userId,
+              studentId: student.studentId,
+              studentInitials: initialsNormalized
+            });
+
+            results.push({
+              success: false,
+              studentId: student.studentId,
+              initials: initialsNormalized,
+              action: 'error',
+              error: 'Failed to update student'
+            });
+            errorCount++;
+            continue;
+          }
+
+          // Check result
+          const upsertResult = updateResult as { updated?: number; errors?: number; results?: Array<{ success: boolean; error?: string }> };
+          if (upsertResult.errors && upsertResult.errors > 0) {
+            const errorMsg = upsertResult.results?.[0]?.error || 'Unknown error';
+            log.error('Failed to update student', null, {
+              userId,
+              studentId: student.studentId,
+              studentInitials: initialsNormalized,
+              error: errorMsg
+            });
+
+            results.push({
+              success: false,
+              studentId: student.studentId,
+              initials: initialsNormalized,
+              action: 'error',
+              error: errorMsg
+            });
+            errorCount++;
+            continue;
+          }
+
+          // Success
+          log.info('Student updated successfully', {
             userId,
-            studentInitials: initialsNormalized
+            studentId: student.studentId,
+            studentInitials: initialsNormalized,
+            goalsCount: student.goals.length
           });
 
           results.push({
-            success: false,
+            success: true,
+            studentId: student.studentId,
             initials: initialsNormalized,
-            error: 'Failed to import student'
+            action: 'updated'
           });
-          errorCount++;
-          continue;
-        }
+          updatedCount++;
+        } else {
+          // INSERT: Create student and student_details atomically using RPC function
+          // This prevents orphaned student records if student_details insert fails
+          const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
 
-        // Check the result from the RPC function
-        if (!importResult || !(importResult as { success?: boolean }).success) {
-          const errorMessage = (importResult as { error_message?: string })?.error_message || 'Unknown error';
+          const { data: importResult, error: importError } = await supabase
+            .rpc('import_student_atomic', {
+              p_provider_id: userId,
+              p_initials: initialsNormalized,
+              p_grade_level: student.gradeLevel,
+              p_school_site: schoolSite,
+              p_school_id: schoolId,
+              p_district_id: districtId,
+              p_state_id: stateId,
+              p_first_name: student.firstName,
+              p_last_name: student.lastName,
+              p_iep_goals: student.goals,
+              p_sessions_per_week: student.sessionsPerWeek || null,
+              p_minutes_per_session: student.minutesPerSession || null,
+              p_teacher_id: student.teacherId || null
+            })
+            .single();
 
-          // Check if this is a unique constraint violation
-          const isDuplicate = errorMessage.includes('duplicate key') ||
-                             errorMessage.includes('unique constraint') ||
-                             errorMessage.includes('ux_students_provider_grade_initials');
-
-          if (isDuplicate) {
-            log.warn('Duplicate student detected during atomic insert', {
+          // Check for RPC call errors
+          if (importError) {
+            log.error('Failed to call import_student_atomic', importError, {
               userId,
-              studentInitials: initialsNormalized,
-              gradeLevel: student.gradeLevel
+              studentInitials: initialsNormalized
             });
 
             results.push({
               success: false,
               initials: initialsNormalized,
-              error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+              action: 'error',
+              error: 'Failed to import student'
             });
-          } else {
-            log.error('Failed to create student atomically', null, {
-              userId,
-              studentInitials: initialsNormalized,
-              errorMessage
-            });
-
-            results.push({
-              success: false,
-              initials: initialsNormalized,
-              error: errorMessage
-            });
+            errorCount++;
+            continue;
           }
 
-          errorCount++;
-          continue;
+          // Check the result from the RPC function
+          if (!importResult || !(importResult as { success?: boolean }).success) {
+            const errorMessage = (importResult as { error_message?: string })?.error_message || 'Unknown error';
+
+            // Check if this is a unique constraint violation
+            const isDuplicate = errorMessage.includes('duplicate key') ||
+                               errorMessage.includes('unique constraint') ||
+                               errorMessage.includes('ux_students_provider_grade_initials');
+
+            if (isDuplicate) {
+              log.warn('Duplicate student detected during atomic insert', {
+                userId,
+                studentInitials: initialsNormalized,
+                gradeLevel: student.gradeLevel
+              });
+
+              results.push({
+                success: false,
+                initials: initialsNormalized,
+                action: 'error',
+                error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
+              });
+            } else {
+              log.error('Failed to create student atomically', null, {
+                userId,
+                studentInitials: initialsNormalized,
+                errorMessage
+              });
+
+              results.push({
+                success: false,
+                initials: initialsNormalized,
+                action: 'error',
+                error: errorMessage
+              });
+            }
+
+            errorCount++;
+            continue;
+          }
+
+          const newStudent = { id: (importResult as { student_id?: string }).student_id };
+
+          // Success
+          log.info('Student created successfully', {
+            userId,
+            studentId: newStudent.id,
+            studentInitials: initialsNormalized,
+            goalsCount: student.goals.length
+          });
+
+          results.push({
+            success: true,
+            studentId: newStudent.id,
+            initials: initialsNormalized,
+            action: 'inserted'
+          });
+          insertedCount++;
+
+          // Track successful import for batch duplicate detection
+          addedInThisBatch.add(duplicateKey);
         }
-
-        const newStudent = { id: (importResult as { student_id?: string }).student_id };
-
-        // Success
-        log.info('Student created successfully', {
-          userId,
-          studentId: newStudent.id,
-          studentInitials: initialsNormalized,
-          goalsCount: student.goals.length
-        });
-
-        results.push({
-          success: true,
-          studentId: newStudent.id,
-          initials: initialsNormalized
-        });
-        successCount++;
-
-        // Track successful import for batch duplicate detection
-        addedInThisBatch.add(duplicateKey);
       } catch (error: any) {
         const errorInitials = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '') ||
                              `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
@@ -293,25 +417,30 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         results.push({
           success: false,
           initials: errorInitials,
+          action: 'error',
           error: error.message || 'Unknown error occurred'
         });
         errorCount++;
       }
     }
 
-    // Track import completion
+    // Track import completion with UPSERT counts
     track.event('students_imported', {
       userId,
       totalAttempted: students.length,
-      successCount,
+      insertedCount,
+      updatedCount,
+      skippedCount,
       errorCount
     });
 
-    log.info('Student import completed', {
+    log.info('Student UPSERT completed', {
       userId,
       totalAttempted: students.length,
-      successCount,
-      errorCount
+      inserted: insertedCount,
+      updated: updatedCount,
+      skipped: skippedCount,
+      errors: errorCount
     });
 
     perf.end({ success: errorCount === 0 });
@@ -322,8 +451,13 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         results,
         summary: {
           total: students.length,
-          succeeded: successCount,
-          failed: errorCount
+          // Legacy field for backward compatibility
+          succeeded: insertedCount + updatedCount,
+          failed: errorCount,
+          // UPSERT counts
+          inserted: insertedCount,
+          updated: updatedCount,
+          skipped: skippedCount
         }
       }
     });

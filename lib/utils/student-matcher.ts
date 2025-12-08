@@ -11,6 +11,11 @@ export interface DatabaseStudent {
   grade_level: string;
   first_name?: string;
   last_name?: string;
+  // For UPSERT comparison
+  iep_goals?: string[];
+  sessions_per_week?: number;
+  minutes_per_session?: number;
+  teacher_id?: string;
 }
 
 export interface StudentMatch {
@@ -69,8 +74,8 @@ function findBestMatch(
     let score = 0;
     const reasons: string[] = [];
 
-    // Match by initials (most important)
-    const initialsMatch = compareInitials(excelStudent.initials, dbStudent.initials);
+    // Match by initials (most important) - pass first name for smart 3-char matching
+    const initialsMatch = compareInitials(excelStudent.initials, dbStudent.initials, excelStudent.firstName);
     if (initialsMatch.matches) {
       score += 50;
       reasons.push(initialsMatch.reason);
@@ -159,14 +164,18 @@ function findBestMatch(
 
 /**
  * Compare student initials
+ * Supports both 2-char (JS) and 3-char (JoS) initials
+ * When comparing 2-char to 3-char, uses the first name to verify the middle character
  */
 function compareInitials(
   excelInitials: string,
-  dbInitials: string
+  dbInitials: string,
+  excelFirstName?: string
 ): { matches: boolean; reason: string } {
   const excel = normalizeInitials(excelInitials);
   const db = normalizeInitials(dbInitials);
 
+  // Exact match
   if (excel === db) {
     return { matches: true, reason: `Initials match: ${excelInitials}` };
   }
@@ -175,6 +184,40 @@ function compareInitials(
   if (excel.length >= 2 && db.length >= 2) {
     if (excel.startsWith(db.substring(0, 2)) || db.startsWith(excel.substring(0, 2))) {
       return { matches: true, reason: `Initials partially match: ${excelInitials} ≈ ${dbInitials}` };
+    }
+  }
+
+  // Smart 3-char matching: compare 2-char to 3-char initials using first name
+  // Example: Excel has "JS" (John Smith), DB has "JoS" -> check if John's 2nd letter is 'o'
+  if (excelFirstName && excelFirstName.length >= 2) {
+    const excelFirstLetter = excel[0];
+    const excelLastLetter = excel[excel.length - 1];
+    const dbFirstLetter = db[0];
+    const dbLastLetter = db[db.length - 1];
+    const firstNameSecondLetter = excelFirstName[1].toUpperCase();
+
+    // Case 1: Excel has 2-char (JS), DB has 3-char (JoS)
+    if (excel.length === 2 && db.length === 3) {
+      if (excelFirstLetter === dbFirstLetter &&
+          excelLastLetter === dbLastLetter &&
+          firstNameSecondLetter === db[1]) {
+        return {
+          matches: true,
+          reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials} (verified via first name)`
+        };
+      }
+    }
+
+    // Case 2: Excel has 3-char (JoS), DB has 2-char (JS)
+    if (excel.length === 3 && db.length === 2) {
+      if (excelFirstLetter === dbFirstLetter &&
+          excelLastLetter === dbLastLetter &&
+          excel[1] === firstNameSecondLetter) {
+        return {
+          matches: true,
+          reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials}`
+        };
+      }
     }
   }
 

@@ -37,6 +37,28 @@ interface ScheduleData {
   frequency: string;
 }
 
+interface GoalChange {
+  added: string[];
+  removed: string[];
+  unchanged: string[];
+}
+
+interface ScheduleChange {
+  old: { sessionsPerWeek?: number; minutesPerSession?: number } | null;
+  new: { sessionsPerWeek: number; minutesPerSession: number } | null;
+}
+
+interface TeacherChange {
+  old: { teacherId?: string; teacherName?: string } | null;
+  new: { teacherId: string | null; teacherName: string | null } | null;
+}
+
+interface StudentChanges {
+  goals?: GoalChange;
+  schedule?: ScheduleChange;
+  teacher?: TeacherChange;
+}
+
 interface StudentPreview {
   firstName: string;
   lastName: string;
@@ -47,11 +69,18 @@ interface StudentPreview {
     piiDetected: string[];
     confidence: 'high' | 'medium' | 'low';
   }>;
+  // UPSERT action: insert (new), update (existing with changes), skip (existing, no changes)
+  action: 'insert' | 'update' | 'skip';
+  // Legacy field for backward compatibility
   matchStatus: 'new' | 'duplicate';
-  matchedStudentId?: string; // If duplicate, the ID of existing student
-  matchedStudentInitials?: string; // If duplicate, the initials of existing student
-  matchConfidence?: 'high' | 'medium' | 'low'; // If duplicate, confidence level
-  matchReason?: string; // If duplicate, reason for match
+  matchedStudentId?: string; // If duplicate/update, the ID of existing student
+  matchedStudentInitials?: string; // If duplicate/update, the initials of existing student
+  matchConfidence?: 'high' | 'medium' | 'low'; // If duplicate/update, confidence level
+  matchReason?: string; // If duplicate/update, reason for match
+  // Changes tracking for updates
+  changes?: StudentChanges;
+  // Warning if goals are being removed
+  goalsRemoved?: string[];
   // New fields from Deliveries file
   schedule?: ScheduleData;
   // New fields from Class List file
@@ -61,6 +90,72 @@ interface StudentPreview {
 interface UnmatchedStudent {
   name: string;
   source: 'deliveries' | 'classList';
+}
+
+/**
+ * Compare two arrays of goals to determine what's changed
+ * Goals are compared by normalized text (lowercase, trimmed)
+ */
+function compareGoals(existingGoals: string[] | undefined, newGoals: string[]): GoalChange {
+  const existing = (existingGoals || []).map(g => g.toLowerCase().trim());
+  const incoming = newGoals.map(g => g.toLowerCase().trim());
+
+  const existingSet = new Set(existing);
+  const incomingSet = new Set(incoming);
+
+  const added: string[] = [];
+  const removed: string[] = [];
+  const unchanged: string[] = [];
+
+  // Find added goals (in new but not in existing)
+  for (let i = 0; i < newGoals.length; i++) {
+    const normalizedGoal = incoming[i];
+    if (!existingSet.has(normalizedGoal)) {
+      added.push(newGoals[i]);
+    } else {
+      unchanged.push(newGoals[i]);
+    }
+  }
+
+  // Find removed goals (in existing but not in new)
+  for (let i = 0; i < (existingGoals || []).length; i++) {
+    const normalizedGoal = existing[i];
+    if (!incomingSet.has(normalizedGoal)) {
+      removed.push(existingGoals![i]);
+    }
+  }
+
+  return { added, removed, unchanged };
+}
+
+/**
+ * Determine if there are any meaningful changes between existing and new data
+ */
+function hasChanges(
+  existingStudent: DatabaseStudent,
+  newGoals: string[],
+  newSchedule?: { sessionsPerWeek: number; minutesPerSession: number },
+  newTeacherId?: string | null
+): { hasGoalChanges: boolean; hasScheduleChanges: boolean; hasTeacherChanges: boolean } {
+  // Compare goals
+  const goalComparison = compareGoals(existingStudent.iep_goals, newGoals);
+  const hasGoalChanges = goalComparison.added.length > 0 || goalComparison.removed.length > 0;
+
+  // Compare schedule
+  let hasScheduleChanges = false;
+  if (newSchedule) {
+    hasScheduleChanges =
+      existingStudent.sessions_per_week !== newSchedule.sessionsPerWeek ||
+      existingStudent.minutes_per_session !== newSchedule.minutesPerSession;
+  }
+
+  // Compare teacher
+  let hasTeacherChanges = false;
+  if (newTeacherId !== undefined) {
+    hasTeacherChanges = existingStudent.teacher_id !== newTeacherId;
+  }
+
+  return { hasGoalChanges, hasScheduleChanges, hasTeacherChanges };
 }
 
 // Helper function to handle when only deliveries or class list files are uploaded
@@ -427,7 +522,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     const { data: dbStudents, error: dbError } = await supabase
       .from('students')
-      .select('id, initials, grade_level, school_site, school_id')
+      .select('id, initials, grade_level, school_site, school_id, sessions_per_week, minutes_per_session, teacher_id')
       .eq('provider_id', userId);
 
     dbPerf.end({ success: !dbError });
@@ -566,13 +661,13 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       });
     }
 
-    // Get student details for names (if available) for duplicate detection
+    // Get student details for names, goals (for UPSERT comparison)
     const { data: studentDetails } = dbStudents && dbStudents.length > 0 ? await supabase
       .from('student_details')
-      .select('student_id, first_name, last_name')
+      .select('student_id, first_name, last_name, iep_goals')
       .in('student_id', dbStudents.map(s => s.id)) : { data: null };
 
-    // Combine students with their details for matching
+    // Combine students with their details for matching (includes goals for UPSERT comparison)
     const databaseStudents: DatabaseStudent[] = dbStudents?.map(student => {
       const details = studentDetails?.find(d => d.student_id === student.id);
       return {
@@ -580,7 +675,12 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         initials: student.initials,
         grade_level: student.grade_level,
         first_name: details?.first_name || undefined,
-        last_name: details?.last_name || undefined
+        last_name: details?.last_name || undefined,
+        // For UPSERT comparison
+        iep_goals: details?.iep_goals || undefined,
+        sessions_per_week: student.sessions_per_week || undefined,
+        minutes_per_session: student.minutes_per_session || undefined,
+        teacher_id: student.teacher_id || undefined
       };
     }) || [];
 
@@ -634,8 +734,119 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         scrubErrors.push(...scrubResult.errors);
       }
 
-      // Determine match status
+      // Determine match status and UPSERT action
       const isNew = match.confidence === 'none';
+      const matchedStudent = match.matchedStudent;
+
+      // Get scrubbed goal texts for comparison
+      const scrubbedGoalTexts = scrubResult.goals.map(g => g.scrubbed);
+
+      // Initialize preview with schedule/teacher data for change detection
+      let scheduleData: { sessionsPerWeek: number; minutesPerSession: number } | undefined;
+      let teacherMatchResult: TeacherMatch | undefined;
+
+      // Match with deliveries data first (need for change detection)
+      if (deliveriesData) {
+        const deliveryRecord = deliveriesData.get(normalizedKey);
+        if (deliveryRecord) {
+          matchedDeliveryNames.add(normalizedKey);
+          scheduleData = {
+            sessionsPerWeek: deliveryRecord.sessionsPerWeek,
+            minutesPerSession: deliveryRecord.minutesPerSession
+          };
+        }
+      }
+
+      // Match with class list data (need for change detection)
+      if (classListData) {
+        const classListStudent = classListData.get(normalizedKey);
+        if (classListStudent) {
+          matchedClassListNames.add(normalizedKey);
+          const teacherMatch = matchTeacher(classListStudent.teacher, dbTeachers);
+          let teacherName: string | null = null;
+          if (teacherMatch.teacherId) {
+            const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
+            if (dbTeacher) {
+              teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
+            }
+          }
+          teacherMatchResult = {
+            teacherId: teacherMatch.teacherId,
+            teacherName: teacherName || classListStudent.teacher.rawName,
+            confidence: teacherMatch.confidence,
+            reason: teacherMatch.reason
+          };
+        }
+      }
+
+      // Determine action and track changes
+      let action: 'insert' | 'update' | 'skip' = 'insert';
+      let changes: StudentChanges | undefined;
+      let goalsRemoved: string[] | undefined;
+
+      if (!isNew && matchedStudent) {
+        // Check for changes to determine if update or skip
+        const changeCheck = hasChanges(
+          matchedStudent,
+          scrubbedGoalTexts,
+          scheduleData,
+          teacherMatchResult?.teacherId
+        );
+
+        const goalComparison = compareGoals(matchedStudent.iep_goals, scrubbedGoalTexts);
+        const anyChanges = changeCheck.hasGoalChanges || changeCheck.hasScheduleChanges || changeCheck.hasTeacherChanges;
+
+        if (anyChanges) {
+          action = 'update';
+          changes = {};
+
+          // Track goal changes
+          if (changeCheck.hasGoalChanges) {
+            changes.goals = goalComparison;
+            // Set warning if goals are being removed
+            if (goalComparison.removed.length > 0) {
+              goalsRemoved = goalComparison.removed;
+            }
+          }
+
+          // Track schedule changes
+          if (changeCheck.hasScheduleChanges && scheduleData) {
+            changes.schedule = {
+              old: matchedStudent.sessions_per_week || matchedStudent.minutes_per_session
+                ? {
+                    sessionsPerWeek: matchedStudent.sessions_per_week,
+                    minutesPerSession: matchedStudent.minutes_per_session
+                  }
+                : null,
+              new: scheduleData
+            };
+          }
+
+          // Track teacher changes
+          if (changeCheck.hasTeacherChanges && teacherMatchResult) {
+            // Find existing teacher name for display
+            let existingTeacherName: string | undefined;
+            if (matchedStudent.teacher_id) {
+              const existingTeacher = dbTeachers.find(t => t.id === matchedStudent.teacher_id);
+              if (existingTeacher) {
+                existingTeacherName = [existingTeacher.first_name, existingTeacher.last_name].filter(Boolean).join(' ');
+              }
+            }
+
+            changes.teacher = {
+              old: matchedStudent.teacher_id
+                ? { teacherId: matchedStudent.teacher_id, teacherName: existingTeacherName }
+                : null,
+              new: {
+                teacherId: teacherMatchResult.teacherId,
+                teacherName: teacherMatchResult.teacherName
+              }
+            };
+          }
+        } else {
+          action = 'skip';
+        }
+      }
 
       // Build preview object
       const preview: StudentPreview = {
@@ -644,52 +855,30 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         initials: student.initials,
         gradeLevel: student.gradeLevel,
         goals: scrubResult.goals,
+        action,
         matchStatus: isNew ? 'new' : 'duplicate',
-        matchedStudentId: isNew ? undefined : match.matchedStudent?.id,
-        matchedStudentInitials: isNew ? undefined : match.matchedStudent?.initials,
+        matchedStudentId: isNew ? undefined : matchedStudent?.id,
+        matchedStudentInitials: isNew ? undefined : matchedStudent?.initials,
         matchConfidence: isNew ? undefined : (match.confidence === 'none' ? undefined : match.confidence as 'high' | 'medium' | 'low'),
-        matchReason: isNew ? undefined : match.reason
+        matchReason: isNew ? undefined : match.reason,
+        changes,
+        goalsRemoved
       };
 
-      // Match with deliveries data
-      if (deliveriesData) {
-        const deliveryRecord = deliveriesData.get(normalizedKey);
-        if (deliveryRecord) {
-          matchedDeliveryNames.add(normalizedKey);
-          preview.schedule = {
-            sessionsPerWeek: deliveryRecord.sessionsPerWeek,
-            minutesPerSession: deliveryRecord.minutesPerSession,
-            weeklyMinutes: deliveryRecord.weeklyMinutes,
-            frequency: deliveryRecord.sessionsFrequency
-          };
-        }
+      // Add schedule data to preview
+      if (scheduleData) {
+        const deliveryRecord = deliveriesData?.get(normalizedKey);
+        preview.schedule = {
+          sessionsPerWeek: scheduleData.sessionsPerWeek,
+          minutesPerSession: scheduleData.minutesPerSession,
+          weeklyMinutes: deliveryRecord?.weeklyMinutes || scheduleData.sessionsPerWeek * scheduleData.minutesPerSession,
+          frequency: deliveryRecord?.sessionsFrequency || `${scheduleData.sessionsPerWeek}x/week`
+        };
       }
 
-      // Match with class list data
-      if (classListData) {
-        const classListStudent = classListData.get(normalizedKey);
-        if (classListStudent) {
-          matchedClassListNames.add(normalizedKey);
-
-          // Try to match teacher to database
-          const teacherMatch = matchTeacher(classListStudent.teacher, dbTeachers);
-
-          // Find teacher name for display
-          let teacherName: string | null = null;
-          if (teacherMatch.teacherId) {
-            const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
-            if (dbTeacher) {
-              teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
-            }
-          }
-
-          preview.teacher = {
-            teacherId: teacherMatch.teacherId,
-            teacherName: teacherName || classListStudent.teacher.rawName,
-            confidence: teacherMatch.confidence,
-            reason: teacherMatch.reason
-          };
-        }
+      // Add teacher data to preview
+      if (teacherMatchResult) {
+        preview.teacher = teacherMatchResult;
       }
 
       studentPreviews.push(preview);
@@ -720,23 +909,27 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       }
     }
 
-    // Track preview generation
+    // Track preview generation with UPSERT counts
     track.event('student_import_preview_generated', {
       userId,
       totalStudents: studentPreviews.length,
-      newStudents: studentPreviews.filter(s => s.matchStatus === 'new').length,
-      duplicates: studentPreviews.filter(s => s.matchStatus === 'duplicate').length,
+      inserts: studentPreviews.filter(s => s.action === 'insert').length,
+      updates: studentPreviews.filter(s => s.action === 'update').length,
+      skips: studentPreviews.filter(s => s.action === 'skip').length,
+      withGoalsRemoved: studentPreviews.filter(s => s.goalsRemoved && s.goalsRemoved.length > 0).length,
       withSchedule: studentPreviews.filter(s => s.schedule).length,
       withTeacher: studentPreviews.filter(s => s.teacher).length,
       hasDeliveriesFile: !!deliveriesFile,
       hasClassListFile: !!classListFile
     });
 
-    log.info('Preparing preview response', {
+    log.info('Preparing UPSERT preview response', {
       userId,
       totalStudents: studentPreviews.length,
-      newStudents: studentPreviews.filter(s => s.matchStatus === 'new').length,
-      duplicates: studentPreviews.filter(s => s.matchStatus === 'duplicate').length,
+      inserts: studentPreviews.filter(s => s.action === 'insert').length,
+      updates: studentPreviews.filter(s => s.action === 'update').length,
+      skips: studentPreviews.filter(s => s.action === 'skip').length,
+      withGoalsRemoved: studentPreviews.filter(s => s.goalsRemoved && s.goalsRemoved.length > 0).length,
       withSchedule: studentPreviews.filter(s => s.schedule).length,
       withTeacher: studentPreviews.filter(s => s.teacher).length,
       unmatchedCount: unmatchedStudents.length
@@ -751,6 +944,12 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       ...classListWarnings.map(w => ({ ...w, source: 'classList' as const }))
     ];
 
+    // Calculate UPSERT summary counts
+    const insertCount = studentPreviews.filter(s => s.action === 'insert').length;
+    const updateCount = studentPreviews.filter(s => s.action === 'update').length;
+    const skipCount = studentPreviews.filter(s => s.action === 'skip').length;
+    const withGoalsRemovedCount = studentPreviews.filter(s => s.goalsRemoved && s.goalsRemoved.length > 0).length;
+
     // Return preview data
     return NextResponse.json({
       success: true,
@@ -758,8 +957,16 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         students: studentPreviews,
         summary: {
           total: studentPreviews.length,
+          // Legacy fields for backward compatibility
           new: studentPreviews.filter(s => s.matchStatus === 'new').length,
           duplicates: studentPreviews.filter(s => s.matchStatus === 'duplicate').length,
+          // UPSERT counts
+          inserts: insertCount,
+          updates: updateCount,
+          skips: skipCount,
+          // Warning count
+          withGoalsRemoved: withGoalsRemovedCount,
+          // Enrichment counts
           withSchedule: studentPreviews.filter(s => s.schedule).length,
           withTeacher: studentPreviews.filter(s => s.teacher).length
         },
