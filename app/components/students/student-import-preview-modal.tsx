@@ -40,15 +40,17 @@ interface StudentPreview {
   lastName: string;
   initials: string;
   gradeLevel: string;
-  goals: Array<{
+  goals?: Array<{
     scrubbed: string;
     piiDetected: string[];
     confidence: 'high' | 'medium' | 'low';
   }>;
   // UPSERT action
-  action: 'insert' | 'update' | 'skip';
+  action?: 'insert' | 'update' | 'skip';
   // Legacy field for backward compatibility
-  matchStatus: 'new' | 'duplicate';
+  matchStatus?: 'new' | 'duplicate';
+  // Student ID - used in Deliveries-only mode (studentId) or normal mode (matchedStudentId)
+  studentId?: string;
   matchedStudentId?: string;
   matchedStudentInitials?: string;
   matchConfidence?: 'high' | 'medium' | 'low';
@@ -232,7 +234,7 @@ export function StudentImportPreviewModal({
           goals: goalsToImport,
           // UPSERT fields
           action,
-          studentId: student.matchedStudentId, // For update actions
+          studentId: student.matchedStudentId || student.studentId, // For update actions (matchedStudentId for normal mode, studentId for Deliveries-only mode)
           // Include current school context for assignment
           schoolId: currentSchool?.school_id,
           schoolSite: currentSchool?.school_site,
@@ -525,10 +527,10 @@ export function StudentImportPreviewModal({
                                   className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
                                 >
                                   <span>
-                                    {(selectedGoals[idx] || new Set()).size}/{student.goals.length}
+                                    {(selectedGoals[idx] || new Set()).size}/{(student.goals || []).length}
                                   </span>
                                   {(selectedGoals[idx] || new Set()).size > 0 &&
-                                    (selectedGoals[idx] || new Set()).size < student.goals.length && (
+                                    (selectedGoals[idx] || new Set()).size < (student.goals || []).length && (
                                       <span className="text-yellow-600" title="Some goals deselected">⚠</span>
                                     )}
                                   {isExpanded ? '▼' : '▶'}
