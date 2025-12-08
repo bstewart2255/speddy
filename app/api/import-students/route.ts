@@ -281,6 +281,8 @@ async function handleDeliveriesOrClassListOnly(
     firstName: string;
     lastName: string;
     gradeLevel: string | null;
+    action: 'update'; // Always 'update' for Deliveries/ClassList-only mode
+    matchStatus: 'duplicate'; // These are existing students being updated
     schedule?: {
       sessionsPerWeek: number;
       minutesPerSession: number;
@@ -316,7 +318,9 @@ async function handleDeliveriesOrClassListOnly(
             initials: existingStudent.initials || '',
             firstName: details.first_name,
             lastName: details.last_name,
-            gradeLevel: existingStudent.grade_level
+            gradeLevel: existingStudent.grade_level,
+            action: 'update',
+            matchStatus: 'duplicate'
           };
           studentUpdates.push(update);
         }
@@ -352,7 +356,9 @@ async function handleDeliveriesOrClassListOnly(
             initials: existingStudent.initials || '',
             firstName: details.first_name,
             lastName: details.last_name,
-            gradeLevel: existingStudent.grade_level
+            gradeLevel: existingStudent.grade_level,
+            action: 'update',
+            matchStatus: 'duplicate'
           };
           studentUpdates.push(update);
         }
@@ -416,7 +422,11 @@ async function handleDeliveriesOrClassListOnly(
       summary: {
         total: studentUpdates.length,
         new: 0,
-        duplicates: 0,
+        duplicates: studentUpdates.length,
+        // UPSERT counts for consistency
+        inserts: 0,
+        updates: studentUpdates.length,
+        skips: 0,
         withSchedule: studentUpdates.filter(s => s.schedule).length,
         withTeacher: studentUpdates.filter(s => s.teacher).length
       },
