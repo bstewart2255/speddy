@@ -219,8 +219,10 @@ export function StudentImportPreviewModal({
           .filter(goalIdx => goalIdx < goals.length)
           .map(goalIdx => goals[goalIdx].scrubbed);
 
-        // Determine action (default to insert for backward compatibility)
-        const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'insert');
+        // Determine action based on student.action or matchStatus
+        // - 'new' students default to insert
+        // - matched/duplicate students default to skip (not insert, to avoid duplicates)
+        const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
 
         return {
           firstName: student.firstName,

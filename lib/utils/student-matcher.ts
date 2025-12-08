@@ -194,13 +194,21 @@ function compareInitials(
     const excelLastLetter = excel[excel.length - 1];
     const dbFirstLetter = db[0];
     const dbLastLetter = db[db.length - 1];
-    const firstNameSecondLetter = excelFirstName[1].toUpperCase();
+
+    // Normalize first name to handle special characters (e.g., O'Brien -> OBRIEN)
+    const normalizedFirstName = excelFirstName.toUpperCase().replace(/[^A-Z]/g, '');
+    const safeSecondLetter = normalizedFirstName.length >= 2 ? normalizedFirstName[1] : null;
+
+    // Skip 3-char matching if first name doesn't have enough alphabetic characters
+    if (!safeSecondLetter) {
+      return { matches: false, reason: 'Initials do not match' };
+    }
 
     // Case 1: Excel has 2-char (JS), DB has 3-char (JoS)
     if (excel.length === 2 && db.length === 3) {
       if (excelFirstLetter === dbFirstLetter &&
           excelLastLetter === dbLastLetter &&
-          firstNameSecondLetter === db[1]) {
+          safeSecondLetter === db[1]) {
         return {
           matches: true,
           reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials} (verified via first name)`
@@ -212,7 +220,7 @@ function compareInitials(
     if (excel.length === 3 && db.length === 2) {
       if (excelFirstLetter === dbFirstLetter &&
           excelLastLetter === dbLastLetter &&
-          excel[1] === firstNameSecondLetter) {
+          excel[1] === safeSecondLetter) {
         return {
           matches: true,
           reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials}`
