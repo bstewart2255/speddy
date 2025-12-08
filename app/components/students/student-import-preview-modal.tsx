@@ -244,7 +244,8 @@ export function StudentImportPreviewModal({
           sessionsPerWeek: student.schedule?.sessionsPerWeek,
           minutesPerSession: student.schedule?.minutesPerSession,
           // Include teacher assignment from Class List file
-          teacherId: student.teacher?.teacherId || undefined
+          teacherId: student.teacher?.teacherId || undefined,
+          teacherName: student.teacher?.teacherName || undefined
         };
       });
 

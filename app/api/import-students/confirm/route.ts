@@ -9,6 +9,7 @@ import { withAuth } from '@/lib/api/with-auth';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +27,7 @@ interface StudentToImport {
   sessionsPerWeek?: number;
   minutesPerSession?: number;
   teacherId?: string;
+  teacherName?: string; // For updating the deprecated teacher_name column
   // UPSERT fields
   action?: 'insert' | 'update' | 'skip'; // Defaults to 'insert' for backward compatibility
   studentId?: string; // Required for 'update' action
@@ -231,6 +233,19 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
         if (action === 'update') {
           // UPDATE: Update existing student using upsert_students_atomic RPC
+
+          // Fetch current student requirements BEFORE the update (needed for session sync)
+          const { data: currentStudent } = await supabase
+            .from('students')
+            .select('sessions_per_week, minutes_per_session')
+            .eq('id', student.studentId)
+            .single();
+
+          const oldRequirements = {
+            sessions_per_week: currentStudent?.sessions_per_week ?? null,
+            minutes_per_session: currentStudent?.minutes_per_session ?? null
+          };
+
           const { data: updateResult, error: updateError } = await supabase
             .rpc('upsert_students_atomic', {
               p_provider_id: userId,
@@ -244,7 +259,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
                 goals: student.goals,
                 sessionsPerWeek: student.sessionsPerWeek || null,
                 minutesPerSession: student.minutesPerSession || null,
-                teacherId: student.teacherId || null
+                teacherId: student.teacherId || null,
+                teacherName: student.teacherName || null
               }]
             });
 
@@ -288,7 +304,50 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             continue;
           }
 
-          // Success
+          // Success - now sync sessions if schedule requirements were provided
+          const newRequirements = {
+            sessions_per_week: student.sessionsPerWeek ?? null,
+            minutes_per_session: student.minutesPerSession ?? null
+          };
+
+          // Check if schedule requirements changed and sync sessions accordingly
+          const requirementsChanged =
+            student.sessionsPerWeek !== undefined ||
+            student.minutesPerSession !== undefined;
+
+          if (requirementsChanged) {
+            try {
+              const syncResult = await updateExistingSessionsForStudent(
+                student.studentId!,
+                oldRequirements,
+                newRequirements
+              );
+
+              if (!syncResult.success) {
+                log.warn('Session sync had issues after student update', {
+                  userId,
+                  studentId: student.studentId,
+                  studentInitials: initialsNormalized,
+                  syncError: syncResult.error
+                });
+              } else {
+                log.info('Sessions synced successfully', {
+                  userId,
+                  studentId: student.studentId,
+                  studentInitials: initialsNormalized,
+                  conflictCount: syncResult.conflictCount || 0
+                });
+              }
+            } catch (syncError) {
+              log.error('Failed to sync sessions after update', syncError instanceof Error ? syncError : null, {
+                userId,
+                studentId: student.studentId,
+                studentInitials: initialsNormalized
+              });
+              // Don't fail the update - just log the sync error
+            }
+          }
+
           log.info('Student updated successfully', {
             userId,
             studentId: student.studentId,
