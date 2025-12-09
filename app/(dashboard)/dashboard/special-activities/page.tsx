@@ -25,13 +25,22 @@ interface SpecialActivity {
   day_of_week: number;
 }
 
+interface EditableActivity extends SpecialActivity {
+  teacher_id?: string | null;
+  created_by_id?: string | null;
+  provider_id?: string | null;
+  school_id?: string | null;
+}
+
 export default function SpecialActivitiesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
-  const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
+  const [editingActivity, setEditingActivity] = useState<EditableActivity | null>(null);
+  const [specialActivities, setSpecialActivities] = useState<EditableActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { currentSchool } = useSchool();
   const supabase = createClient();
   
@@ -45,6 +54,9 @@ export default function SpecialActivitiesPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !currentSchool) return;
+
+      // Store current user ID for permission checks
+      setCurrentUserId(user.id);
 
       // Query all activities at the current school (teacher and provider created)
       // Exclude soft-deleted activities
@@ -64,7 +76,7 @@ export default function SpecialActivitiesPage() {
 
       if (error) throw error;
       setSpecialActivities(data || []);
-      
+
       // Fetch last saved timestamp
       const lastUpdated = await getLastSavedSpecialActivity(currentSchool || undefined);
       setLastSaved(lastUpdated);
@@ -243,8 +255,8 @@ export default function SpecialActivitiesPage() {
               <CardHeader>
                 <div className="flex justify-between items-center gap-4">
                   <CardTitle>Add New Special Activity</CardTitle>
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     onClick={() => setShowAddForm(false)}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -260,6 +272,37 @@ export default function SpecialActivitiesPage() {
                     fetchSpecialActivities();
                   }}
                   onCancel={() => setShowAddForm(false)}
+                />
+              </CardBody>
+            </Card>
+          </div>
+        )}
+
+        {/* Edit Activity Form - Inline */}
+        {editingActivity && (
+          <div className="mb-8">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center gap-4">
+                  <CardTitle>Edit Special Activity</CardTitle>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setEditingActivity(null)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <AddSpecialActivityForm
+                  key={editingActivity.id}
+                  activity={editingActivity}
+                  onSuccess={() => {
+                    setEditingActivity(null);
+                    fetchSpecialActivities();
+                  }}
+                  onCancel={() => setEditingActivity(null)}
                 />
               </CardBody>
             </Card>
@@ -352,14 +395,33 @@ export default function SpecialActivitiesPage() {
                           {formatTime(activity.start_time)} - {formatTime(activity.end_time)}
                         </TableCell>
                         <TableActionCell>
-                          <Button 
-                            variant="danger" 
-                            size="sm"
-                            onClick={() => handleDelete(activity.id, activity.activity_name)}
-                            disabled={deletingId === activity.id}
-                          >
-                            {deletingId === activity.id ? 'Deleting...' : 'Delete'}
-                          </Button>
+                          <div className="flex gap-2">
+                            {(activity.created_by_id === currentUserId ||
+                              (!activity.created_by_id && activity.provider_id === currentUserId)) && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingActivity(activity);
+                                  setShowAddForm(false);
+                                  setShowImportSection(false);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                            {(activity.created_by_id === currentUserId ||
+                              (!activity.created_by_id && activity.provider_id === currentUserId)) && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDelete(activity.id, activity.activity_name)}
+                                disabled={deletingId === activity.id}
+                              >
+                                {deletingId === activity.id ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            )}
+                          </div>
                         </TableActionCell>
                       </TableRow>
                     ))}

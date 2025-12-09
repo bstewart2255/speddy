@@ -94,6 +94,7 @@ export async function addSpecialActivity(
 /**
  * Soft delete a special activity by id after verifying ownership.
  * Sets deleted_at timestamp instead of permanently deleting the record.
+ * Supports both new records (created_by_id) and legacy records (provider_id).
  */
 export async function deleteSpecialActivity(id: string): Promise<void> {
   const supabase = createClient();
@@ -104,25 +105,104 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
     throw new Error('User not authenticated');
   }
 
-  // CRITICAL: Soft delete with ownership verification
-  // Use created_by_id for ownership (works for both teacher and provider activities)
-  const { data, error } = await supabase
+  // First, verify ownership by checking the activity
+  const { data: existingActivity, error: fetchError } = await supabase
+    .from('special_activities')
+    .select('id, created_by_id, provider_id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !existingActivity) {
+    throw new Error('Activity not found or already deleted');
+  }
+
+  // Check ownership: created_by_id matches, OR (created_by_id is null AND provider_id matches)
+  const isOwner = existingActivity.created_by_id === user.id ||
+    (!existingActivity.created_by_id && existingActivity.provider_id === user.id);
+
+  if (!isOwner) {
+    throw new Error('You do not have permission to delete this activity');
+  }
+
+  // Soft delete the activity
+  const { error } = await supabase
     .from('special_activities')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('created_by_id', user.id) // CRITICAL: Ensure user created this record
-    .is('deleted_at', null) // Only delete if not already deleted
-    .select();
+    .is('deleted_at', null);
 
   if (error) {
     console.error('Error soft-deleting special activity:', error);
     throw error;
   }
+}
 
-  // Check if any rows were affected
-  if (!data || data.length === 0) {
-    throw new Error('Activity not found, already deleted, or you do not have permission to delete it');
+/**
+ * Update a special activity by id after verifying ownership.
+ * Supports both new records (created_by_id) and legacy records (provider_id).
+ */
+export async function updateSpecialActivity(
+  id: string,
+  updates: {
+    teacher_id?: string | null;
+    teacher_name?: string;
+    activity_name?: string;
+    day_of_week?: number;
+    start_time?: string;
+    end_time?: string;
   }
+): Promise<SpecialActivity> {
+  const supabase = createClient();
+
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // First, verify ownership by checking the activity
+  const { data: existingActivity, error: fetchError } = await supabase
+    .from('special_activities')
+    .select('id, created_by_id, provider_id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !existingActivity) {
+    throw new Error('Activity not found');
+  }
+
+  // Check ownership: created_by_id matches, OR (created_by_id is null AND provider_id matches)
+  const isOwner = existingActivity.created_by_id === user.id ||
+    (!existingActivity.created_by_id && existingActivity.provider_id === user.id);
+
+  if (!isOwner) {
+    throw new Error('You do not have permission to edit this activity');
+  }
+
+  // Update the activity
+  const { data, error } = await supabase
+    .from('special_activities')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating special activity:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('Failed to update activity');
+  }
+
+  return data;
 }
 
 /**
