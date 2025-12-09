@@ -111,7 +111,10 @@ BEGIN
           );
 
         WHEN 'update' THEN
-          -- Verify student belongs to this provider (security check)
+          -- Security: Verify student belongs to this provider
+          -- Note: We use p_provider_id (not auth.uid()) because this function is called from
+          -- server-side API routes via service role. The API layer (withAuth middleware)
+          -- handles authentication and passes the verified user ID as p_provider_id.
           IF NOT EXISTS (
             SELECT 1 FROM public.students
             WHERE id = v_student_id AND provider_id = p_provider_id

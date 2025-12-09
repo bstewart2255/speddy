@@ -450,7 +450,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             userId,
             studentId: newStudent.id,
             studentInitials: initialsNormalized,
-            goalsCount: student.goals.length
+            goalsCount: student.goals?.length ?? 0
           });
 
           results.push({
