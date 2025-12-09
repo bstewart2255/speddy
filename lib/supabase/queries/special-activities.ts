@@ -126,6 +126,73 @@ export async function deleteSpecialActivity(id: string): Promise<void> {
 }
 
 /**
+ * Update a special activity by id after verifying ownership.
+ * Supports both new records (created_by_id) and legacy records (provider_id).
+ */
+export async function updateSpecialActivity(
+  id: string,
+  updates: {
+    teacher_id?: string | null;
+    teacher_name?: string;
+    activity_name?: string;
+    day_of_week?: number;
+    start_time?: string;
+    end_time?: string;
+  }
+): Promise<SpecialActivity> {
+  const supabase = createClient();
+
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // First, verify ownership by checking the activity
+  const { data: existingActivity, error: fetchError } = await supabase
+    .from('special_activities')
+    .select('id, created_by_id, provider_id')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single();
+
+  if (fetchError || !existingActivity) {
+    throw new Error('Activity not found');
+  }
+
+  // Check ownership: created_by_id matches, OR (created_by_id is null AND provider_id matches)
+  const isOwner = existingActivity.created_by_id === user.id ||
+    (!existingActivity.created_by_id && existingActivity.provider_id === user.id);
+
+  if (!isOwner) {
+    throw new Error('You do not have permission to edit this activity');
+  }
+
+  // Update the activity
+  const { data, error } = await supabase
+    .from('special_activities')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .is('deleted_at', null)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating special activity:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('Failed to update activity');
+  }
+
+  return data;
+}
+
+/**
  * Soft delete all activities for a specific teacher created by the user.
  * @param teacherName - The teacher's name
  * @param schoolId - Optional school ID to scope the deletion

@@ -8,21 +8,46 @@ import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
+import { updateSpecialActivity } from '../../../lib/supabase/queries/special-activities';
+
+interface EditActivity {
+  id: string;
+  teacher_id?: string | null;
+  teacher_name: string;
+  activity_name: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
 
 interface Props {
   teacherId?: string | null;
   teacherName?: string | null;
+  activity?: EditActivity; // When provided, form is in edit mode
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export default function AddSpecialActivityForm({ teacherId: initialTeacherId, teacherName: initialTeacherName, onSuccess, onCancel }: Props) {
-  const [teacherId, setTeacherId] = useState<string | null>(initialTeacherId || null);
-  const [teacherName, setTeacherName] = useState<string | null>(initialTeacherName || null);
-  const [activityName, setActivityName] = useState('');
-  const [dayOfWeek, setDayOfWeek] = useState('1');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+// Strip seconds from time string (HH:mm:ss -> HH:mm)
+const normalizeTime = (time: string | undefined): string => {
+  if (!time) return '';
+  // Handle both "HH:mm" and "HH:mm:ss" formats
+  const parts = time.split(':');
+  if (parts.length >= 2) {
+    return `${parts[0]}:${parts[1]}`;
+  }
+  return time;
+};
+
+export default function AddSpecialActivityForm({ teacherId: initialTeacherId, teacherName: initialTeacherName, activity, onSuccess, onCancel }: Props) {
+  const isEditMode = !!activity;
+
+  const [teacherId, setTeacherId] = useState<string | null>(activity?.teacher_id || initialTeacherId || null);
+  const [teacherName, setTeacherName] = useState<string | null>(activity?.teacher_name || initialTeacherName || null);
+  const [activityName, setActivityName] = useState(activity?.activity_name || '');
+  const [dayOfWeek, setDayOfWeek] = useState(activity?.day_of_week?.toString() || '1');
+  const [startTime, setStartTime] = useState(normalizeTime(activity?.start_time));
+  const [endTime, setEndTime] = useState(normalizeTime(activity?.end_time));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -33,14 +58,19 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
     e.preventDefault();
     setError('');
 
-    // Validate school is selected
-    if (!currentSchool?.school_id) {
+    // Validate school is selected (only for new activities)
+    if (!isEditMode && !currentSchool?.school_id) {
       setError('No school selected. Please select a school before adding a special activity.');
       return;
     }
 
-    if (!teacherId || !activityName || !startTime || !endTime) {
+    if (!activityName || !startTime || !endTime) {
       setError('All fields are required');
+      return;
+    }
+
+    if (!teacherId) {
+      setError('Teacher is required');
       return;
     }
 
@@ -55,42 +85,72 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      const { error: insertError } = await supabase
-      .from('special_activities')
-      .insert({
-        provider_id: user.user.id,
-        teacher_id: teacherId,
-        teacher_name: teacherName || '',
-        activity_name: activityName,
-        day_of_week: parseInt(dayOfWeek),
-        start_time: startTime,
-        end_time: endTime,
-        school_id: currentSchool.school_id
-      });
+      if (isEditMode && activity) {
+        // Update existing activity
+        await updateSpecialActivity(activity.id, {
+          teacher_id: teacherId,
+          teacher_name: teacherName || '',
+          activity_name: activityName,
+          day_of_week: parseInt(dayOfWeek),
+          start_time: startTime,
+          end_time: endTime
+        });
 
-      if (insertError) throw insertError;
+        // Check for conflicts after update
+        const resolver = new ConflictResolver(user.user.id);
+        const updatedActivity = {
+          teacher_id: teacherId,
+          teacher_name: teacherName || '',
+          day_of_week: parseInt(dayOfWeek),
+          start_time: startTime,
+          end_time: endTime,
+          school_id: currentSchool?.school_id ?? null
+        };
 
-      // Check for conflicts after successful insert
-      const resolver = new ConflictResolver(user.user.id);
-      const insertedActivity = {
-        teacher_id: teacherId,
-        teacher_name: teacherName || '',
-        day_of_week: parseInt(dayOfWeek),
-        start_time: startTime,
-        end_time: endTime,
-        school_id: currentSchool.school_id
-      };
+        const result = await resolver.resolveSpecialActivityConflicts(updatedActivity);
 
-      const result = await resolver.resolveSpecialActivityConflicts(insertedActivity);
+        if (result.resolved > 0 || result.failed > 0) {
+          alert(`Special activity updated. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+        }
+      } else {
+        // Create new activity
+        const { error: insertError } = await supabase
+          .from('special_activities')
+          .insert({
+            provider_id: user.user.id,
+            teacher_id: teacherId,
+            teacher_name: teacherName || '',
+            activity_name: activityName,
+            day_of_week: parseInt(dayOfWeek),
+            start_time: startTime,
+            end_time: endTime,
+            school_id: currentSchool!.school_id
+          });
 
-      if (result.resolved > 0 || result.failed > 0) {
-        alert(`Special activity added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+        if (insertError) throw insertError;
+
+        // Check for conflicts after successful insert
+        const resolver = new ConflictResolver(user.user.id);
+        const insertedActivity = {
+          teacher_id: teacherId,
+          teacher_name: teacherName || '',
+          day_of_week: parseInt(dayOfWeek),
+          start_time: startTime,
+          end_time: endTime,
+          school_id: currentSchool!.school_id ?? null
+        };
+
+        const result = await resolver.resolveSpecialActivityConflicts(insertedActivity);
+
+        if (result.resolved > 0 || result.failed > 0) {
+          alert(`Special activity added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+        }
       }
 
       onSuccess();
     } catch (err) {
-      console.error('Error adding activity:', err);
-      setError('Failed to add activity');
+      console.error('Error saving activity:', err);
+      setError(isEditMode ? 'Failed to update activity. You may not have permission to edit this activity.' : 'Failed to add activity');
     } finally {
       setLoading(false);
     }
@@ -211,7 +271,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
           disabled={loading}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
         >
-          {loading ? 'Adding...' : 'Add Activity'}
+          {loading ? (isEditMode ? 'Updating...' : 'Adding...') : (isEditMode ? 'Update Activity' : 'Add Activity')}
         </button>
       </div>
     </form>
