@@ -80,17 +80,15 @@ export function SeisUploadWizardModal({
   };
 
   const handleProcessFiles = async () => {
-    if (!studentsFile.file) {
-      setError('Please select a Student Goals file');
-      return;
-    }
-
     setError(null);
     setUploading(true);
 
     try {
       const formData = new FormData();
-      formData.append('studentsFile', studentsFile.file);
+
+      if (studentsFile.file) {
+        formData.append('studentsFile', studentsFile.file);
+      }
 
       if (deliveriesFile.file) {
         formData.append('deliveriesFile', deliveriesFile.file);
@@ -157,7 +155,7 @@ export function SeisUploadWizardModal({
           <div className="flex items-start justify-between gap-4 p-6 border-b">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                SEIS Multi-File Upload
+                File Upload
               </h2>
               <p className="text-sm text-gray-600 mt-1">
                 Upload student data from multiple sources
@@ -180,13 +178,13 @@ export function SeisUploadWizardModal({
               </div>
             )}
 
-            {/* File 1: Student Goals (Required) */}
+            {/* File 1: Student Goals (Optional) */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  1. Student Goals
+                  1. SEIS Student Goals Report
                 </label>
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Optional</span>
               </div>
               <p className="text-xs text-gray-500">
                 SEIS Excel/CSV file with student names, grades, and IEP goals
@@ -218,14 +216,9 @@ export function SeisUploadWizardModal({
               ) : (
                 <button
                   onClick={() => studentsInputRef.current?.click()}
-                  className="w-full p-4 border-2 border-dashed border-gray-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                  className="w-full p-3 border-2 border-dashed border-gray-200 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors"
                 >
-                  <div className="text-center">
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    <p className="mt-1 text-sm text-gray-600">Click to select file (.xlsx, .xls, or .csv)</p>
-                  </div>
+                  <p className="text-sm text-gray-500">Click to select file (.xlsx, .xls, or .csv)</p>
                 </button>
               )}
 
@@ -238,7 +231,7 @@ export function SeisUploadWizardModal({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  2. Deliveries
+                  2. SEIS Service Tracker &gt; Delivery Report
                 </label>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Optional</span>
               </div>
@@ -287,12 +280,12 @@ export function SeisUploadWizardModal({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  3. Class List
+                  3. Aeries Reports &gt; Special Ed Class List
                 </label>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Optional</span>
               </div>
               <p className="text-xs text-gray-500">
-                Aeries PrintSpecialEducationClassList TXT to auto-assign teachers
+                Aeries Class List (Report Format: TXT, 'Print by Teacher') to auto-assign teachers to students
               </p>
 
               <input
@@ -358,7 +351,7 @@ export function SeisUploadWizardModal({
             <Button
               variant="primary"
               onClick={handleProcessFiles}
-              disabled={uploading || !studentsFile.file}
+              disabled={uploading || (!studentsFile.file && !deliveriesFile.file && !classListFile.file)}
             >
               {uploading ? (
                 <>

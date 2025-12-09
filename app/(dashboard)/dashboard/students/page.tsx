@@ -16,7 +16,7 @@ import { TeacherDetailsModal } from '../../../components/teachers/teacher-detail
 import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
 import { useRouter } from 'next/navigation';
 import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
-import { StudentBulkImporter } from '../../../components/students/student-bulk-importer';
+import { SeisUploadWizardModal } from '../../../components/students/seis-upload-wizard-modal';
 import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
 
 type Student = {
@@ -61,7 +61,7 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
-  const [showBulkImportSection, setShowBulkImportSection] = useState(false);
+  const [showFileUploadModal, setShowFileUploadModal] = useState(false);
   const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = useMemo(() => createClient(), []);
@@ -317,7 +317,6 @@ export default function StudentsPage() {
                 variant="secondary"
                 onClick={() => {
                   setShowImportSection(!showImportSection);
-                  setShowBulkImportSection(false);
                   setShowAddForm(false);
                 }}
               >
@@ -325,13 +324,9 @@ export default function StudentsPage() {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => {
-                  setShowBulkImportSection(!showBulkImportSection);
-                  setShowImportSection(false);
-                  setShowAddForm(false);
-                }}
+                onClick={() => setShowFileUploadModal(true)}
               >
-                SEIS Upload
+                File Upload
               </Button>
               <div className="hidden">
                 <AIUploadButton
@@ -344,7 +339,6 @@ export default function StudentsPage() {
                 onClick={() => {
                   setShowAddForm(true);
                   setShowImportSection(false);
-                  setShowBulkImportSection(false);
                 }}
               >
                 + Add Student
@@ -370,35 +364,18 @@ export default function StudentsPage() {
           </div>
         )}
 
-        {/* Bulk Import Section */}
-        {!isViewOnly && showBulkImportSection && (
-          <div className="mb-6">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center gap-4">
-                  <CardTitle>SEIS Upload</CardTitle>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setShowBulkImportSection(false)}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardBody className="p-6">
-                <StudentBulkImporter
-                  currentSchool={currentSchool}
-                  onUploadComplete={(data) => {
-                    setBulkImportPreviewData(data);
-                  }}
-                />
-              </CardBody>
-            </Card>
-          </div>
-        )}
+        {/* File Upload Modal */}
+        <SeisUploadWizardModal
+          isOpen={showFileUploadModal}
+          onClose={() => setShowFileUploadModal(false)}
+          onUploadComplete={(data) => {
+            setShowFileUploadModal(false);
+            setBulkImportPreviewData(data);
+          }}
+          currentSchool={currentSchool}
+        />
 
-        {/* Bulk Import Preview Modal */}
+        {/* Import Preview Modal */}
         {bulkImportPreviewData && (
           <StudentImportPreviewModal
             isOpen={!!bulkImportPreviewData}
@@ -407,7 +384,6 @@ export default function StudentsPage() {
             currentSchool={currentSchool}
             onImportComplete={() => {
               fetchStudents();
-              setShowBulkImportSection(false);
               setBulkImportPreviewData(null);
             }}
           />
