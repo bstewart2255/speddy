@@ -36,7 +36,6 @@
     "@heroicons/react": "^2.2.0",
     "@octokit/rest": "^22.0.0",
     "@sentry/nextjs": "^10.5.0",
-    "@stripe/stripe-js": "^4.1.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.10",
@@ -62,7 +61,6 @@
     "react-dom": "^19.0.0",
     "recharts": "^3.1.0",
     "resend": "^4.6.0",
-    "stripe": "^16.2.0",
     "tailwind-merge": "^3.3.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

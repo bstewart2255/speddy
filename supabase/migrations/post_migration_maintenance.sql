@@ -32,8 +32,7 @@ ANALYZE public.special_activities;
 ANALYZE public.teachers;
 ANALYZE public.provider_schools;
 ANALYZE public.schools;
-ANALYZE public.subscriptions;
-ANALYZE public.referral_relationships;
+-- Note: subscriptions and referral_relationships tables removed in 20251208_remove_subscription_tables.sql
 ANALYZE public.holidays;
 ANALYZE public.analytics_events;
 ANALYZE public.audit_logs;

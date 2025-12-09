@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import LoginForm from './login-form';
-import { ReferralProgramModal } from '../../components/referral-program-modal';
 import { TimeoutMessage } from '../../components/auth/timeout-message';
 
 export default function LoginPage() {
@@ -29,8 +28,6 @@ export default function LoginPage() {
           <LoginForm />
         </div>
       </div>
-      {/* Add the modal */}
-      <ReferralProgramModal />
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
         Made by SpEd people, for SpEd people.

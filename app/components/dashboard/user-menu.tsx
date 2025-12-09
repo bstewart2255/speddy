@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { createClient } from '@/lib/supabase/client';
@@ -20,26 +20,6 @@ interface UserMenuProps {
 export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
   const supabase = createClient();
-  const [userRole, setUserRole] = useState<string>('');
-
-  useEffect(() => {
-    // Get user role
-    const getUserRole = async () => {
-      if (user.id) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (profile) {
-          setUserRole(profile.role);
-        }
-      }
-    };
-
-    getUserRole();
-  }, [user.id, supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -78,21 +58,6 @@ export function UserMenu({ user }: UserMenuProps) {
                 </Link>
               )}
             </Menu.Item>
-            {/* Only show billing link for non-SEA users */}
-            {userRole !== 'sea' && (
-              <Menu.Item>
-                {({ active }) => (
-                  <Link
-                    href="/billing"
-                    className={`${
-                      active ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
-                    } block px-4 py-2 text-sm`}
-                  >
-                    Billing & Subscription
-                  </Link>
-                )}
-              </Menu.Item>
-            )}
             <hr className="my-1" />
             <Menu.Item>
               {({ active }) => (
