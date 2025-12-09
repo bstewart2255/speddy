@@ -295,6 +295,7 @@ export default function SpecialActivitiesPage() {
               </CardHeader>
               <CardBody>
                 <AddSpecialActivityForm
+                  key={editingActivity.id}
                   activity={editingActivity}
                   onSuccess={() => {
                     setEditingActivity(null);
