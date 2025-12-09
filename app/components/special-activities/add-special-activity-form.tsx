@@ -18,6 +18,7 @@ interface EditActivity {
   day_of_week: number;
   start_time: string;
   end_time: string;
+  school_id?: string | null;
 }
 
 interface Props {
@@ -64,13 +65,8 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
       return;
     }
 
-    if (!activityName || !startTime || !endTime) {
+    if (!teacherId || !activityName || !startTime || !endTime) {
       setError('All fields are required');
-      return;
-    }
-
-    if (!teacherId) {
-      setError('Teacher is required');
       return;
     }
 
@@ -96,7 +92,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
           end_time: endTime
         });
 
-        // Check for conflicts after update
+        // Check for conflicts after update - use activity's school_id
         const resolver = new ConflictResolver(user.user.id);
         const updatedActivity = {
           teacher_id: teacherId,
@@ -104,7 +100,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
           day_of_week: parseInt(dayOfWeek),
           start_time: startTime,
           end_time: endTime,
-          school_id: currentSchool?.school_id ?? null
+          school_id: activity.school_id ?? null
         };
 
         const result = await resolver.resolveSpecialActivityConflicts(updatedActivity);

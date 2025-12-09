@@ -29,6 +29,7 @@ interface EditableActivity extends SpecialActivity {
   teacher_id?: string | null;
   created_by_id?: string | null;
   provider_id?: string | null;
+  school_id?: string | null;
 }
 
 export default function SpecialActivitiesPage() {
@@ -61,7 +62,7 @@ export default function SpecialActivitiesPage() {
       // Exclude soft-deleted activities
       let query = supabase
         .from('special_activities')
-        .select('*, created_by_id, teacher_id, provider_id')
+        .select('*')
         .is('deleted_at', null);
 
       if (currentSchool.school_id) {
@@ -409,14 +410,17 @@ export default function SpecialActivitiesPage() {
                                 Edit
                               </Button>
                             )}
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => handleDelete(activity.id, activity.activity_name)}
-                              disabled={deletingId === activity.id}
-                            >
-                              {deletingId === activity.id ? 'Deleting...' : 'Delete'}
-                            </Button>
+                            {(activity.created_by_id === currentUserId ||
+                              (!activity.created_by_id && activity.provider_id === currentUserId)) && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDelete(activity.id, activity.activity_name)}
+                                disabled={deletingId === activity.id}
+                              >
+                                {deletingId === activity.id ? 'Deleting...' : 'Delete'}
+                              </Button>
+                            )}
                           </div>
                         </TableActionCell>
                       </TableRow>
