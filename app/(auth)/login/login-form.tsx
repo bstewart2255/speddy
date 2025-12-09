@@ -50,19 +50,11 @@ export default function LoginForm() {
         return;
       }
 
-      logger.info('Login successful', {
-        email,
-        needsPayment: data.needsPayment
-      });
+      logger.info('Login successful', { email });
 
       // Use router.refresh() to ensure cookies are set before navigation
       router.refresh();
-
-      if (data.needsPayment) {
-        router.push('/signup?step=payment&subscription_required=true');
-      } else {
-        router.push('/dashboard');
-      }
+      router.push('/dashboard');
     } catch (err) {
       handleClientError(err, 'login-form');
       logger.error('Login error', err, { email });

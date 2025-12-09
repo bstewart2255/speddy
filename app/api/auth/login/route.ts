@@ -125,11 +125,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const userId = data.session.user.id;
   log.info('User authenticated successfully', { email, userId });
 
-  // Check profile and subscription with performance tracking
+  // Check profile with performance tracking
   const profilePerf = measurePerformance('login_profile_check');
 
   try {
-    // Check if user needs to complete payment
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
@@ -137,57 +136,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       .single();
 
     if (profileError) {
-      log.error('Failed to fetch user profile during login', profileError, { 
+      log.error('Failed to fetch user profile during login', profileError, {
         userId,
-        email 
+        email
       });
     }
 
-    // If not SEA, teacher, or admin user, check for subscription
-    let needsPayment = false;
-    if (profile?.role !== 'sea' && profile?.role !== 'teacher' && profile?.role !== 'site_admin' && profile?.role !== 'district_admin') {
-      const { data: subscription, error: subError } = await supabase
-        .from('subscriptions')
-        .select('status')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (subError) {
-        log.error('Failed to check subscription status', subError, { 
-          userId,
-          email 
-        });
-      }
-
-      // If no subscription or not active/trialing, needs payment
-      if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
-        needsPayment = true;
-        log.info('User needs payment', { 
-          userId,
-          email,
-          subscriptionStatus: subscription?.status || 'none' 
-        });
-      }
-    }
-
-    profilePerf.end({ 
-      role: profile?.role,
-      needsPayment 
-    });
+    profilePerf.end({ role: profile?.role });
 
     // Track successful login
     track.event('login_success', {
       email,
       userId,
-      role: profile?.role,
-      needsPayment
+      role: profile?.role
     });
 
     // End overall performance tracking
     perf.end({
       email,
       userId,
-      needsPayment,
       role: profile?.role
     });
 
@@ -195,27 +162,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     log.info('Login completed', {
       email,
       userId,
-      needsPayment,
       role: profile?.role
     });
 
     // For native form submissions (progressive enhancement fallback), redirect instead of JSON
     if (isFormSubmission) {
-      const redirectUrl = needsPayment
-        ? '/signup?step=payment&subscription_required=true'
-        : '/dashboard';
-      return NextResponse.redirect(new URL(redirectUrl, request.url), 303);
+      return NextResponse.redirect(new URL('/dashboard', request.url), 303);
     }
 
     return NextResponse.json({
-      success: true,
-      needsPayment,
+      success: true
     });
 
   } catch (profileCheckError) {
-    // This error is already logged by withErrorHandling,
-    // but we can add context
-    log.error('Error during login profile/subscription check', profileCheckError, {
+    log.error('Error during login profile check', profileCheckError, {
       userId,
       email
     });
@@ -234,7 +194,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // Return success but indicate potential issues
     return NextResponse.json({
       success: true,
-      needsPayment: false, // Default to no payment needed if check fails
       warning: 'Profile check failed'
     });
   }
