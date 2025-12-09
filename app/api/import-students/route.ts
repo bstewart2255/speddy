@@ -188,6 +188,7 @@ async function handleDeliveriesOrClassListOnly(
 
   if (dbError) {
     log.error('Failed to fetch students', dbError, { userId });
+    perf.end({ success: false });
     return NextResponse.json(
       { error: 'Failed to fetch your students from database' },
       { status: 500 }
@@ -195,6 +196,7 @@ async function handleDeliveriesOrClassListOnly(
   }
 
   if (!dbStudents || dbStudents.length === 0) {
+    perf.end({ success: false });
     return NextResponse.json(
       { error: 'No existing students found. Please upload a Student Goals file first to create students.' },
       { status: 400 }
@@ -230,6 +232,7 @@ async function handleDeliveriesOrClassListOnly(
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       log.error('Failed to parse deliveries file', error instanceof Error ? error : null, { userId });
+      perf.end({ success: false });
       return NextResponse.json(
         { error: `Failed to parse deliveries file: ${message}` },
         { status: 400 }
@@ -256,6 +259,7 @@ async function handleDeliveriesOrClassListOnly(
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       log.error('Failed to parse class list file', error instanceof Error ? error : null, { userId });
+      perf.end({ success: false });
       return NextResponse.json(
         { error: `Failed to parse class list file: ${message}` },
         { status: 400 }
