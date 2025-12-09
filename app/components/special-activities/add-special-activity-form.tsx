@@ -118,6 +118,8 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
           .from('special_activities')
           .insert({
             provider_id: user.user.id,
+            created_by_id: user.user.id,
+            created_by_role: 'provider',
             teacher_id: teacherId,
             teacher_name: teacherName || '',
             activity_name: activityName,
