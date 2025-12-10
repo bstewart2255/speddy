@@ -395,11 +395,25 @@ export function useScheduleData() {
       );
 
       if (filteredSessions.length > 0) {
-        setData(prev => ({
-          ...prev,
-          sessions: filteredSessions as ScheduleSession[],
-        }));
-        console.log('[useScheduleData] Synced with data manager:', filteredSessions.length, 'sessions (filtered from', cachedSessions.length, ')');
+        // MERGE sessions instead of replacing - keep any sessions from the initial fetch
+        // that might be missing from the data manager cache
+        setData(prev => {
+          // Create a map of existing session IDs for quick lookup
+          const existingSessionIds = new Set(prev.sessions.map(s => s.id));
+          // Only add sessions from cache that aren't already present
+          const newSessions = filteredSessions.filter(s => !existingSessionIds.has(s.id));
+          // If we already have sessions, merge. Otherwise use cache data.
+          const mergedSessions = prev.sessions.length > 0
+            ? [...prev.sessions, ...newSessions]
+            : filteredSessions;
+
+          console.log('[useScheduleData] Synced with data manager:', mergedSessions.length, 'sessions (merged', prev.sessions.length, 'existing +', newSessions.length, 'from cache)');
+
+          return {
+            ...prev,
+            sessions: mergedSessions as ScheduleSession[],
+          };
+        });
       }
 
       if (isCacheStale) {

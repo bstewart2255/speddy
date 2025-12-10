@@ -319,16 +319,19 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // 1. Student belongs to this user (any sessions for my students)
       // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
       if (studentIds.length > 0) {
+        // Use a high limit to avoid Supabase's default 1000 row limit
         sessionsResult = await this.supabase
           .from('schedule_sessions')
           .select('*')
-          .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`);
+          .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`)
+          .limit(10000);
       } else {
         // No students, only fetch assigned sessions
         sessionsResult = await this.supabase
           .from('schedule_sessions')
           .select('*')
-          .eq('assigned_to_specialist_id', this.providerId!);
+          .eq('assigned_to_specialist_id', this.providerId!)
+          .limit(10000);
       }
 
       // Filter assigned sessions to only include those for students at the current school
@@ -375,7 +378,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .from('schedule_sessions')
         .select('*')
         .eq('provider_id', this.providerId!)
-        .in('student_id', studentIds);
+        .in('student_id', studentIds)
+        .limit(10000);
     }
 
     if (sessionsResult.error) {
