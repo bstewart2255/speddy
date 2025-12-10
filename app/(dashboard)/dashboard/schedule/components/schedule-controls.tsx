@@ -2,6 +2,17 @@
 
 import React from 'react';
 
+interface SeaProfile {
+  id: string;
+  full_name: string;
+}
+
+interface SpecialistProfile {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
 interface ScheduleControlsProps {
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
   selectedGrades: Set<string>;
@@ -15,6 +26,13 @@ interface ScheduleControlsProps {
   onTimeSlotClear: () => void;
   onDayClear: () => void;
   onHighlightClear: () => void;
+  // New props for person filtering
+  seaProfiles?: SeaProfile[];
+  otherSpecialists?: SpecialistProfile[];
+  selectedSeaId: string | null;
+  selectedSpecialistId: string | null;
+  onSeaSelect: (seaId: string | null) => void;
+  onSpecialistSelect: (specialistId: string | null) => void;
 }
 
 const GRADE_COLORS = [
@@ -42,6 +60,12 @@ export function ScheduleControls({
   onTimeSlotClear,
   onDayClear,
   onHighlightClear,
+  seaProfiles = [],
+  otherSpecialists = [],
+  selectedSeaId,
+  selectedSpecialistId,
+  onSeaSelect,
+  onSpecialistSelect,
 }: ScheduleControlsProps) {
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':');
@@ -73,21 +97,57 @@ export function ScheduleControls({
             >
               My Sessions
             </FilterButton>
-            <FilterButton
-              active={sessionFilter === 'sea'}
-              onClick={() => onSessionFilterChange('sea')}
-              compact
-            >
-              SEA Sessions
-            </FilterButton>
-            {showSpecialistFilter && (
+            <div className="relative">
               <FilterButton
-                active={sessionFilter === 'specialist'}
-                onClick={() => onSessionFilterChange('specialist')}
+                active={sessionFilter === 'sea'}
+                onClick={() => onSessionFilterChange('sea')}
                 compact
               >
-                Specialist Sessions
+                SEA Sessions
               </FilterButton>
+              {sessionFilter === 'sea' && seaProfiles.length > 0 && (
+                <div className="absolute top-full left-0 mt-1 z-10">
+                  <select
+                    value={selectedSeaId || ''}
+                    onChange={(e) => onSeaSelect(e.target.value || null)}
+                    className="text-xs px-2 py-1 border border-gray-300 rounded-md bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
+                  >
+                    <option value="">All SEAs</option>
+                    {seaProfiles.map((sea) => (
+                      <option key={sea.id} value={sea.id}>
+                        {sea.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            {showSpecialistFilter && (
+              <div className="relative">
+                <FilterButton
+                  active={sessionFilter === 'specialist'}
+                  onClick={() => onSessionFilterChange('specialist')}
+                  compact
+                >
+                  Specialist Sessions
+                </FilterButton>
+                {sessionFilter === 'specialist' && otherSpecialists.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 z-10">
+                    <select
+                      value={selectedSpecialistId || ''}
+                      onChange={(e) => onSpecialistSelect(e.target.value || null)}
+                      className="text-xs px-2 py-1 border border-gray-300 rounded-md bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
+                    >
+                      <option value="">All Specialists</option>
+                      {otherSpecialists.map((specialist) => (
+                        <option key={specialist.id} value={specialist.id}>
+                          {specialist.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             )}
             {showAssignedFilter && (
               <FilterButton

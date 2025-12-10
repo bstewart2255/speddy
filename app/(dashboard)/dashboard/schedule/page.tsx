@@ -57,6 +57,8 @@ export default function SchedulePage() {
     selectedDay,
     highlightedStudentId,
     sessionFilter,
+    selectedSeaId,
+    selectedSpecialistId,
     draggedSession,
     dragOffset,
     dragPosition,
@@ -66,6 +68,8 @@ export default function SchedulePage() {
     setSelectedTimeSlot,
     setSelectedDay,
     setSessionFilter,
+    setSelectedSeaId,
+    setSelectedSpecialistId,
     toggleGrade,
     clearTimeSlot,
     clearDay,
@@ -156,17 +160,35 @@ export default function SchedulePage() {
     endDate.setHours(hours, minutes + minutesPerSession, 0);
     const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
+    // Determine assignment updates based on selected filter
+    type AssignmentUpdate = {
+      delivered_by?: 'sea' | 'specialist';
+      assigned_to_sea_id?: string | null;
+      assigned_to_specialist_id?: string | null;
+    };
+    const assignmentUpdate: AssignmentUpdate = {};
+    if (sessionFilter === 'sea' && selectedSeaId) {
+      assignmentUpdate.delivered_by = 'sea';
+      assignmentUpdate.assigned_to_sea_id = selectedSeaId;
+      assignmentUpdate.assigned_to_specialist_id = null;
+    } else if (sessionFilter === 'specialist' && selectedSpecialistId) {
+      assignmentUpdate.delivered_by = 'specialist';
+      assignmentUpdate.assigned_to_specialist_id = selectedSpecialistId;
+      assignmentUpdate.assigned_to_sea_id = null;
+    }
+
     optimisticUpdateSession(sessionToMove.id, {
       day_of_week: day,
       start_time: newStartTime,
       end_time: newEndTime,
       status: 'active', // Optimistically assume the move will be valid
       conflict_reason: null,
+      ...assignmentUpdate,
     });
 
     // Perform actual update
     const result = await handleSessionDrop(sessionToMove, day, dragPosition.time, student);
-    
+
     if (!result.success) {
       // Revert optimistic update, restoring original conflict status
       optimisticUpdateSession(sessionToMove.id, {
@@ -175,19 +197,44 @@ export default function SchedulePage() {
         end_time: sessionToMove.end_time,
         status: sessionToMove.status,
         conflict_reason: sessionToMove.conflict_reason,
+        delivered_by: sessionToMove.delivered_by,
+        assigned_to_sea_id: sessionToMove.assigned_to_sea_id,
+        assigned_to_specialist_id: sessionToMove.assigned_to_specialist_id,
       });
 
       if (result.error) {
         alert(`Failed to update session: ${result.error}`);
       }
-    } else if (result.hasConflicts && result.conflicts) {
-      // If the move succeeded but created new conflicts, update the status
-      optimisticUpdateSession(sessionToMove.id, {
-        status: 'needs_attention',
-        conflict_reason: result.conflicts.map(c => c.description).join(' AND '),
-      });
+    } else {
+      // If the move succeeded, also update assignment if needed
+      if (Object.keys(assignmentUpdate).length > 0) {
+        const supabaseClient = createClient();
+        const { error: assignError } = await supabaseClient
+          .from('schedule_sessions')
+          .update(assignmentUpdate)
+          .eq('id', sessionToMove.id);
+
+        if (assignError) {
+          console.error('Failed to update session assignment:', assignError);
+          // Revert the assignment part of the optimistic update
+          optimisticUpdateSession(sessionToMove.id, {
+            delivered_by: sessionToMove.delivered_by,
+            assigned_to_sea_id: sessionToMove.assigned_to_sea_id,
+            assigned_to_specialist_id: sessionToMove.assigned_to_specialist_id,
+          });
+          alert('Session was moved but assignment update failed. Please try assigning again.');
+        }
+      }
+
+      if (result.hasConflicts && result.conflicts) {
+        // If the move succeeded but created new conflicts, update the status
+        optimisticUpdateSession(sessionToMove.id, {
+          status: 'needs_attention',
+          conflict_reason: result.conflicts.map(c => c.description).join(' AND '),
+        });
+      }
     }
-  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop]);
+  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {
@@ -347,18 +394,31 @@ export default function SchedulePage() {
       }
 
       // Standard filtering based on delivered_by
+      let filtered: ScheduleSession[];
       switch (sessionFilter) {
         case 'mine':
-          return allSessions.filter(s => s.delivered_by === 'provider');
+          filtered = allSessions.filter(s => s.delivered_by === 'provider');
+          break;
         case 'sea':
-          return allSessions.filter(s => s.delivered_by === 'sea');
+          filtered = allSessions.filter(s => s.delivered_by === 'sea');
+          // Further filter by specific SEA if selected
+          if (selectedSeaId) {
+            filtered = filtered.filter(s => s.assigned_to_sea_id === selectedSeaId);
+          }
+          break;
         case 'specialist':
-          return allSessions.filter(s => s.delivered_by === 'specialist');
+          filtered = allSessions.filter(s => s.delivered_by === 'specialist');
+          // Further filter by specific specialist if selected
+          if (selectedSpecialistId) {
+            filtered = filtered.filter(s => s.assigned_to_specialist_id === selectedSpecialistId);
+          }
+          break;
         default:
-          return allSessions;
+          filtered = allSessions;
       }
+      return filtered;
     },
-    [providerRole, currentUserId, sessionFilter]
+    [providerRole, currentUserId, sessionFilter, selectedSeaId, selectedSpecialistId]
   );
 
   // Count filtered sessions using the same logic as the grid (templates only)
@@ -430,6 +490,12 @@ export default function SchedulePage() {
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
             onHighlightClear={clearHighlight}
+            seaProfiles={seaProfiles}
+            otherSpecialists={otherSpecialists}
+            selectedSeaId={selectedSeaId}
+            selectedSpecialistId={selectedSpecialistId}
+            onSeaSelect={setSelectedSeaId}
+            onSpecialistSelect={setSelectedSpecialistId}
           />
 
           <ScheduleGrid
