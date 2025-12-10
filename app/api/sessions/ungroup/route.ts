@@ -24,6 +24,18 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
+    // Validate that all session IDs are valid UUIDs (not temp IDs)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const invalidIds = sessionIds.filter((id: string) => !uuidRegex.test(id));
+    if (invalidIds.length > 0) {
+      log.warn('Invalid session IDs provided for ungrouping', { userId, invalidIds });
+      perf.end({ success: false, error: 'validation' });
+      return NextResponse.json(
+        { error: 'Please wait for sessions to save before ungrouping' },
+        { status: 400 }
+      );
+    }
+
     log.info('Ungrouping sessions', {
       userId,
       sessionCount: sessionIds.length
