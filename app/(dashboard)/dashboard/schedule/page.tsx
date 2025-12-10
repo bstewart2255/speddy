@@ -161,7 +161,12 @@ export default function SchedulePage() {
     const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
     // Determine assignment updates based on selected filter
-    const assignmentUpdate: Record<string, unknown> = {};
+    type AssignmentUpdate = {
+      delivered_by?: 'sea' | 'specialist';
+      assigned_to_sea_id?: string | null;
+      assigned_to_specialist_id?: string | null;
+    };
+    const assignmentUpdate: AssignmentUpdate = {};
     if (sessionFilter === 'sea' && selectedSeaId) {
       assignmentUpdate.delivered_by = 'sea';
       assignmentUpdate.assigned_to_sea_id = selectedSeaId;
@@ -211,6 +216,13 @@ export default function SchedulePage() {
 
         if (assignError) {
           console.error('Failed to update session assignment:', assignError);
+          // Revert the assignment part of the optimistic update
+          optimisticUpdateSession(sessionToMove.id, {
+            delivered_by: sessionToMove.delivered_by,
+            assigned_to_sea_id: sessionToMove.assigned_to_sea_id,
+            assigned_to_specialist_id: sessionToMove.assigned_to_specialist_id,
+          });
+          alert('Session was moved but assignment update failed. Please try assigning again.');
         }
       }
 
