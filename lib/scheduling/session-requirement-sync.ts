@@ -96,6 +96,7 @@ export async function updateExistingSessionsForStudent(
             end_time: null,
             service_type: 'resource',
             status: 'active' as const,
+            has_conflict: false,
             delivered_by: 'provider' as const,
           })
         );
@@ -178,6 +179,7 @@ async function resetSessionsToActive(
     .from('schedule_sessions')
     .update({
       status: 'active',
+      has_conflict: false,
       conflict_reason: null,
     })
     .eq('student_id', studentId)
@@ -208,6 +210,7 @@ async function updateSessionDurations(
     const update: SessionUpdate = {
       end_time: newEndTime,
       status: 'active', // Reset to active, conflicts will be detected next
+      has_conflict: false,
       conflict_reason: null,
     };
 
@@ -362,6 +365,7 @@ async function adjustSessionCount(
       end_time: null,
       service_type: 'resource',
       status: 'active' as const,
+      has_conflict: false,
       delivered_by: 'provider' as const,
     }));
 
@@ -459,6 +463,7 @@ async function markConflictingSessions(
       .from('schedule_sessions')
       .update({
         status: 'needs_attention',
+        has_conflict: true,
         conflict_reason: conflict.reason,
       })
       .eq('id', conflict.sessionId)

@@ -738,6 +738,7 @@ export class OptimizedScheduler {
         group_id: null,
         group_name: null,
         status: 'active' as const,
+        has_conflict: false,
         conflict_reason: null
       });
     }
@@ -1231,6 +1232,7 @@ export class OptimizedScheduler {
         group_id: session.group_id || null,
         group_name: session.group_name || null,
         status: session.status || 'active',
+        has_conflict: session.has_conflict || false,
         conflict_reason: session.conflict_reason || null
       });
     }

@@ -87,7 +87,8 @@ export async function getUnscheduledSessionsCount(
   const studentIds = students.map(s => s.id);
 
   // Get current UNSCHEDULED sessions (day_of_week, start_time, end_time are null)
-  // IMPORTANT: Only fetch sessions for students at THIS school to avoid cross-school contamination
+  // IMPORTANT: Only count template/unscheduled sessions (session_date IS NULL), not dated instances
+  // Dated instances with null day/time are historical records, not sessions that need scheduling
   const sessionsPerf = measurePerformanceWithAlerts('fetch_unscheduled_sessions_count', 'database');
   const sessionsResult = await safeQuery(
     async () => {
@@ -95,6 +96,7 @@ export async function getUnscheduledSessionsCount(
         .from('schedule_sessions')
         .select('id')
         .in('student_id', studentIds)
+        .is('session_date', null) // Only templates/unscheduled, not dated instances
         .is('day_of_week', null)
         .is('start_time', null)
         .is('end_time', null);
