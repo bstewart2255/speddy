@@ -16,6 +16,8 @@ export interface ScheduleUIState {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
+  selectedSeaId: string | null;
+  selectedSpecialistId: string | null;
   draggedSession: ScheduleSession | null;
   dragOffset: number;
   dragPosition: ScheduleDragPosition | null;
@@ -32,6 +34,8 @@ export function useScheduleState() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'all' | 'mine' | 'sea' | 'specialist' | 'assigned'>('all');
+  const [selectedSeaId, setSelectedSeaId] = useState<string | null>(null);
+  const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
 
   // Drag and drop states
   const [draggedSession, setDraggedSession] = useState<ScheduleSession | null>(null);
@@ -78,6 +82,18 @@ export function useScheduleState() {
 
   const toggleHighlight = useCallback((studentId: string) => {
     setHighlightedStudentId(prev => prev === studentId ? null : studentId);
+  }, []);
+
+  // Handle session filter change - clear person selection when switching filters
+  const handleSessionFilterChange = useCallback((filter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned') => {
+    setSessionFilter(filter);
+    // Clear person selections when switching away from sea/specialist filters
+    if (filter !== 'sea') {
+      setSelectedSeaId(null);
+    }
+    if (filter !== 'specialist') {
+      setSelectedSpecialistId(null);
+    }
   }, []);
 
   // Drag handlers
@@ -138,6 +154,8 @@ export function useScheduleState() {
     selectedDay,
     highlightedStudentId,
     sessionFilter,
+    selectedSeaId,
+    selectedSpecialistId,
     draggedSession,
     dragOffset,
     dragPosition,
@@ -149,7 +167,9 @@ export function useScheduleState() {
     setSelectedGrades,
     setSelectedTimeSlot,
     setSelectedDay,
-    setSessionFilter,
+    setSessionFilter: handleSessionFilterChange,
+    setSelectedSeaId,
+    setSelectedSpecialistId,
     toggleGrade,
     clearTimeSlot,
     clearDay,
