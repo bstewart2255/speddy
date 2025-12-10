@@ -243,33 +243,16 @@ export function useScheduleData() {
           // RLS policies will automatically filter to the correct school(s)
           // But we also need to filter by the CURRENT school selected in the school switcher
           
-          // Get SEAs from the CURRENT school only
+          // Get SEAs from the CURRENT school only using RPC function (bypasses RLS)
           console.log('[useScheduleData] Fetching SEAs for current school:', currentSchool.school_id || currentSchool.school_site);
-          let seaQuery = supabase
-            .from('profiles')
-            .select('id, full_name, supervising_provider_id')
-            .eq('role', 'sea');
-          
-          // Filter by current school
-          if (currentSchool.school_id) {
-            seaQuery = seaQuery.eq('school_id', currentSchool.school_id);
-          } else {
-            // Legacy schools without school_id
-            seaQuery = seaQuery
-              .eq('school_site', currentSchool.school_site)
-              .eq('school_district', currentSchool.school_district);
-          }
-          
-          const { data: schoolSeas, error } = await seaQuery.order('full_name', { ascending: true });
+          const { data: schoolSeas, error } = await (supabase.rpc as Function)('get_school_seas', {
+            p_school_id: currentSchool.school_id || null,
+            p_school_site: currentSchool.school_id ? null : currentSchool.school_site,
+            p_school_district: currentSchool.school_id ? null : currentSchool.school_district
+          }) as { data: Array<{ id: string; full_name: string; supervising_provider_id: string | null }> | null; error: { message: string; code?: string; details?: string; hint?: string } | null };
 
           if (error) {
-            console.error('[useScheduleData] Error fetching SEA profiles:', {
-              error,
-              message: error.message,
-              code: error.code,
-              details: error.details,
-              hint: error.hint,
-            });
+            console.error('[useScheduleData] Error fetching SEA profiles:', error);
           } else if (schoolSeas) {
             seaProfiles = schoolSeas.map(sea => ({
               id: sea.id,
