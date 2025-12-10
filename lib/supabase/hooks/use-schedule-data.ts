@@ -166,14 +166,16 @@ export function useScheduleData() {
             .from('schedule_sessions')
             .select('*')
             .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${user.id}`)
-            .is('session_date', null);
+            .is('session_date', null)
+            .limit(10000);
         } else {
           // No students, only fetch assigned sessions
           sessionsResult = await supabase
             .from('schedule_sessions')
             .select('*')
             .eq('assigned_to_specialist_id', user.id)
-            .is('session_date', null);
+            .is('session_date', null)
+            .limit(10000);
         }
 
         // Filter assigned sessions to only include those for students at the current school
@@ -206,7 +208,8 @@ export function useScheduleData() {
           .select('*')
           .in('student_id', studentIds)
           .eq('provider_id', user.id)
-          .is('session_date', null);
+          .is('session_date', null)
+          .limit(10000);
       }
 
       // For specialists, also fetch students from assigned sessions
