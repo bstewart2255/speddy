@@ -175,8 +175,8 @@ export function isScheduledSession(session: ScheduleSession): boolean {
 ## Historical Context
 
 - **Nov 2024**: Instance-based model introduced (templates + dated instances)
-- **Dec 8, 2024**: Bug - backfill only counted `status='active'` sessions
-- **Dec 9, 2024**: Bug - cleanup deleted templates instead of excess sessions
-- **Dec 10, 2024**: Fix - restored templates, added `has_conflict` column
+- **Dec 8, 2025**: Bug - backfill only counted `status='active'` sessions
+- **Dec 9, 2025**: Bug - cleanup deleted templates instead of excess sessions
+- **Dec 10, 2025**: Fix - restored templates, added `has_conflict` column
 
-See: GitHub Issue #440 for Dec 2024 data corruption incident.
+See: GitHub Issue #440 for Dec 2025 data corruption incident.

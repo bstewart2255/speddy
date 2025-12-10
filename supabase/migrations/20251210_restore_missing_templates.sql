@@ -52,25 +52,24 @@ DECLARE
   v_converted integer := 0;
   v_total_converted integer := 0;
 BEGIN
-  -- Find students with missing templates
+  -- Find students with missing templates (counting BOTH scheduled AND unscheduled)
+  -- Only convert instances if total templates < sessions_per_week
   FOR v_student IN
     SELECT
       s.id as student_id,
       s.initials,
       s.sessions_per_week,
-      s.sessions_per_week - COUNT(ss.id) FILTER (
-        WHERE ss.session_date IS NULL
-        AND ss.day_of_week IS NOT NULL
-        AND ss.is_completed = false
+      s.sessions_per_week - (
+        COUNT(ss.id) FILTER (WHERE ss.session_date IS NULL AND ss.day_of_week IS NOT NULL AND ss.is_completed = false)
+        + COUNT(ss.id) FILTER (WHERE ss.session_date IS NULL AND ss.day_of_week IS NULL)
       ) as templates_needed
     FROM students s
     LEFT JOIN schedule_sessions ss ON s.id = ss.student_id
     WHERE s.sessions_per_week IS NOT NULL AND s.sessions_per_week > 0
     GROUP BY s.id, s.initials, s.sessions_per_week
-    HAVING s.sessions_per_week > COUNT(ss.id) FILTER (
-      WHERE ss.session_date IS NULL
-      AND ss.day_of_week IS NOT NULL
-      AND ss.is_completed = false
+    HAVING s.sessions_per_week > (
+      COUNT(ss.id) FILTER (WHERE ss.session_date IS NULL AND ss.day_of_week IS NOT NULL AND ss.is_completed = false)
+      + COUNT(ss.id) FILTER (WHERE ss.session_date IS NULL AND ss.day_of_week IS NULL)
     )
   LOOP
     v_templates_needed := v_student.templates_needed;
