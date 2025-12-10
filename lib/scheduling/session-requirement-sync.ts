@@ -7,6 +7,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type SessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];
@@ -21,6 +22,15 @@ interface ConflictDetectionResult {
 
 /**
  * Main function to synchronize existing sessions with updated student requirements
+ *
+ * IMPORTANT: When calling from server-side API routes, you MUST pass a server Supabase client.
+ * The default browser client does not have auth context in server environments, causing RLS
+ * to return empty results and creating duplicate sessions.
+ *
+ * @param studentId - The student's ID
+ * @param oldRequirements - Previous session requirements
+ * @param newRequirements - New session requirements
+ * @param supabaseClient - Optional Supabase client (required for server-side calls)
  */
 export async function updateExistingSessionsForStudent(
   studentId: string,
@@ -31,9 +41,11 @@ export async function updateExistingSessionsForStudent(
   newRequirements: {
     minutes_per_session?: number | null;
     sessions_per_week?: number | null;
-  }
+  },
+  supabaseClient?: SupabaseClient<Database>
 ): Promise<{ success: boolean; error?: string; conflictCount?: number }> {
-  const supabase = createClient<Database>();
+  // Use provided client or fall back to browser client (for client-side calls)
+  const supabase = supabaseClient || createClient<Database>();
 
   try {
     const durationChanged =
@@ -84,6 +96,7 @@ export async function updateExistingSessionsForStudent(
             end_time: null,
             service_type: 'resource',
             status: 'active' as const,
+            has_conflict: false,
             delivered_by: 'provider' as const,
           })
         );
@@ -166,6 +179,7 @@ async function resetSessionsToActive(
     .from('schedule_sessions')
     .update({
       status: 'active',
+      has_conflict: false,
       conflict_reason: null,
     })
     .eq('student_id', studentId)
@@ -196,6 +210,7 @@ async function updateSessionDurations(
     const update: SessionUpdate = {
       end_time: newEndTime,
       status: 'active', // Reset to active, conflicts will be detected next
+      has_conflict: false,
       conflict_reason: null,
     };
 
@@ -350,6 +365,7 @@ async function adjustSessionCount(
       end_time: null,
       service_type: 'resource',
       status: 'active' as const,
+      has_conflict: false,
       delivered_by: 'provider' as const,
     }));
 
@@ -447,6 +463,7 @@ async function markConflictingSessions(
       .from('schedule_sessions')
       .update({
         status: 'needs_attention',
+        has_conflict: true,
         conflict_reason: conflict.reason,
       })
       .eq('id', conflict.sessionId)

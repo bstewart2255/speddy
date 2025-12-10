@@ -511,6 +511,7 @@ export class SchedulingEngine {
       group_id: null,
       group_name: null,
       status: 'active' as const,
+      has_conflict: false,
       conflict_reason: null
     }));
   }

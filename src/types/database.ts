@@ -1623,6 +1623,7 @@ export type Database = {
           end_time: string | null
           group_id: string | null
           group_name: string | null
+          has_conflict: boolean
           id: string
           is_completed: boolean
           manually_placed: boolean | null
@@ -1649,6 +1650,7 @@ export type Database = {
           end_time?: string | null
           group_id?: string | null
           group_name?: string | null
+          has_conflict?: boolean
           id?: string
           is_completed?: boolean
           manually_placed?: boolean | null
@@ -1675,6 +1677,7 @@ export type Database = {
           end_time?: string | null
           group_id?: string | null
           group_name?: string | null
+          has_conflict?: boolean
           id?: string
           is_completed?: boolean
           manually_placed?: boolean | null

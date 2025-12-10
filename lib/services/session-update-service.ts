@@ -160,10 +160,12 @@ export class SessionUpdateService {
       if (validation.valid) {
         // Valid move - clear any existing conflicts
         updateData.status = 'active';
+        updateData.has_conflict = false;
         updateData.conflict_reason = null;
       } else if (forceUpdate && validation.conflicts && validation.conflicts.length > 0) {
         // Forced move with conflicts - mark as needs attention
         updateData.status = 'needs_attention';
+        updateData.has_conflict = true;
         updateData.conflict_reason = validation.conflicts.map(c => c.description).join(' AND ');
       }
 
@@ -757,6 +759,7 @@ export class SessionUpdateService {
           start_time: null,
           end_time: null,
           status: 'active', // Unscheduled sessions are active by default (conflicts/attention only apply to scheduled sessions)
+          has_conflict: false, // Unscheduled sessions have no conflicts
           conflict_reason: null,
           updated_at: new Date().toISOString()
         })
@@ -793,6 +796,7 @@ export class SessionUpdateService {
           start_time: null,
           end_time: null,
           status: 'active',
+          has_conflict: false, // Unscheduled sessions have no conflicts
           conflict_reason: null,
           updated_at: new Date().toISOString()
         })

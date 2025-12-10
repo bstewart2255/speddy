@@ -317,10 +317,13 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
           if (requirementsChanged) {
             try {
+              // IMPORTANT: Pass the server Supabase client to avoid RLS issues
+              // The browser client doesn't have auth context in server environments
               const syncResult = await updateExistingSessionsForStudent(
                 student.studentId!,
                 oldRequirements,
-                newRequirements
+                newRequirements,
+                supabase
               );
 
               if (!syncResult.success) {
