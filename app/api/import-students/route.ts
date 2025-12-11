@@ -658,6 +658,24 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
       // Update parseResult to use filtered students
       parseResult.students = filteredStudents;
+
+      // If all students were filtered out, return a helpful error
+      if (filteredStudents.length === 0 && filteredOutCount > 0) {
+        log.warn('All students filtered out by school', {
+          userId,
+          currentSchool: currentSchoolSite,
+          filteredOut: filteredOutCount,
+          otherSchools: filteredOutSchools
+        });
+
+        return NextResponse.json(
+          {
+            error: `All ${filteredOutCount} students in this file belong to other schools (${filteredOutSchools.join(', ')}). Please switch to the correct school or upload a file with students from ${currentSchoolSite}.`,
+            filteredOutSchools
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Parse optional Deliveries file

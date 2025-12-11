@@ -177,7 +177,7 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const firstNamePatterns = /first\s*name|firstname|student\s*first/i;
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
-  const schoolPatterns = /school\s*of\s*attendance|school\s*name|school|attending\s*school/i;
+  const schoolPatterns = /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i;
   const goalPatterns = /goal|iep\s*goal|objective|target|present\s*level/i;
 
   // Check first 5 rows for headers
