@@ -45,7 +45,6 @@ export default function AdminDashboardPage() {
 
         // Fetch admin permissions
         const perms = await getCurrentAdminPermissions();
-        console.log('Admin permissions:', perms); // Debug log
 
         if (!perms || perms.length === 0) {
           setError('No admin permissions found. Please contact your administrator.');

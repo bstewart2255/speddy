@@ -637,6 +637,16 @@ function levenshteinDistance(str1: string, str2: string): number {
 export async function getDistrictInfo(districtId: string) {
   const supabase = createClient<Database>();
 
+  // Verify the current user is a district admin for this district
+  const permissions = await getCurrentAdminPermissions();
+  const isDistrictAdmin = permissions.some(
+    p => p.role === 'district_admin' && p.district_id === districtId
+  );
+
+  if (!isDistrictAdmin) {
+    throw new Error('You do not have permission to view this district');
+  }
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_district_info', 'database');
   const fetchResult = await safeQuery(
     async () => {
@@ -823,7 +833,7 @@ export async function getDistrictStaffCounts(districtId: string) {
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .in('school_id', schoolIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist']);
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
       if (error) throw error;
       return count || 0;
     },

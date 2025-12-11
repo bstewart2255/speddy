@@ -44,10 +44,10 @@ export default function SchoolsListPage() {
           return;
         }
 
-        const permission = perms[0];
+        // Find the district_admin permission specifically
+        const permission = perms.find(p => p.role === 'district_admin' && p.district_id);
 
-        // Check if user is a district admin
-        if (permission.role !== 'district_admin' || !permission.district_id) {
+        if (!permission) {
           setError('This page is only accessible to district administrators.');
           return;
         }
