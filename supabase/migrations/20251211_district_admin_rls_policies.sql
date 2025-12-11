@@ -27,3 +27,29 @@ USING (
       AND s.id = teachers.school_id
   )
 );
+
+-- Allow district admins to see provider_schools for schools in their district
+CREATE POLICY "District admins can view provider_schools in their district"
+ON provider_schools FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM admin_permissions ap
+    JOIN schools s ON s.district_id = ap.district_id
+    WHERE ap.admin_id = auth.uid()
+      AND ap.role = 'district_admin'
+      AND s.id = provider_schools.school_id
+  )
+);
+
+-- Allow district admins to see admin_permissions for schools in their district
+CREATE POLICY "District admins can view admin_permissions in their district"
+ON admin_permissions FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM admin_permissions ap
+    JOIN schools s ON s.district_id = ap.district_id
+    WHERE ap.admin_id = auth.uid()
+      AND ap.role = 'district_admin'
+      AND s.id = admin_permissions.school_id
+  )
+);

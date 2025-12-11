@@ -158,6 +158,17 @@ export async function getSchoolStaff(schoolId: string) {
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_school_staff', 'database');
 
+  // Fetch site admins for this school using security definer function
+  const siteAdminsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .rpc('get_school_site_admins', { p_school_id: schoolId });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_school_site_admins', schoolId }
+  );
+
   // Fetch teachers
   const teachersResult = await safeQuery(
     async () => {
@@ -180,29 +191,88 @@ export async function getSchoolStaff(schoolId: string) {
     { operation: 'fetch_school_teachers', schoolId }
   );
 
-  // Fetch specialists/resource staff
-  const specialistsResult = await safeQuery(
+  // Fetch specialists/resource staff - primary school
+  const primarySpecialistsResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('school_id', schoolId)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
         .order('full_name', { ascending: true });
       if (error) throw error;
       return data;
     },
-    { operation: 'fetch_school_specialists', schoolId }
+    { operation: 'fetch_school_specialists_primary', schoolId }
   );
+
+  // Fetch specialists who work at this school as secondary (via provider_schools)
+  const secondarySpecialistsResult = await safeQuery(
+    async () => {
+      // First get provider_ids from provider_schools for this school
+      const { data: providerSchools, error: psError } = await supabase
+        .from('provider_schools')
+        .select('provider_id, is_primary')
+        .eq('school_id', schoolId);
+
+      if (psError) throw psError;
+      if (!providerSchools || providerSchools.length === 0) return [];
+
+      // Get unique provider IDs (excluding those where this is primary - already fetched above)
+      const secondaryProviderIds = providerSchools
+        .filter(ps => !ps.is_primary)
+        .map(ps => ps.provider_id)
+        .filter((id): id is string => id !== null);
+
+      if (secondaryProviderIds.length === 0) return [];
+
+      // Fetch profiles for these providers
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', secondaryProviderIds)
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
+        .order('full_name', { ascending: true });
+
+      if (profilesError) throw profilesError;
+      return profiles;
+    },
+    { operation: 'fetch_school_specialists_secondary', schoolId }
+  );
+
+  if (siteAdminsResult.error) throw siteAdminsResult.error;
+  if (teachersResult.error) throw teachersResult.error;
+  if (primarySpecialistsResult.error) throw primarySpecialistsResult.error;
+  if (secondarySpecialistsResult.error) throw secondarySpecialistsResult.error;
+
+  // Site admins come directly from the RPC function
+  const siteAdmins = (siteAdminsResult.data || []).map(sa => ({
+    id: sa.admin_id,
+    full_name: sa.full_name,
+    email: sa.email
+  }));
+
+  // Merge and deduplicate specialists, marking primary vs secondary
+  const primarySpecialists = (primarySpecialistsResult.data || []).map(s => ({
+    ...s,
+    isPrimarySchool: true
+  }));
+  const secondarySpecialists = (secondarySpecialistsResult.data || []).map(s => ({
+    ...s,
+    isPrimarySchool: false
+  }));
+  const seenIds = new Set(primarySpecialists.map(s => s.id));
+  const allSpecialists = [
+    ...primarySpecialists,
+    ...secondarySpecialists.filter(s => !seenIds.has(s.id))
+  ].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   fetchPerf.end();
 
-  if (teachersResult.error) throw teachersResult.error;
-  if (specialistsResult.error) throw specialistsResult.error;
-
   return {
+    siteAdmins,
     teachers: teachersResult.data || [],
-    specialists: specialistsResult.data || []
+    specialists: allSpecialists
   };
 }
 
@@ -639,16 +709,42 @@ export async function getDistrictSchools(districtId: string) {
         { operation: 'count_school_teachers', schoolId: school.id }
       );
 
-      // Count specialists at this school
+      // Count specialists at this school (primary + secondary via provider_schools)
       const specialistCountResult = await safeQuery(
         async () => {
-          const { count, error } = await supabase
+          // Count primary specialists
+          const { count: primaryCount, error: primaryError } = await supabase
             .from('profiles')
             .select('*', { count: 'exact', head: true })
             .eq('school_id', school.id)
-            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist']);
-          if (error) throw error;
-          return count || 0;
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+          if (primaryError) throw primaryError;
+
+          // Get secondary specialists from provider_schools
+          const { data: providerSchools, error: psError } = await supabase
+            .from('provider_schools')
+            .select('provider_id, is_primary')
+            .eq('school_id', school.id);
+          if (psError) throw psError;
+
+          // Count unique secondary providers (not already counted as primary)
+          const secondaryProviderIds = (providerSchools || [])
+            .filter(ps => !ps.is_primary && ps.provider_id)
+            .map(ps => ps.provider_id);
+
+          let secondaryCount = 0;
+          if (secondaryProviderIds.length > 0) {
+            const { count, error: secError } = await supabase
+              .from('profiles')
+              .select('*', { count: 'exact', head: true })
+              .in('id', secondaryProviderIds as string[])
+              .neq('school_id', school.id) // Don't double-count if primary is same school
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+            if (secError) throw secError;
+            secondaryCount = count || 0;
+          }
+
+          return (primaryCount || 0) + secondaryCount;
         },
         { operation: 'count_school_specialists', schoolId: school.id }
       );

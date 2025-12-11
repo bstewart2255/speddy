@@ -213,7 +213,7 @@ export default function AdminDashboardPage() {
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Specialists</p>
+              <p className="text-sm font-medium text-gray-600">Providers</p>
               <p className="mt-2 text-3xl font-bold text-gray-900">{staffCounts.specialists}</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
@@ -223,7 +223,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <p className="mt-4 text-sm text-gray-500">
-            Resource specialists and related service providers
+            Resource specialists and service providers
           </p>
         </Card>
 
@@ -293,7 +293,7 @@ export default function AdminDashboardPage() {
               </div>
               <div className="ml-4">
                 <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
-                <p className="text-sm text-gray-600">Add a teacher or specialist account</p>
+                <p className="text-sm text-gray-600">Add a teacher or provider account</p>
               </div>
             </Link>
           )}

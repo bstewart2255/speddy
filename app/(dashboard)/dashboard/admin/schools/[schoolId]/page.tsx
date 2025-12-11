@@ -11,7 +11,8 @@ export default function SchoolDetailPage() {
   const schoolId = params.schoolId as string;
 
   const [school, setSchool] = useState<any>(null);
-  const [staff, setStaff] = useState<{ teachers: any[]; specialists: any[] }>({
+  const [staff, setStaff] = useState<{ siteAdmins: any[]; teachers: any[]; specialists: any[] }>({
+    siteAdmins: [],
     teachers: [],
     specialists: []
   });
@@ -107,11 +108,23 @@ export default function SchoolDetailPage() {
           <span className="text-gray-900 truncate max-w-xs">{school.name}</span>
         </div>
         <h1 className="text-3xl font-bold text-gray-900">{school.name}</h1>
-        {school.city && (
-          <p className="mt-2 text-gray-600">
-            {school.city}{school.zip ? `, ${school.zip}` : ''}
+        <div className="mt-2 text-sm text-gray-600 space-y-1">
+          <p>
+            <span className="font-medium">School ID:</span> <span className="font-mono">{school.id}</span>
+            {school.district && (
+              <> · <span className="font-medium">District:</span> {school.district.name}</>
+            )}
           </p>
-        )}
+          {(school.city || school.phone || school.grade_span_low) && (
+            <p>
+              {school.city && <>{school.city}{school.zip ? `, ${school.zip}` : ''}</>}
+              {school.city && school.phone && <> · </>}
+              {school.phone && <>{school.phone}</>}
+              {(school.city || school.phone) && school.grade_span_low && <> · </>}
+              {school.grade_span_low && <>Grades {school.grade_span_low} - {school.grade_span_high || '12'}</>}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Stats Overview */}
@@ -133,7 +146,7 @@ export default function SchoolDetailPage() {
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Specialists</p>
+              <p className="text-sm font-medium text-gray-600">Providers</p>
               <p className="mt-2 text-3xl font-bold text-gray-900">{staff.specialists.length}</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
@@ -161,55 +174,93 @@ export default function SchoolDetailPage() {
         </Card>
       </div>
 
-      {/* School Information */}
+      {/* Site Admin */}
       <Card className="p-6 mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">School Information</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-3">
-            {school.phone && (
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Phone:</span>
-                <span className="text-sm text-gray-900">{school.phone}</span>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Site Admin</h2>
+        {staff.siteAdmins.length === 0 ? (
+          <p className="text-sm text-gray-500">No site admin assigned to this school.</p>
+        ) : (
+          <div className="space-y-2">
+            {staff.siteAdmins.map((admin: any) => (
+              <div key={admin.id} className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-full">
+                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{admin.full_name}</p>
+                  <p className="text-sm text-gray-500">{admin.email}</p>
+                </div>
               </div>
-            )}
-            {(school.grade_span_low || school.grade_span_high) && (
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Grades:</span>
-                <span className="text-sm text-gray-900">
-                  {school.grade_span_low || 'K'} - {school.grade_span_high || '12'}
-                </span>
-              </div>
-            )}
-            {school.enrollment && (
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">Enrollment:</span>
-                <span className="text-sm text-gray-900">{school.enrollment.toLocaleString()}</span>
-              </div>
-            )}
+            ))}
           </div>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-sm font-medium text-gray-600">School ID:</span>
-              <span className="text-sm text-gray-900 font-mono">{school.id}</span>
-            </div>
-            {school.district && (
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">District:</span>
-                <span className="text-sm text-gray-900">{school.district.name}</span>
-              </div>
-            )}
-            {school.school_type && (
-              <div className="flex justify-between">
-                <span className="text-sm font-medium text-gray-600">School Type:</span>
-                <span className="text-sm text-gray-900 capitalize">{school.school_type}</span>
-              </div>
-            )}
+        )}
+      </Card>
+
+      {/* Providers List */}
+      <Card className="p-6 mb-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Providers ({staff.specialists.length})
+        </h2>
+        {staff.specialists.length === 0 ? (
+          <p className="text-sm text-gray-500">No providers found at this school.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {staff.specialists.map((specialist: any) => (
+                  <tr key={specialist.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {specialist.full_name}
+                        </span>
+                        {!specialist.isPrimarySchool && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                            Part Time
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-sm text-gray-500">
+                        {specialist.email || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-sm text-gray-500 capitalize">
+                        {specialist.role === 'resource' ? 'Resource Specialist' :
+                         specialist.role === 'speech' ? 'Speech Therapist' :
+                         specialist.role === 'ot' ? 'OT' :
+                         specialist.role === 'counseling' ? 'Counselor' :
+                         specialist.role === 'sea' ? 'SEA' :
+                         specialist.role}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        )}
       </Card>
 
       {/* Teachers List */}
-      <Card className="p-6 mb-8">
+      <Card className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Teachers ({staff.teachers.length})
         </h2>
@@ -247,59 +298,6 @@ export default function SchoolDetailPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-sm text-gray-500">
                         {teacher.classroom_number || '-'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {/* Specialists List */}
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Specialists ({staff.specialists.length})
-        </h2>
-        {staff.specialists.length === 0 ? (
-          <p className="text-sm text-gray-500">No specialists found at this school.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {staff.specialists.map((specialist: any) => (
-                  <tr key={specialist.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm font-medium text-gray-900">
-                        {specialist.full_name}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm text-gray-500">
-                        {specialist.email || '-'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm text-gray-500 capitalize">
-                        {specialist.role === 'resource' ? 'Resource Specialist' :
-                         specialist.role === 'speech' ? 'Speech Therapist' :
-                         specialist.role === 'ot' ? 'OT' :
-                         specialist.role === 'counseling' ? 'Counselor' :
-                         specialist.role}
                       </span>
                     </td>
                   </tr>
