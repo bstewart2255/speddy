@@ -127,7 +127,7 @@ export async function isAdminForSchool(schoolId: string): Promise<boolean> {
         const { data, error } = await supabase
           .from('schools')
           .select('district_id')
-          .eq('nces_school_id', schoolId)
+          .eq('id', schoolId)
           .single();
         if (error) throw error;
         return data;
@@ -158,6 +158,17 @@ export async function getSchoolStaff(schoolId: string) {
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_school_staff', 'database');
 
+  // Fetch site admins for this school using security definer function
+  const siteAdminsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .rpc('get_school_site_admins', { p_school_id: schoolId });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_school_site_admins', schoolId }
+  );
+
   // Fetch teachers
   const teachersResult = await safeQuery(
     async () => {
@@ -180,29 +191,88 @@ export async function getSchoolStaff(schoolId: string) {
     { operation: 'fetch_school_teachers', schoolId }
   );
 
-  // Fetch specialists/resource staff
-  const specialistsResult = await safeQuery(
+  // Fetch specialists/resource staff - primary school
+  const primarySpecialistsResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('school_id', schoolId)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
         .order('full_name', { ascending: true });
       if (error) throw error;
       return data;
     },
-    { operation: 'fetch_school_specialists', schoolId }
+    { operation: 'fetch_school_specialists_primary', schoolId }
   );
+
+  // Fetch specialists who work at this school as secondary (via provider_schools)
+  const secondarySpecialistsResult = await safeQuery(
+    async () => {
+      // First get provider_ids from provider_schools for this school
+      const { data: providerSchools, error: psError } = await supabase
+        .from('provider_schools')
+        .select('provider_id, is_primary')
+        .eq('school_id', schoolId);
+
+      if (psError) throw psError;
+      if (!providerSchools || providerSchools.length === 0) return [];
+
+      // Get unique provider IDs (excluding those where this is primary - already fetched above)
+      const secondaryProviderIds = providerSchools
+        .filter(ps => !ps.is_primary)
+        .map(ps => ps.provider_id)
+        .filter((id): id is string => id !== null);
+
+      if (secondaryProviderIds.length === 0) return [];
+
+      // Fetch profiles for these providers
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', secondaryProviderIds)
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
+        .order('full_name', { ascending: true });
+
+      if (profilesError) throw profilesError;
+      return profiles;
+    },
+    { operation: 'fetch_school_specialists_secondary', schoolId }
+  );
+
+  if (siteAdminsResult.error) throw siteAdminsResult.error;
+  if (teachersResult.error) throw teachersResult.error;
+  if (primarySpecialistsResult.error) throw primarySpecialistsResult.error;
+  if (secondarySpecialistsResult.error) throw secondarySpecialistsResult.error;
+
+  // Site admins come directly from the RPC function
+  const siteAdmins = (siteAdminsResult.data || []).map(sa => ({
+    id: sa.admin_id,
+    full_name: sa.full_name,
+    email: sa.email
+  }));
+
+  // Merge and deduplicate specialists, marking primary vs secondary
+  const primarySpecialists = (primarySpecialistsResult.data || []).map(s => ({
+    ...s,
+    isPrimarySchool: true
+  }));
+  const secondarySpecialists = (secondarySpecialistsResult.data || []).map(s => ({
+    ...s,
+    isPrimarySchool: false
+  }));
+  const seenIds = new Set(primarySpecialists.map(s => s.id));
+  const allSpecialists = [
+    ...primarySpecialists,
+    ...secondarySpecialists.filter(s => !seenIds.has(s.id))
+  ].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   fetchPerf.end();
 
-  if (teachersResult.error) throw teachersResult.error;
-  if (specialistsResult.error) throw specialistsResult.error;
-
   return {
+    siteAdmins,
     teachers: teachersResult.data || [],
-    specialists: specialistsResult.data || []
+    specialists: allSpecialists
   };
 }
 
@@ -554,6 +624,273 @@ function levenshteinDistance(str1: string, str2: string): number {
   }
 
   return matrix[str2.length][str1.length];
+}
+
+// ============================================================================
+// DISTRICT ADMIN FUNCTIONS
+// ============================================================================
+
+/**
+ * Retrieves district information for the current district admin.
+ * @returns District info including name and location
+ */
+export async function getDistrictInfo(districtId: string) {
+  const supabase = createClient<Database>();
+
+  // Verify the current user is a district admin for this district
+  const permissions = await getCurrentAdminPermissions();
+  const isDistrictAdmin = permissions.some(
+    p => p.role === 'district_admin' && p.district_id === districtId
+  );
+
+  if (!isDistrictAdmin) {
+    throw new Error('You do not have permission to view this district');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_district_info', 'database');
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('districts')
+        .select('*')
+        .eq('id', districtId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_district_info', districtId }
+  );
+  fetchPerf.end();
+
+  if (fetchResult.error) throw fetchResult.error;
+  return fetchResult.data;
+}
+
+/**
+ * Retrieves all schools in a district with staff counts.
+ * @param districtId - The NCES district ID
+ * @returns Array of schools with teacher and specialist counts
+ */
+export async function getDistrictSchools(districtId: string) {
+  const supabase = createClient<Database>();
+
+  // Verify the current user is a district admin for this district
+  const permissions = await getCurrentAdminPermissions();
+  const isDistrictAdmin = permissions.some(
+    p => p.role === 'district_admin' && p.district_id === districtId
+  );
+
+  if (!isDistrictAdmin) {
+    throw new Error('You do not have permission to view schools in this district');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_district_schools', 'database');
+
+  // Fetch all schools in the district
+  const schoolsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schools')
+        .select('id, name, city, zip, phone, enrollment, grade_span_low, grade_span_high')
+        .eq('district_id', districtId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_district_schools', districtId }
+  );
+
+  if (schoolsResult.error) throw schoolsResult.error;
+  const schools = schoolsResult.data || [];
+
+  // Get staff counts for all schools in parallel
+  const schoolsWithCounts = await Promise.all(
+    schools.map(async (school) => {
+      // Count teachers at this school
+      const teacherCountResult = await safeQuery(
+        async () => {
+          const { count, error } = await supabase
+            .from('teachers')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', school.id);
+          if (error) throw error;
+          return count || 0;
+        },
+        { operation: 'count_school_teachers', schoolId: school.id }
+      );
+
+      // Count specialists at this school (primary + secondary via provider_schools)
+      const specialistCountResult = await safeQuery(
+        async () => {
+          // Count primary specialists
+          const { count: primaryCount, error: primaryError } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', school.id)
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+          if (primaryError) throw primaryError;
+
+          // Get secondary specialists from provider_schools
+          const { data: providerSchools, error: psError } = await supabase
+            .from('provider_schools')
+            .select('provider_id, is_primary')
+            .eq('school_id', school.id);
+          if (psError) throw psError;
+
+          // Count unique secondary providers (not already counted as primary)
+          const secondaryProviderIds = (providerSchools || [])
+            .filter(ps => !ps.is_primary && ps.provider_id)
+            .map(ps => ps.provider_id);
+
+          let secondaryCount = 0;
+          if (secondaryProviderIds.length > 0) {
+            const { count, error: secError } = await supabase
+              .from('profiles')
+              .select('*', { count: 'exact', head: true })
+              .in('id', secondaryProviderIds as string[])
+              .neq('school_id', school.id) // Don't double-count if primary is same school
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+            if (secError) throw secError;
+            secondaryCount = count || 0;
+          }
+
+          return (primaryCount || 0) + secondaryCount;
+        },
+        { operation: 'count_school_specialists', schoolId: school.id }
+      );
+
+      return {
+        ...school,
+        teacherCount: teacherCountResult.error ? 0 : teacherCountResult.data,
+        specialistCount: specialistCountResult.error ? 0 : specialistCountResult.data
+      };
+    })
+  );
+
+  fetchPerf.end();
+
+  return schoolsWithCounts;
+}
+
+/**
+ * Retrieves aggregate staff counts across all schools in a district.
+ * @param districtId - The NCES district ID
+ * @returns Object with total teacher and specialist counts
+ */
+export async function getDistrictStaffCounts(districtId: string) {
+  const supabase = createClient<Database>();
+
+  // Verify the current user is a district admin for this district
+  const permissions = await getCurrentAdminPermissions();
+  const isDistrictAdmin = permissions.some(
+    p => p.role === 'district_admin' && p.district_id === districtId
+  );
+
+  if (!isDistrictAdmin) {
+    throw new Error('You do not have permission to view staff in this district');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_district_staff_counts', 'database');
+
+  // First get all school IDs in the district
+  const schoolsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schools')
+        .select('id')
+        .eq('district_id', districtId);
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_district_school_ids', districtId }
+  );
+
+  if (schoolsResult.error) throw schoolsResult.error;
+  const schoolIds = (schoolsResult.data || []).map(s => s.id);
+
+  if (schoolIds.length === 0) {
+    fetchPerf.end();
+    return { teachers: 0, specialists: 0, schools: 0 };
+  }
+
+  // Count all teachers in these schools
+  const teacherCountResult = await safeQuery(
+    async () => {
+      const { count, error } = await supabase
+        .from('teachers')
+        .select('*', { count: 'exact', head: true })
+        .in('school_id', schoolIds);
+      if (error) throw error;
+      return count || 0;
+    },
+    { operation: 'count_district_teachers', districtId }
+  );
+
+  // Count all specialists in these schools
+  const specialistCountResult = await safeQuery(
+    async () => {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .in('school_id', schoolIds)
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+      if (error) throw error;
+      return count || 0;
+    },
+    { operation: 'count_district_specialists', districtId }
+  );
+
+  fetchPerf.end();
+
+  return {
+    teachers: teacherCountResult.error ? 0 : teacherCountResult.data,
+    specialists: specialistCountResult.error ? 0 : specialistCountResult.data,
+    schools: schoolIds.length
+  };
+}
+
+/**
+ * Retrieves a single school's details for district admin view.
+ * @param schoolId - The NCES school ID
+ * @returns School info with district name
+ */
+export async function getSchoolDetails(schoolId: string) {
+  const supabase = createClient<Database>();
+
+  // Verify the current user has permission for this school
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to view this school');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_school_details', 'database');
+
+  // Fetch school with district info
+  const schoolResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schools')
+        .select(`
+          *,
+          district:districts (
+            id,
+            name,
+            city,
+            state_id
+          )
+        `)
+        .eq('id', schoolId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_school_details', schoolId }
+  );
+
+  if (schoolResult.error) throw schoolResult.error;
+  fetchPerf.end();
+
+  return schoolResult.data;
 }
 
 // ============================================================================
