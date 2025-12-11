@@ -20,6 +20,7 @@ export interface ParsedStudent {
   initials: string;
   gradeLevel: string;
   goals: string[];
+  schoolOfAttendance?: string; // From column G - used to filter by current school
   rawRow: number; // For debugging
 }
 
@@ -36,6 +37,7 @@ interface ColumnMapping {
   firstName?: number;
   lastName?: number;
   grade?: number;
+  schoolOfAttendance?: number; // Column G in SEIS reports
   goalColumns: number[];
 }
 
@@ -86,6 +88,9 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
           const firstName = getCellValue(row, columnMapping.firstName!);
           const lastName = getCellValue(row, columnMapping.lastName!);
           const grade = getCellValue(row, columnMapping.grade!);
+          const schoolOfAttendance = columnMapping.schoolOfAttendance
+            ? getCellValue(row, columnMapping.schoolOfAttendance)
+            : undefined;
 
           // Skip rows without student data
           if (!firstName || !lastName || !grade) return;
@@ -128,6 +133,7 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
               initials,
               gradeLevel: normalizedGrade,
               goals,
+              schoolOfAttendance: schoolOfAttendance?.trim() || undefined,
               rawRow: rowNumber
             });
           }
@@ -171,6 +177,7 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const firstNamePatterns = /first\s*name|firstname|student\s*first/i;
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
+  const schoolPatterns = /school\s*of\s*attendance|school\s*name|school|attending\s*school/i;
   const goalPatterns = /goal|iep\s*goal|objective|target|present\s*level/i;
 
   // Check first 5 rows for headers
@@ -196,6 +203,11 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
       // Check for grade
       if (!mapping.grade && gradePatterns.test(headerText)) {
         mapping.grade = colNumber;
+      }
+
+      // Check for school of attendance
+      if (!mapping.schoolOfAttendance && schoolPatterns.test(headerText)) {
+        mapping.schoolOfAttendance = colNumber;
       }
 
       // Check for goal columns

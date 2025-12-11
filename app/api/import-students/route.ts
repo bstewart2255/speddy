@@ -613,6 +613,53 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
+    // Filter students by current school (for multi-school users)
+    // This ensures users only import students belonging to their currently selected school
+    let filteredStudents = parseResult.students;
+    let filteredOutCount = 0;
+    let filteredOutSchools: string[] = [];
+
+    if (currentSchoolSite && userProfile?.works_at_multiple_schools) {
+      const normalizedCurrentSchool = currentSchoolSite.toLowerCase().trim();
+
+      const beforeCount = filteredStudents.length;
+      filteredStudents = filteredStudents.filter(student => {
+        // If student has no school info, include them (they'll be assigned to current school)
+        if (!student.schoolOfAttendance) return true;
+
+        const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+        return studentSchool === normalizedCurrentSchool;
+      });
+
+      filteredOutCount = beforeCount - filteredStudents.length;
+
+      // Track which schools were filtered out
+      if (filteredOutCount > 0) {
+        const otherSchools = new Set<string>();
+        for (const student of parseResult.students) {
+          if (student.schoolOfAttendance) {
+            const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+            if (studentSchool !== normalizedCurrentSchool) {
+              otherSchools.add(student.schoolOfAttendance);
+            }
+          }
+        }
+        filteredOutSchools = Array.from(otherSchools);
+
+        log.info('Filtered students by school', {
+          userId,
+          currentSchool: currentSchoolSite,
+          beforeCount,
+          afterCount: filteredStudents.length,
+          filteredOut: filteredOutCount,
+          otherSchools: filteredOutSchools
+        });
+      }
+
+      // Update parseResult to use filtered students
+      parseResult.students = filteredStudents;
+    }
+
     // Parse optional Deliveries file
     let deliveriesData: Map<string, DeliveryRecord> | null = null;
     const deliveriesWarnings: Array<{ row: number; message: string }> = [];
@@ -982,7 +1029,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           withGoalsRemoved: withGoalsRemovedCount,
           // Enrichment counts
           withSchedule: studentPreviews.filter(s => s.schedule).length,
-          withTeacher: studentPreviews.filter(s => s.teacher).length
+          withTeacher: studentPreviews.filter(s => s.teacher).length,
+          // School filtering info (for multi-school users)
+          filteredOutBySchool: filteredOutCount,
+          filteredOutSchools: filteredOutSchools.length > 0 ? filteredOutSchools : undefined
         },
         unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [],
