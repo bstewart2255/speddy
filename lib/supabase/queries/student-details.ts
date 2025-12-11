@@ -12,6 +12,7 @@ export interface StudentDetails {
   upcoming_iep_date: string;
   upcoming_triennial_date: string;
   iep_goals: string[];
+  accommodations: string[];
 }
 
 /**
@@ -74,6 +75,9 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const data = fetchResult.data;
   if (!data) return null;
 
+  // Cast to include accommodations field (added in migration 20251211_add_student_accommodations)
+  const dataWithAccommodations = data as typeof data & { accommodations?: string[] | null };
+
   return {
     first_name: data.first_name || '',
     last_name: data.last_name || '',
@@ -81,7 +85,8 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     district_id: data.district_id || '',
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
-    iep_goals: data.iep_goals || []
+    iep_goals: data.iep_goals || [],
+    accommodations: dataWithAccommodations.accommodations || []
   };
 }
 
@@ -122,6 +127,7 @@ export async function upsertStudentDetails(
           upcoming_iep_date: details.upcoming_iep_date || null,
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
+          accommodations: details.accommodations,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'student_id'  // Add this to specify the conflict column
@@ -137,7 +143,8 @@ export async function upsertStudentDetails(
       hasDateOfBirth: !!details.date_of_birth,
       hasIepDate: !!details.upcoming_iep_date,
       hasTriennialDate: !!details.upcoming_triennial_date,
-      iepGoalsCount: details.iep_goals.length
+      iepGoalsCount: details.iep_goals.length,
+      accommodationsCount: details.accommodations.length
     }
   );
   upsertPerf.end({ success: !upsertResult.error });
