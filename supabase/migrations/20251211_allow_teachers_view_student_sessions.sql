@@ -8,15 +8,17 @@
 DROP POLICY IF EXISTS "Teachers can view sessions for their students" ON schedule_sessions;
 
 -- Create a helper function that bypasses RLS to get teacher's student IDs
+-- SET search_path prevents search_path manipulation attacks
 CREATE OR REPLACE FUNCTION get_teacher_student_ids(user_id uuid)
 RETURNS SETOF uuid
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
+SET search_path = public
 AS $$
   SELECT s.id
-  FROM students s
-  INNER JOIN teachers t ON s.teacher_id = t.id
+  FROM public.students s
+  INNER JOIN public.teachers t ON s.teacher_id = t.id
   WHERE t.account_id = user_id;
 $$;
 

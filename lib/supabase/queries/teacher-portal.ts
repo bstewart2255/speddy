@@ -589,7 +589,11 @@ export async function getTodayHolidays() {
   }
 
   const today = new Date();
-  const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+  // Use local date (not UTC) to match user's current day
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`; // YYYY-MM-DD in local time
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_today_holidays', 'database');
   const fetchResult = await safeQuery(
