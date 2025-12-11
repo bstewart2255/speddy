@@ -2,17 +2,25 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { getCurrentAdminPermissions, getSchoolStaff } from '@/lib/supabase/queries/admin-accounts';
+import {
+  getCurrentAdminPermissions,
+  getSchoolStaff,
+  getDistrictInfo,
+  getDistrictStaffCounts
+} from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
 
 export default function AdminDashboardPage() {
   const [permissions, setPermissions] = useState<any>(null);
-  const [staffCounts, setStaffCounts] = useState({ teachers: 0, specialists: 0 });
+  const [staffCounts, setStaffCounts] = useState({ teachers: 0, specialists: 0, schools: 0 });
+  const [districtInfo, setDistrictInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const supabase = createClient();
+
+  const isDistrictAdmin = permissions?.role === 'district_admin';
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -46,12 +54,26 @@ export default function AdminDashboardPage() {
 
         setPermissions(perms[0]); // Assuming single permission for now
 
-        if (perms[0]?.school_id) {
-          // Fetch staff counts for this school
+        // Different data fetching based on admin type
+        if (perms[0]?.role === 'district_admin' && perms[0]?.district_id) {
+          // District admin - fetch district-level data
+          const [district, counts] = await Promise.all([
+            getDistrictInfo(perms[0].district_id),
+            getDistrictStaffCounts(perms[0].district_id)
+          ]);
+          setDistrictInfo(district);
+          setStaffCounts({
+            teachers: counts.teachers ?? 0,
+            specialists: counts.specialists ?? 0,
+            schools: counts.schools ?? 0
+          });
+        } else if (perms[0]?.school_id) {
+          // Site admin - fetch school-level data
           const staff = await getSchoolStaff(perms[0].school_id);
           setStaffCounts({
             teachers: staff.teachers.length,
-            specialists: staff.specialists.length
+            specialists: staff.specialists.length,
+            schools: 1
           });
         }
       } catch (err) {
@@ -126,12 +148,38 @@ export default function AdminDashboardPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Welcome, {adminName}</h1>
         <p className="mt-2 text-gray-600">
-          {roleDisplay} Dashboard - Manage staff accounts and school settings
+          {roleDisplay} Dashboard{isDistrictAdmin && districtInfo ? ` - ${districtInfo.name}` : ' - Manage staff accounts and school settings'}
         </p>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className={`grid grid-cols-1 ${isDistrictAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-6 mb-8`}>
+        {/* Schools card - only for district admin */}
+        {isDistrictAdmin && (
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Schools</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">{staffCounts.schools}</p>
+              </div>
+              <div className="p-3 bg-indigo-100 rounded-full">
+                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/admin/schools"
+              className="mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-700 inline-flex items-center"
+            >
+              View all schools
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </Card>
+        )}
+
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -144,15 +192,22 @@ export default function AdminDashboardPage() {
               </svg>
             </div>
           </div>
-          <Link
-            href="/dashboard/admin/teachers"
-            className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-700 inline-flex items-center"
-          >
-            View teacher directory
-            <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+          {!isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/teachers"
+              className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-700 inline-flex items-center"
+            >
+              View teacher directory
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          )}
+          {isDistrictAdmin && (
+            <p className="mt-4 text-sm text-gray-500">
+              Across all schools
+            </p>
+          )}
         </Card>
 
         <Card className="p-6">
@@ -186,66 +241,110 @@ export default function AdminDashboardPage() {
               </svg>
             </div>
           </div>
-          <Link
-            href="/dashboard/admin/duplicates"
-            className="mt-4 text-sm font-medium text-purple-600 hover:text-purple-700 inline-flex items-center"
-          >
-            Check for duplicates
-            <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+          {!isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/duplicates"
+              className="mt-4 text-sm font-medium text-purple-600 hover:text-purple-700 inline-flex items-center"
+            >
+              Check for duplicates
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          )}
+          {isDistrictAdmin && (
+            <p className="mt-4 text-sm text-gray-500">
+              District-wide total
+            </p>
+          )}
         </Card>
       </div>
 
       {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Link
-            href="/dashboard/admin/create-account"
-            className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
-          >
-            <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
-              <p className="text-sm text-gray-600">Add a teacher or specialist account</p>
-            </div>
-          </Link>
+        <div className={`grid grid-cols-1 ${isDistrictAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+          {isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/schools"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all"
+            >
+              <div className="flex-shrink-0 p-3 bg-indigo-100 rounded-lg">
+                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-semibold text-gray-900">View Schools</h3>
+                <p className="text-sm text-gray-600">Browse all schools in your district</p>
+              </div>
+            </Link>
+          )}
 
-          <Link
-            href="/dashboard/admin/teachers"
-            className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all"
-          >
-            <div className="flex-shrink-0 p-3 bg-green-100 rounded-lg">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <h3 className="text-sm font-semibold text-gray-900">Teacher Directory</h3>
-              <p className="text-sm text-gray-600">View and manage teacher accounts</p>
-            </div>
-          </Link>
+          {!isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/create-account"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
+                <p className="text-sm text-gray-600">Add a teacher or specialist account</p>
+              </div>
+            </Link>
+          )}
+
+          {!isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/teachers"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all"
+            >
+              <div className="flex-shrink-0 p-3 bg-green-100 rounded-lg">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-semibold text-gray-900">Teacher Directory</h3>
+                <p className="text-sm text-gray-600">View and manage teacher accounts</p>
+              </div>
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* Recent Activity / Info */}
+      {/* Info Card */}
       <Card className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">School Information</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          {isDistrictAdmin ? 'District Information' : 'School Information'}
+        </h2>
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-600">School ID:</span>
-            <span className="text-sm text-gray-900">{permissions.school_id}</span>
-          </div>
-          {permissions.district_id && (
+          {isDistrictAdmin && districtInfo && (
+            <>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">District Name:</span>
+                <span className="text-sm text-gray-900">{districtInfo.name}</span>
+              </div>
+              {districtInfo.city && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">City:</span>
+                  <span className="text-sm text-gray-900">{districtInfo.city}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">District ID:</span>
+                <span className="text-sm text-gray-900">{permissions.district_id}</span>
+              </div>
+            </>
+          )}
+          {!isDistrictAdmin && (
             <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">District ID:</span>
-              <span className="text-sm text-gray-900">{permissions.district_id}</span>
+              <span className="text-sm font-medium text-gray-600">School ID:</span>
+              <span className="text-sm text-gray-900">{permissions.school_id}</span>
             </div>
           )}
           {permissions.state_id && (
