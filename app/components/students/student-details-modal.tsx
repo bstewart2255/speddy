@@ -50,12 +50,13 @@ export function StudentDetailsModal({
     district_id: '',
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
-    iep_goals: []
+    iep_goals: [],
+    accommodations: []
   });
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress'>('current');
+  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'accommodations'>('current');
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -95,7 +96,8 @@ export function StudentDetailsModal({
               district_id: '',
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
-              iep_goals: []
+              iep_goals: [],
+              accommodations: []
             });
           }
         } catch (error) {
@@ -238,6 +240,16 @@ export function StudentDetailsModal({
                 }`}
               >
                 Progress
+              </button>
+              <button
+                onClick={() => setActiveTab('accommodations')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'accommodations'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Accommodations
               </button>
             </nav>
           </div>
@@ -534,6 +546,74 @@ export function StudentDetailsModal({
                 studentId={student.id}
                 iepGoals={details.iep_goals}
               />
+            )}
+
+            {/* Accommodations Tab */}
+            {activeTab === 'accommodations' && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h3 className="font-medium text-gray-900">Accommodations</h3>
+                  <p className="text-sm text-gray-600">
+                    Add IEP accommodations for this student
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {!readOnly && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setDetails({
+                          ...details,
+                          accommodations: [...details.accommodations, '']
+                        })}
+                        type="button"
+                      >
+                        + Add Accommodation
+                      </Button>
+                    </div>
+                  )}
+
+                  {details.accommodations.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic py-4 text-center bg-gray-50 rounded-md">
+                      No accommodations added yet
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {details.accommodations.map((accommodation, index) => (
+                        <div key={index} className="flex gap-2">
+                          <textarea
+                            value={accommodation}
+                            onChange={(e) => {
+                              const newAccommodations = [...details.accommodations];
+                              newAccommodations[index] = e.target.value;
+                              setDetails({...details, accommodations: newAccommodations});
+                            }}
+                            placeholder="Enter accommodation..."
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[80px] resize-y read-only:bg-gray-50 read-only:cursor-default"
+                            readOnly={readOnly}
+                          />
+                          {!readOnly && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                const newAccommodations = details.accommodations.filter((_, i) => i !== index);
+                                setDetails({...details, accommodations: newAccommodations});
+                              }}
+                              type="button"
+                              className="self-start"
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
           
