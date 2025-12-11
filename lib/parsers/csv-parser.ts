@@ -11,7 +11,7 @@ export interface ParsedStudent {
   lastName: string;
   initials: string;
   gradeLevel: string;
-  school?: string; // School of Attendance (SEIS Column G)
+  schoolOfAttendance?: string; // School of Attendance (SEIS Column G)
   goals: string[];
   rawRow: number; // For debugging
 }
@@ -33,7 +33,7 @@ interface ColumnMapping {
   firstName?: number;
   lastName?: number;
   grade?: number;
-  school?: number; // School of Attendance (SEIS Column G)
+  schoolOfAttendance?: number; // School of Attendance (SEIS Column G)
   goalType?: number; // Annual Goal # (SEIS Column M) - used for filtering
   goalColumns: number[];
 }
@@ -143,7 +143,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const firstName = row[columnMapping.firstName] || '';
         const lastName = row[columnMapping.lastName] || '';
         const grade = row[columnMapping.grade] || '';
-        const school = columnMapping.school !== undefined ? row[columnMapping.school] || '' : '';
+        const schoolOfAttendance = columnMapping.schoolOfAttendance !== undefined ? row[columnMapping.schoolOfAttendance] || '' : '';
 
         // Skip rows without student data
         if (!firstName.trim() || !lastName.trim() || !grade.trim()) {
@@ -170,25 +170,25 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
           // Check school match (fuzzy)
           // CRITICAL: For single-student targeting, school matching is required to prevent false positives
-          if (school && targetStudent.schoolName) {
-            const schoolMatches = normalizeSchoolName(school).includes(normalizeSchoolName(targetStudent.schoolName)) ||
-                                 normalizeSchoolName(targetStudent.schoolName).includes(normalizeSchoolName(school));
+          if (schoolOfAttendance && targetStudent.schoolName) {
+            const schoolMatches = normalizeSchoolName(schoolOfAttendance).includes(normalizeSchoolName(targetStudent.schoolName)) ||
+                                 normalizeSchoolName(targetStudent.schoolName).includes(normalizeSchoolName(schoolOfAttendance));
 
             if (!schoolMatches) {
               continue;
             }
-          } else if (!school && targetStudent.schoolName) {
+          } else if (!schoolOfAttendance && targetStudent.schoolName) {
             // CSV has no school column but we're targeting specific student - warn and skip
             warnings.push({
               row: rowIndex + 1,
               message: `CSV missing school column. Cannot verify if student "${firstName} ${lastName}" attends "${targetStudent.schoolName}". Skipping for safety.`
             });
             continue;
-          } else if (school && !targetStudent.schoolName) {
+          } else if (schoolOfAttendance && !targetStudent.schoolName) {
             // Target student has no school data but CSV has school - warn and skip for safety
             warnings.push({
               row: rowIndex + 1,
-              message: `Target student has no school data, but CSV shows "${school}". Skipping to prevent incorrect match.`
+              message: `Target student has no school data, but CSV shows "${schoolOfAttendance}". Skipping to prevent incorrect match.`
             });
             continue;
           }
@@ -208,16 +208,16 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         }
 
         // For SEIS format, check school verification if user has multiple schools
-        if (isSEISFormat && school && options.userSchools && options.userSchools.length > 0) {
+        if (isSEISFormat && schoolOfAttendance && options.userSchools && options.userSchools.length > 0) {
           const schoolMatches = options.userSchools.some(userSchool =>
-            normalizeSchoolName(school).includes(normalizeSchoolName(userSchool)) ||
-            normalizeSchoolName(userSchool).includes(normalizeSchoolName(school))
+            normalizeSchoolName(schoolOfAttendance).includes(normalizeSchoolName(userSchool)) ||
+            normalizeSchoolName(userSchool).includes(normalizeSchoolName(schoolOfAttendance))
           );
 
           if (!schoolMatches) {
             warnings.push({
               row: rowIndex + 1,
-              message: `Student "${firstName} ${lastName}" attends "${school}" which doesn't match your school(s). Skipping.`
+              message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
             });
             continue;
           }
@@ -268,7 +268,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             lastName: lastName.trim(),
             initials,
             gradeLevel: normalizedGrade,
-            school: school ? school.trim() : undefined,
+            schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
             goals,
             rawRow: rowIndex + 1
           });
@@ -337,7 +337,7 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
     mapping.lastName = 2;
     mapping.firstName = 3;
     mapping.grade = 5;
-    mapping.school = 6;
+    mapping.schoolOfAttendance = 6;
     mapping.goalType = 12;
     mapping.goalColumns = [14];
     return mapping;

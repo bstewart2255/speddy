@@ -84,6 +84,9 @@ interface ImportData {
     // Enrichment counts
     withSchedule?: number;
     withTeacher?: number;
+    // School filtering (for multi-school users)
+    filteredOutBySchool?: number;
+    filteredOutSchools?: string[];
   };
   unmatchedStudents?: UnmatchedStudent[];
   parseErrors?: Array<{ row: number; message: string }>;
@@ -376,6 +379,17 @@ export function StudentImportPreviewModal({
                   )}
                 </div>
               </div>
+              {/* Show filtered out students info for multi-school users */}
+              {data.summary.filteredOutBySchool !== undefined && data.summary.filteredOutBySchool > 0 && (
+                <div className="mt-3 pt-3 border-t border-blue-200 text-sm">
+                  <p className="text-gray-600">
+                    ℹ️ {data.summary.filteredOutBySchool} student{data.summary.filteredOutBySchool !== 1 ? 's' : ''} from other school{data.summary.filteredOutSchools && data.summary.filteredOutSchools.length !== 1 ? 's' : ''} filtered out
+                    {data.summary.filteredOutSchools && data.summary.filteredOutSchools.length > 0 && (
+                      <span className="text-gray-500"> ({data.summary.filteredOutSchools.join(', ')})</span>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Unmatched Students Warning */}
