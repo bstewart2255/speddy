@@ -420,3 +420,203 @@ export async function deleteSpecialActivity(activityId: string) {
     throw deleteResult.error;
   }
 }
+
+/**
+ * Get today's resource sessions for the teacher's students
+ */
+export async function getTodayStudentSessions() {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+
+  // Return empty if weekend
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return [];
+  }
+
+  const supabase = createClient<Database>();
+
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_today_sessions' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+
+  const user = authResult.data.data.user;
+  const teacher = await getCurrentTeacher();
+
+  // First, get the student IDs for this teacher
+  const studentsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id')
+        .eq('teacher_id', teacher.id);
+      if (error) throw error;
+      return data;
+    },
+    {
+      operation: 'fetch_teacher_student_ids',
+      userId: user.id,
+      teacherId: teacher.id
+    }
+  );
+
+  if (studentsResult.error || !studentsResult.data || studentsResult.data.length === 0) {
+    return [];
+  }
+
+  const studentIds = studentsResult.data.map(s => s.id);
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_today_student_sessions', 'database');
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schedule_sessions')
+        .select(`
+          id,
+          day_of_week,
+          start_time,
+          end_time,
+          service_type,
+          students (
+            id,
+            initials,
+            grade_level
+          )
+        `)
+        .in('student_id', studentIds)
+        .eq('day_of_week', dayOfWeek)
+        .is('session_date', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null)
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    {
+      operation: 'fetch_today_student_sessions',
+      userId: user.id,
+      teacherId: teacher.id
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) {
+    throw fetchResult.error;
+  }
+
+  return fetchResult.data || [];
+}
+
+/**
+ * Get today's special activities for the current teacher
+ */
+export async function getTodaySpecialActivities() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+
+  // Return empty if weekend
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return [];
+  }
+
+  const supabase = createClient<Database>();
+
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_today_activities' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+
+  const user = authResult.data.data.user;
+  const teacher = await getCurrentTeacher();
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_today_special_activities', 'database');
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('special_activities')
+        .select('id, activity_name, start_time, end_time')
+        .eq('teacher_id', teacher.id)
+        .eq('day_of_week', dayOfWeek)
+        .is('deleted_at', null)
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    {
+      operation: 'fetch_today_special_activities',
+      userId: user.id,
+      teacherId: teacher.id
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) {
+    throw fetchResult.error;
+  }
+
+  return fetchResult.data || [];
+}
+
+/**
+ * Check if today is a holiday at the teacher's school
+ */
+export async function getTodayHolidays() {
+  const supabase = createClient<Database>();
+
+  const authResult = await safeQuery(
+    () => supabase.auth.getUser(),
+    { operation: 'get_user_for_today_holidays' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('No user found');
+  }
+
+  const user = authResult.data.data.user;
+  const teacher = await getCurrentTeacher();
+
+  // If teacher has no school_id, return empty (no holidays to check)
+  if (!teacher.school_id) {
+    return [];
+  }
+
+  const today = new Date();
+  // Use local date (not UTC) to match user's current day
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`; // YYYY-MM-DD in local time
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_today_holidays', 'database');
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('holidays')
+        .select('id, date, name')
+        .eq('date', dateStr)
+        .eq('school_id', teacher.school_id!);
+      if (error) throw error;
+      return data;
+    },
+    {
+      operation: 'fetch_today_holidays',
+      userId: user.id,
+      schoolId: teacher.school_id
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) {
+    throw fetchResult.error;
+  }
+
+  return fetchResult.data || [];
+}

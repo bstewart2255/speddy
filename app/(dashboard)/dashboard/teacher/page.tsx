@@ -1,15 +1,165 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getCurrentTeacher, getMyStudentsInResource } from '@/lib/supabase/queries/teacher-portal';
+import {
+  getCurrentTeacher,
+  getMyStudentsInResource,
+  getTodayStudentSessions,
+  getTodaySpecialActivities,
+  getTodayHolidays
+} from '@/lib/supabase/queries/teacher-portal';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Helper to format time as "9:00 AM"
+function formatTime(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+  return `${displayHour}:${minutes} ${ampm}`;
+}
+
+// Helper to calculate duration in minutes
+function getDuration(start: string, end: string): number {
+  const [startH, startM] = start.split(':').map(Number);
+  const [endH, endM] = end.split(':').map(Number);
+  return (endH * 60 + endM) - (startH * 60 + startM);
+}
+
+interface TodayViewProps {
+  sessions: any[];
+  activities: any[];
+  holidays: any[];
+  isWeekend: boolean;
+}
+
+function TodayView({ sessions, activities, holidays, isWeekend }: TodayViewProps) {
+  const today = new Date();
+  const dayName = DAYS_OF_WEEK[today.getDay()];
+  const dateStr = today.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  // Weekend state
+  if (isWeekend) {
+    return (
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">Today&apos;s Schedule</h2>
+        <p className="text-gray-500">{dayName}, {dateStr}</p>
+        <div className="mt-4 text-center py-8 text-gray-500">
+          No school today - it&apos;s the weekend!
+        </div>
+      </Card>
+    );
+  }
+
+  // Holiday state
+  if (holidays.length > 0) {
+    return (
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">Today&apos;s Schedule</h2>
+        <p className="text-gray-500">{dayName}, {dateStr}</p>
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+          <span className="text-red-600 font-medium">
+            {holidays[0].name || 'Holiday'} - No sessions today
+          </span>
+        </div>
+      </Card>
+    );
+  }
+
+  const hasContent = sessions.length > 0 || activities.length > 0;
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900">Today&apos;s Schedule</h2>
+        <p className="text-sm text-gray-500">{dayName}, {dateStr}</p>
+      </div>
+
+      <div className="p-6">
+        {!hasContent ? (
+          <div className="text-center py-8 text-gray-500">
+            No sessions or activities scheduled for today
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Student Sessions */}
+            {sessions.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Students in Resource ({sessions.length})
+                </h3>
+                <div className="space-y-2">
+                  {sessions.map((session: any) => (
+                    <div
+                      key={session.id}
+                      className="flex items-center justify-between p-3 bg-blue-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-blue-900">
+                          {session.students?.initials}
+                        </span>
+                        <span className="text-sm text-blue-700">
+                          Grade {session.students?.grade_level}
+                        </span>
+                      </div>
+                      <div className="text-sm text-blue-800">
+                        {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                        <span className="ml-2 text-blue-600">
+                          ({getDuration(session.start_time, session.end_time)} min)
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Special Activities */}
+            {activities.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Your Special Activities ({activities.length})
+                </h3>
+                <div className="space-y-2">
+                  {activities.map((activity: any) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-center justify-between p-3 bg-green-50 rounded-lg"
+                    >
+                      <span className="font-medium text-green-900">
+                        {activity.activity_name}
+                      </span>
+                      <span className="text-sm text-green-800">
+                        {formatTime(activity.start_time)} - {formatTime(activity.end_time)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 export default function TeacherDashboardPage() {
   const [teacher, setTeacher] = useState<any>(null);
   const [studentCount, setStudentCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [todaySessions, setTodaySessions] = useState<any[]>([]);
+  const [todayActivities, setTodayActivities] = useState<any[]>([]);
+  const [todayHolidays, setTodayHolidays] = useState<any[]>([]);
+  const [isWeekend, setIsWeekend] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -17,13 +167,29 @@ export default function TeacherDashboardPage() {
         setLoading(true);
         setError(null);
 
+        // Check if it's a weekend
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          setIsWeekend(true);
+        }
+
         // Fetch teacher info
         const teacherData = await getCurrentTeacher();
         setTeacher(teacherData);
 
-        // Fetch student count
-        const students = await getMyStudentsInResource();
+        // Fetch all data in parallel
+        const [students, sessions, activities, holidays] = await Promise.all([
+          getMyStudentsInResource(),
+          getTodayStudentSessions(),
+          getTodaySpecialActivities(),
+          getTodayHolidays()
+        ]);
+
         setStudentCount(students.length);
+        setTodaySessions(sessions);
+        setTodayActivities(activities);
+        setTodayHolidays(holidays);
       } catch (err) {
         console.error('Error loading dashboard:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
@@ -151,37 +317,13 @@ export default function TeacherDashboardPage() {
         </Card>
       </div>
 
-      {/* Quick Links */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Link
-            href="/dashboard/teacher/my-students"
-            className="flex items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            <svg className="h-6 w-6 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <div>
-              <p className="font-medium text-gray-900">View Students in Resource</p>
-              <p className="text-sm text-gray-600">See schedules and IEP goals</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/dashboard/teacher/special-activities"
-            className="flex items-center p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-          >
-            <svg className="h-6 w-6 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <div>
-              <p className="font-medium text-gray-900">Create Special Activity</p>
-              <p className="text-sm text-gray-600">Add class activities to schedule</p>
-            </div>
-          </Link>
-        </div>
-      </div>
+      {/* Today's Schedule */}
+      <TodayView
+        sessions={todaySessions}
+        activities={todayActivities}
+        holidays={todayHolidays}
+        isWeekend={isWeekend}
+      />
 
       {/* Information Card */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
