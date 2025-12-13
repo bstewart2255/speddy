@@ -601,10 +601,12 @@ export function CalendarDayView({
       }
 
       // Find the template session (preferred)
+      // Use session.provider_id (the owner) not providerId (current user)
+      // This allows assignees to ungroup sessions assigned to them
       const { data: templates } = await supabase
         .from('schedule_sessions')
         .select('id, session_date')
-        .eq('provider_id', providerId)
+        .eq('provider_id', session.provider_id)
         .eq('student_id', session.student_id)
         .eq('day_of_week', session.day_of_week)
         .eq('start_time', session.start_time)
