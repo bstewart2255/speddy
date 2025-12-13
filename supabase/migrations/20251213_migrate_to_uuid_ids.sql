@@ -1,10 +1,31 @@
 -- Migration: Convert from NCES IDs to UUIDs
 --
 -- This migration:
--- 1. Deletes all data except Mt. Diablo Unified district
--- 2. Generates new UUIDs for Mt. Diablo district and its schools
--- 3. Updates all FK references
--- 4. Deletes all unused NCES data
+-- 1. Increases varchar column lengths to accommodate UUIDs (36 chars)
+-- 2. Deletes all data except Mt. Diablo Unified district
+-- 3. Generates new UUIDs for Mt. Diablo district and its schools
+-- 4. Updates all FK references
+-- 5. Deletes all unused NCES data
+
+-- Step 0: Increase column lengths for UUID storage (36 characters)
+-- Primary keys
+ALTER TABLE districts ALTER COLUMN id TYPE varchar(36);
+ALTER TABLE schools ALTER COLUMN id TYPE varchar(36);
+
+-- Foreign key references
+ALTER TABLE schools ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE profiles ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE profiles ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE admin_permissions ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE admin_permissions ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE bell_schedules ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE bell_schedules ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE provider_schools ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE provider_schools ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE students ALTER COLUMN district_id TYPE varchar(36);
+ALTER TABLE students ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE teachers ALTER COLUMN school_id TYPE varchar(36);
+ALTER TABLE unmatched_student_teachers ALTER COLUMN school_id TYPE varchar(36);
 
 -- Step 1: Delete profiles not in Mt. Diablo Unified
 DELETE FROM profiles
@@ -59,6 +80,48 @@ SET school_id = m.new_id
 FROM id_mapping m
 WHERE m.entity_type = 'school'
   AND ap.school_id = m.old_id;
+
+-- Step 7a: Update provider_schools with new district_id
+UPDATE provider_schools ps
+SET district_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'district'
+  AND ps.district_id = m.old_id;
+
+-- Step 7b: Update provider_schools with new school_id
+UPDATE provider_schools ps
+SET school_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'school'
+  AND ps.school_id = m.old_id;
+
+-- Step 7c: Update students with new district_id
+UPDATE students s
+SET district_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'district'
+  AND s.district_id = m.old_id;
+
+-- Step 7d: Update students with new school_id
+UPDATE students s
+SET school_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'school'
+  AND s.school_id = m.old_id;
+
+-- Step 7e: Update teachers with new school_id
+UPDATE teachers t
+SET school_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'school'
+  AND t.school_id = m.old_id;
+
+-- Step 7f: Update unmatched_student_teachers with new school_id
+UPDATE unmatched_student_teachers ust
+SET school_id = m.new_id
+FROM id_mapping m
+WHERE m.entity_type = 'school'
+  AND ust.school_id = m.old_id;
 
 -- Step 8: Delete all schools not in Mt. Diablo district
 DELETE FROM schools WHERE district_id != '0761754';
