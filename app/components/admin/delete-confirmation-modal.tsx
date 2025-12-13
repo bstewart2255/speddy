@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/button';
 
 interface DependencyCount {
@@ -34,6 +34,28 @@ export function DeleteConfirmationModal({
   isDeleting = false,
 }: DeleteConfirmationModalProps) {
   const [confirmText, setConfirmText] = useState('');
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isDeleting) {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isDeleting]);
+
+  // Auto-focus cancel button when modal opens
+  useEffect(() => {
+    if (isOpen && cancelButtonRef.current) {
+      cancelButtonRef.current.focus();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -56,9 +78,14 @@ export function DeleteConfirmationModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-modal-title"
+        className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4"
+      >
         <div className="mb-4">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">{title}</h2>
+          <h2 id="delete-modal-title" className="text-xl font-bold text-gray-900 mb-2">{title}</h2>
           <p className="text-gray-600">
             Are you sure you want to delete <strong>{itemName}</strong>?
           </p>
@@ -150,7 +177,7 @@ export function DeleteConfirmationModal({
         )}
 
         <div className="flex justify-end gap-3">
-          <Button onClick={handleClose} variant="secondary" disabled={isDeleting}>
+          <Button ref={cancelButtonRef} onClick={handleClose} variant="secondary" disabled={isDeleting}>
             Cancel
           </Button>
           {canDelete ? (

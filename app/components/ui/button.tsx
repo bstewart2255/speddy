@@ -10,7 +10,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
-export function Button({
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   children,
   variant = "primary",
   size = "md",
@@ -21,7 +21,7 @@ export function Button({
   disabled,
   className = "",
   ...props
-}: ButtonProps) {
+}, ref) {
   // Combine base classes with variant and size
   const baseClasses = tw.button.base;
   const variantClasses = {
@@ -48,6 +48,7 @@ export function Button({
 
   return (
     <button
+      ref={ref}
       className={buttonClasses}
       disabled={disabled || isLoading}
       {...props}
@@ -66,7 +67,7 @@ export function Button({
       )}
     </button>
   );
-}
+});
 
 // Loading spinner component
 function LoadingSpinner({ size }: { size: "sm" | "md" | "lg" }) {
