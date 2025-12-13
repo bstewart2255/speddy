@@ -421,17 +421,19 @@ export async function createSpecialistAccount(accountData: CreateSpecialistAccou
 
   try {
     // Check if profile with this email already exists
+    // Normalize email to lowercase for consistent comparison
+    const normalizedEmail = accountData.email.toLowerCase().trim();
     const existingResult = await safeQuery(
       async () => {
         const { data, error } = await supabase
           .from('profiles')
           .select('id, email')
-          .eq('email', accountData.email)
+          .eq('email', normalizedEmail)
           .maybeSingle();
         if (error) throw error;
         return data;
       },
-      { operation: 'check_existing_specialist', email: accountData.email }
+      { operation: 'check_existing_specialist', email: normalizedEmail }
     );
 
     if (existingResult.data) {
