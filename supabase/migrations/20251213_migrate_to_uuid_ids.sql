@@ -16,13 +16,17 @@ DROP POLICY IF EXISTS "District admins can view provider_schools in their distri
 DROP POLICY IF EXISTS "Users can view holidays for their school" ON holidays;
 DROP POLICY IF EXISTS "Users can delete holidays" ON holidays;
 DROP POLICY IF EXISTS "Users can update holidays" ON holidays;
+DROP POLICY IF EXISTS "Eligible roles can create holidays" ON holidays;
 DROP POLICY IF EXISTS "Users can view share requests for their schools" ON schedule_share_requests;
+DROP POLICY IF EXISTS "Users can create share requests for their schools" ON schedule_share_requests;
 DROP POLICY IF EXISTS "Site admins can delete teachers" ON teachers;
 DROP POLICY IF EXISTS "School-level teacher visibility" ON teachers;
 DROP POLICY IF EXISTS "Users can view accessible students" ON students;
 DROP POLICY IF EXISTS "Users can view accessible activities" ON special_activities;
+DROP POLICY IF EXISTS "Users can create teachers" ON teachers;
 DROP POLICY IF EXISTS "Users can update teachers" ON teachers;
 DROP POLICY IF EXISTS "Users can view exit ticket results in their org" ON exit_ticket_results;
+DROP POLICY IF EXISTS "Users can create exit ticket results in their org" ON exit_ticket_results;
 
 -- Step 0b: Increase column lengths for UUID storage (36 characters)
 -- Primary keys
@@ -185,6 +189,51 @@ USING (EXISTS (
       OR s.district_id = (SELECT profiles.district_id FROM profiles WHERE profiles.id = auth.uid())
       OR s.state_id = (SELECT profiles.state_id FROM profiles WHERE profiles.id = auth.uid()))
 ));
+
+CREATE POLICY "Users can create exit ticket results in their org" ON exit_ticket_results
+FOR INSERT TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM students s
+    WHERE s.id = exit_ticket_results.student_id
+      AND (s.school_id = (SELECT profiles.school_id FROM profiles WHERE profiles.id = auth.uid())
+        OR s.district_id = (SELECT profiles.district_id FROM profiles WHERE profiles.id = auth.uid())
+        OR s.state_id = (SELECT profiles.state_id FROM profiles WHERE profiles.id = auth.uid()))
+  )
+  AND graded_by = auth.uid()
+);
+
+CREATE POLICY "Eligible roles can create holidays" ON holidays
+FOR INSERT TO authenticated
+WITH CHECK (
+  created_by = auth.uid()
+  AND EXISTS (
+    SELECT 1 FROM profiles
+    WHERE profiles.id = auth.uid()
+      AND profiles.role IN ('resource', 'sea', 'admin')
+      AND ((profiles.school_site = holidays.school_site AND profiles.school_district = holidays.school_district)
+        OR (profiles.school_id = holidays.school_id AND holidays.school_id IS NOT NULL)
+        OR (profiles.district_id = holidays.district_id AND holidays.district_id IS NOT NULL))
+  )
+);
+
+CREATE POLICY "Users can create share requests for their schools" ON schedule_share_requests
+FOR INSERT TO authenticated
+WITH CHECK (
+  sharer_id = auth.uid()
+  AND school_id IN (
+    SELECT profiles.school_id FROM profiles WHERE profiles.id = auth.uid()
+    UNION
+    SELECT provider_schools.school_id FROM provider_schools WHERE provider_schools.provider_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Users can create teachers" ON teachers
+FOR INSERT TO authenticated
+WITH CHECK (
+  EXISTS (SELECT 1 FROM admin_permissions WHERE admin_permissions.admin_id = auth.uid() AND admin_permissions.role = 'site_admin' AND admin_permissions.school_id = teachers.school_id)
+  OR school_id IN (SELECT profiles.school_id FROM profiles WHERE profiles.id = auth.uid())
+);
 
 -- Step 1: Delete profiles not in Mt. Diablo Unified
 DELETE FROM profiles
