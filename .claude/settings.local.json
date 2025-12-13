@@ -63,14 +63,11 @@
       "Bash(do echo \"=== Line $line ===\")",
       "Bash(done)",
       "Bash(gh pr list:*)",
-      "mcp__supabase__get_advisors"
+      "mcp__supabase__get_advisors",
+      "Bash(gh pr checks:*)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "context7",
-    "playwright",
-    "supabase"
-  ]
+  "enabledMcpjsonServers": ["context7", "playwright", "supabase"]
 }

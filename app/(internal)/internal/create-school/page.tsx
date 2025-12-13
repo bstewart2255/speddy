@@ -112,7 +112,7 @@ export default function CreateSchoolPage() {
           <>
             <span className="mx-2">/</span>
             <Link
-              href={`/internal/districts/${selectedDistrict.id}`}
+              href={`/internal/districts/${sanitizeId(selectedDistrict.id)}`}
               className="hover:text-purple-400"
             >
               {selectedDistrict.name}
@@ -330,7 +330,7 @@ export default function CreateSchoolPage() {
           {/* Actions */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-700">
             <Link
-              href={districtId ? `/internal/districts/${districtId}` : '/internal/districts'}
+              href={districtId ? `/internal/districts/${sanitizeId(districtId)}` : '/internal/districts'}
               className="text-slate-400 hover:text-slate-300 transition-colors"
             >
               Cancel
