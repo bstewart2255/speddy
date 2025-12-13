@@ -456,6 +456,44 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             goalsCount: student.goals?.length ?? 0
           });
 
+          // Create initial sessions for the new student if schedule requirements provided
+          // Bug fix: import_student_atomic doesn't create sessions, so we call the sync function
+          if (student.sessionsPerWeek && student.sessionsPerWeek > 0) {
+            try {
+              const syncResult = await updateExistingSessionsForStudent(
+                newStudent.id!,
+                { sessions_per_week: null, minutes_per_session: null }, // Old requirements (none)
+                {
+                  sessions_per_week: student.sessionsPerWeek,
+                  minutes_per_session: student.minutesPerSession ?? null
+                },
+                supabase
+              );
+
+              if (!syncResult.success) {
+                log.warn('Session creation had issues after student insert', {
+                  userId,
+                  studentId: newStudent.id,
+                  studentInitials: initialsNormalized,
+                  syncError: syncResult.error
+                });
+              } else {
+                log.info('Sessions created successfully for new student', {
+                  userId,
+                  studentId: newStudent.id,
+                  studentInitials: initialsNormalized
+                });
+              }
+            } catch (syncError) {
+              log.error('Failed to create sessions after insert', syncError instanceof Error ? syncError : null, {
+                userId,
+                studentId: newStudent.id,
+                studentInitials: initialsNormalized
+              });
+              // Don't fail the insert - just log the sync error
+            }
+          }
+
           results.push({
             success: true,
             studentId: newStudent.id,
