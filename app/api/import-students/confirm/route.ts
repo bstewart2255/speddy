@@ -446,7 +446,25 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             continue;
           }
 
-          const newStudent = { id: (importResult as { student_id?: string }).student_id };
+          const newStudentId = (importResult as { student_id?: string }).student_id;
+
+          // Defensive guard: ensure we got a valid student ID back
+          if (!newStudentId) {
+            log.error('import_student_atomic succeeded but returned no student_id', null, {
+              userId,
+              studentInitials: initialsNormalized,
+            });
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              action: 'error',
+              error: 'Student created but could not be finalized (missing id)',
+            });
+            errorCount++;
+            continue;
+          }
+
+          const newStudent = { id: newStudentId };
 
           // Success
           log.info('Student created successfully', {
@@ -455,6 +473,44 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             studentInitials: initialsNormalized,
             goalsCount: student.goals?.length ?? 0
           });
+
+          // Create initial sessions for the new student if schedule requirements provided
+          // Bug fix: import_student_atomic doesn't create sessions, so we call the sync function
+          if (student.sessionsPerWeek && student.sessionsPerWeek > 0) {
+            try {
+              const syncResult = await updateExistingSessionsForStudent(
+                newStudent.id,
+                { sessions_per_week: null, minutes_per_session: null }, // Old requirements (none)
+                {
+                  sessions_per_week: student.sessionsPerWeek,
+                  minutes_per_session: student.minutesPerSession ?? null
+                },
+                supabase
+              );
+
+              if (!syncResult.success) {
+                log.warn('Session creation had issues after student insert', {
+                  userId,
+                  studentId: newStudent.id,
+                  studentInitials: initialsNormalized,
+                  syncError: syncResult.error
+                });
+              } else {
+                log.info('Sessions created successfully for new student', {
+                  userId,
+                  studentId: newStudent.id,
+                  studentInitials: initialsNormalized
+                });
+              }
+            } catch (syncError) {
+              log.error('Failed to create sessions after insert', syncError instanceof Error ? syncError : null, {
+                userId,
+                studentId: newStudent.id,
+                studentInitials: initialsNormalized
+              });
+              // Don't fail the insert - just log the sync error
+            }
+          }
 
           results.push({
             success: true,

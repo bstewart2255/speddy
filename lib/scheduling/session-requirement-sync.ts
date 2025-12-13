@@ -71,10 +71,10 @@ export async function updateExistingSessionsForStudent(
       // This handles the case where a student was created without scheduling requirements
       // and is now being updated to add them
       if (newRequirements.sessions_per_week && newRequirements.sessions_per_week > 0) {
-        // Need to get the provider_id and student info to create sessions
+        // Need to get the provider_id and provider's role to create sessions
         const { data: student, error: studentErr } = await supabase
           .from('students')
-          .select('provider_id')
+          .select('provider_id, provider:profiles!students_provider_id_fkey(role)')
           .eq('id', studentId)
           .single();
 
@@ -83,8 +83,13 @@ export async function updateExistingSessionsForStudent(
           return { success: false, error: studentErr?.message || 'Student not found' };
         }
 
+        // Get service_type from provider's role (default to 'resource' if not found)
+        // Trim whitespace to handle any accidental spaces in role values
+        const providerRole = (student.provider as { role?: string } | null)?.role?.trim();
+        const serviceType = providerRole || 'resource';
+
         // Create initial unscheduled sessions
-        console.log(`Creating ${newRequirements.sessions_per_week} initial unscheduled sessions for student ${studentId}`);
+        console.log(`Creating ${newRequirements.sessions_per_week} initial unscheduled sessions for student ${studentId} with service_type=${serviceType}`);
 
         const newUnscheduledSessions = Array.from(
           { length: newRequirements.sessions_per_week },
@@ -94,7 +99,7 @@ export async function updateExistingSessionsForStudent(
             day_of_week: null,
             start_time: null,
             end_time: null,
-            service_type: 'resource',
+            service_type: serviceType,
             status: 'active' as const,
             has_conflict: false,
             delivered_by: 'provider' as const,
@@ -131,18 +136,24 @@ export async function updateExistingSessionsForStudent(
 
     // Step 3: Adjust session count if sessions_per_week changed
     if (countChanged && newRequirements.sessions_per_week != null) {
-      // Get provider_id from any existing session (they all have the same provider)
+      // Get provider_id and service_type from any existing session (they all have the same provider)
       const providerId = existingSessions[0]?.provider_id ?? undefined;
+      const serviceType = existingSessions[0]?.service_type ?? 'resource';
 
-      // Only count non-completed sessions to match the invariant
-      const activeSessionCount = existingSessions.filter(s => !s.is_completed).length;
+      // Bug fix: Only count TEMPLATE sessions (session_date IS NULL), not dated instances
+      // Templates are the "master" sessions that define the weekly schedule
+      // Dated instances are generated from templates for specific weeks
+      const templateSessionCount = existingSessions.filter(
+        s => s.session_date === null && !s.is_completed
+      ).length;
 
       await adjustSessionCount(
         supabase,
         studentId,
         providerId,
-        activeSessionCount,
-        newRequirements.sessions_per_week
+        templateSessionCount,
+        newRequirements.sessions_per_week,
+        serviceType
       );
     }
 
@@ -235,7 +246,8 @@ async function adjustSessionCount(
   studentId: string,
   providerId: string | undefined,
   currentCount: number,
-  targetCount: number
+  targetCount: number,
+  serviceType: string = 'resource'
 ): Promise<void> {
   if (currentCount === targetCount) {
     // Count is already correct
@@ -246,12 +258,13 @@ async function adjustSessionCount(
     // Need to delete excess sessions
     console.log(`Deleting ${currentCount - targetCount} excess sessions for student ${studentId}`);
 
-    // Get ALL sessions (including completed ones) to handle edge cases
-    // where orphaned completed unscheduled sessions exist
+    // Get only TEMPLATE sessions (session_date IS NULL) to match the counting logic
+    // Include completed ones to handle edge cases where orphaned completed unscheduled sessions exist
     const { data: sessions, error: listErr } = await supabase
       .from('schedule_sessions')
-      .select('id, day_of_week, start_time, created_at, is_completed')
-      .eq('student_id', studentId);
+      .select('id, day_of_week, start_time, created_at, is_completed, session_date')
+      .eq('student_id', studentId)
+      .is('session_date', null);
 
     if (listErr) {
       throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
@@ -363,7 +376,7 @@ async function adjustSessionCount(
       day_of_week: null,
       start_time: null,
       end_time: null,
-      service_type: 'resource',
+      service_type: serviceType,
       status: 'active' as const,
       has_conflict: false,
       delivered_by: 'provider' as const,

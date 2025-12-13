@@ -34,42 +34,34 @@ export async function createStudent(studentData: {
 
   const user = authResult.data.data.user;
 
-  // Get complete school data if not provided
-  let schoolData: SchoolIdentifier = {
-    school_site: studentData.school_site,
-    school_district: studentData.school_district,
-    school_id: studentData.school_id,
-    district_id: studentData.district_id,
-    state_id: studentData.state_id
+  // Fetch user profile to get role and school data
+  const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_student', 'database');
+  const profileResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role, school_site, school_district, school_id, district_id, state_id')
+        .eq('id', user.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_profile_for_student', userId: user.id }
+  );
+  profilePerf.end({ success: !profileResult.error });
+
+  // Get service_type from provider's role (default to 'resource' if not found)
+  // Trim whitespace to handle any accidental spaces in role values
+  const serviceType = profileResult.data?.role?.trim() || 'resource';
+
+  // Get complete school data - use provided data or fall back to profile
+  const schoolData: SchoolIdentifier = {
+    school_site: studentData.school_site || profileResult.data?.school_site,
+    school_district: studentData.school_district || profileResult.data?.school_district,
+    school_id: studentData.school_id || profileResult.data?.school_id,
+    district_id: studentData.district_id || profileResult.data?.district_id,
+    state_id: studentData.state_id || profileResult.data?.state_id
   };
-
-  // If no school data provided, fetch from user profile
-  if (!schoolData.school_site && !schoolData.school_id) {
-    const profilePerf = measurePerformanceWithAlerts('fetch_profile_for_student', 'database');
-    const profileResult = await safeQuery(
-      async () => {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('school_site, school_district, school_id, district_id, state_id')
-          .eq('id', user.id)
-          .single();
-        if (error) throw error;
-        return data;
-      },
-      { operation: 'fetch_profile_for_student', userId: user.id }
-    );
-    profilePerf.end({ success: !profileResult.error });
-
-    if (profileResult.data) {
-      schoolData = {
-        school_site: schoolData.school_site || profileResult.data.school_site,
-        school_district: schoolData.school_district || profileResult.data.school_district,
-        school_id: schoolData.school_id || profileResult.data.school_id,
-        district_id: schoolData.district_id || profileResult.data.district_id,
-        state_id: schoolData.state_id || profileResult.data.state_id
-      };
-    }
-  }
 
   // Use the provided teacher_id
   // Note: teacher_name is deprecated and only kept for backward compatibility
@@ -142,7 +134,7 @@ export async function createStudent(studentData: {
         day_of_week: null,
         start_time: null,
         end_time: null,
-        service_type: 'resource',
+        service_type: serviceType,
         status: 'active' as const,
         delivered_by: 'provider' as const,
       }));
