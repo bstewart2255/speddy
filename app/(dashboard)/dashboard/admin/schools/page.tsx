@@ -9,6 +9,7 @@ import {
 } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { Button } from '@/app/components/ui/button';
 
 type SchoolWithCounts = {
   id: string;
@@ -47,15 +48,17 @@ export default function SchoolsListPage() {
         // Find the district_admin permission specifically
         const permission = perms.find(p => p.role === 'district_admin' && p.district_id);
 
-        if (!permission) {
+        if (!permission || !permission.district_id) {
           setError('This page is only accessible to district administrators.');
           return;
         }
 
+        const districtId = permission.district_id;
+
         // Fetch district info and schools
         const [district, schoolsData] = await Promise.all([
-          getDistrictInfo(permission.district_id),
-          getDistrictSchools(permission.district_id)
+          getDistrictInfo(districtId),
+          getDistrictSchools(districtId)
         ]);
 
         setDistrictInfo(district);
@@ -125,12 +128,21 @@ export default function SchoolsListPage() {
           <span>/</span>
           <span className="text-gray-900">Schools</span>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          {districtInfo?.name || 'District'} Schools
-        </h1>
-        <p className="mt-2 text-gray-600">
-          {schools.length} school{schools.length !== 1 ? 's' : ''} in your district
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {districtInfo?.name || 'District'} Schools
+            </h1>
+            <p className="mt-2 text-gray-600">
+              {schools.length} school{schools.length !== 1 ? 's' : ''} in your district
+            </p>
+          </div>
+          <Link href="/dashboard/admin/schools/create">
+            <Button variant="primary">
+              + Create School
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Search */}
