@@ -86,14 +86,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Fetch user profile to determine role
+  // Fetch user profile to determine role and admin status
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, is_speddy_admin')
     .eq('id', user.id)
     .single()
 
   const userRole = profile?.role
+  const isSpeddyAdmin = profile?.is_speddy_admin === true
 
   // For authenticated users, pass the session info and role in headers
   response.headers.set('x-user-id', user.id)
@@ -103,9 +104,18 @@ export async function middleware(request: NextRequest) {
   }
 
   // Role-based routing
+  const isInternalRoute = pathname.startsWith('/internal')
   const isAdminRoute = pathname.startsWith('/dashboard/admin')
   const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
   const isDashboardRoute = pathname.startsWith('/dashboard')
+
+  // Internal routes are only for Speddy admins
+  if (isInternalRoute && !isSpeddyAdmin) {
+    console.log('Non-speddy-admin trying to access internal route, redirecting')
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    return NextResponse.redirect(redirectUrl)
+  }
 
   // If user is an admin trying to access non-admin dashboard routes, redirect to admin dashboard
   if ((userRole === 'site_admin' || userRole === 'district_admin') && isDashboardRoute && !isAdminRoute && !isTeacherRoute) {
