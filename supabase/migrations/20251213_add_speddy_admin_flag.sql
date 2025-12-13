@@ -15,56 +15,16 @@ ON profiles(is_speddy_admin) WHERE is_speddy_admin = true;
 COMMENT ON COLUMN profiles.is_speddy_admin IS
 'Flag indicating user is a Speddy internal admin with access to /internal/* routes';
 
--- RLS Policies for Speddy Admin access to reference tables
--- These allow speddy admins to browse all states, districts, and schools
-
--- States: Allow speddy admins to view all states
-CREATE POLICY "Speddy admins can view all states"
-ON public.states FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND profiles.is_speddy_admin = true
-  )
-);
-
--- Districts: Allow speddy admins to view all districts
-CREATE POLICY "Speddy admins can view all districts"
-ON public.districts FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND profiles.is_speddy_admin = true
-  )
-);
-
--- Schools: Allow speddy admins to view all schools
-CREATE POLICY "Speddy admins can view all schools"
-ON public.schools FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND profiles.is_speddy_admin = true
-  )
-);
-
--- Profiles: Allow speddy admins to view all profiles (for lookup during admin creation)
-CREATE POLICY "Speddy admins can view all profiles"
-ON public.profiles FOR SELECT
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM profiles p
-    WHERE p.id = auth.uid()
-    AND p.is_speddy_admin = true
-  )
-);
+-- NOTE: We do NOT add RLS policies for speddy admin access to states, districts, schools, or profiles.
+--
+-- 1. States, districts, and schools already have "Allow public read access" policies with USING (true),
+--    so adding speddy admin policies would be redundant.
+--
+-- 2. Adding policies that query profiles.is_speddy_admin causes infinite recursion when combined with
+--    existing policies like "District admins can view profiles in their district" which joins schools.
+--    The chain: profiles -> schools -> profiles -> infinite loop.
+--
+-- 3. The create-admin API uses service role which bypasses RLS anyway.
 
 -- Admin permissions: Allow speddy admins to insert admin_permissions records
 CREATE POLICY "Speddy admins can create admin permissions"
