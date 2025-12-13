@@ -1,13 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { getSchoolDetails, getSchoolStaff } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { Button } from '@/app/components/ui/button';
+import { DeleteConfirmationModal } from '@/app/components/admin/delete-confirmation-modal';
+import { CredentialsModal } from '@/app/components/admin/credentials-modal';
+
+interface DependencyCount {
+  label: string;
+  count: number;
+}
 
 export default function SchoolDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const schoolId = params.schoolId as string;
 
   const [school, setSchool] = useState<any>(null);
@@ -18,6 +27,24 @@ export default function SchoolDetailPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCheckLoading, setDeleteCheckLoading] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+  const [blockerReason, setBlockerReason] = useState<string | undefined>();
+  const [dependencyCounts, setDependencyCounts] = useState<DependencyCount[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Site Admin modal state
+  const [showAddSiteAdminModal, setShowAddSiteAdminModal] = useState(false);
+  const [showSiteAdminCredentials, setShowSiteAdminCredentials] = useState(false);
+  const [siteAdminCredentials, setSiteAdminCredentials] = useState({ email: '', temporaryPassword: '' });
+  const [newSiteAdminName, setNewSiteAdminName] = useState('');
+  const [siteAdminFormData, setSiteAdminFormData] = useState({ firstName: '', lastName: '', email: '' });
+  const [isSavingSiteAdmin, setIsSavingSiteAdmin] = useState(false);
+  const [siteAdminError, setSiteAdminError] = useState<string | null>(null);
+  const [isRemovingSiteAdmin, setIsRemovingSiteAdmin] = useState(false);
 
   useEffect(() => {
     const fetchSchoolData = async () => {
@@ -44,6 +71,126 @@ export default function SchoolDetailPage() {
       fetchSchoolData();
     }
   }, [schoolId]);
+
+  // Handle opening delete modal
+  const handleDeleteClick = async () => {
+    setShowDeleteModal(true);
+    setDeleteCheckLoading(true);
+
+    try {
+      const response = await fetch(`/api/admin/district/schools/${schoolId}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setCanDelete(data.canDelete);
+        setBlockerReason(data.blockerReason);
+        setDependencyCounts(data.dependencyCounts || []);
+      } else {
+        setCanDelete(false);
+        setBlockerReason(data.error || 'Unable to check delete status');
+      }
+    } catch (err) {
+      setCanDelete(false);
+      setBlockerReason('Failed to check if school can be deleted');
+    } finally {
+      setDeleteCheckLoading(false);
+    }
+  };
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = async () => {
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/admin/district/schools/${schoolId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        router.push('/dashboard/admin/schools');
+      } else {
+        const data = await response.json();
+        setBlockerReason(data.error || 'Failed to delete school');
+        setCanDelete(false);
+      }
+    } catch (err) {
+      setBlockerReason('An error occurred while deleting the school');
+      setCanDelete(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Handle adding a site admin
+  const handleAddSiteAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSiteAdmin(true);
+    setSiteAdminError(null);
+
+    try {
+      const response = await fetch('/api/admin/district/site-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: siteAdminFormData.firstName.trim(),
+          last_name: siteAdminFormData.lastName.trim(),
+          email: siteAdminFormData.email.trim(),
+          school_id: schoolId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create site admin');
+      }
+
+      // Store credentials and show credentials modal
+      setSiteAdminCredentials(data.credentials);
+      setNewSiteAdminName(`${siteAdminFormData.firstName} ${siteAdminFormData.lastName}`);
+      setShowAddSiteAdminModal(false);
+      setShowSiteAdminCredentials(true);
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+
+      // Reset form
+      setSiteAdminFormData({ firstName: '', lastName: '', email: '' });
+    } catch (err) {
+      setSiteAdminError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsSavingSiteAdmin(false);
+    }
+  };
+
+  // Handle removing a site admin
+  const handleRemoveSiteAdmin = async (adminId: string) => {
+    if (!confirm('Are you sure you want to remove this site admin? They will lose access to manage this school.')) {
+      return;
+    }
+
+    setIsRemovingSiteAdmin(true);
+
+    try {
+      const response = await fetch(`/api/admin/district/site-admin/${adminId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to remove site admin');
+      }
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to remove site admin');
+    } finally {
+      setIsRemovingSiteAdmin(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -107,23 +254,44 @@ export default function SchoolDetailPage() {
           <span>/</span>
           <span className="text-gray-900 truncate max-w-xs">{school.name}</span>
         </div>
-        <h1 className="text-3xl font-bold text-gray-900">{school.name}</h1>
-        <div className="mt-2 text-sm text-gray-600 space-y-1">
-          <p>
-            <span className="font-medium">School ID:</span> <span className="font-mono">{school.id}</span>
-            {school.district && (
-              <> · <span className="font-medium">District:</span> {school.district.name}</>
-            )}
-          </p>
-          {(school.city || school.phone || school.grade_span_low) && (
-            <p>
-              {school.city && <>{school.city}{school.zip ? `, ${school.zip}` : ''}</>}
-              {school.city && school.phone && <> · </>}
-              {school.phone && <>{school.phone}</>}
-              {(school.city || school.phone) && school.grade_span_low && <> · </>}
-              {school.grade_span_low && <>Grades {school.grade_span_low} - {school.grade_span_high || '12'}</>}
-            </p>
-          )}
+
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{school.name}</h1>
+            <div className="mt-2 text-sm text-gray-600 space-y-1">
+              <p>
+                <span className="font-medium">School ID:</span> <span className="font-mono">{school.id}</span>
+                {school.district && (
+                  <> · <span className="font-medium">District:</span> {school.district.name}</>
+                )}
+              </p>
+              {(school.city || school.phone || school.grade_span_low) && (
+                <p>
+                  {school.city && <>{school.city}{school.zip ? `, ${school.zip}` : ''}</>}
+                  {school.city && school.phone && <> · </>}
+                  {school.phone && <>{school.phone}</>}
+                  {(school.city || school.phone) && school.grade_span_low && <> · </>}
+                  {school.grade_span_low && <>Grades {school.grade_span_low} - {school.grade_span_high || '12'}</>}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
+            <Link href={`/dashboard/admin/schools/${schoolId}/edit`}>
+              <Button variant="secondary">
+                Edit School
+              </Button>
+            </Link>
+            <Button
+              variant="secondary"
+              onClick={handleDeleteClick}
+              className="text-red-600 hover:bg-red-50"
+            >
+              Delete
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -176,22 +344,42 @@ export default function SchoolDetailPage() {
 
       {/* Site Admin */}
       <Card className="p-6 mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Site Admin</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Site Admin</h2>
+          {staff.siteAdmins.length === 0 && (
+            <Button
+              variant="primary"
+              onClick={() => setShowAddSiteAdminModal(true)}
+            >
+              + Add Site Admin
+            </Button>
+          )}
+        </div>
         {staff.siteAdmins.length === 0 ? (
           <p className="text-sm text-gray-500">No site admin assigned to this school.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {staff.siteAdmins.map((admin: any) => (
-              <div key={admin.id} className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-full">
-                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+              <div key={admin.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-100 rounded-full">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{admin.full_name}</p>
+                    <p className="text-sm text-gray-500">{admin.email}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{admin.full_name}</p>
-                  <p className="text-sm text-gray-500">{admin.email}</p>
-                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleRemoveSiteAdmin(admin.id)}
+                  disabled={isRemovingSiteAdmin}
+                  className="text-red-600 hover:bg-red-50"
+                >
+                  {isRemovingSiteAdmin ? 'Removing...' : 'Remove'}
+                </Button>
               </div>
             ))}
           </div>
@@ -307,6 +495,114 @@ export default function SchoolDetailPage() {
           </div>
         )}
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete School"
+        itemName={school.name}
+        itemType="school"
+        canDelete={!deleteCheckLoading && canDelete}
+        blockerReason={deleteCheckLoading ? 'Checking if school can be deleted...' : blockerReason}
+        dependencyCounts={dependencyCounts}
+        isDeleting={isDeleting}
+      />
+
+      {/* Add Site Admin Modal */}
+      {showAddSiteAdminModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Site Admin</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Create a new site admin account for <strong>{school.name}</strong>. They will have full administrative access to this school.
+            </p>
+
+            {siteAdminError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-600 text-sm">{siteAdminError}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleAddSiteAdmin} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siteAdminFormData.firstName}
+                    onChange={(e) => setSiteAdminFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="John"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siteAdminFormData.lastName}
+                    onChange={(e) => setSiteAdminFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Smith"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={siteAdminFormData.email}
+                  onChange={(e) => setSiteAdminFormData(prev => ({ ...prev, email: e.target.value }))}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="john.smith@school.edu"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowAddSiteAdminModal(false);
+                    setSiteAdminError(null);
+                    setSiteAdminFormData({ firstName: '', lastName: '', email: '' });
+                  }}
+                  disabled={isSavingSiteAdmin}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSavingSiteAdmin || !siteAdminFormData.firstName.trim() || !siteAdminFormData.lastName.trim() || !siteAdminFormData.email.trim()}
+                >
+                  {isSavingSiteAdmin ? 'Creating...' : 'Create Site Admin'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Site Admin Credentials Modal */}
+      <CredentialsModal
+        isOpen={showSiteAdminCredentials}
+        onClose={() => setShowSiteAdminCredentials(false)}
+        credentials={siteAdminCredentials}
+        accountName={newSiteAdminName}
+        accountType="site_admin"
+      />
     </div>
   );
 }
