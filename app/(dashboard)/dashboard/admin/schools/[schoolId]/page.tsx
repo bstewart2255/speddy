@@ -46,6 +46,26 @@ export default function SchoolDetailPage() {
   const [siteAdminError, setSiteAdminError] = useState<string | null>(null);
   const [isRemovingSiteAdmin, setIsRemovingSiteAdmin] = useState(false);
 
+  // Teacher modal state
+  const [showAddTeacherModal, setShowAddTeacherModal] = useState(false);
+  const [showTeacherCredentials, setShowTeacherCredentials] = useState(false);
+  const [teacherCredentials, setTeacherCredentials] = useState({ email: '', temporaryPassword: '' });
+  const [newTeacherName, setNewTeacherName] = useState('');
+  const [teacherFormData, setTeacherFormData] = useState({ firstName: '', lastName: '', email: '', classroomNumber: '', phoneNumber: '' });
+  const [isSavingTeacher, setIsSavingTeacher] = useState(false);
+  const [teacherError, setTeacherError] = useState<string | null>(null);
+  const [removingTeacherId, setRemovingTeacherId] = useState<string | null>(null);
+
+  // Provider modal state
+  const [showAddProviderModal, setShowAddProviderModal] = useState(false);
+  const [showProviderCredentials, setShowProviderCredentials] = useState(false);
+  const [providerCredentials, setProviderCredentials] = useState({ email: '', temporaryPassword: '' });
+  const [newProviderName, setNewProviderName] = useState('');
+  const [providerFormData, setProviderFormData] = useState({ firstName: '', lastName: '', email: '', role: 'resource' as const });
+  const [isSavingProvider, setIsSavingProvider] = useState(false);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  const [removingProviderId, setRemovingProviderId] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchSchoolData = async () => {
       try {
@@ -189,6 +209,154 @@ export default function SchoolDetailPage() {
       alert(err instanceof Error ? err.message : 'Failed to remove site admin');
     } finally {
       setIsRemovingSiteAdmin(false);
+    }
+  };
+
+  // Handle adding a teacher
+  const handleAddTeacher = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingTeacher(true);
+    setTeacherError(null);
+
+    try {
+      const response = await fetch('/api/admin/district/teachers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: teacherFormData.firstName.trim(),
+          last_name: teacherFormData.lastName.trim(),
+          email: teacherFormData.email.trim(),
+          school_id: schoolId,
+          classroom_number: teacherFormData.classroomNumber.trim() || undefined,
+          phone_number: teacherFormData.phoneNumber.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create teacher');
+      }
+
+      // Store credentials and show credentials modal
+      setTeacherCredentials(data.credentials);
+      setNewTeacherName(`${teacherFormData.firstName} ${teacherFormData.lastName}`);
+      setShowAddTeacherModal(false);
+      setShowTeacherCredentials(true);
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+
+      // Reset form
+      setTeacherFormData({ firstName: '', lastName: '', email: '', classroomNumber: '', phoneNumber: '' });
+    } catch (err) {
+      setTeacherError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsSavingTeacher(false);
+    }
+  };
+
+  // Handle removing a teacher
+  const handleRemoveTeacher = async (teacherId: string) => {
+    if (!confirm('Are you sure you want to delete this teacher? This action cannot be undone.')) {
+      return;
+    }
+
+    setRemovingTeacherId(teacherId);
+
+    try {
+      const response = await fetch(`/api/admin/district/teachers/${teacherId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete teacher');
+      }
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete teacher');
+    } finally {
+      setRemovingTeacherId(null);
+    }
+  };
+
+  // Handle adding a provider
+  const handleAddProvider = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProvider(true);
+    setProviderError(null);
+
+    try {
+      const response = await fetch('/api/admin/district/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: providerFormData.firstName.trim(),
+          last_name: providerFormData.lastName.trim(),
+          email: providerFormData.email.trim(),
+          role: providerFormData.role,
+          school_ids: [schoolId],
+          primary_school_id: schoolId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create provider');
+      }
+
+      // Store credentials and show credentials modal
+      setProviderCredentials(data.credentials);
+      setNewProviderName(`${providerFormData.firstName} ${providerFormData.lastName}`);
+      setShowAddProviderModal(false);
+      setShowProviderCredentials(true);
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+
+      // Reset form
+      setProviderFormData({ firstName: '', lastName: '', email: '', role: 'resource' });
+    } catch (err) {
+      setProviderError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsSavingProvider(false);
+    }
+  };
+
+  // Handle removing a provider
+  const handleRemoveProvider = async (providerId: string) => {
+    if (!confirm('Are you sure you want to remove this provider? They will lose access to this school.')) {
+      return;
+    }
+
+    setRemovingProviderId(providerId);
+
+    try {
+      const response = await fetch(`/api/admin/district/providers/${providerId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to remove provider');
+      }
+
+      // Refresh staff data
+      const staffData = await getSchoolStaff(schoolId);
+      setStaff(staffData);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to remove provider');
+    } finally {
+      setRemovingProviderId(null);
     }
   };
 
@@ -388,9 +556,17 @@ export default function SchoolDetailPage() {
 
       {/* Providers List */}
       <Card className="p-6 mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Providers ({staff.specialists.length})
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Providers ({staff.specialists.length})
+          </h2>
+          <Button
+            variant="primary"
+            onClick={() => setShowAddProviderModal(true)}
+          >
+            + Add Provider
+          </Button>
+        </div>
         {staff.specialists.length === 0 ? (
           <p className="text-sm text-gray-500">No providers found at this school.</p>
         ) : (
@@ -406,6 +582,9 @@ export default function SchoolDetailPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -439,6 +618,15 @@ export default function SchoolDetailPage() {
                          specialist.role}
                       </span>
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right">
+                      <button
+                        onClick={() => handleRemoveProvider(specialist.id)}
+                        disabled={removingProviderId === specialist.id}
+                        className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        {removingProviderId === specialist.id ? 'Removing...' : 'Remove'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -449,9 +637,17 @@ export default function SchoolDetailPage() {
 
       {/* Teachers List */}
       <Card className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Teachers ({staff.teachers.length})
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Teachers ({staff.teachers.length})
+          </h2>
+          <Button
+            variant="primary"
+            onClick={() => setShowAddTeacherModal(true)}
+          >
+            + Add Teacher
+          </Button>
+        </div>
         {staff.teachers.length === 0 ? (
           <p className="text-sm text-gray-500">No teachers found at this school.</p>
         ) : (
@@ -467,6 +663,9 @@ export default function SchoolDetailPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Classroom
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -487,6 +686,15 @@ export default function SchoolDetailPage() {
                       <span className="text-sm text-gray-500">
                         {teacher.classroom_number || '-'}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right">
+                      <button
+                        onClick={() => handleRemoveTeacher(teacher.id)}
+                        disabled={removingTeacherId === teacher.id}
+                        className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        {removingTeacherId === teacher.id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -602,6 +810,238 @@ export default function SchoolDetailPage() {
         credentials={siteAdminCredentials}
         accountName={newSiteAdminName}
         accountType="site_admin"
+      />
+
+      {/* Add Teacher Modal */}
+      {showAddTeacherModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Teacher</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Create a new teacher account for <strong>{school.name}</strong>.
+            </p>
+
+            {teacherError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-600 text-sm">{teacherError}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleAddTeacher} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.firstName}
+                    onChange={(e) => setTeacherFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Jane"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.lastName}
+                    onChange={(e) => setTeacherFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Doe"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={teacherFormData.email}
+                  onChange={(e) => setTeacherFormData(prev => ({ ...prev, email: e.target.value }))}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="jane.doe@school.edu"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Classroom Number
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.classroomNumber}
+                    onChange={(e) => setTeacherFormData(prev => ({ ...prev, classroomNumber: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Room 101"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.phoneNumber}
+                    onChange={(e) => setTeacherFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="555-1234"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowAddTeacherModal(false);
+                    setTeacherError(null);
+                    setTeacherFormData({ firstName: '', lastName: '', email: '', classroomNumber: '', phoneNumber: '' });
+                  }}
+                  disabled={isSavingTeacher}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSavingTeacher || !teacherFormData.firstName.trim() || !teacherFormData.lastName.trim() || !teacherFormData.email.trim()}
+                >
+                  {isSavingTeacher ? 'Creating...' : 'Create Teacher'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Teacher Credentials Modal */}
+      <CredentialsModal
+        isOpen={showTeacherCredentials}
+        onClose={() => setShowTeacherCredentials(false)}
+        credentials={teacherCredentials}
+        accountName={newTeacherName}
+        accountType="teacher"
+      />
+
+      {/* Add Provider Modal */}
+      {showAddProviderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Provider</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Create a new provider account for <strong>{school.name}</strong>.
+            </p>
+
+            {providerError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-600 text-sm">{providerError}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleAddProvider} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={providerFormData.firstName}
+                    onChange={(e) => setProviderFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="John"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={providerFormData.lastName}
+                    onChange={(e) => setProviderFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Smith"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={providerFormData.email}
+                  onChange={(e) => setProviderFormData(prev => ({ ...prev, email: e.target.value }))}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="john.smith@school.edu"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={providerFormData.role}
+                  onChange={(e) => setProviderFormData(prev => ({ ...prev, role: e.target.value as any }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="resource">Resource Specialist</option>
+                  <option value="speech">Speech Therapist</option>
+                  <option value="ot">Occupational Therapist</option>
+                  <option value="counseling">Counselor</option>
+                  <option value="sea">Special Education Assistant</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowAddProviderModal(false);
+                    setProviderError(null);
+                    setProviderFormData({ firstName: '', lastName: '', email: '', role: 'resource' });
+                  }}
+                  disabled={isSavingProvider}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSavingProvider || !providerFormData.firstName.trim() || !providerFormData.lastName.trim() || !providerFormData.email.trim()}
+                >
+                  {isSavingProvider ? 'Creating...' : 'Create Provider'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Provider Credentials Modal */}
+      <CredentialsModal
+        isOpen={showProviderCredentials}
+        onClose={() => setShowProviderCredentials(false)}
+        credentials={providerCredentials}
+        accountName={newProviderName}
+        accountType="provider"
       />
     </div>
   );
