@@ -581,10 +581,9 @@ export function CalendarDayView({
         throw new Error('User not authenticated');
       }
 
-      // Check for temporary IDs (not yet persisted to database)
-      if (sessionId.startsWith('temp-')) {
-        throw new Error('Please wait for the session to save before ungrouping');
-      }
+      // Note: We allow temp- IDs here because virtual instances (created from templates)
+      // have temp- IDs but we can still find and ungroup the real template in the database.
+      // The template lookup below handles this correctly.
 
       const session = sessionsState.find(s => s.id === sessionId);
       if (!session) {
