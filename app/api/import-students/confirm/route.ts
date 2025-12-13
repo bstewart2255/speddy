@@ -446,7 +446,25 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             continue;
           }
 
-          const newStudent = { id: (importResult as { student_id?: string }).student_id };
+          const newStudentId = (importResult as { student_id?: string }).student_id;
+
+          // Defensive guard: ensure we got a valid student ID back
+          if (!newStudentId) {
+            log.error('import_student_atomic succeeded but returned no student_id', null, {
+              userId,
+              studentInitials: initialsNormalized,
+            });
+            results.push({
+              success: false,
+              initials: initialsNormalized,
+              action: 'error',
+              error: 'Student created but could not be finalized (missing id)',
+            });
+            errorCount++;
+            continue;
+          }
+
+          const newStudent = { id: newStudentId };
 
           // Success
           log.info('Student created successfully', {
@@ -461,7 +479,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           if (student.sessionsPerWeek && student.sessionsPerWeek > 0) {
             try {
               const syncResult = await updateExistingSessionsForStudent(
-                newStudent.id!,
+                newStudent.id,
                 { sessions_per_week: null, minutes_per_session: null }, // Old requirements (none)
                 {
                   sessions_per_week: student.sessionsPerWeek,

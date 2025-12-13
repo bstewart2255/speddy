@@ -84,7 +84,8 @@ export async function updateExistingSessionsForStudent(
         }
 
         // Get service_type from provider's role (default to 'resource' if not found)
-        const providerRole = (student.provider as { role?: string } | null)?.role;
+        // Trim whitespace to handle any accidental spaces in role values
+        const providerRole = (student.provider as { role?: string } | null)?.role?.trim();
         const serviceType = providerRole || 'resource';
 
         // Create initial unscheduled sessions
@@ -257,12 +258,13 @@ async function adjustSessionCount(
     // Need to delete excess sessions
     console.log(`Deleting ${currentCount - targetCount} excess sessions for student ${studentId}`);
 
-    // Get ALL sessions (including completed ones) to handle edge cases
-    // where orphaned completed unscheduled sessions exist
+    // Get only TEMPLATE sessions (session_date IS NULL) to match the counting logic
+    // Include completed ones to handle edge cases where orphaned completed unscheduled sessions exist
     const { data: sessions, error: listErr } = await supabase
       .from('schedule_sessions')
-      .select('id, day_of_week, start_time, created_at, is_completed')
-      .eq('student_id', studentId);
+      .select('id, day_of_week, start_time, created_at, is_completed, session_date')
+      .eq('student_id', studentId)
+      .is('session_date', null);
 
     if (listErr) {
       throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);

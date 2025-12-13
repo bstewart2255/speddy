@@ -51,7 +51,8 @@ export async function createStudent(studentData: {
   profilePerf.end({ success: !profileResult.error });
 
   // Get service_type from provider's role (default to 'resource' if not found)
-  const serviceType = profileResult.data?.role || 'resource';
+  // Trim whitespace to handle any accidental spaces in role values
+  const serviceType = profileResult.data?.role?.trim() || 'resource';
 
   // Get complete school data - use provided data or fall back to profile
   const schoolData: SchoolIdentifier = {

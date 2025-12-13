@@ -7,18 +7,18 @@
 
 -- Part 1: Fix service_type to match provider's role
 -- This updates all sessions where service_type doesn't match the provider's role
+-- Using IS DISTINCT FROM to correctly handle NULL values
 UPDATE schedule_sessions ss
 SET service_type = p.role
 FROM students s
 JOIN profiles p ON s.provider_id = p.id
 WHERE ss.student_id = s.id
-  AND ss.service_type != p.role
+  AND ss.service_type IS DISTINCT FROM p.role
   AND p.role IS NOT NULL;
 
--- Part 2: Create missing template sessions for student EN (Kim McCorkell's account)
--- EN has 1 template but sessions_per_week = 5, so needs 4 more
--- Student ID: 644aaf99-5c66-4d32-b108-f0b7ca8fc76e
--- Provider ID: (Kim McCorkell's ID)
+-- Part 2: Create missing template sessions for ALL affected students
+-- This fixes any student where template_count < sessions_per_week
+-- Generic fix: removes hardcoded student ID to fix all affected students
 INSERT INTO schedule_sessions (
   student_id,
   provider_id,
@@ -49,7 +49,9 @@ CROSS JOIN generate_series(1,
       AND ss.is_completed = false
   )
 ) AS missing
-WHERE s.id = '644aaf99-5c66-4d32-b108-f0b7ca8fc76e'
+WHERE s.sessions_per_week IS NOT NULL
+  AND s.sessions_per_week > 0
+  AND p.role IS NOT NULL  -- Guard against NULL provider roles
   AND s.sessions_per_week > (
     SELECT COUNT(*)
     FROM schedule_sessions ss
