@@ -618,8 +618,12 @@ export function CalendarDayView({
       if (templates && templates.length > 0) {
         // Found template - ungroup it (this is the normal case)
         targetSessionId = templates[0].id;
+      } else if (sessionId.startsWith('temp-')) {
+        // No template found and session has temp ID - can't proceed
+        // This can happen if the session hasn't been persisted yet
+        throw new Error('Please wait for the session to save before ungrouping');
       } else {
-        // No template found - check if this is an old instance-based group
+        // No template found but session has real ID - this is an old instance-based group
         // In this case, ungroup the instance itself and log a warning
         log.warn('No template found for ungrouping - ungrouping instance instead', { sessionId });
         targetSessionId = sessionId;

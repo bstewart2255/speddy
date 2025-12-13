@@ -123,7 +123,9 @@ export function SessionAssignmentPopup({
       // If this is a template session (no session_date), also update all future instances
       // This ensures Calendar views show the correct assignment status
       if (session.session_date === null && session.student_id && session.day_of_week !== null && session.start_time) {
-        const today = new Date().toISOString().split('T')[0];
+        // Use local date (not UTC) to match session_date semantics
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         const { error: instanceError } = await supabase
           .from("schedule_sessions")

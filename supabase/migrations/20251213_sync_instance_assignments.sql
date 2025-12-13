@@ -9,28 +9,19 @@
 -- NOTE: This migration must be run with superuser privileges (e.g., via Supabase Dashboard
 -- SQL Editor) because it temporarily disables the assignment validation trigger.
 
--- Temporarily disable the assignment validation trigger
-ALTER TABLE schedule_sessions DISABLE TRIGGER trg_validate_session_assignment_permissions;
+-- Temporarily disable the assignment validation trigger (if it exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_validate_session_assignment_permissions') THEN
+    ALTER TABLE schedule_sessions DISABLE TRIGGER trg_validate_session_assignment_permissions;
+  END IF;
+END $$;
 
--- Update instances to match their template's specialist assignment
+-- Single UPDATE to sync ALL assignment fields from template to instances
+-- This prevents "dual-assigned" state by always setting both columns
 UPDATE schedule_sessions i
 SET
   assigned_to_specialist_id = t.assigned_to_specialist_id,
-  delivered_by = t.delivered_by,
-  updated_at = NOW()
-FROM schedule_sessions t
-WHERE i.session_date IS NOT NULL  -- Instance
-  AND t.session_date IS NULL      -- Template
-  AND i.student_id = t.student_id
-  AND i.provider_id = t.provider_id
-  AND i.day_of_week = t.day_of_week
-  AND i.start_time = t.start_time
-  AND t.assigned_to_specialist_id IS NOT NULL
-  AND (i.assigned_to_specialist_id IS NULL OR i.assigned_to_specialist_id != t.assigned_to_specialist_id);
-
--- Update instances to match their template's SEA assignment
-UPDATE schedule_sessions i
-SET
   assigned_to_sea_id = t.assigned_to_sea_id,
   delivered_by = t.delivered_by,
   updated_at = NOW()
@@ -41,29 +32,17 @@ WHERE i.session_date IS NOT NULL  -- Instance
   AND i.provider_id = t.provider_id
   AND i.day_of_week = t.day_of_week
   AND i.start_time = t.start_time
-  AND t.assigned_to_sea_id IS NOT NULL
-  AND (i.assigned_to_sea_id IS NULL OR i.assigned_to_sea_id != t.assigned_to_sea_id);
-
--- Also sync unassignment: if template has NO assignment, clear instance assignments
--- (but only for future/current instances, not completed ones)
-UPDATE schedule_sessions i
-SET
-  assigned_to_specialist_id = NULL,
-  assigned_to_sea_id = NULL,
-  delivered_by = 'provider',
-  updated_at = NOW()
-FROM schedule_sessions t
-WHERE i.session_date IS NOT NULL  -- Instance
-  AND t.session_date IS NULL      -- Template
-  AND i.student_id = t.student_id
-  AND i.provider_id = t.provider_id
-  AND i.day_of_week = t.day_of_week
-  AND i.start_time = t.start_time
-  AND t.assigned_to_specialist_id IS NULL
-  AND t.assigned_to_sea_id IS NULL
-  AND (i.assigned_to_specialist_id IS NOT NULL OR i.assigned_to_sea_id IS NOT NULL)
+  AND (
+    i.assigned_to_specialist_id IS DISTINCT FROM t.assigned_to_specialist_id
+    OR i.assigned_to_sea_id IS DISTINCT FROM t.assigned_to_sea_id
+  )
   AND i.completed_at IS NULL  -- Don't modify completed sessions
   AND i.session_date >= CURRENT_DATE;  -- Only future/current sessions
 
--- Re-enable the assignment validation trigger
-ALTER TABLE schedule_sessions ENABLE TRIGGER trg_validate_session_assignment_permissions;
+-- Re-enable the assignment validation trigger (if it exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_validate_session_assignment_permissions') THEN
+    ALTER TABLE schedule_sessions ENABLE TRIGGER trg_validate_session_assignment_permissions;
+  END IF;
+END $$;

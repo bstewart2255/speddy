@@ -171,7 +171,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         // Get the session details first for instance cleanup
         const { data: lastSession } = await supabase
           .from('schedule_sessions')
-          .select('student_id, day_of_week, start_time')
+          .select('provider_id, student_id, day_of_week, start_time')
           .eq('id', lastSessionId)
           .single();
 
@@ -200,6 +200,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
               group_name: null,
               updated_at: new Date().toISOString()
             })
+            .eq('provider_id', lastSession.provider_id)
             .eq('student_id', lastSession.student_id)
             .eq('day_of_week', lastSession.day_of_week)
             .eq('start_time', lastSession.start_time)
