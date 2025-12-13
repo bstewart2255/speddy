@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a custom district ID (prefixed to distinguish from NCES IDs)
-    const districtId = `CUSTOM-${uuidv4().substring(0, 8).toUpperCase()}`;
+    // Generate UUID for district
+    const districtId = uuidv4();
 
     log.info('Creating district', {
       districtId,

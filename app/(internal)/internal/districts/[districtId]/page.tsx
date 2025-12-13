@@ -119,12 +119,20 @@ export default function DistrictDetailPage() {
               {district.city}, {district.states?.name || district.state_id}
             </p>
           </div>
-          <Link
-            href={`/internal/create-admin?type=district_admin&district=${district.id}&state=${district.state_id}`}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors"
-          >
-            Create District Admin
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href={`/internal/create-school?district=${district.id}`}
+              className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-md transition-colors"
+            >
+              Add School
+            </Link>
+            <Link
+              href={`/internal/create-admin?type=district_admin&district=${district.id}&state=${district.state_id}`}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors"
+            >
+              Create District Admin
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
