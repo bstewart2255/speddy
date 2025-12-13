@@ -28,6 +28,9 @@ DROP POLICY IF EXISTS "Users can update teachers" ON teachers;
 DROP POLICY IF EXISTS "Users can view exit ticket results in their org" ON exit_ticket_results;
 DROP POLICY IF EXISTS "Users can create exit ticket results in their org" ON exit_ticket_results;
 
+-- Step 0a2: Drop view that depends on school_id column
+DROP VIEW IF EXISTS unmatched_student_teachers;
+
 -- Step 0b: Increase column lengths for UUID storage (36 characters)
 -- Primary keys
 ALTER TABLE districts ALTER COLUMN id TYPE varchar(36);
@@ -46,7 +49,22 @@ ALTER TABLE provider_schools ALTER COLUMN school_id TYPE varchar(36);
 ALTER TABLE students ALTER COLUMN district_id TYPE varchar(36);
 ALTER TABLE students ALTER COLUMN school_id TYPE varchar(36);
 ALTER TABLE teachers ALTER COLUMN school_id TYPE varchar(36);
-ALTER TABLE unmatched_student_teachers ALTER COLUMN school_id TYPE varchar(36);
+
+-- Step 0b2: Recreate the view
+CREATE VIEW unmatched_student_teachers AS
+SELECT
+    id AS student_id,
+    initials,
+    grade_level,
+    teacher_name,
+    school_site,
+    school_district,
+    school_id,
+    created_at
+FROM students s
+WHERE teacher_name IS NOT NULL AND teacher_name <> ''
+  AND teacher_id IS NULL
+ORDER BY school_site, teacher_name;
 
 -- Step 0c: Recreate RLS policies
 CREATE POLICY "District admins can view profiles in their district" ON profiles
