@@ -58,6 +58,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+
     if (adminType !== 'district_admin' && adminType !== 'site_admin') {
       return NextResponse.json(
         { error: 'Invalid admin type. Must be district_admin or site_admin' },
@@ -81,7 +93,7 @@ export async function POST(request: NextRequest) {
     const { data: existingProfile } = await adminClient
       .from('profiles')
       .select('id')
-      .eq('email', email.toLowerCase())
+      .eq('email', normalizedEmail)
       .maybeSingle();
 
     if (existingProfile) {
@@ -112,7 +124,7 @@ export async function POST(request: NextRequest) {
     const temporaryPassword = generateTemporaryPassword();
 
     log.info('Creating admin account', {
-      email,
+      email: normalizedEmail,
       adminType,
       districtId,
       schoolId,
@@ -121,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     // Create auth user using admin API (this skips email confirmation)
     const { data: newUser, error: createUserError } = await adminClient.auth.admin.createUser({
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       password: temporaryPassword,
       email_confirm: true, // Mark email as confirmed
       user_metadata: {
@@ -147,7 +159,7 @@ export async function POST(request: NextRequest) {
       // Create profile using RPC
       const { error: profileRpcError } = await adminClient.rpc('create_profile_for_new_user', {
         user_id: newUserId,
-        user_email: email.toLowerCase(),
+        user_email: normalizedEmail,
         user_metadata: {
           full_name: fullName,
           role: adminType,
@@ -196,14 +208,14 @@ export async function POST(request: NextRequest) {
 
       log.info('Admin account created successfully', {
         newUserId,
-        email,
+        email: normalizedEmail,
         adminType,
         createdBy: user.id
       });
 
       return NextResponse.json({
         success: true,
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         fullName,
         temporaryPassword,
         adminType,

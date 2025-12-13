@@ -5,6 +5,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
+// Sanitize ID to prevent XSS - only allow alphanumeric, hyphens (UUID format)
+function sanitizeId(id: string | null): string {
+  if (!id) return '';
+  // Only allow alphanumeric characters and hyphens (valid for UUIDs and NCES IDs)
+  return id.replace(/[^a-zA-Z0-9-]/g, '');
+}
+
 interface District {
   id: string;
   name: string;
@@ -16,7 +23,7 @@ export default function CreateSchoolPage() {
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
-  const preselectedDistrictId = searchParams.get('district');
+  const preselectedDistrictId = sanitizeId(searchParams.get('district'));
 
   const [districts, setDistricts] = useState<District[]>([]);
   const [loading, setLoading] = useState(false);
