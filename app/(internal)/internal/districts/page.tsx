@@ -98,11 +98,19 @@ export default function DistrictsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Browse Districts</h1>
-        <p className="mt-1 text-slate-400">
-          Select a state and search for school districts
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Browse Districts</h1>
+          <p className="mt-1 text-slate-400">
+            Select a state and search for school districts
+          </p>
+        </div>
+        <Link
+          href="/internal/create-district"
+          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors"
+        >
+          Create District
+        </Link>
       </div>
 
       {/* Filters */}
