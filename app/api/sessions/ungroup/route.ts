@@ -98,6 +98,13 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
+    // Get the group_ids of sessions being ungrouped (to check for orphaned single sessions later)
+    const affectedGroupIds = [...new Set(
+      existingSessions
+        ?.filter(s => s.group_id != null)
+        .map(s => s.group_id) || []
+    )];
+
     // Update sessions to remove group information
     const updatePerf = measurePerformanceWithAlerts('remove_session_groups', 'database');
     const { data: updatedSessions, error: updateError } = await supabase
@@ -130,6 +137,76 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         { error: 'Failed to ungroup sessions' },
         { status: 500 }
       );
+    }
+
+    // Check if any affected groups now have only 1 session remaining
+    // A group of 1 doesn't make sense, so we should ungroup that remaining session too
+    for (const groupId of affectedGroupIds) {
+      // Count remaining template sessions in this group
+      const { data: remainingSessions, error: countError } = await supabase
+        .from('schedule_sessions')
+        .select('id')
+        .eq('group_id', groupId)
+        .is('session_date', null); // Only count templates
+
+      if (countError) {
+        log.warn('Failed to count remaining sessions in group', {
+          error: countError,
+          groupId,
+          userId
+        });
+        continue;
+      }
+
+      // If only 1 session remains, ungroup it (and its instances)
+      if (remainingSessions && remainingSessions.length === 1) {
+        const lastSessionId = remainingSessions[0].id;
+
+        log.info('Removing last session from group (groups must have 2+ sessions)', {
+          userId,
+          groupId,
+          lastSessionId
+        });
+
+        // Get the session details first for instance cleanup
+        const { data: lastSession } = await supabase
+          .from('schedule_sessions')
+          .select('provider_id, student_id, day_of_week, start_time')
+          .eq('id', lastSessionId)
+          .single();
+
+        // Ungroup the last template
+        const { error: lastUpdateError } = await supabase
+          .from('schedule_sessions')
+          .update({
+            group_id: null,
+            group_name: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', lastSessionId);
+
+        if (lastUpdateError) {
+          log.warn('Failed to ungroup last remaining session', {
+            error: lastUpdateError,
+            lastSessionId,
+            userId
+          });
+        } else if (lastSession) {
+          // Also ungroup instances of this last session
+          await supabase
+            .from('schedule_sessions')
+            .update({
+              group_id: null,
+              group_name: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('provider_id', lastSession.provider_id)
+            .eq('student_id', lastSession.student_id)
+            .eq('day_of_week', lastSession.day_of_week)
+            .eq('start_time', lastSession.start_time)
+            .not('session_date', 'is', null);
+        }
+      }
     }
 
     // Also clear existing instances that match any ungrouped templates

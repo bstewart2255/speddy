@@ -117,24 +117,33 @@ export function SessionAssignmentPopup({
       if (error) {
         // Log the full error for debugging
         console.error('[SessionAssignmentPopup] Full error object:', JSON.stringify(error, null, 2));
-        console.error('[SessionAssignmentPopup] Error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
+        throw error;
+      }
 
-        // Check if it's a permission error and provide specific message
-        if (error.message?.includes('can_assign_sea_to_session')) {
-          throw new Error('You do not have permission to assign sessions to this SEA. They may need to be shared at your school first.');
-        } else if (error.message?.includes('can_assign_specialist_to_session')) {
-          throw new Error('You do not have permission to assign sessions to this specialist. Only Resource Specialists can assign to other specialists at the same school.');
-        } else if (error.message?.includes('policy') || error.code === '42501') {
-          throw new Error(`Permission denied: ${error.message || 'You do not have permission to make this assignment.'}`);
-        } else if (error.code === '23514') {
-          throw new Error(`Constraint violation: ${error.message || 'Assignment data is invalid.'}`);
+      // If this is a template session (no session_date), also update all future instances
+      // This ensures Calendar views show the correct assignment status
+      if (session.session_date === null && session.student_id && session.day_of_week !== null && session.start_time) {
+        // Use local date (not UTC) to match session_date semantics
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+        const { error: instanceError } = await supabase
+          .from("schedule_sessions")
+          .update(updateData)
+          .eq("student_id", session.student_id)
+          .eq("provider_id", session.provider_id)
+          .eq("day_of_week", session.day_of_week)
+          .eq("start_time", session.start_time)
+          .not("session_date", "is", null)  // Only instances
+          .gte("session_date", today)        // Only future/current
+          .is("completed_at", null);         // Don't modify completed sessions
+
+        if (instanceError) {
+          console.warn('[SessionAssignmentPopup] Failed to update instances:', instanceError);
+          // Don't throw - template was updated successfully, instances can be synced later
+        } else {
+          console.log('[SessionAssignmentPopup] Updated future instances with new assignment');
         }
-        throw new Error(`Database error (${error.code}): ${error.message || 'Unknown error'}`);
       }
 
       onUpdate();
@@ -142,7 +151,23 @@ export function SessionAssignmentPopup({
       setTimeout(() => onClose(), 100);
     } catch (error) {
       console.error("Error updating session:", error);
-      alert(error instanceof Error ? error.message : "Failed to update session assignment");
+      const err = error as { message?: string; code?: string; details?: string; hint?: string };
+
+      // Check if it's a permission error and provide specific message
+      let errorMessage = "Failed to update session assignment";
+      if (err?.message?.includes('can_assign_sea_to_session')) {
+        errorMessage = 'You do not have permission to assign sessions to this SEA. They may need to be shared at your school first.';
+      } else if (err?.message?.includes('can_assign_specialist_to_session')) {
+        errorMessage = 'You do not have permission to assign sessions to this specialist. Only Resource Specialists can assign to other specialists at the same school.';
+      } else if (err?.message?.includes('policy') || err?.code === '42501') {
+        errorMessage = `Permission denied: ${err?.message || 'You do not have permission to make this assignment.'}`;
+      } else if (err?.code === '23514') {
+        errorMessage = `Constraint violation: ${err?.message || 'Assignment data is invalid.'}`;
+      } else if (err?.message) {
+        errorMessage = `Database error (${err?.code || 'unknown'}): ${err.message}`;
+      }
+
+      alert(errorMessage);
     }
   };
 

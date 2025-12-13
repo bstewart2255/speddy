@@ -581,10 +581,9 @@ export function CalendarDayView({
         throw new Error('User not authenticated');
       }
 
-      // Check for temporary IDs (not yet persisted to database)
-      if (sessionId.startsWith('temp-')) {
-        throw new Error('Please wait for the session to save before ungrouping');
-      }
+      // Note: We allow temp- IDs here because virtual instances (created from templates)
+      // have temp- IDs but we can still find and ungroup the real template in the database.
+      // The template lookup below handles this correctly.
 
       const session = sessionsState.find(s => s.id === sessionId);
       if (!session) {
@@ -602,10 +601,12 @@ export function CalendarDayView({
       }
 
       // Find the template session (preferred)
+      // Use session.provider_id (the owner) not providerId (current user)
+      // This allows assignees to ungroup sessions assigned to them
       const { data: templates } = await supabase
         .from('schedule_sessions')
         .select('id, session_date')
-        .eq('provider_id', providerId)
+        .eq('provider_id', session.provider_id)
         .eq('student_id', session.student_id)
         .eq('day_of_week', session.day_of_week)
         .eq('start_time', session.start_time)
@@ -617,8 +618,12 @@ export function CalendarDayView({
       if (templates && templates.length > 0) {
         // Found template - ungroup it (this is the normal case)
         targetSessionId = templates[0].id;
+      } else if (sessionId.startsWith('temp-')) {
+        // No template found and session has temp ID - can't proceed
+        // This can happen if the session hasn't been persisted yet
+        throw new Error('Please wait for the session to save before ungrouping');
       } else {
-        // No template found - check if this is an old instance-based group
+        // No template found but session has real ID - this is an old instance-based group
         // In this case, ungroup the instance itself and log a warning
         log.warn('No template found for ungrouping - ungrouping instance instead', { sessionId });
         targetSessionId = sessionId;
