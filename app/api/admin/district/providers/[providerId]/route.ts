@@ -241,11 +241,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
+      // Fetch existing provider_schools for rollback if needed
+      const { data: existingProviderSchools } = await adminClient
+        .from('provider_schools')
+        .select('*')
+        .eq('provider_id', providerId);
+
       // Delete existing provider_schools
-      await adminClient
+      const { error: deleteError } = await adminClient
         .from('provider_schools')
         .delete()
         .eq('provider_id', providerId);
+
+      if (deleteError) {
+        log.error('Failed to delete existing provider schools', deleteError);
+        return NextResponse.json(
+          { error: 'Failed to update school assignments' },
+          { status: 500 }
+        );
+      }
 
       // Insert new provider_schools
       const providerSchoolsData = school_ids.map(schoolId => {
@@ -265,7 +279,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         .insert(providerSchoolsData);
 
       if (insertError) {
-        log.error('Failed to update provider schools', insertError);
+        log.error('Failed to insert provider schools, rolling back', insertError);
+
+        // Rollback: restore the original provider_schools
+        if (existingProviderSchools && existingProviderSchools.length > 0) {
+          const rollbackData = existingProviderSchools.map(ps => ({
+            provider_id: ps.provider_id,
+            school_id: ps.school_id,
+            school_site: ps.school_site,
+            school_district: ps.school_district,
+            is_primary: ps.is_primary,
+            district_id: ps.district_id,
+            state_id: ps.state_id,
+          }));
+          await adminClient.from('provider_schools').insert(rollbackData);
+        }
+
         return NextResponse.json(
           { error: insertError.message || 'Failed to update school assignments' },
           { status: 500 }

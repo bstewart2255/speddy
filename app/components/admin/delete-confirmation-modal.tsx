@@ -37,7 +37,7 @@ export function DeleteConfirmationModal({
 
   if (!isOpen) return null;
 
-  const requiresTypedConfirmation = !canDelete === false && dependencyCounts &&
+  const requiresTypedConfirmation = canDelete && dependencyCounts &&
     dependencyCounts.some(d => d.count > 0);
 
   const isConfirmEnabled = canDelete &&
