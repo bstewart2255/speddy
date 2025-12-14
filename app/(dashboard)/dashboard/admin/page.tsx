@@ -146,9 +146,22 @@ export default function AdminDashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Welcome, {adminName}</h1>
-        <p className="mt-2 text-gray-600">
-          {roleDisplay} Dashboard{isDistrictAdmin && districtInfo ? ` - ${districtInfo.name}` : ' - Manage staff accounts and school settings'}
-        </p>
+        <div className="mt-2 text-sm text-gray-600 space-y-1">
+          <p className="text-base">
+            {roleDisplay} Dashboard{isDistrictAdmin && districtInfo ? ` - ${districtInfo.name}` : ' - Manage staff accounts and school settings'}
+          </p>
+          {isDistrictAdmin && districtInfo && (
+            <p>
+              <span className="font-medium">District ID:</span> <span className="font-mono">{districtInfo.id}</span>
+              {districtInfo.city && (
+                <> · {districtInfo.city}{districtInfo.zip ? `, ${districtInfo.zip}` : ''}</>
+              )}
+              {districtInfo.phone && (
+                <> · {districtInfo.phone}</>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Stats Overview */}
@@ -316,48 +329,28 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Info Card */}
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          {isDistrictAdmin ? 'District Information' : 'School Information'}
-        </h2>
-        <div className="space-y-3">
-          {isDistrictAdmin && districtInfo && (
-            <>
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">District Name:</span>
-                <span className="text-sm text-gray-900">{districtInfo.name}</span>
-              </div>
-              {districtInfo.city && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">City:</span>
-                  <span className="text-sm text-gray-900">{districtInfo.city}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">District ID:</span>
-                <span className="text-sm text-gray-900">{permissions.district_id}</span>
-              </div>
-            </>
-          )}
-          {!isDistrictAdmin && (
+      {/* Info Card - only show for site admins since district info is in header */}
+      {!isDistrictAdmin && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">School Information</h2>
+          <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium text-gray-600">School ID:</span>
               <span className="text-sm text-gray-900">{permissions.school_id}</span>
             </div>
-          )}
-          {permissions.state_id && (
+            {permissions.state_id && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">State:</span>
+                <span className="text-sm text-gray-900">{permissions.state_id.toUpperCase()}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">State:</span>
-              <span className="text-sm text-gray-900">{permissions.state_id.toUpperCase()}</span>
+              <span className="text-sm font-medium text-gray-600">Admin Role:</span>
+              <span className="text-sm text-gray-900 capitalize">{roleDisplay}</span>
             </div>
-          )}
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-600">Admin Role:</span>
-            <span className="text-sm text-gray-900 capitalize">{roleDisplay}</span>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
