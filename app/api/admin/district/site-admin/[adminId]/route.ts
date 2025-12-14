@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const log = logger.child({ module: 'district-admin-site-admin' });
 
@@ -15,7 +14,7 @@ interface RouteParams {
  * Helper to verify district admin has access to manage site admin
  */
 async function verifyDistrictAdminAccess(
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
+  supabase: SupabaseClient<Database>,
   userId: string,
   adminId: string
 ): Promise<{ allowed: boolean; districtId?: string; error?: string }> {
@@ -32,10 +31,7 @@ async function verifyDistrictAdminAccess(
   }
 
   // Use admin client to verify the site admin is in the district admin's district
-  const adminClient = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminClient = createServiceClient();
 
   const { data: siteAdminPermission, error: siteAdminError } = await adminClient
     .from('admin_permissions')
@@ -62,8 +58,7 @@ async function verifyDistrictAdminAccess(
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { adminId } = params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -87,10 +82,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Use admin client for delete
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Get the site admin info before deletion for logging
     const { data: siteAdminInfo } = await adminClient
@@ -143,8 +135,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { adminId } = params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -163,10 +154,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Use admin client to fetch site admin details
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Get permission info with school
     const { data: permission, error: permError } = await adminClient

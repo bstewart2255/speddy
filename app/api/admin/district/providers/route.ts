@@ -1,6 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
@@ -25,8 +23,7 @@ interface CreateProviderRequest {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -96,10 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use admin client for verification and operations
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Verify all schools belong to admin's district
     const { data: schools, error: schoolsError } = await adminClient

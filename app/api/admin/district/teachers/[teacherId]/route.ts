@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const log = logger.child({ module: 'district-admin-teacher' });
 
@@ -15,7 +14,7 @@ interface RouteParams {
  * Helper to verify district admin has access to the teacher
  */
 async function verifyDistrictAdminAccess(
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
+  supabase: SupabaseClient<Database>,
   userId: string,
   teacherId: string
 ): Promise<{ allowed: boolean; districtId?: string; teacher?: any; error?: string }> {
@@ -32,10 +31,7 @@ async function verifyDistrictAdminAccess(
   }
 
   // Use admin client to verify the teacher is in the district admin's district
-  const adminClient = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const adminClient = createServiceClient();
 
   // Get teacher with school info
   const { data: teacher, error: teacherError } = await adminClient
@@ -63,8 +59,7 @@ async function verifyDistrictAdminAccess(
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { teacherId } = params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -83,10 +78,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Use admin client for queries
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Get teacher details
     const { data: teacher } = await adminClient
@@ -143,8 +135,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { teacherId } = params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -189,10 +180,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Use admin client for update
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Check for email uniqueness if email is being changed
     if (updates.email && updates.email !== accessCheck.teacher?.email) {
@@ -264,8 +252,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { teacherId } = params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = await createClient();
 
     // Get current user
     const {
@@ -289,10 +276,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Use admin client for checks and delete
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const adminClient = createServiceClient();
 
     // Check for dependencies
     const { count: studentCount } = await adminClient
