@@ -17,7 +17,6 @@ import { BELL_SCHEDULE_ACTIVITIES } from '../../../../../lib/constants/activity-
 export default function SiteAdminBellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<string>('K');
   const [bellSchedules, setBellSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -243,30 +242,10 @@ export default function SiteAdminBellSchedulesPage() {
                 </div>
               </CardHeader>
               <CardBody>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Grade Level
-                  </label>
-                  <div className="flex gap-2">
-                    {['TK', 'K', '1', '2', '3', '4', '5'].map((grade) => (
-                      <button
-                        key={grade}
-                        onClick={() => setSelectedGrade(grade)}
-                        className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                          selectedGrade === grade
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Grade {grade}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <AddBellScheduleForm
-                  gradeLevel={selectedGrade}
                   creatorRole="site_admin"
                   schoolId={schoolId || undefined}
+                  multiSelectGrades={true}
                   onSuccess={() => {
                     setShowAddForm(false);
                     fetchSchedules();
