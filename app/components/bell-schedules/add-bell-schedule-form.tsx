@@ -8,13 +8,17 @@ import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
 
+type CreatorRole = 'provider' | 'site_admin';
+
 type Props = {
   gradeLevel: string;
   onSuccess: () => void;
   onCancel: () => void;
+  creatorRole?: CreatorRole;
+  schoolId?: string; // Optional: used by site admins who have a specific school_id
 };
 
-export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }: Props) {
+export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel, creatorRole = 'provider', schoolId: propSchoolId }: Props) {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -50,8 +54,11 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Get school ID from props or context
+      const effectiveSchoolId = propSchoolId || currentSchool?.school_id;
+
       // Validate school is selected
-      if (!currentSchool?.school_id) {
+      if (!effectiveSchoolId) {
         setError('No school selected. Please select a school before adding a bell schedule.');
         setSubmitting(false);
         return;
@@ -78,15 +85,17 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       // Create a bell schedule entry for each selected day
       for (const dayId of selectedDays) {
         try {
-          // Build insert data with school_id (required after migration)
+          // Build insert data with school_id and creator tracking
           const insertData = {
-            provider_id: user.id,
+            provider_id: creatorRole === 'provider' ? user.id : null,
             grade_level: gradeLevel,
             day_of_week: dayId,
             start_time: startTime,
             end_time: endTime,
             period_name: subject.trim(),
-            school_id: currentSchool.school_id,
+            school_id: effectiveSchoolId,
+            created_by_id: user.id,
+            created_by_role: creatorRole,
           };
 
           const { error: insertError } = await supabase
@@ -107,7 +116,7 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
             start_time: startTime,
             end_time: endTime,
             period_name: subject.trim(),
-            school_id: currentSchool.school_id
+            school_id: effectiveSchoolId
           };
 
           const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
