@@ -998,7 +998,7 @@ export default function SchoolDetailPage() {
                 </label>
                 <select
                   value={providerFormData.role}
-                  onChange={(e) => setProviderFormData(prev => ({ ...prev, role: e.target.value as any }))}
+                  onChange={(e) => setProviderFormData(prev => ({ ...prev, role: e.target.value as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="resource">Resource Specialist</option>
