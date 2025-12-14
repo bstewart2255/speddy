@@ -15,6 +15,7 @@ import { FilterSelect } from '../../../components/schedule/filter-select';
 import { LastSaved } from '../../../components/ui/last-saved';
 import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../../lib/constants/activity-types';
+import { createClient } from '@/lib/supabase/client';
 
 export default function BellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -25,7 +26,18 @@ export default function BellSchedulesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { currentSchool, loading: schoolLoading } = useSchool();
+
+  // Get current user ID for ownership checks
+  useEffect(() => {
+    const fetchUser = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id || null);
+    };
+    fetchUser();
+  }, []);
   
   // Filter states
   const [gradeFilter, setGradeFilter] = useState('');
@@ -123,6 +135,14 @@ export default function BellSchedulesPage() {
   const activityOptions = useMemo(() => {
     return BELL_SCHEDULE_ACTIVITIES.map(activity => ({ value: activity, label: activity }));
   }, []);
+
+  // Check if current user owns a bell schedule (can delete it)
+  const isOwner = (schedule: any) => {
+    if (!currentUserId) return false;
+    // User owns it if they created it, or if it's a legacy record they created as provider
+    return schedule.created_by_id === currentUserId ||
+      (!schedule.created_by_id && schedule.provider_id === currentUserId);
+  };
 
   if (loading || schoolLoading) {
     return (
@@ -374,14 +394,18 @@ export default function BellSchedulesPage() {
                           {schedule.start_time ? formatTime(schedule.start_time) : ''} - {schedule.end_time ? formatTime(schedule.end_time) : ''}
                         </TableCell>
                         <TableActionCell>
-                          <Button 
-                            variant="danger" 
-                            size="sm"
-                            onClick={() => handleDelete(schedule.id, schedule.period_name || 'this schedule')}
-                            disabled={deletingId === schedule.id}
-                          >
-                            {deletingId === schedule.id ? 'Deleting...' : 'Delete'}
-                          </Button>
+                          {isOwner(schedule) ? (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleDelete(schedule.id, schedule.period_name || 'this schedule')}
+                              disabled={deletingId === schedule.id}
+                            >
+                              {deletingId === schedule.id ? 'Deleting...' : 'Delete'}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
                         </TableActionCell>
                       </TableRow>
                     ))}
