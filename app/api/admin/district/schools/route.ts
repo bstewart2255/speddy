@@ -14,7 +14,7 @@ const log = logger.child({ module: 'district-admin-schools' });
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
 
     // Get current user
