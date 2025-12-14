@@ -262,25 +262,28 @@ export async function getBellSchedules(school?: SchoolIdentifier) {
   const fetchPerf = measurePerformanceWithAlerts('fetch_bell_schedules', 'database');
   const fetchResult = await safeQuery(
     async () => {
+      // Fetch ALL bell schedules at the school (not just user's own)
+      // Bell schedules are school-wide resources used for conflict detection
+      // RLS policy controls access based on school membership
       let query = supabase
         .from('bell_schedules')
-        .select('*')
-        .eq('provider_id', user.id);
+        .select('*');
 
-      // Apply school filter using school_id (now required after migration)
+      // Filter by school_id (required for providers to see all school schedules)
       if (school && school.school_id) {
-        console.log('[getBellSchedules] Using school_id index for filtering');
+        console.log('[getBellSchedules] Filtering by school_id:', school.school_id);
         query = query.eq('school_id', school.school_id);
-      } else if (school) {
-        // If no school_id provided, we can't filter (columns removed)
-        console.warn('[getBellSchedules] Cannot filter without school_id - text columns removed');
+      } else {
+        // Fallback: filter by provider_id if no school context
+        console.warn('[getBellSchedules] No school_id - falling back to provider_id filter');
+        query = query.eq('provider_id', user.id);
       }
 
       const { data, error } = await query
         .order('grade_level', { ascending: true })
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });
-      
+
       if (error) throw error;
       return data;
     },
