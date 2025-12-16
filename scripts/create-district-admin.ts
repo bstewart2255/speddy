@@ -103,7 +103,6 @@ async function createDistrictAdmin() {
   console.log('District Admin Account Created!');
   console.log('========================================');
   console.log('Email:', email);
-  console.log('Temporary Password:', temporaryPassword);
   console.log('District:', 'Mt. Diablo Unified');
   console.log('\nPlease share these credentials securely.');
   console.log('User should change password after first login.');
