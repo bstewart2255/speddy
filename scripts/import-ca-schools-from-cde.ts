@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { createClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -35,52 +35,45 @@ const BATCH_SIZE = 50;
 /**
  * Reads and analyzes the Excel file structure
  */
-function analyzeExcelFile(filePath: string) {
+async function analyzeExcelFile(filePath: string) {
   console.log('📊 Reading Excel file...');
 
-  // Read the file
-  const workbook = XLSX.readFile(filePath);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
 
-  // Get sheet names
-  const sheetNames = workbook.SheetNames;
+  const sheetNames = workbook.worksheets.map(ws => ws.name);
   console.log(`\n📋 Found ${sheetNames.length} sheet(s):`);
   sheetNames.forEach(name => console.log(`   - ${name}`));
 
-  // Look for the "List of Districts" sheet or use the second sheet
   const targetSheetName = sheetNames.find(name => name.includes('List of Districts')) || sheetNames[1];
-  const targetSheet = workbook.Sheets[targetSheetName];
+  const targetSheet = workbook.getWorksheet(targetSheetName);
 
-  // Read with header option to skip the first few rows
-  // Use range to skip header rows and start from actual data
-  const rawData = XLSX.utils.sheet_to_json(targetSheet, { header: 1 }) as any[][];
+  if (!targetSheet) {
+    throw new Error(`Sheet "${targetSheetName}" not found`);
+  }
 
-  // Based on analysis, we know headers are at row 5 and data starts at row 6
-  const headerRowIndex = 5;
   const headers = ['CDS Code', 'County', 'District', 'Type', 'Component'];
 
   console.log('\n🔍 Using known Excel structure');
   console.log('   Headers:', headers.join(', '));
 
-  // Extract data starting from row 6
   let data: any[] = [];
-  for (let i = 6; i < rawData.length; i++) {
-    const row = rawData[i];
-    if (!row || row.length === 0) continue;
+  targetSheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= 6) return;
 
-    // Check if this is a valid district row (has a 14-digit CDS code)
-    const cdsCode = row[0];
-    if (!cdsCode || !String(cdsCode).match(/^\d{14}$/)) continue;
+    const cdsCode = row.getCell(1).value;
+    if (!cdsCode || !String(cdsCode).match(/^\d{14}$/)) return;
 
     const obj: any = {
-      'CDS Code': String(row[0]).trim(),
-      'County': row[1] ? String(row[1]).trim() : '',
-      'District': row[2] ? String(row[2]).trim() : '',
-      'Type': row[3] ? String(row[3]).trim() : '',
-      'Component': row[4] ? String(row[4]).trim() : ''
+      'CDS Code': String(cdsCode).trim(),
+      'County': row.getCell(2).value ? String(row.getCell(2).value).trim() : '',
+      'District': row.getCell(3).value ? String(row.getCell(3).value).trim() : '',
+      'Type': row.getCell(4).value ? String(row.getCell(4).value).trim() : '',
+      'Component': row.getCell(5).value ? String(row.getCell(5).value).trim() : ''
     };
 
     data.push(obj);
-  }
+  });
 
   console.log(`\n📈 Sheet "${targetSheetName}" contains ${data.length} rows`);
 
@@ -92,7 +85,6 @@ function analyzeExcelFile(filePath: string) {
       console.log(`   - ${header}: ${typeof sampleValue} (sample: "${String(sampleValue).substring(0, 50)}${String(sampleValue).length > 50 ? '...' : ''}")`);
     });
 
-    // Show first few rows as sample
     console.log('\n📝 Sample data (first 3 rows):');
     data.slice(0, 3).forEach((row, index) => {
       console.log(`\nRow ${index + 1}:`);
@@ -135,7 +127,7 @@ async function importCaliforniaDistrictsFromExcel() {
     }
 
     // Analyze the file
-    const { data } = analyzeExcelFile(EXCEL_FILE_PATH);
+    const { data } = await analyzeExcelFile(EXCEL_FILE_PATH);
 
     // Prompt to continue
     console.log('\n' + '='.repeat(60));
