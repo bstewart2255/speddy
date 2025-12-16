@@ -64,10 +64,16 @@
       "Bash(done)",
       "Bash(gh pr list:*)",
       "mcp__supabase__get_advisors",
-      "Bash(gh pr checks:*)"
+      "Bash(gh pr checks:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)"
     ],
     "deny": []
   },
   "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["context7", "playwright", "supabase"]
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "supabase"
+  ]
 }
