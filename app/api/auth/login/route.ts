@@ -40,13 +40,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Input validation with logging
+  // Input validation
   if (!email || !password) {
-    log.warn('Login attempt with missing credentials', {
-      hasEmail: !!email,
-      hasPassword: !!password
-    });
-
     return NextResponse.json(
       { error: 'Email and password are required' },
       { status: 400 }
