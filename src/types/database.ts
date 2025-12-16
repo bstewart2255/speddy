@@ -189,6 +189,8 @@ export type Database = {
         Row: {
           content_hash: string | null
           created_at: string | null
+          created_by_id: string | null
+          created_by_role: string | null
           day_of_week: number
           district_id: string | null
           end_time: string
@@ -205,6 +207,8 @@ export type Database = {
         Insert: {
           content_hash?: string | null
           created_at?: string | null
+          created_by_id?: string | null
+          created_by_role?: string | null
           day_of_week: number
           district_id?: string | null
           end_time: string
@@ -221,6 +225,8 @@ export type Database = {
         Update: {
           content_hash?: string | null
           created_at?: string | null
+          created_by_id?: string | null
+          created_by_role?: string | null
           day_of_week?: number
           district_id?: string | null
           end_time?: string
@@ -235,6 +241,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "bell_schedules_created_by_id_fkey"
+            columns: ["created_by_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bell_schedules_district_id_fkey"
             columns: ["district_id"]

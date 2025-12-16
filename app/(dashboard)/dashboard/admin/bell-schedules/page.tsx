@@ -1,86 +1,83 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Button } from '../../../components/ui/button';
-import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
-import { GradeTag } from '../../../components/ui/tag';
-import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
-import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
-import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
-import { useSchool } from '../../../components/providers/school-context';
-import { CollapsibleCard } from '../../../components/ui/collapsible-card';
-import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
-import { FilterSelect } from '../../../components/schedule/filter-select';
-import { LastSaved } from '../../../components/ui/last-saved';
-import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
-import { BELL_SCHEDULE_ACTIVITIES } from '../../../../lib/constants/activity-types';
-import { createClient } from '@/lib/supabase/client';
+import { Button } from '../../../../components/ui/button';
+import { Card, CardHeader, CardTitle, CardBody } from '../../../../components/ui/card';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../../components/ui/table';
+import { GradeTag } from '../../../../components/ui/tag';
+import AddBellScheduleForm from '../../../../components/bell-schedules/add-bell-schedule-form';
+import BellScheduleCSVImport from '../../../../components/bell-schedules/csv-import';
+import { getBellSchedulesForSchool, deleteBellSchedule } from '../../../../../lib/supabase/queries/bell-schedules';
+import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
+import { CollapsibleCard } from '../../../../components/ui/collapsible-card';
+import SchoolHoursForm from '../../../../components/bell-schedules/school-hours-form';
+import { FilterSelect } from '../../../../components/schedule/filter-select';
+import { BELL_SCHEDULE_ACTIVITIES } from '../../../../../lib/constants/activity-types';
 
-export default function BellSchedulesPage() {
+export default function SiteAdminBellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<string>('K');
   const [bellSchedules, setBellSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const { currentSchool, loading: schoolLoading } = useSchool();
+  const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Get current user ID for ownership checks
-  useEffect(() => {
-    const fetchUser = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUserId(user?.id || null);
-    };
-    fetchUser();
-  }, []);
-  
   // Filter states
   const [gradeFilter, setGradeFilter] = useState('');
   const [dayFilter, setDayFilter] = useState('');
   const [activityFilter, setActivityFilter] = useState('');
 
-  // Fetch bell schedules from database with intelligent filtering
+  // Fetch site admin permissions and school ID
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      try {
+        const permissions = await getCurrentAdminPermissions();
+        const siteAdminPerm = permissions?.find(p => p.role === 'site_admin');
+
+        if (!siteAdminPerm?.school_id) {
+          setError('Site admin access required');
+          setLoading(false);
+          return;
+        }
+
+        setSchoolId(siteAdminPerm.school_id);
+      } catch (err) {
+        console.error('Error fetching permissions:', err);
+        setError('Failed to verify permissions');
+        setLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, []);
+
+  // Fetch bell schedules from database
   const fetchSchedules = useCallback(async () => {
+    if (!schoolId) return;
+
     try {
-      const startTime = performance.now();
-      console.log('Fetching bell schedules for:', currentSchool?.display_name || currentSchool?.school_site);
-      console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
+      setLoading(true);
+      console.log('Fetching bell schedules for school:', schoolId);
 
-      const data = await getBellSchedules(currentSchool || undefined);
-      
-      // Fetch last saved timestamp
-      const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
-      setLastSaved(lastUpdated);
-
-      const endTime = performance.now();
-      console.log(`Bell schedules loaded in ${Math.round(endTime - startTime)}ms`);
+      const data = await getBellSchedulesForSchool(schoolId);
       console.log('Bell schedules received:', data?.length || 0, 'schedules');
 
       setBellSchedules(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching schedules:', error);
+    } catch (err) {
+      console.error('Error fetching schedules:', err);
       setBellSchedules([]);
     } finally {
       setLoading(false);
     }
-  }, [currentSchool]);
+  }, [schoolId]);
 
   useEffect(() => {
-    // Clear existing schedules when school changes
-    setBellSchedules([]);
-    setLoading(true);
-
-    if (currentSchool) {
+    if (schoolId) {
       fetchSchedules();
-    } else {
-      setLoading(false);
     }
-  }, [currentSchool, fetchSchedules]); // This dependency should trigger re-fetch when school changes
+  }, [schoolId, fetchSchedules]);
 
   // Handle delete
   const handleDelete = async (id: string, periodName: string) => {
@@ -92,9 +89,9 @@ export default function BellSchedulesPage() {
       setDeletingId(id);
       await deleteBellSchedule(id);
       await fetchSchedules(); // Refresh the list
-    } catch (error) {
-      alert('Failed to delete bell schedule');
-      console.error(error);
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete bell schedule');
+      console.error(err);
     } finally {
       setDeletingId(null);
     }
@@ -105,7 +102,7 @@ export default function BellSchedulesPage() {
     if (!time) return '';
 
     const timeParts = time.split(':');
-    if (timeParts.length < 2) return time; // Return original if not in expected format
+    if (timeParts.length < 2) return time;
 
     const [hours, minutes] = timeParts;
     const hour = parseInt(hours);
@@ -119,32 +116,24 @@ export default function BellSchedulesPage() {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     return days[day - 1] || 'Unknown';
   };
-  
+
   // Filter bell schedules
   const filteredBellSchedules = useMemo(() => {
     return bellSchedules.filter(schedule => {
       const gradeMatch = !gradeFilter || (schedule.grade_level && schedule.grade_level.includes(gradeFilter));
       const dayMatch = !dayFilter || schedule.day_of_week.toString() === dayFilter;
       const activityMatch = !activityFilter || schedule.period_name === activityFilter;
-      
+
       return gradeMatch && dayMatch && activityMatch;
     });
   }, [bellSchedules, gradeFilter, dayFilter, activityFilter]);
-  
+
   // Activity options from predefined constants
   const activityOptions = useMemo(() => {
     return BELL_SCHEDULE_ACTIVITIES.map(activity => ({ value: activity, label: activity }));
   }, []);
 
-  // Check if current user owns a bell schedule (can delete it)
-  const isOwner = (schedule: any) => {
-    if (!currentUserId) return false;
-    // User owns it if they created it, or if it's a legacy record they created as provider
-    return schedule.created_by_id === currentUserId ||
-      (!schedule.created_by_id && schedule.provider_id === currentUserId);
-  };
-
-  if (loading || schoolLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center py-12">
@@ -155,19 +144,26 @@ export default function BellSchedulesPage() {
     );
   }
 
-  console.log('Bell schedules state before render:', bellSchedules);
-  console.log('Bell schedules length:', bellSchedules.length);
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center py-12">
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Page Header with School Info */}
+        {/* Page Header */}
         <div className="mb-8">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-              <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
+              <p className="text-gray-600">Manage school-wide bell schedules (Recess, Lunch, etc)</p>
             </div>
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">
@@ -180,15 +176,6 @@ export default function BellSchedulesPage() {
                 >
                   Import CSV
                 </Button>
-                {/* Hidden: AI Upload not working as intended
-                <AIUploadButton
-                  uploadType="bell_schedule"
-                  onSuccess={() => {
-                    // Refresh bell schedules
-                    window.location.reload();
-                  }}
-                />
-                */}
                 <Button
                   variant="primary"
                   onClick={() => {
@@ -199,7 +186,6 @@ export default function BellSchedulesPage() {
                   + Add Schedule
                 </Button>
               </div>
-              <LastSaved timestamp={lastSaved} />
             </div>
           </div>
         </div>
@@ -211,12 +197,12 @@ export default function BellSchedulesPage() {
               <CardHeader>
                 <div className="flex justify-between items-center gap-4">
                   <CardTitle>Import Bell Schedules</CardTitle>
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     onClick={() => setShowImportSection(false)}
                     className="text-gray-500 hover:text-gray-700"
                   >
-                    ×
+                    x
                   </Button>
                 </div>
               </CardHeader>
@@ -234,7 +220,6 @@ export default function BellSchedulesPage() {
         <div className="mb-8">
           <CollapsibleCard title="School Start & End Times" defaultOpen={false}>
             <SchoolHoursForm onSuccess={() => {
-              // Optionally refresh any data if needed
               console.log('School hours saved successfully');
             }} />
           </CollapsibleCard>
@@ -247,38 +232,20 @@ export default function BellSchedulesPage() {
               <CardHeader>
                 <div className="flex justify-between items-center gap-4">
                   <CardTitle>Add New Bell Schedule</CardTitle>
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     onClick={() => setShowAddForm(false)}
                     className="text-gray-500 hover:text-gray-700"
                   >
-                    ×
+                    x
                   </Button>
                 </div>
               </CardHeader>
               <CardBody>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Grade Level
-                  </label>
-                  <div className="flex gap-2">
-                    {['TK', 'K', '1', '2', '3', '4', '5'].map((grade) => (
-                      <button
-                        key={grade}
-                        onClick={() => setSelectedGrade(grade)}
-                        className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                          selectedGrade === grade
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Grade {grade}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <AddBellScheduleForm
-                  gradeLevel={selectedGrade}
+                  creatorRole="site_admin"
+                  schoolId={schoolId || undefined}
+                  multiSelectGrades={true}
                   onSuccess={() => {
                     setShowAddForm(false);
                     fetchSchedules();
@@ -350,7 +317,7 @@ export default function BellSchedulesPage() {
             </div>
             {filteredBellSchedules.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                {bellSchedules.length === 0 
+                {bellSchedules.length === 0
                   ? "No bell schedules yet. Click 'Add Schedule' to get started."
                   : "No bell schedules match the selected filters"}
               </div>
@@ -362,6 +329,7 @@ export default function BellSchedulesPage() {
                     <TableHead>Activity</TableHead>
                     <TableHead>Day</TableHead>
                     <TableHead>Time</TableHead>
+                    <TableHead>Created By</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -370,10 +338,9 @@ export default function BellSchedulesPage() {
                     .sort((a, b) => {
                       if (!sortByGrade) return 0;
 
-                      // Helper function to extract grade number
                       const getGradeValue = (grade: string) => {
-                        if (!grade) return 999; // Add null check
-                        if (grade === 'TK') return -1; // TK sorts before K
+                        if (!grade) return 999;
+                        if (grade === 'TK') return -1;
                         if (grade === 'K') return 0;
                         const num = parseInt(grade);
                         return isNaN(num) ? 999 : num;
@@ -394,8 +361,13 @@ export default function BellSchedulesPage() {
                         <TableCell>
                           {schedule.start_time ? formatTime(schedule.start_time) : ''} - {schedule.end_time ? formatTime(schedule.end_time) : ''}
                         </TableCell>
+                        <TableCell>
+                          <span className={schedule.is_owner ? 'text-blue-600 font-medium' : 'text-gray-600'}>
+                            {schedule.is_owner ? 'You' : schedule.creator_name}
+                          </span>
+                        </TableCell>
                         <TableActionCell>
-                          {isOwner(schedule) ? (
+                          {schedule.is_owner ? (
                             <Button
                               variant="danger"
                               size="sm"

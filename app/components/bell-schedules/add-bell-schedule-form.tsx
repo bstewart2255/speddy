@@ -8,14 +8,37 @@ import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
 
+type CreatorRole = 'provider' | 'site_admin';
+
 type Props = {
-  gradeLevel: string;
+  gradeLevel?: string; // Optional when multiSelectGrades is true
   onSuccess: () => void;
   onCancel: () => void;
+  creatorRole?: CreatorRole;
+  schoolId?: string; // Optional: used by site admins who have a specific school_id
+  multiSelectGrades?: boolean; // Enable multi-select for grades (site admin feature)
 };
 
-export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }: Props) {
+const GRADE_OPTIONS = [
+  { id: 'TK', name: 'TK', shortName: 'TK' },
+  { id: 'K', name: 'Kindergarten', shortName: 'K' },
+  { id: '1', name: '1st Grade', shortName: '1' },
+  { id: '2', name: '2nd Grade', shortName: '2' },
+  { id: '3', name: '3rd Grade', shortName: '3' },
+  { id: '4', name: '4th Grade', shortName: '4' },
+  { id: '5', name: '5th Grade', shortName: '5' },
+];
+
+export default function AddBellScheduleForm({
+  gradeLevel,
+  onSuccess,
+  onCancel,
+  creatorRole = 'provider',
+  schoolId: propSchoolId,
+  multiSelectGrades = false
+}: Props) {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>(gradeLevel ? [gradeLevel] : []);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [subject, setSubject] = useState('');
@@ -34,12 +57,24 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
   ];
 
   const handleDayToggle = (dayId: number) => {
-    setSelectedDays(prev => 
-      prev.includes(dayId) 
+    setSelectedDays(prev =>
+      prev.includes(dayId)
         ? prev.filter(id => id !== dayId)
         : [...prev, dayId]
     );
   };
+
+  const handleGradeToggle = (grade: string) => {
+    setSelectedGrades(prev =>
+      prev.includes(grade)
+        ? prev.filter(g => g !== grade)
+        : [...prev, grade]
+    );
+  };
+
+  // Get effective grades to use (multi-select or single from prop)
+  const effectiveGrades = multiSelectGrades ? selectedGrades : (gradeLevel ? [gradeLevel] : []);
+  const totalSchedules = effectiveGrades.length * selectedDays.length;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +85,19 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Get school ID from props or context
+      const effectiveSchoolId = propSchoolId || currentSchool?.school_id;
+
       // Validate school is selected
-      if (!currentSchool?.school_id) {
+      if (!effectiveSchoolId) {
         setError('No school selected. Please select a school before adding a bell schedule.');
+        setSubmitting(false);
+        return;
+      }
+
+      // Validate at least one grade is selected (for multi-select mode)
+      if (effectiveGrades.length === 0) {
+        setError('Please select at least one grade level');
         setSubmitting(false);
         return;
       }
@@ -73,70 +118,96 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
 
       let totalResolved = 0;
       let totalFailed = 0;
-      const errors: string[] = [];
+      const insertErrors: string[] = [];
+      const conflictErrors: string[] = [];
+      let successCount = 0;
 
-      // Create a bell schedule entry for each selected day
-      for (const dayId of selectedDays) {
-        try {
-          // Build insert data with school_id (required after migration)
-          const insertData = {
-            provider_id: user.id,
-            grade_level: gradeLevel,
-            day_of_week: dayId,
-            start_time: startTime,
-            end_time: endTime,
-            period_name: subject.trim(),
-            school_id: currentSchool.school_id,
-          };
+      // Instantiate ConflictResolver once, outside the loop
+      const resolver = new ConflictResolver(user.id);
 
-          const { error: insertError } = await supabase
-            .from('bell_schedules')
-            .insert([insertData]);
-
-          if (insertError) {
-            const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
-            errors.push(`${dayName}: ${insertError.message}`);
-            continue;
-          }
-
-          // Check for conflicts after successful insert
-          const resolver = new ConflictResolver(user.id);
-          const insertedSchedule = {
-            grade_level: gradeLevel.trim(),
-            day_of_week: dayId,
-            start_time: startTime,
-            end_time: endTime,
-            period_name: subject.trim(),
-            school_id: currentSchool.school_id
-          };
-
-          const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
-          totalResolved += result.resolved;
-          totalFailed += result.failed;
-        } catch (err) {
+      // Create a bell schedule entry for each grade/day combination
+      for (const grade of effectiveGrades) {
+        for (const dayId of selectedDays) {
           const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
-          errors.push(`${dayName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+
+          try {
+            // Build insert data with school_id and creator tracking
+            const insertData = {
+              provider_id: creatorRole === 'provider' ? user.id : null,
+              grade_level: grade,
+              day_of_week: dayId,
+              start_time: startTime,
+              end_time: endTime,
+              period_name: subject.trim(),
+              school_id: effectiveSchoolId,
+              created_by_id: user.id,
+              created_by_role: creatorRole,
+            };
+
+            const { error: insertError } = await supabase
+              .from('bell_schedules')
+              .insert([insertData]);
+
+            if (insertError) {
+              insertErrors.push(`Grade ${grade}, ${dayName}: ${insertError.message}`);
+              continue;
+            }
+
+            successCount++;
+
+            // Check for conflicts after successful insert (separate try/catch)
+            try {
+              const insertedSchedule = {
+                grade_level: grade.trim(),
+                day_of_week: dayId,
+                start_time: startTime,
+                end_time: endTime,
+                period_name: subject.trim(),
+                school_id: effectiveSchoolId
+              };
+
+              const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
+              totalResolved += result.resolved;
+              totalFailed += result.failed;
+            } catch (conflictErr) {
+              // Schedule was added but conflict check failed - don't count as insert failure
+              conflictErrors.push(
+                `Grade ${grade}, ${dayName}: conflict check failed (${conflictErr instanceof Error ? conflictErr.message : 'Unknown error'})`
+              );
+            }
+          } catch (err) {
+            insertErrors.push(`Grade ${grade}, ${dayName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
         }
       }
 
-      // Show results
-      if (errors.length > 0) {
-        setError(`Some schedules could not be added:\n${errors.join('\n')}`);
+      // Show results - separate insert errors from conflict errors
+      if (insertErrors.length > 0 || conflictErrors.length > 0) {
+        const errorParts: string[] = [];
+        if (insertErrors.length > 0) {
+          errorParts.push(`Some schedules could not be added:\n${insertErrors.join('\n')}`);
+        }
+        if (conflictErrors.length > 0) {
+          errorParts.push(`Some schedules were added but conflict checks failed:\n${conflictErrors.join('\n')}`);
+        }
+        setError(errorParts.join('\n\n'));
       } else {
-        const scheduleCount = selectedDays.length;
-        const message = scheduleCount === 1 
+        const message = successCount === 1
           ? 'Bell schedule added successfully.'
-          : `${scheduleCount} bell schedules added successfully.`;
-        
+          : `${successCount} bell schedules added successfully.`;
+
         if (totalResolved > 0 || totalFailed > 0) {
           alert(`${message} ${totalResolved} sessions rescheduled, ${totalFailed} could not be rescheduled.`);
         }
-        
+
         // Reset form
         setStartTime('');
         setEndTime('');
         setSubject('');
         setSelectedDays([]);
+        if (multiSelectGrades) {
+          setSelectedGrades([]);
+        }
         onSuccess();
       }
     } catch (err) {
@@ -153,8 +224,45 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm whitespace-pre-line">
           {error}
+        </div>
+      )}
+
+      {/* Grade Level Multi-Select (site admin feature) */}
+      {multiSelectGrades && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Grade Levels
+          </label>
+          <div className="grid grid-cols-7 gap-2">
+            {GRADE_OPTIONS.map((grade) => (
+              <label
+                key={grade.id}
+                className={`
+                  flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all
+                  focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1
+                  ${selectedGrades.includes(grade.id)
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }
+                `}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedGrades.includes(grade.id)}
+                  onChange={() => handleGradeToggle(grade.id)}
+                  className="sr-only"
+                />
+                <div className="text-sm font-semibold">{grade.shortName}</div>
+              </label>
+            ))}
+          </div>
+          {selectedGrades.length > 0 && (
+            <div className="mt-2 text-sm text-gray-600">
+              {selectedGrades.length} {selectedGrades.length === 1 ? 'grade' : 'grades'} selected
+            </div>
+          )}
         </div>
       )}
 
@@ -168,8 +276,9 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
               key={day.id}
               className={`
                 flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all
-                ${selectedDays.includes(day.id) 
-                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1
+                ${selectedDays.includes(day.id)
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-gray-200 hover:border-gray-300 bg-white'
                 }
               `}
@@ -260,14 +369,14 @@ export default function AddBellScheduleForm({ gradeLevel, onSuccess, onCancel }:
         </button>
         <button
           type="submit"
-          disabled={submitting || selectedDays.length === 0}
+          disabled={submitting || totalSchedules === 0}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
         >
-          {submitting 
-            ? `Adding ${selectedDays.length} ${selectedDays.length === 1 ? 'Time Block' : 'Time Blocks'}...` 
-            : selectedDays.length === 0
-            ? 'Select Days'
-            : `Add ${selectedDays.length} ${selectedDays.length === 1 ? 'Time Block' : 'Time Blocks'}`
+          {submitting
+            ? `Adding ${totalSchedules} ${totalSchedules === 1 ? 'Time Block' : 'Time Blocks'}...`
+            : totalSchedules === 0
+            ? (multiSelectGrades ? 'Select Grades & Days' : 'Select Days')
+            : `Add ${totalSchedules} ${totalSchedules === 1 ? 'Time Block' : 'Time Blocks'}`
           }
         </button>
       </div>
