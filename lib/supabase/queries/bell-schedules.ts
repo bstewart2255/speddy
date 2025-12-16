@@ -72,9 +72,19 @@ export async function addBellSchedule(
   const insertPerf = measurePerformanceWithAlerts('add_bell_schedule', 'database');
   const insertResult = await safeQuery(
     async () => {
+      // Strip non-column fields from schedule before spreading
+      // SchoolIdentifier includes school_district which doesn't exist in bell_schedules table
+      const {
+        school_district: _school_district,
+        school_site: _school_site,
+        district_id: _district_id,
+        state_id: _state_id,
+        ...scheduleFields
+      } = schedule;
+
       // Build insert data with school_id and creator tracking
       const insertData = {
-        ...schedule,
+        ...scheduleFields,
         provider_id: creatorRole === 'provider' ? user.id : null,
         school_id: schoolData.school_id || undefined,
         created_by_id: user.id,
@@ -400,13 +410,23 @@ export async function getBellSchedulesForSchool(schoolId: string) {
 
   let creatorMap: Record<string, string> = {};
   if (creatorIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', creatorIds);
+    const profilesResult = await safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', creatorIds);
+        if (error) throw error;
+        return data;
+      },
+      { operation: 'fetch_creator_profiles', userId: user.id, creatorIds }
+    );
 
-    if (profiles) {
-      creatorMap = Object.fromEntries(profiles.map(p => [p.id, p.full_name]));
+    if (profilesResult.error) {
+      console.error('[getBellSchedulesForSchool] Failed to fetch creator profiles:', profilesResult.error);
+      // Continue with empty map - creators will show as "Unknown"
+    } else if (profilesResult.data) {
+      creatorMap = Object.fromEntries(profilesResult.data.map(p => [p.id, p.full_name]));
     }
   }
 

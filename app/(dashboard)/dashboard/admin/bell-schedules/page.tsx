@@ -334,7 +334,7 @@ export default function SiteAdminBellSchedulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(Array.isArray(filteredBellSchedules) ? [...filteredBellSchedules] : [])
+                  {[...filteredBellSchedules]
                     .sort((a, b) => {
                       if (!sortByGrade) return 0;
 

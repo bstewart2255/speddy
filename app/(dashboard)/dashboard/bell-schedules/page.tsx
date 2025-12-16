@@ -366,13 +366,14 @@ export default function BellSchedulesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(Array.isArray(filteredBellSchedules) ? [...filteredBellSchedules] : [])
+                  {[...filteredBellSchedules]
                     .sort((a, b) => {
                       if (!sortByGrade) return 0;
 
                       // Helper function to extract grade number
                       const getGradeValue = (grade: string) => {
                         if (!grade) return 999; // Add null check
+                        if (grade === 'TK') return -1; // TK sorts before K
                         if (grade === 'K') return 0;
                         const num = parseInt(grade);
                         return isNaN(num) ? 999 : num;

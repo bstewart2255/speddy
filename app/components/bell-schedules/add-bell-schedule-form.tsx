@@ -118,12 +118,18 @@ export default function AddBellScheduleForm({
 
       let totalResolved = 0;
       let totalFailed = 0;
-      const errors: string[] = [];
+      const insertErrors: string[] = [];
+      const conflictErrors: string[] = [];
       let successCount = 0;
+
+      // Instantiate ConflictResolver once, outside the loop
+      const resolver = new ConflictResolver(user.id);
 
       // Create a bell schedule entry for each grade/day combination
       for (const grade of effectiveGrades) {
         for (const dayId of selectedDays) {
+          const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
+
           try {
             // Build insert data with school_id and creator tracking
             const insertData = {
@@ -143,37 +149,48 @@ export default function AddBellScheduleForm({
               .insert([insertData]);
 
             if (insertError) {
-              const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
-              errors.push(`Grade ${grade}, ${dayName}: ${insertError.message}`);
+              insertErrors.push(`Grade ${grade}, ${dayName}: ${insertError.message}`);
               continue;
             }
 
             successCount++;
 
-            // Check for conflicts after successful insert
-            const resolver = new ConflictResolver(user.id);
-            const insertedSchedule = {
-              grade_level: grade.trim(),
-              day_of_week: dayId,
-              start_time: startTime,
-              end_time: endTime,
-              period_name: subject.trim(),
-              school_id: effectiveSchoolId
-            };
+            // Check for conflicts after successful insert (separate try/catch)
+            try {
+              const insertedSchedule = {
+                grade_level: grade.trim(),
+                day_of_week: dayId,
+                start_time: startTime,
+                end_time: endTime,
+                period_name: subject.trim(),
+                school_id: effectiveSchoolId
+              };
 
-            const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
-            totalResolved += result.resolved;
-            totalFailed += result.failed;
+              const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
+              totalResolved += result.resolved;
+              totalFailed += result.failed;
+            } catch (conflictErr) {
+              // Schedule was added but conflict check failed - don't count as insert failure
+              conflictErrors.push(
+                `Grade ${grade}, ${dayName}: conflict check failed (${conflictErr instanceof Error ? conflictErr.message : 'Unknown error'})`
+              );
+            }
           } catch (err) {
-            const dayName = daysOfWeek.find(d => d.id === dayId)?.name || `Day ${dayId}`;
-            errors.push(`Grade ${grade}, ${dayName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            insertErrors.push(`Grade ${grade}, ${dayName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
           }
         }
       }
 
-      // Show results
-      if (errors.length > 0) {
-        setError(`Some schedules could not be added:\n${errors.join('\n')}`);
+      // Show results - separate insert errors from conflict errors
+      if (insertErrors.length > 0 || conflictErrors.length > 0) {
+        const errorParts: string[] = [];
+        if (insertErrors.length > 0) {
+          errorParts.push(`Some schedules could not be added:\n${insertErrors.join('\n')}`);
+        }
+        if (conflictErrors.length > 0) {
+          errorParts.push(`Some schedules were added but conflict checks failed:\n${conflictErrors.join('\n')}`);
+        }
+        setError(errorParts.join('\n\n'));
       } else {
         const message = successCount === 1
           ? 'Bell schedule added successfully.'
@@ -224,6 +241,7 @@ export default function AddBellScheduleForm({
                 key={grade.id}
                 className={`
                   flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all
+                  focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1
                   ${selectedGrades.includes(grade.id)
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-200 hover:border-gray-300 bg-white'
@@ -258,6 +276,7 @@ export default function AddBellScheduleForm({
               key={day.id}
               className={`
                 flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all
+                focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1
                 ${selectedDays.includes(day.id)
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-gray-200 hover:border-gray-300 bg-white'
