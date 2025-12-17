@@ -12,6 +12,8 @@ UPDATE schedule_sessions ss
 SET status = 'active', has_conflict = false, conflict_reason = null
 WHERE has_conflict = true
   AND session_date IS NULL
+  AND start_time IS NOT NULL
+  AND end_time IS NOT NULL
   AND conflict_reason LIKE '%Student already has a session%'
   AND NOT EXISTS (
     SELECT 1 FROM schedule_sessions other
@@ -30,6 +32,8 @@ UPDATE schedule_sessions ss
 SET status = 'active', has_conflict = false, conflict_reason = null
 WHERE has_conflict = true
   AND session_date IS NULL
+  AND start_time IS NOT NULL
+  AND end_time IS NOT NULL
   AND conflict_reason LIKE '%Overlaps with another session%'
   AND NOT EXISTS (
     SELECT 1 FROM schedule_sessions other
