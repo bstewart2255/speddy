@@ -821,7 +821,7 @@ export function CalendarDayView({
                   .map((session) => {
                     const student = session.student_id ? allStudents.get(session.student_id) : undefined;
                     const isGrouped = !!session.group_id;
-                    const groupColor = isGrouped ? getGroupColor(session.group_id as string, (session as any).group_color) : null;
+                    const groupColor = isGrouped ? getGroupColor(session.group_id as string, session.group_color) : null;
 
                     return (
                       <div

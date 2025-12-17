@@ -366,9 +366,8 @@ export type Database = {
           current_lesson: number
           curriculum_level: string
           curriculum_type: string
-          group_id: string | null
           id: string
-          session_id: string | null
+          session_id: string
           updated_at: string | null
         }
         Insert: {
@@ -376,9 +375,8 @@ export type Database = {
           current_lesson: number
           curriculum_level: string
           curriculum_type: string
-          group_id?: string | null
           id?: string
-          session_id?: string | null
+          session_id: string
           updated_at?: string | null
         }
         Update: {
@@ -386,9 +384,8 @@ export type Database = {
           current_lesson?: number
           curriculum_level?: string
           curriculum_type?: string
-          group_id?: string | null
           id?: string
-          session_id?: string | null
+          session_id?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -1083,6 +1080,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          is_speddy_admin: boolean | null
           role: string
           school_district: string
           school_district_original: string | null
@@ -1104,6 +1102,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          is_speddy_admin?: boolean | null
           role: string
           school_district: string
           school_district_original?: string | null
@@ -1125,6 +1124,7 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          is_speddy_admin?: boolean | null
           role?: string
           school_district?: string
           school_district_original?: string | null
@@ -1533,9 +1533,10 @@ export type Database = {
           day_of_week: number | null
           delivered_by: string | null
           end_time: string | null
+          group_color: number | null
           group_id: string | null
           group_name: string | null
-          has_conflict: boolean
+          has_conflict: boolean | null
           id: string
           is_completed: boolean
           manually_placed: boolean | null
@@ -1560,9 +1561,10 @@ export type Database = {
           day_of_week?: number | null
           delivered_by?: string | null
           end_time?: string | null
+          group_color?: number | null
           group_id?: string | null
           group_name?: string | null
-          has_conflict?: boolean
+          has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
           manually_placed?: boolean | null
@@ -1587,9 +1589,10 @@ export type Database = {
           day_of_week?: number | null
           delivered_by?: string | null
           end_time?: string | null
+          group_color?: number | null
           group_id?: string | null
           group_name?: string | null
-          has_conflict?: boolean
+          has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
           manually_placed?: boolean | null
@@ -1947,140 +1950,9 @@ export type Database = {
           },
         ]
       }
-      student_assessments_backup: {
-        Row: {
-          academic_fluency_score: number | null
-          assessment_date: string | null
-          brief_inhibition_tscore: number | null
-          brief_shift_flexibility_tscore: number | null
-          brief_working_memory_tscore: number | null
-          cognitive_efficiency_score: number | null
-          created_at: string | null
-          delayed_recall_score: number | null
-          dibels_nonsense_word_fluency: number | null
-          dibels_wpm_accuracy: number | null
-          fp_dra_level: string | null
-          grade_month_reading_level: number | null
-          handwriting_letters_per_minute: number | null
-          id: string | null
-          immediate_recall_score: number | null
-          lexile_level: string | null
-          math_computation_addition_accuracy: number | null
-          math_computation_division_accuracy: number | null
-          math_computation_multiplication_accuracy: number | null
-          math_computation_subtraction_accuracy: number | null
-          math_fact_fluency_addition: number | null
-          math_fact_fluency_division: number | null
-          math_fact_fluency_multiplication: number | null
-          math_fact_fluency_subtraction: number | null
-          math_number_sense_score: number | null
-          math_problem_solving_accuracy: number | null
-          phoneme_segmentation_fluency: number | null
-          processing_speed_score: number | null
-          reading_comprehension_accuracy: number | null
-          recognition_score: number | null
-          sight_words_known: number | null
-          sight_words_list_level: string | null
-          spelling_accuracy: number | null
-          spelling_developmental_stage: string | null
-          student_id: string | null
-          updated_at: string | null
-          wisc_fluid_reasoning_index: number | null
-          wisc_processing_speed_index: number | null
-          wisc_working_memory_index: number | null
-          words_per_sentence_average: number | null
-          written_expression_score: number | null
-        }
-        Insert: {
-          academic_fluency_score?: number | null
-          assessment_date?: string | null
-          brief_inhibition_tscore?: number | null
-          brief_shift_flexibility_tscore?: number | null
-          brief_working_memory_tscore?: number | null
-          cognitive_efficiency_score?: number | null
-          created_at?: string | null
-          delayed_recall_score?: number | null
-          dibels_nonsense_word_fluency?: number | null
-          dibels_wpm_accuracy?: number | null
-          fp_dra_level?: string | null
-          grade_month_reading_level?: number | null
-          handwriting_letters_per_minute?: number | null
-          id?: string | null
-          immediate_recall_score?: number | null
-          lexile_level?: string | null
-          math_computation_addition_accuracy?: number | null
-          math_computation_division_accuracy?: number | null
-          math_computation_multiplication_accuracy?: number | null
-          math_computation_subtraction_accuracy?: number | null
-          math_fact_fluency_addition?: number | null
-          math_fact_fluency_division?: number | null
-          math_fact_fluency_multiplication?: number | null
-          math_fact_fluency_subtraction?: number | null
-          math_number_sense_score?: number | null
-          math_problem_solving_accuracy?: number | null
-          phoneme_segmentation_fluency?: number | null
-          processing_speed_score?: number | null
-          reading_comprehension_accuracy?: number | null
-          recognition_score?: number | null
-          sight_words_known?: number | null
-          sight_words_list_level?: string | null
-          spelling_accuracy?: number | null
-          spelling_developmental_stage?: string | null
-          student_id?: string | null
-          updated_at?: string | null
-          wisc_fluid_reasoning_index?: number | null
-          wisc_processing_speed_index?: number | null
-          wisc_working_memory_index?: number | null
-          words_per_sentence_average?: number | null
-          written_expression_score?: number | null
-        }
-        Update: {
-          academic_fluency_score?: number | null
-          assessment_date?: string | null
-          brief_inhibition_tscore?: number | null
-          brief_shift_flexibility_tscore?: number | null
-          brief_working_memory_tscore?: number | null
-          cognitive_efficiency_score?: number | null
-          created_at?: string | null
-          delayed_recall_score?: number | null
-          dibels_nonsense_word_fluency?: number | null
-          dibels_wpm_accuracy?: number | null
-          fp_dra_level?: string | null
-          grade_month_reading_level?: number | null
-          handwriting_letters_per_minute?: number | null
-          id?: string | null
-          immediate_recall_score?: number | null
-          lexile_level?: string | null
-          math_computation_addition_accuracy?: number | null
-          math_computation_division_accuracy?: number | null
-          math_computation_multiplication_accuracy?: number | null
-          math_computation_subtraction_accuracy?: number | null
-          math_fact_fluency_addition?: number | null
-          math_fact_fluency_division?: number | null
-          math_fact_fluency_multiplication?: number | null
-          math_fact_fluency_subtraction?: number | null
-          math_number_sense_score?: number | null
-          math_problem_solving_accuracy?: number | null
-          phoneme_segmentation_fluency?: number | null
-          processing_speed_score?: number | null
-          reading_comprehension_accuracy?: number | null
-          recognition_score?: number | null
-          sight_words_known?: number | null
-          sight_words_list_level?: string | null
-          spelling_accuracy?: number | null
-          spelling_developmental_stage?: string | null
-          student_id?: string | null
-          updated_at?: string | null
-          wisc_fluid_reasoning_index?: number | null
-          wisc_processing_speed_index?: number | null
-          wisc_working_memory_index?: number | null
-          words_per_sentence_average?: number | null
-          written_expression_score?: number | null
-        }
-        Relationships: []
-      }
       student_details: {
         Row: {
+          accommodations: string[] | null
           created_at: string | null
           date_of_birth: string | null
           district_id: string | null
@@ -2095,6 +1967,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          accommodations?: string[] | null
           created_at?: string | null
           date_of_birth?: string | null
           district_id?: string | null
@@ -2109,6 +1982,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          accommodations?: string[] | null
           created_at?: string | null
           date_of_birth?: string | null
           district_id?: string | null
@@ -2282,80 +2156,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      subscription_pauses: {
-        Row: {
-          created_at: string
-          id: string
-          pause_end: string
-          pause_start: string
-          subscription_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          pause_end: string
-          pause_start: string
-          subscription_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          pause_end?: string
-          pause_start?: string
-          subscription_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "subscription_pauses_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "subscriptions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      subscriptions: {
-        Row: {
-          cancel_at_period_end: boolean | null
-          created_at: string
-          current_period_end: string
-          current_period_start: string
-          id: string
-          status: string
-          stripe_customer_id: string
-          stripe_subscription_id: string
-          trial_end: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          cancel_at_period_end?: boolean | null
-          created_at?: string
-          current_period_end: string
-          current_period_start: string
-          id?: string
-          status: string
-          stripe_customer_id: string
-          stripe_subscription_id: string
-          trial_end?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          cancel_at_period_end?: boolean | null
-          created_at?: string
-          current_period_end?: string
-          current_period_start?: string
-          id?: string
-          status?: string
-          stripe_customer_id?: string
-          stripe_subscription_id?: string
-          trial_end?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
       }
       teachers: {
         Row: {
@@ -2831,15 +2631,15 @@ export type Database = {
           }
       can_assign_specialist_to_session:
         | {
+            Args: { provider_id: string; specialist_id: string }
+            Returns: boolean
+          }
+        | {
             Args: {
               current_school_id: string
               provider_id: string
               specialist_id: string
             }
-            Returns: boolean
-          }
-        | {
-            Args: { provider_id: string; specialist_id: string }
             Returns: boolean
           }
       can_view_team_member: {
@@ -2924,6 +2724,7 @@ export type Database = {
           school_site: string
         }[]
       }
+      generate_referral_code: { Args: never; Returns: string }
       get_available_seas: {
         Args: { current_user_id: string; target_school_id?: string }
         Returns: {
@@ -2934,14 +2735,6 @@ export type Database = {
       }
       get_available_specialists:
         | {
-            Args: { current_user_id: string; filter_school_id?: string }
-            Returns: {
-              full_name: string
-              id: string
-              role: string
-            }[]
-          }
-        | {
             Args: { current_user_id: string }
             Returns: {
               full_name: string
@@ -2951,6 +2744,14 @@ export type Database = {
           }
         | {
             Args: { current_school_id: string; current_user_id: string }
+            Returns: {
+              full_name: string
+              id: string
+              role: string
+            }[]
+          }
+        | {
+            Args: { current_user_id: string; filter_school_id?: string }
             Returns: {
               full_name: string
               id: string
@@ -2977,6 +2778,18 @@ export type Database = {
           migration_percentage: number
           total_users: number
           unmigrated_users: number
+        }[]
+      }
+      get_school_seas: {
+        Args: {
+          p_school_district?: string
+          p_school_id?: string
+          p_school_site?: string
+        }
+        Returns: {
+          full_name: string
+          id: string
+          supervising_provider_id: string
         }[]
       }
       get_school_site_admins: {
@@ -3027,6 +2840,7 @@ export type Database = {
         Args: { activity_teacher_id: string; activity_teacher_name: string }
         Returns: string
       }
+      get_teacher_student_ids: { Args: { user_id: string }; Returns: string[] }
       get_user_schools: {
         Args: { user_id: string }
         Returns: {
@@ -3046,16 +2860,23 @@ export type Database = {
           p_iep_goals?: string[]
           p_initials: string
           p_last_name?: string
+          p_minutes_per_session?: number
           p_provider_id: string
           p_school_id?: string
           p_school_site?: string
+          p_sessions_per_week?: number
           p_state_id?: string
+          p_teacher_id?: string
         }
         Returns: {
           error_message: string
           student_id: string
           success: boolean
         }[]
+      }
+      increment_referral_uses: {
+        Args: { referrer_user_id: string }
+        Returns: undefined
       }
       is_teacher_for_student: {
         Args: { p_account_id: string; p_student_id: string }
@@ -3150,6 +2971,10 @@ export type Database = {
               id: string
             }[]
           }
+      upsert_students_atomic: {
+        Args: { p_provider_id: string; p_students: Json }
+        Returns: Json
+      }
       user_accessible_school_ids: {
         Args: never
         Returns: {
@@ -3294,15 +3119,3 @@ export const Constants = {
     },
   },
 } as const
-
-// Convenience type exports for easier importing throughout the application
-export type Student = Database['public']['Tables']['students']['Row']
-export type Teacher = Database['public']['Tables']['teachers']['Row']
-export type Profile = Database['public']['Tables']['profiles']['Row']
-export type AdminPermission = Database['public']['Tables']['admin_permissions']['Row']
-export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row']
-export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row']
-export type SpecialActivity = Database['public']['Tables']['special_activities']['Row']
-export type SchoolHour = Database['public']['Tables']['school_hours']['Row']
-export type Subscription = Database['public']['Tables']['subscriptions']['Row']
-export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']

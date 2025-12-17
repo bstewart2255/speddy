@@ -32,8 +32,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       );
     }
 
-    // Validate group color if provided (must be 0-4)
-    const validatedGroupColor = typeof groupColor === 'number' && groupColor >= 0 && groupColor <= 4
+    // Validate group color if provided (must be integer 0-4)
+    const validatedGroupColor = typeof groupColor === 'number' && Number.isInteger(groupColor) && groupColor >= 0 && groupColor <= 4
       ? groupColor
       : null;
 
