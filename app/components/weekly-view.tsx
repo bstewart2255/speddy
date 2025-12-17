@@ -113,6 +113,49 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   // Filter view state for "Me" vs "Others"
   const [filterView, setFilterView] = useState<'me' | 'others'>('me');
 
+  // Current time state for highlighting active sessions
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Update current time every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Helper function to check if a session is currently active (current time is within session start/end)
+  const isSessionActive = useCallback((startTime: string | null, endTime: string | null, sessionDate: Date): boolean => {
+    if (!startTime || !endTime) return false;
+
+    // Only highlight if viewing today's schedule
+    const today = new Date();
+    const isToday = format(sessionDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+    if (!isToday) return false;
+
+    // Parse session start and end times
+    const [startHours, startMinutes] = startTime.split(':').map(Number);
+    const [endHours, endMinutes] = endTime.split(':').map(Number);
+
+    // Create Date objects for comparison using today's date
+    const sessionStart = new Date(today);
+    sessionStart.setHours(startHours, startMinutes, 0, 0);
+
+    const sessionEnd = new Date(today);
+    sessionEnd.setHours(endHours, endMinutes, 0, 0);
+
+    // Check if current time is within session time range
+    return currentTime >= sessionStart && currentTime < sessionEnd;
+  }, [currentTime]);
+
+  // Helper function to check if any session in a group is currently active
+  const isGroupActive = useCallback((groupSessions: SessionWithCurriculum[], sessionDate: Date): boolean => {
+    return groupSessions.some(session =>
+      isSessionActive(session.start_time, session.end_time, sessionDate)
+    );
+  }, [isSessionActive]);
+
   // Helper function to determine session background color based on assignment
   const getSessionColor = (session: SessionWithCurriculum): string => {
     if (!currentUser) return 'bg-white';
@@ -690,13 +733,21 @@ return (
                         // Check if any session in the group has curriculum tracking
                         const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
                         const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
+                        // Check if group is currently active
+                        const groupIsActive = isGroupActive(groupSessions, currentDate);
 
                         return (
                           <button
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getGroupColor(groupSessions)}`}
+                            className={cn(
+                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                              groupIsActive
+                                ? 'border-red-500 ring-2 ring-red-200'
+                                : 'border-blue-300 hover:border-blue-400',
+                              getGroupColor(groupSessions)
+                            )}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -727,13 +778,21 @@ return (
                         };
 
                         const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
+                        // Check if session is currently active
+                        const sessionIsActive = isSessionActive(session.start_time, session.end_time, currentDate);
 
                         return (
                           <button
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getSessionColor(session)}`}
+                            className={cn(
+                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                              sessionIsActive
+                                ? 'border-red-500 ring-2 ring-red-200'
+                                : 'border-blue-300 hover:border-blue-400',
+                              getSessionColor(session)
+                            )}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
@@ -824,13 +883,21 @@ return (
                         // Check if any session in the group has curriculum tracking
                         const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
                         const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
+                        // Check if group is currently active
+                        const groupIsActive = isGroupActive(groupSessions, currentDate);
 
                         return (
                           <button
                             key={`group-${groupId}-${idx}`}
                             type="button"
                             onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getGroupColor(groupSessions)}`}
+                            className={cn(
+                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                              groupIsActive
+                                ? 'border-red-500 ring-2 ring-red-200'
+                                : 'border-blue-300 hover:border-blue-400',
+                              getGroupColor(groupSessions)
+                            )}
                             aria-label={`Open group ${groupName} details`}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -860,13 +927,21 @@ return (
                           teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
                         };
                         const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
+                        // Check if session is currently active
+                        const sessionIsActive = isSessionActive(session.start_time, session.end_time, currentDate);
 
                         return (
                           <button
                             key={`session-${session.id}`}
                             type="button"
                             onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={`w-full text-left border-2 border-blue-300 rounded-lg p-2 text-xs hover:border-blue-400 transition-colors relative ${getSessionColor(session)}`}
+                            className={cn(
+                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                              sessionIsActive
+                                ? 'border-red-500 ring-2 ring-red-200'
+                                : 'border-blue-300 hover:border-blue-400',
+                              getSessionColor(session)
+                            )}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
                             <div className="font-medium text-gray-900">
