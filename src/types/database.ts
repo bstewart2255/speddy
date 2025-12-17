@@ -1481,107 +1481,6 @@ export type Database = {
           },
         ]
       }
-      referral_codes: {
-        Row: {
-          code: string
-          created_at: string
-          id: string
-          user_id: string
-          uses_count: number | null
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          id?: string
-          user_id: string
-          uses_count?: number | null
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          id?: string
-          user_id?: string
-          uses_count?: number | null
-        }
-        Relationships: []
-      }
-      referral_credits: {
-        Row: {
-          created_at: string
-          credits_applied: number | null
-          id: string
-          month: string
-          payout_amount: number | null
-          status: string
-          total_credits: number | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          credits_applied?: number | null
-          id?: string
-          month: string
-          payout_amount?: number | null
-          status: string
-          total_credits?: number | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          credits_applied?: number | null
-          id?: string
-          month?: string
-          payout_amount?: number | null
-          status?: string
-          total_credits?: number | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      referral_relationships: {
-        Row: {
-          created_at: string
-          credit_amount: number | null
-          id: string
-          referred_id: string
-          referrer_id: string
-          status: string
-          subscription_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          credit_amount?: number | null
-          id?: string
-          referred_id: string
-          referrer_id: string
-          status: string
-          subscription_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          credit_amount?: number | null
-          id?: string
-          referred_id?: string
-          referrer_id?: string
-          status?: string
-          subscription_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "referral_relationships_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "subscriptions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       saved_worksheets: {
         Row: {
           created_at: string
@@ -3025,7 +2924,6 @@ export type Database = {
           school_site: string
         }[]
       }
-      generate_referral_code: { Args: never; Returns: string }
       get_available_seas: {
         Args: { current_user_id: string; target_school_id?: string }
         Returns: {
@@ -3158,10 +3056,6 @@ export type Database = {
           student_id: string
           success: boolean
         }[]
-      }
-      increment_referral_uses: {
-        Args: { referrer_user_id: string }
-        Returns: undefined
       }
       is_teacher_for_student: {
         Args: { p_account_id: string; p_student_id: string }
@@ -3411,6 +3305,4 @@ export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row']
 export type SpecialActivity = Database['public']['Tables']['special_activities']['Row']
 export type SchoolHour = Database['public']['Tables']['school_hours']['Row']
 export type Subscription = Database['public']['Tables']['subscriptions']['Row']
-export type ReferralCode = Database['public']['Tables']['referral_codes']['Row']
-export type ReferralCredit = Database['public']['Tables']['referral_credits']['Row']
 export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']

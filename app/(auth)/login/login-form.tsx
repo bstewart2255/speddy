@@ -131,22 +131,6 @@ export default function LoginForm() {
           FERPA Compliance
         </Link>
       </div>
-
-      {/* Referral Program Link - with extra spacing */}
-      <div className="hidden mt-12 text-center">
-        <button
-          type="button"
-          onClick={() => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('referral-program', 'true');
-            window.history.pushState({}, '', url);
-            window.dispatchEvent(new Event('popstate'));
-          }}
-          className="text-sm text-blue-600 hover:text-blue-500"
-        >
-          Learn about our referral program!
-        </button>
-      </div>
     </form>
   );
 }
