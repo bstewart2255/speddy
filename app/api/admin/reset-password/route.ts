@@ -87,9 +87,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Create admin client with service role key for privileged operations
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      log.error('Missing required environment variables for admin client', null);
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
     const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      supabaseUrl,
+      serviceRoleKey
     );
 
     // Generate secure temporary password
@@ -112,13 +123,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Log the successful password reset
+    // Log the successful password reset (excluding PII for GDPR/CCPA compliance)
     log.info('Password reset by admin', {
       adminId: user.id,
-      adminEmail: user.email,
       targetUserId: userId,
-      targetEmail: targetProfile.email,
       targetRole: targetProfile.role,
+      targetSchoolId: targetProfile.school_id,
     });
 
     // Success! Return the credentials

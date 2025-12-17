@@ -63,9 +63,22 @@ export function TeacherCredentialsModal({
   const defaultTitle = mode === 'reset'
     ? 'Password Reset Successfully'
     : 'Account Created Successfully';
-  const defaultDescription = mode === 'reset'
-    ? `Password for <strong>${displayName}</strong> has been reset.`
-    : `Account for <strong>${displayName}</strong> has been created.`;
+
+  // Render description safely without dangerouslySetInnerHTML
+  const renderDescription = () => {
+    if (description) {
+      // If custom description provided, render as plain text (no HTML)
+      return <p className="text-gray-600">{description}</p>;
+    }
+    // Default description with safe JSX
+    return (
+      <p className="text-gray-600">
+        {mode === 'reset' ? 'Password for ' : 'Account for '}
+        <strong>{displayName}</strong>
+        {mode === 'reset' ? ' has been reset.' : ' has been created.'}
+      </p>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -74,10 +87,7 @@ export function TeacherCredentialsModal({
           <h2 className="text-2xl font-bold text-green-600 mb-2">
             ✓ {title || defaultTitle}
           </h2>
-          <p
-            className="text-gray-600"
-            dangerouslySetInnerHTML={{ __html: description || defaultDescription }}
-          />
+          {renderDescription()}
         </div>
 
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
@@ -101,7 +111,7 @@ export function TeacherCredentialsModal({
                 Important: Save these credentials now!
               </p>
               <p className="text-sm text-yellow-700 mt-1">
-                These login credentials will only be shown once. Copy them and share with the teacher securely.
+                These login credentials will only be shown once. Copy them and share with the user securely.
               </p>
             </div>
           </div>
