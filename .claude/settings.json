@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "greptile@claude-plugins-official": true
+  }
+}
