@@ -234,9 +234,22 @@ export default function AdminDashboardPage() {
               </svg>
             </div>
           </div>
-          <p className="mt-4 text-sm text-gray-500">
-            Resource specialists and service providers
-          </p>
+          {!isDistrictAdmin && (
+            <Link
+              href="/dashboard/admin/providers"
+              className="mt-4 text-sm font-medium text-green-600 hover:text-green-700 inline-flex items-center"
+            >
+              View provider directory
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          )}
+          {isDistrictAdmin && (
+            <p className="mt-4 text-sm text-gray-500">
+              Across all schools
+            </p>
+          )}
         </Card>
 
         <Card className="p-6">
