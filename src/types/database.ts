@@ -3119,3 +3119,15 @@ export const Constants = {
     },
   },
 } as const
+
+// Convenience type aliases
+export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
+export type Student = Database['public']['Tables']['students']['Row'];
+export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
+export type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
+export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
+export type SchoolHour = Database['public']['Tables']['school_hours']['Row'];
+export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type School = Database['public']['Tables']['schools']['Row'];
+export type District = Database['public']['Tables']['districts']['Row'];
+export type Teacher = Database['public']['Tables']['teachers']['Row'];
