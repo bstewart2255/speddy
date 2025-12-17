@@ -3081,6 +3081,14 @@ export type Database = {
           unmigrated_users: number
         }[]
       }
+      get_school_site_admins: {
+        Args: { p_school_id: string }
+        Returns: {
+          admin_id: string
+          email: string
+          full_name: string
+        }[]
+      }
       get_sea_assigned_sessions: {
         Args: { sea_user_id: string }
         Returns: {

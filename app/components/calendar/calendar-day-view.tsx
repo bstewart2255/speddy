@@ -596,7 +596,7 @@ export function CalendarDayView({
       }
 
       // Ensure session has required fields
-      if (!session.student_id || session.day_of_week === null || !session.start_time) {
+      if (!session.student_id || session.day_of_week === null || !session.start_time || !session.provider_id) {
         throw new Error('Session is missing required fields');
       }
 

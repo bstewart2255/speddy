@@ -61,7 +61,7 @@ export default function SchoolDetailPage() {
   const [showProviderCredentials, setShowProviderCredentials] = useState(false);
   const [providerCredentials, setProviderCredentials] = useState({ email: '', temporaryPassword: '' });
   const [newProviderName, setNewProviderName] = useState('');
-  const [providerFormData, setProviderFormData] = useState({ firstName: '', lastName: '', email: '', role: 'resource' as const });
+  const [providerFormData, setProviderFormData] = useState<{ firstName: string; lastName: string; email: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' }>({ firstName: '', lastName: '', email: '', role: 'resource' });
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [removingProviderId, setRemovingProviderId] = useState<string | null>(null);
