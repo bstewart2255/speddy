@@ -112,6 +112,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       .update({
         group_id: null,
         group_name: null,
+        group_color: null,
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
@@ -181,6 +182,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .update({
             group_id: null,
             group_name: null,
+            group_color: null,
             updated_at: new Date().toISOString()
           })
           .eq('id', lastSessionId);
@@ -198,6 +200,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             .update({
               group_id: null,
               group_name: null,
+              group_color: null,
               updated_at: new Date().toISOString()
             })
             .eq('provider_id', lastSession.provider_id)
@@ -220,6 +223,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .update({
             group_id: null,
             group_name: null,
+            group_color: null,
             updated_at: new Date().toISOString()
           })
           .eq('student_id', template.student_id)
