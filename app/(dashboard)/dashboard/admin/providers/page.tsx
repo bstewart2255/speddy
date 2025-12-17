@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getCurrentAdminPermissions, getSchoolStaff } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 
 type Provider = {
   id: string;
@@ -33,6 +34,12 @@ export default function ProviderDirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [resetCredentials, setResetCredentials] = useState<{
+    email: string;
+    temporaryPassword: string;
+    userName: string;
+  } | null>(null);
 
   const fetchProviders = async () => {
     try {
@@ -75,6 +82,39 @@ export default function ProviderDirectoryPage() {
     const role = formatRole(provider.role).toLowerCase();
     return name.includes(searchLower) || email.includes(searchLower) || role.includes(searchLower);
   });
+
+  const handleResetPassword = async (providerId: string, providerName: string) => {
+    if (!confirm(`Are you sure you want to reset the password for ${providerName}? They will need to use the new password to log in.`)) {
+      return;
+    }
+
+    try {
+      setResettingId(providerId);
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: providerId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset password');
+      }
+
+      // Show the credentials modal
+      setResetCredentials({
+        email: data.credentials.email,
+        temporaryPassword: data.credentials.temporaryPassword,
+        userName: providerName,
+      });
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reset password');
+    } finally {
+      setResettingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -180,6 +220,9 @@ export default function ProviderDirectoryPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Assignment
                 </th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -215,6 +258,20 @@ export default function ProviderDirectoryPage() {
                       </span>
                     )}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => handleResetPassword(provider.id, provider.full_name || 'this provider')}
+                      disabled={resettingId === provider.id}
+                      className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
+                      title="Reset password for this provider"
+                    >
+                      {resettingId === provider.id ? (
+                        <span className="inline-block animate-spin">⏳</span>
+                      ) : (
+                        'Reset Password'
+                      )}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -234,6 +291,15 @@ export default function ProviderDirectoryPage() {
           Back to dashboard
         </Link>
       </div>
+
+      {/* Password Reset Credentials Modal */}
+      <TeacherCredentialsModal
+        isOpen={!!resetCredentials}
+        onClose={() => setResetCredentials(null)}
+        credentials={resetCredentials || { email: '', temporaryPassword: '' }}
+        userName={resetCredentials?.userName}
+        mode="reset"
+      />
     </div>
   );
 }

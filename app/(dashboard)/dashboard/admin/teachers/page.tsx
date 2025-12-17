@@ -5,6 +5,7 @@ import { getTeachersWithStudentCount, formatTeacherName } from '@/lib/supabase/q
 import { deleteTeacher } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 
 type TeacherWithCount = NonNullable<Awaited<ReturnType<typeof getTeachersWithStudentCount>>>[number];
 
@@ -14,6 +15,12 @@ export default function TeacherDirectoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [resetCredentials, setResetCredentials] = useState<{
+    email: string;
+    temporaryPassword: string;
+    userName: string;
+  } | null>(null);
 
   const fetchTeachers = async () => {
     try {
@@ -47,6 +54,39 @@ export default function TeacherDirectoryPage() {
       alert(err instanceof Error ? err.message : 'Failed to delete teacher');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleResetPassword = async (accountId: string, teacherName: string) => {
+    if (!confirm(`Are you sure you want to reset the password for ${teacherName}? They will need to use the new password to log in.`)) {
+      return;
+    }
+
+    try {
+      setResettingId(accountId);
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: accountId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset password');
+      }
+
+      // Show the credentials modal
+      setResetCredentials({
+        email: data.credentials.email,
+        temporaryPassword: data.credentials.temporaryPassword,
+        userName: teacherName,
+      });
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      alert(err instanceof Error ? err.message : 'Failed to reset password');
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -225,7 +265,21 @@ export default function TeacherDirectoryPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                    {teacher.account_id && (
+                      <button
+                        onClick={() => handleResetPassword(teacher.account_id!, formatTeacherName(teacher))}
+                        disabled={resettingId === teacher.account_id}
+                        className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
+                        title="Reset password for this teacher"
+                      >
+                        {resettingId === teacher.account_id ? (
+                          <span className="inline-block animate-spin">⏳</span>
+                        ) : (
+                          'Reset Password'
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(teacher.id, formatTeacherName(teacher))}
                       disabled={!!teacher.account_id || deletingId === teacher.id}
@@ -258,6 +312,15 @@ export default function TeacherDirectoryPage() {
           Check for duplicate teachers →
         </Link>
       </div>
+
+      {/* Password Reset Credentials Modal */}
+      <TeacherCredentialsModal
+        isOpen={!!resetCredentials}
+        onClose={() => setResetCredentials(null)}
+        credentials={resetCredentials || { email: '', temporaryPassword: '' }}
+        userName={resetCredentials?.userName}
+        mode="reset"
+      />
     </div>
   );
 }

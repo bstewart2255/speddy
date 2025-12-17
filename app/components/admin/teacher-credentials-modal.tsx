@@ -10,7 +10,14 @@ interface TeacherCredentialsModalProps {
     email: string;
     temporaryPassword: string;
   };
-  teacherName: string;
+  teacherName?: string; // Deprecated: use userName instead
+  userName?: string;
+  /** Title shown in the modal header. Defaults to "Account Created Successfully" */
+  title?: string;
+  /** Description shown below the title. Defaults to account creation message */
+  description?: string;
+  /** Mode affects default messaging. Defaults to 'create' */
+  mode?: 'create' | 'reset';
 }
 
 export function TeacherCredentialsModal({
@@ -18,7 +25,13 @@ export function TeacherCredentialsModal({
   onClose,
   credentials,
   teacherName,
+  userName,
+  title,
+  description,
+  mode = 'create',
 }: TeacherCredentialsModalProps) {
+  // Support both teacherName (legacy) and userName (new)
+  const displayName = userName || teacherName || 'the user';
   const [emailCopied, setEmailCopied] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
 
@@ -46,16 +59,25 @@ export function TeacherCredentialsModal({
     }
   };
 
+  // Default messaging based on mode
+  const defaultTitle = mode === 'reset'
+    ? 'Password Reset Successfully'
+    : 'Account Created Successfully';
+  const defaultDescription = mode === 'reset'
+    ? `Password for <strong>${displayName}</strong> has been reset.`
+    : `Account for <strong>${displayName}</strong> has been created.`;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4">
         <div className="mb-4">
           <h2 className="text-2xl font-bold text-green-600 mb-2">
-            ✓ Account Created Successfully
+            ✓ {title || defaultTitle}
           </h2>
-          <p className="text-gray-600">
-            Teacher account for <strong>{teacherName}</strong> has been created.
-          </p>
+          <p
+            className="text-gray-600"
+            dangerouslySetInnerHTML={{ __html: description || defaultDescription }}
+          />
         </div>
 
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
@@ -134,10 +156,10 @@ export function TeacherCredentialsModal({
             <strong>Next Steps:</strong>
           </p>
           <ul className="text-sm text-blue-700 mt-2 space-y-1 ml-4 list-disc">
-            <li>Copy both credentials using the buttons above</li>
-            <li>Share them securely with the teacher (in person, secure message, etc.)</li>
-            <li>Teacher can log in at the portal login page</li>
-            <li>Recommend the teacher change their password after first login</li>
+            <li>Copy credentials using the buttons above</li>
+            <li>Share them securely with the user (in person, secure message, etc.)</li>
+            <li>User can log in at the portal login page</li>
+            <li>Recommend changing the password after first login</li>
           </ul>
         </div>
 
