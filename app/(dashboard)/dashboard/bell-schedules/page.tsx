@@ -368,21 +368,26 @@ export default function BellSchedulesPage() {
                 <TableBody>
                   {[...filteredBellSchedules]
                     .sort((a, b) => {
-                      if (!sortByGrade) return 0;
-
-                      // Helper function to extract grade number
+                      // Helper function to get grade sort value (TK, K, 1, 2, 3, 4, 5)
                       const getGradeValue = (grade: string) => {
-                        if (!grade) return 999; // Add null check
-                        if (grade === 'TK') return -1; // TK sorts before K
+                        if (!grade) return 999;
+                        if (grade === 'TK') return -1;
                         if (grade === 'K') return 0;
                         const num = parseInt(grade);
                         return isNaN(num) ? 999 : num;
                       };
 
-                      const aValue = getGradeValue(a.grade_level);
-                      const bValue = getGradeValue(b.grade_level);
+                      const aGrade = getGradeValue(a.grade_level);
+                      const bGrade = getGradeValue(b.grade_level);
 
-                      return aValue - bValue;
+                      // Always sort by grade first
+                      if (aGrade !== bGrade) return aGrade - bGrade;
+
+                      // If sortByGrade is enabled, don't apply secondary sorting
+                      if (sortByGrade) return 0;
+
+                      // Otherwise, maintain original order within same grade
+                      return 0;
                     })
                     .map((schedule) => (
                       <TableRow key={schedule.id}>
