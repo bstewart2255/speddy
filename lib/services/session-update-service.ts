@@ -187,6 +187,17 @@ export class SessionUpdateService {
         newEndTime
       });
 
+      // Clear stale conflicts on other sessions that may have been resolved by this move
+      if (session.student_id && session.provider_id) {
+        // Always check the new day for stale conflicts
+        await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, newDay);
+
+        // If the day changed, also check the old day
+        if (session.day_of_week !== null && session.day_of_week !== newDay) {
+          await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, session.day_of_week);
+        }
+      }
+
       // ORPHAN CLEANUP: When a template's time/day changes, delete future orphaned instances
       // This prevents old instances from showing up in Day view/Today's Schedule
       if (session.session_date === null) {
@@ -742,6 +753,90 @@ export class SessionUpdateService {
   }
 
   /**
+   * Clears stale conflict flags on other sessions for the same student
+   * This should be called after moving or unscheduling a session, as the move
+   * may have resolved conflicts on OTHER sessions that were conflicting with it
+   */
+  private async clearStaleConflictsForStudent(
+    studentId: string,
+    providerId: string,
+    day: number
+  ): Promise<void> {
+    try {
+      // Find all sessions for this student/provider/day that have conflict flags
+      const { data: flaggedSessions, error: fetchError } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('student_id', studentId)
+        .eq('provider_id', providerId)
+        .eq('day_of_week', day)
+        .eq('has_conflict', true)
+        .is('session_date', null); // Only templates
+
+      if (fetchError || !flaggedSessions || flaggedSessions.length === 0) {
+        return;
+      }
+
+      // Get all scheduled sessions for this student/provider/day to check overlaps
+      const { data: allSessions } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('student_id', studentId)
+        .eq('provider_id', providerId)
+        .eq('day_of_week', day)
+        .is('session_date', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null);
+
+      if (!allSessions) {
+        return;
+      }
+
+      // For each flagged session, check if it still has an actual overlap
+      for (const flaggedSession of flaggedSessions) {
+        if (!flaggedSession.start_time || !flaggedSession.end_time) {
+          continue;
+        }
+
+        let stillHasOverlap = false;
+
+        for (const otherSession of allSessions) {
+          if (otherSession.id === flaggedSession.id) {
+            continue;
+          }
+
+          if (this.hasTimeOverlap(
+            flaggedSession.start_time,
+            flaggedSession.end_time,
+            otherSession.start_time,
+            otherSession.end_time
+          )) {
+            stillHasOverlap = true;
+            break;
+          }
+        }
+
+        // If no longer overlapping, clear the conflict flag
+        if (!stillHasOverlap) {
+          console.log('Clearing stale conflict on session:', flaggedSession.id);
+          await this.supabase
+            .from('schedule_sessions')
+            .update({
+              status: 'active',
+              has_conflict: false,
+              conflict_reason: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', flaggedSession.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error clearing stale conflicts:', error);
+      // Don't throw - this is a cleanup operation, not critical
+    }
+  }
+
+  /**
    * Unschedules a session by setting day_of_week, start_time, and end_time to NULL
    * Status is set to 'active' since unscheduled sessions can't have conflicts or need attention
    * (those statuses only apply to scheduled sessions)
@@ -752,6 +847,18 @@ export class SessionUpdateService {
     session?: ScheduleSession;
   }> {
     try {
+      // First fetch the session to get the original day (needed for stale conflict cleanup)
+      const { data: originalSession, error: fetchError } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (fetchError || !originalSession) {
+        console.error('Error fetching session for unschedule:', fetchError);
+        return { success: false, error: 'Session not found' };
+      }
+
       const { data: updatedSession, error: updateError } = await this.supabase
         .from('schedule_sessions')
         .update({
@@ -773,6 +880,16 @@ export class SessionUpdateService {
       }
 
       console.log('Session unscheduled successfully:', sessionId);
+
+      // Clear stale conflicts on other sessions that may have been resolved by this unschedule
+      if (originalSession.student_id && originalSession.provider_id && originalSession.day_of_week !== null) {
+        await this.clearStaleConflictsForStudent(
+          originalSession.student_id,
+          originalSession.provider_id,
+          originalSession.day_of_week
+        );
+      }
+
       return { success: true, session: updatedSession };
     } catch (error) {
       console.error('Unschedule session error:', error);
