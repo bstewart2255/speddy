@@ -29,8 +29,15 @@ export function ConflictFilterPanel({
   selectedFilters,
   onFilterChange,
 }: ConflictFilterPanelProps) {
-  // Get unique grade levels from bell schedules
-  const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level))).filter(Boolean).sort();
+  // Get unique grade levels from bell schedules, sorted in logical grade order (TK, K, 1, 2, 3...)
+  const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level)))
+    .filter(Boolean)
+    .sort((a, b) => {
+      const gradeOrder: Record<string, number> = { 'TK': 0, 'K': 1 };
+      const orderA = gradeOrder[a] ?? (parseInt(a, 10) + 2);
+      const orderB = gradeOrder[b] ?? (parseInt(b, 10) + 2);
+      return orderA - orderB;
+    });
   
   // Use teachers from the teachers table, with fallback to legacy teacher names
   const teachers = useMemo(() => {
@@ -175,10 +182,10 @@ export function ConflictFilterPanel({
               onChange={(e) => handleGradeChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option value="">All Grades</option>
+              <option value="">None</option>
               {gradeLevels.map((grade) => (
                 <option key={grade} value={grade}>
-                  {grade === 'K' ? 'Kindergarten' : `Grade ${grade}`}
+                  {grade === 'TK' ? 'Transitional Kindergarten' : grade === 'K' ? 'Kindergarten' : `Grade ${grade}`}
                 </option>
               ))}
             </select>
@@ -197,7 +204,7 @@ export function ConflictFilterPanel({
               onChange={(e) => handleTeacherChange(e.target.value || null)}
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
             >
-              <option value="">All Teachers</option>
+              <option value="">None</option>
               {teachers.map((teacher) => {
                 const grade = teacherGrades.get(teacher.id);
                 const displayName = formatTeacherName(teacher) || 'Unknown Teacher';
@@ -218,7 +225,7 @@ export function ConflictFilterPanel({
         <div className="mt-3 flex flex-wrap gap-2">
           {selectedFilters.bellScheduleGrade && (
             <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
-              Bell: {selectedFilters.bellScheduleGrade === 'K' ? 'Kindergarten' : `Grade ${selectedFilters.bellScheduleGrade}`}
+              Bell: {selectedFilters.bellScheduleGrade === 'TK' ? 'Transitional Kindergarten' : selectedFilters.bellScheduleGrade === 'K' ? 'Kindergarten' : `Grade ${selectedFilters.bellScheduleGrade}`}
             </span>
           )}
           {selectedFilters.specialActivityTeacher && (() => {

@@ -120,14 +120,16 @@ export function useScheduleData() {
           return query;
         })(),
         
-        // Bell schedules query - Using school_id
+        // Bell schedules query - School-level (bell schedules are school-wide resources)
         (() => {
           let query = supabase
             .from('bell_schedules')
-            .select('*')
-            .eq('provider_id', user.id);
+            .select('*');
           if (currentSchool.school_id) {
             query = query.eq('school_id', currentSchool.school_id);
+          } else {
+            // Legacy fallback for non-migrated schools
+            query = query.eq('provider_id', user.id);
           }
           return query;
         })(),
