@@ -1,15 +1,14 @@
--- Add RLS policy for site admins to view profiles at their school
--- This fixes issue #473: Site admin shows '0' providers
+-- Update site admin RLS policy to include secondary school associations
 -- This fixes issue #474: Site admin sees 'Unknown' for bell schedule creators
 --
--- Root cause: The existing RLS policy only allowed users to see their own profile,
--- and district admins could see profiles in their district. Site admins had no policy
--- to view profiles at their school.
---
--- This policy checks BOTH:
--- 1. Users whose primary school matches (profiles.school_id)
--- 2. Users who work at the school as secondary (via provider_schools table)
+-- The previous policy only checked profiles.school_id (primary school).
+-- This update also checks provider_schools for users who work at the school
+-- as a secondary assignment (e.g., Blair Stewart at Mt Diablo Elementary).
 
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Site admins can view profiles at their school" ON profiles;
+
+-- Create updated policy that checks both primary and secondary schools
 CREATE POLICY "Site admins can view profiles at their school"
 ON profiles
 FOR SELECT
