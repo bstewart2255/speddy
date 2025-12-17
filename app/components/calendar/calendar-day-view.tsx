@@ -56,6 +56,7 @@ export function CalendarDayView({
   const [warningModalOpen, setWarningModalOpen] = useState(false);
   const [groupingModalOpen, setGroupingModalOpen] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
+  const [selectedGroupColor, setSelectedGroupColor] = useState<number>(0);
   const [savingGroup, setSavingGroup] = useState(false);
 
   const supabase = useMemo(() => createClient<Database>(), []);
@@ -70,9 +71,13 @@ export function CalendarDayView({
     { border: 'border-l-4 border-pink-500', bg: 'bg-pink-50', badge: 'bg-pink-100 text-pink-700', badgeWithLesson: 'bg-pink-600 text-white' },
   ];
 
-  // Get color for a group (deterministic based on group_id)
-  const getGroupColor = (groupId: string) => {
-    // Use a simple hash of the group ID to pick a color
+  // Get color for a group (uses stored color if available, falls back to hash-based)
+  const getGroupColor = (groupId: string, storedColor?: number | null) => {
+    // Use stored color if available and valid
+    if (typeof storedColor === 'number' && storedColor >= 0 && storedColor < groupColors.length) {
+      return groupColors[storedColor];
+    }
+    // Fall back to hash-based color for backward compatibility
     const hash = groupId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return groupColors[hash % groupColors.length];
   };
@@ -517,7 +522,8 @@ export function CalendarDayView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionIds: templateIds,
-          groupName: groupNameInput.trim()
+          groupName: groupNameInput.trim(),
+          groupColor: selectedGroupColor
         })
       });
 
@@ -563,6 +569,7 @@ export function CalendarDayView({
       setGroupingModalOpen(false);
       setSelectedSessionIds(new Set());
       setGroupNameInput('');
+      setSelectedGroupColor(0);
     } catch (error) {
       log.error('Error creating group', {
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -814,7 +821,7 @@ export function CalendarDayView({
                   .map((session) => {
                     const student = session.student_id ? allStudents.get(session.student_id) : undefined;
                     const isGrouped = !!session.group_id;
-                    const groupColor = isGrouped ? getGroupColor(session.group_id as string) : null;
+                    const groupColor = isGrouped ? getGroupColor(session.group_id as string, (session as any).group_color) : null;
 
                     return (
                       <div
@@ -994,11 +1001,39 @@ export function CalendarDayView({
               placeholder="e.g., Morning Reading Group"
               autoFocus
             />
+
+            {/* Color Picker */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Group Color
+              </label>
+              <div className="flex gap-2">
+                {groupColors.map((color, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setSelectedGroupColor(index)}
+                    className={cn(
+                      "w-10 h-10 rounded-full border-2 transition-all",
+                      color.bg,
+                      selectedGroupColor === index
+                        ? "ring-2 ring-offset-2 ring-gray-400 border-gray-400"
+                        : "border-transparent hover:scale-110"
+                    )}
+                    title={['Blue', 'Green', 'Purple', 'Orange', 'Pink'][index]}
+                  >
+                    <span className={cn("block w-full h-full rounded-full", color.border.replace('border-l-4', ''))} />
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => {
                   setGroupingModalOpen(false);
                   setGroupNameInput('');
+                  setSelectedGroupColor(0);
                 }}
                 disabled={savingGroup}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50"

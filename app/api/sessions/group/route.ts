@@ -13,7 +13,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const supabase = await createClient();
     const body = await request.json();
 
-    const { sessionIds, groupName, groupId } = body;
+    const { sessionIds, groupName, groupId, groupColor } = body;
 
     // Validate required fields
     if (!Array.isArray(sessionIds) || sessionIds.length < 2) {
@@ -31,6 +31,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         { status: 400 }
       );
     }
+
+    // Validate group color if provided (must be 0-4)
+    const validatedGroupColor = typeof groupColor === 'number' && groupColor >= 0 && groupColor <= 4
+      ? groupColor
+      : null;
 
     // Generate a new group ID if not provided, or use the provided one
     const finalGroupId = groupId || crypto.randomUUID();
@@ -126,6 +131,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       .update({
         group_id: finalGroupId,
         group_name: groupName.trim(),
+        group_color: validatedGroupColor,
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
@@ -164,6 +170,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .update({
             group_id: finalGroupId,
             group_name: groupName.trim(),
+            group_color: validatedGroupColor,
             updated_at: new Date().toISOString()
           })
           .eq('student_id', template.student_id)
