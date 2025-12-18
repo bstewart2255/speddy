@@ -4,7 +4,6 @@ import { WorkScheduleSettings } from '../../../components/settings/work-schedule
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { TeamWidget } from '../../../components/team-widget';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
 
 export default function SettingsPage() {
@@ -85,9 +84,6 @@ export default function SettingsPage() {
 
           {/* Curriculums Settings */}
           <CurriculumsSettings />
-
-          {/* Team Information */}
-          <TeamWidget />
         </div>
       </div>
     </div>
