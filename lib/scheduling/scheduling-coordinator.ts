@@ -604,6 +604,7 @@ export class SchedulingCoordinator {
         outside_schedule_conflict: session.outside_schedule_conflict || false,
         group_id: session.group_id || null,
         group_name: session.group_name || null,
+        group_color: session.group_color || null,
         status: session.status || 'active',
         has_conflict: session.has_conflict || false,
         conflict_reason: session.conflict_reason || null

@@ -737,6 +737,7 @@ export class OptimizedScheduler {
         outside_schedule_conflict: false,
         group_id: null,
         group_name: null,
+        group_color: null,
         status: 'active' as const,
         has_conflict: false,
         conflict_reason: null
@@ -1231,6 +1232,7 @@ export class OptimizedScheduler {
         outside_schedule_conflict: session.outside_schedule_conflict || false,
         group_id: session.group_id || null,
         group_name: session.group_name || null,
+        group_color: session.group_color || null,
         status: session.status || 'active',
         has_conflict: session.has_conflict || false,
         conflict_reason: session.conflict_reason || null

@@ -510,6 +510,7 @@ export class SchedulingEngine {
       outside_schedule_conflict: false,
       group_id: null,
       group_name: null,
+      group_color: null,
       status: 'active' as const,
       has_conflict: false,
       conflict_reason: null
