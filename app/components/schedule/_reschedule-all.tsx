@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
+import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
 
 interface RescheduleAllProps {
@@ -96,12 +97,14 @@ Continue?`;
   };
 
   return (
-    <Button
-      onClick={handleRescheduleAll}
-      disabled={isProcessing}
-      variant="primary"
-    >
-      {isProcessing ? 'Rescheduling...' : 'Re-schedule All Sessions'}
-    </Button>
+    <LongHoverTooltip content="Clear the entire schedule and rebuild from scratch using the auto-scheduler. Warning: This cannot be undone.">
+      <Button
+        onClick={handleRescheduleAll}
+        disabled={isProcessing}
+        variant="primary"
+      >
+        {isProcessing ? 'Rescheduling...' : 'Re-schedule All Sessions'}
+      </Button>
+    </LongHoverTooltip>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '../../../components/ui/button';
+import { LongHoverTooltip } from '../../../components/ui/long-hover-tooltip';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableActionCell } from '../../../components/ui/table';
 import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
@@ -313,36 +314,42 @@ export default function StudentsPage() {
           </div>
           {!isViewOnly && (
             <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowImportSection(!showImportSection);
-                  setShowAddForm(false);
-                }}
-              >
-                Import CSV
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setShowFileUploadModal(true)}
-              >
-                File Upload
-              </Button>
+              <LongHoverTooltip content="Import multiple students at once from a CSV file. Download the template first to ensure correct formatting.">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowImportSection(!showImportSection);
+                    setShowAddForm(false);
+                  }}
+                >
+                  Import CSV
+                </Button>
+              </LongHoverTooltip>
+              <LongHoverTooltip content="Upload student data files using the guided import wizard. Supports various file formats.">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowFileUploadModal(true)}
+                >
+                  File Upload
+                </Button>
+              </LongHoverTooltip>
               <div className="hidden">
                 <AIUploadButton
                   uploadType="students"
                   onSuccess={fetchStudents}
                 />
               </div>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setShowAddForm(true);
-                  setShowImportSection(false);
-                }}
-              >
-                + Add Student
-              </Button>
+              <LongHoverTooltip content="Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.">
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setShowAddForm(true);
+                    setShowImportSection(false);
+                  }}
+                >
+                  + Add Student
+                </Button>
+              </LongHoverTooltip>
             </div>
           )}
         </div>
@@ -698,20 +705,24 @@ export default function StudentsPage() {
                             </>
                           ) : (
                             <>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleEdit(student)}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => handleDelete(student.id, student.initials)}
-                              >
-                                Delete
-                              </Button>
+                              <LongHoverTooltip content="Edit this student's information including name, grade, teacher assignment, and service details.">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleEdit(student)}
+                                >
+                                  Edit
+                                </Button>
+                              </LongHoverTooltip>
+                              <LongHoverTooltip content="Permanently remove this student from your caseload. This action cannot be undone and will delete all associated sessions.">
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => handleDelete(student.id, student.initials)}
+                                >
+                                  Delete
+                                </Button>
+                              </LongHoverTooltip>
                             </>
                           )}
                         </>

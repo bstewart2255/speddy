@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
+import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 interface Profile {
   full_name: string;
   role: string;
@@ -82,13 +83,15 @@ export default function UserProfileDropdown({ user }: { user: User }) {
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Profile Icon Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        aria-label="User menu"
-      >
-        <span className="text-sm font-medium">{getInitials()}</span>
-      </button>
+      <LongHoverTooltip content="Access your account settings, preferences, and sign out option.">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          aria-label="User menu"
+        >
+          <span className="text-sm font-medium">{getInitials()}</span>
+        </button>
+      </LongHoverTooltip>
 
       {/* Dropdown Menu */}
       {isOpen && (

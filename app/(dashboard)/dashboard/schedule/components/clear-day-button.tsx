@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { TrashIcon } from '@heroicons/react/24/outline';
+import { LongHoverTooltip } from '../../../../components/ui/long-hover-tooltip';
 
 interface ClearDayButtonProps {
   day: number;
@@ -68,14 +69,15 @@ export function ClearDayButton({
   }
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={disabled}
-      className="px-2 py-1 text-xs bg-red-50 text-red-700 hover:bg-red-100 rounded flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      title={`Clear all ${sessionCount} sessions from ${dayName}`}
-    >
-      <TrashIcon className="w-3 h-3" />
-      Clear ({sessionCount})
-    </button>
+    <LongHoverTooltip content="Remove all sessions from this day. Sessions will return to the unscheduled pool and can be rescheduled later.">
+      <button
+        onClick={handleClick}
+        disabled={disabled}
+        className="px-2 py-1 text-xs bg-red-50 text-red-700 hover:bg-red-100 rounded flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <TrashIcon className="w-3 h-3" />
+        Clear ({sessionCount})
+      </button>
+    </LongHoverTooltip>
   );
 }
