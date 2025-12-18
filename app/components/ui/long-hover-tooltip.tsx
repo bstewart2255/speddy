@@ -1,11 +1,18 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  cloneElement,
+  isValidElement,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 interface LongHoverTooltipProps {
   content: string;
-  children: React.ReactNode;
+  children: React.ReactElement;
   delay?: number; // in milliseconds, default 5000 (5 seconds)
   position?: 'top' | 'bottom' | 'auto';
   maxWidth?: number;
@@ -22,8 +29,7 @@ export function LongHoverTooltip({
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const [actualPosition, setActualPosition] = useState<'top' | 'bottom'>('top');
   const [mounted, setMounted] = useState(false);
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -75,20 +81,36 @@ export function LongHoverTooltip({
     setActualPosition(finalPosition);
   }, [position, maxWidth]);
 
-  const handleMouseEnter = useCallback(() => {
-    timeoutRef.current = setTimeout(() => {
-      calculatePosition();
-      setIsVisible(true);
-    }, delay);
-  }, [delay, calculatePosition]);
+  const handleMouseEnter = useCallback(
+    (e: React.MouseEvent) => {
+      // Call original onMouseEnter if it exists
+      const childProps = children.props as Record<string, unknown>;
+      const originalHandler = childProps.onMouseEnter as ((e: React.MouseEvent) => void) | undefined;
+      if (originalHandler) originalHandler(e);
 
-  const handleMouseLeave = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    setIsVisible(false);
-  }, []);
+      timeoutRef.current = setTimeout(() => {
+        calculatePosition();
+        setIsVisible(true);
+      }, delay);
+    },
+    [delay, calculatePosition, children]
+  );
+
+  const handleMouseLeave = useCallback(
+    (e: React.MouseEvent) => {
+      // Call original onMouseLeave if it exists
+      const childProps = children.props as Record<string, unknown>;
+      const originalHandler = childProps.onMouseLeave as ((e: React.MouseEvent) => void) | undefined;
+      if (originalHandler) originalHandler(e);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setIsVisible(false);
+    },
+    [children]
+  );
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -113,48 +135,63 @@ export function LongHoverTooltip({
     };
   }, [isVisible, calculatePosition]);
 
-  const tooltipElement = isVisible && mounted ? (
-    <div
-      ref={tooltipRef}
-      role="tooltip"
-      className={`
-        fixed z-[1150] px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg
-        transition-opacity duration-200
-        ${isVisible ? 'opacity-100' : 'opacity-0'}
-      `}
-      style={{
-        top: actualPosition === 'top' ? coords.top : coords.top,
-        left: coords.left,
-        transform: `translate(-50%, ${actualPosition === 'top' ? '-100%' : '0'})`,
-        maxWidth: `${maxWidth}px`,
-        pointerEvents: 'none',
-      }}
-    >
-      {/* Arrow */}
+  const tooltipElement =
+    isVisible && mounted ? (
       <div
-        className={`
+        role="tooltip"
+        className="fixed z-[1150] px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg"
+        style={{
+          top: coords.top,
+          left: coords.left,
+          transform: `translate(-50%, ${actualPosition === 'top' ? '-100%' : '0'})`,
+          maxWidth: `${maxWidth}px`,
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Arrow */}
+        <div
+          className={`
           absolute left-1/2 -translate-x-1/2 w-0 h-0
           border-l-[6px] border-l-transparent
           border-r-[6px] border-r-transparent
-          ${actualPosition === 'top'
-            ? 'bottom-0 translate-y-full border-t-[6px] border-t-gray-900'
-            : 'top-0 -translate-y-full border-b-[6px] border-b-gray-900'
+          ${
+            actualPosition === 'top'
+              ? 'bottom-0 translate-y-full border-t-[6px] border-t-gray-900'
+              : 'top-0 -translate-y-full border-b-[6px] border-b-gray-900'
           }
         `}
-      />
-      {content}
-    </div>
-  ) : null;
+        />
+        {content}
+      </div>
+    ) : null;
+
+  // Clone the child element and attach our handlers + ref
+  if (!isValidElement(children)) {
+    return <>{children}</>;
+  }
+
+  const clonedChild = cloneElement(children, {
+    ref: (node: HTMLElement | null) => {
+      triggerRef.current = node;
+      // Forward ref if the child has one
+      const childRef = (children as React.ReactElement & { ref?: React.Ref<HTMLElement> }).ref;
+      if (typeof childRef === 'function') {
+        childRef(node);
+      } else if (childRef && typeof childRef === 'object') {
+        (childRef as React.MutableRefObject<HTMLElement | null>).current = node;
+      }
+    },
+    onMouseEnter: handleMouseEnter,
+    onMouseLeave: handleMouseLeave,
+  } as Partial<unknown>);
 
   return (
-    <div
-      ref={triggerRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className="inline-block"
-    >
-      {children}
-      {mounted && typeof document !== 'undefined' && tooltipElement && createPortal(tooltipElement, document.body)}
-    </div>
+    <>
+      {clonedChild}
+      {mounted &&
+        typeof document !== 'undefined' &&
+        tooltipElement &&
+        createPortal(tooltipElement, document.body)}
+    </>
   );
 }
