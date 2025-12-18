@@ -13,7 +13,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 | Auto-Schedule Sessions | `schedule-header.tsx`  | Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. This process may take a few moments. |
 | Undo Schedule          | `undo-schedule.tsx`    | Revert the last scheduling action. This will restore sessions to their previous state before the most recent auto-schedule or manual change.   |
 | Clear Day              | `clear-day-button.tsx` | Remove all sessions from this day. Sessions will return to the unscheduled pool and can be rescheduled later.                                  |
-| Re-schedule All        | `_reschedule-all.tsx`  | Clear the entire schedule and rebuild from scratch using the auto-scheduler. Warning: This cannot be undone.                                   |
+| Re-schedule All        | `_reschedule-all.tsx`  | Clear the entire schedule and rebuild from scratch using the auto-scheduler. You can undo this action if needed.                               |
 | Export Schedule        | `export-pdf.tsx`       | Download your schedule as a text file. Choose to export all sessions or filter by provider type.                                               |
 
 ### Filters
@@ -54,7 +54,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 | Button         | File                      | Tooltip                                                                                                                |
 | -------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Reset Password | `admin/teachers/page.tsx` | Reset a teacher's password by generating a new one. Then share the new one with them so they can access their account. |
-| Delete Teacher | `admin/teachers/page.tsx` | Remove this teacher from the system. Note: Teachers with active accounts can not deleted.                              |
+| Delete Teacher | `admin/teachers/page.tsx` | Remove this teacher from the system. Note: Teachers with active accounts cannot be deleted.                            |
 
 ---
 

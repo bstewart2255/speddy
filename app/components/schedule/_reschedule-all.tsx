@@ -97,7 +97,7 @@ Continue?`;
   };
 
   return (
-    <LongHoverTooltip content="Clear the entire schedule and rebuild from scratch using the auto-scheduler. Warning: This cannot be undone.">
+    <LongHoverTooltip content="Clear the entire schedule and rebuild from scratch using the auto-scheduler. You can undo this action if needed.">
       <Button
         onClick={handleRescheduleAll}
         disabled={isProcessing}
