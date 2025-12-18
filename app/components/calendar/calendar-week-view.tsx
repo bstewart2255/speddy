@@ -22,6 +22,8 @@ import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { Printer } from "lucide-react";
+import { LongHoverTooltip } from '../ui/long-hover-tooltip';
+import { exportWeekToPDF } from '@/lib/utils/export-week-to-pdf';
 import { SessionWithCurriculum } from '@/lib/services/session-generator';
 import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
 
@@ -41,7 +43,6 @@ interface CalendarWeekViewProps {
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
-  onExportPDF?: () => void;
 }
 
 
@@ -50,11 +51,10 @@ export function CalendarWeekView({
   students,
   onSessionClick,
   weekOffset = 0,
-  holidays = [], // Add holiday feature
+  holidays = [],
   calendarEvents = [],
   onAddEvent,
   onEventClick,
-  onExportPDF
   }: CalendarWeekViewProps) {
   // Get school context for filtering lessons
   const { currentSchool } = useSchool();
@@ -1236,6 +1236,21 @@ export function CalendarWeekView({
     handleViewAllAILessons(date);
   };
 
+  // Handle printing the week schedule
+  const handlePrintWeek = () => {
+    // Convert students Map to array with id for the export function
+    const studentsArray = Array.from(students.entries()).map(([id, student]) => ({
+      id,
+      initials: student.initials,
+    }));
+
+    exportWeekToPDF({
+      sessions: sessionsState, // Use filtered sessions from current view
+      students: studentsArray,
+      weekDates,
+    });
+  };
+
   // Handle deleting all lessons for a day (entire day only as per requirements)
   const handleDeleteDailyLessons = async (date: Date) => {
     if (!confirm('Are you sure you want to delete all lessons for this day?')) {
@@ -1882,29 +1897,29 @@ export function CalendarWeekView({
               Assigned to Me
             </button>
           </div>
-          {onExportPDF && (
+          <LongHoverTooltip content="Print your weekly schedule as a one-page view. Opens a print dialog where you can save as PDF or send to printer.">
             <button
-              onClick={onExportPDF}
+              onClick={handlePrintWeek}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              title="Export Week to PDF"
             >
               <Printer className="w-4 h-4" />
-              <span className="text-sm font-medium">Export PDF</span>
+              <span className="text-sm font-medium">Print Week</span>
             </button>
-          )}
+          </LongHoverTooltip>
         </div>
       )}
       {/* For SEA users, show the export button on its own row */}
-      {userProfile?.role === 'sea' && onExportPDF && (
+      {userProfile?.role === 'sea' && (
         <div className="mb-4 flex justify-end">
-          <button
-            onClick={onExportPDF}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            title="Export Week to PDF"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="text-sm font-medium">Export PDF</span>
-          </button>
+          <LongHoverTooltip content="Print your weekly schedule as a one-page view. Opens a print dialog where you can save as PDF or send to printer.">
+            <button
+              onClick={handlePrintWeek}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="text-sm font-medium">Print Week</span>
+            </button>
+          </LongHoverTooltip>
         </div>
       )}
 
