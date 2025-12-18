@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
 import { Button } from '../ui/button';
+import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
 import { ManualPlacementModal } from './manual-placement-modal';
 
@@ -209,15 +210,16 @@ Continue?`;
 
   return (
     <>
-      <Button
-        onClick={handleScheduleSessions}
-        disabled={isProcessing || (unscheduledCount === 0 && unscheduledPanelCount === 0)}
-        variant={(unscheduledCount > 0 || unscheduledPanelCount > 0) ? "primary" : "secondary"}
-        className={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "opacity-50 cursor-not-allowed" : ""}
-        title={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "No unscheduled sessions" : `Schedule ${unscheduledCount} unscheduled session${unscheduledCount !== 1 ? 's' : ''}`}
-      >
-        {isProcessing ? 'Scheduling...' : 'Auto-Schedule Sessions'}
-      </Button>
+      <LongHoverTooltip content="Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. This process may take a few moments.">
+        <Button
+          onClick={handleScheduleSessions}
+          disabled={isProcessing || (unscheduledCount === 0 && unscheduledPanelCount === 0)}
+          variant={(unscheduledCount > 0 || unscheduledPanelCount > 0) ? "primary" : "secondary"}
+          className={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "opacity-50 cursor-not-allowed" : ""}
+        >
+          {isProcessing ? 'Scheduling...' : 'Auto-Schedule Sessions'}
+        </Button>
+      </LongHoverTooltip>
 
       {isProcessing && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

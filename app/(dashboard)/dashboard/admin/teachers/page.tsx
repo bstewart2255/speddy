@@ -5,6 +5,7 @@ import { getTeachersWithStudentCount, formatTeacherName } from '@/lib/supabase/q
 import { deleteTeacher } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 
 type TeacherWithCount = NonNullable<Awaited<ReturnType<typeof getTeachersWithStudentCount>>>[number];
@@ -267,31 +268,33 @@ export default function TeacherDirectoryPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
                     {teacher.account_id && (
+                      <LongHoverTooltip content="Reset a teacher's password by generating a new one. Then share the new one with them so they can access their account.">
+                        <button
+                          onClick={() => handleResetPassword(teacher.account_id!, formatTeacherName(teacher))}
+                          disabled={resettingId === teacher.account_id}
+                          className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
+                        >
+                          {resettingId === teacher.account_id ? (
+                            <span className="inline-block animate-spin">⏳</span>
+                          ) : (
+                            'Reset Password'
+                          )}
+                        </button>
+                      </LongHoverTooltip>
+                    )}
+                    <LongHoverTooltip content="Remove this teacher from the system. Note: Teachers with active accounts cannot be deleted.">
                       <button
-                        onClick={() => handleResetPassword(teacher.account_id!, formatTeacherName(teacher))}
-                        disabled={resettingId === teacher.account_id}
-                        className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
-                        title="Reset password for this teacher"
+                        onClick={() => handleDelete(teacher.id, formatTeacherName(teacher))}
+                        disabled={!!teacher.account_id || deletingId === teacher.id}
+                        className="text-red-600 hover:text-red-900 disabled:text-gray-400 disabled:cursor-not-allowed"
                       >
-                        {resettingId === teacher.account_id ? (
+                        {deletingId === teacher.id ? (
                           <span className="inline-block animate-spin">⏳</span>
                         ) : (
-                          'Reset Password'
+                          'Delete'
                         )}
                       </button>
-                    )}
-                    <button
-                      onClick={() => handleDelete(teacher.id, formatTeacherName(teacher))}
-                      disabled={!!teacher.account_id || deletingId === teacher.id}
-                      className="text-red-600 hover:text-red-900 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      title={teacher.account_id ? 'Cannot delete teacher with active account' : 'Delete teacher'}
-                    >
-                      {deletingId === teacher.id ? (
-                        <span className="inline-block animate-spin">⏳</span>
-                      ) : (
-                        'Delete'
-                      )}
-                    </button>
+                    </LongHoverTooltip>
                   </td>
                 </tr>
               ))}

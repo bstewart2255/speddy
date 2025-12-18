@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getCurrentAdminPermissions, getSchoolStaff } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 
 type Provider = {
@@ -158,15 +159,17 @@ export default function ProviderDirectoryPage() {
               View providers and specialists at your school
             </p>
           </div>
-          <Link
-            href="/dashboard/admin/create-account"
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Provider
-          </Link>
+          <LongHoverTooltip content="Create a new provider account. A password will be generated that you can share with them.">
+            <Link
+              href="/dashboard/admin/create-account"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Provider
+            </Link>
+          </LongHoverTooltip>
         </div>
       </div>
 
@@ -259,18 +262,19 @@ export default function ProviderDirectoryPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleResetPassword(provider.id, provider.full_name || 'this provider')}
-                      disabled={resettingId === provider.id}
-                      className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
-                      title="Reset password for this provider"
-                    >
-                      {resettingId === provider.id ? (
-                        <span className="inline-block animate-spin">⏳</span>
-                      ) : (
-                        'Reset Password'
-                      )}
-                    </button>
+                    <LongHoverTooltip content="Reset the password of a provider. You can share the new password with them after it's been generated.">
+                      <button
+                        onClick={() => handleResetPassword(provider.id, provider.full_name || 'this provider')}
+                        disabled={resettingId === provider.id}
+                        className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
+                      >
+                        {resettingId === provider.id ? (
+                          <span className="inline-block animate-spin">⏳</span>
+                        ) : (
+                          'Reset Password'
+                        )}
+                      </button>
+                    </LongHoverTooltip>
                   </td>
                 </tr>
               ))}

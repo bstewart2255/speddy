@@ -2,6 +2,7 @@
 
 import { useSchool } from './providers/school-context';
 import { useState, useRef, useEffect } from 'react';
+import { LongHoverTooltip } from './ui/long-hover-tooltip';
 
 // Helper component for individual school option
 function SchoolOption({ 
@@ -69,20 +70,22 @@ export function SchoolSwitcher() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        <span className="font-semibold">{currentSchool.school_site}</span>
-        <svg 
-          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
+      <LongHoverTooltip content="Switch between schools if you work at multiple locations. Your primary school is marked with a badge.">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <span className="font-semibold">{currentSchool.school_site}</span>
+          <svg
+            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </LongHoverTooltip>
 
       {isOpen && (
         <div className="absolute right-0 z-50 mt-2 w-72 bg-white rounded-md shadow-lg border border-gray-200">

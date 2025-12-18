@@ -67,7 +67,8 @@
       "Bash(gh pr checks:*)",
       "Bash(git pull:*)",
       "Bash(git branch:*)",
-      "mcp__supabase__generate_typescript_types"
+      "mcp__supabase__generate_typescript_types",
+      "Bash(xargs:*)"
     ],
     "deny": []
   },
