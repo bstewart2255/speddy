@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -143,8 +143,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use service client for database operations (bypasses RLS since we've verified access above)
+    // This avoids potential RLS context issues with server-side auth
+    const serviceClient = createServiceClient();
+
     // Check if curriculum tracking already exists for this session
-    const { data: existing } = await supabase
+    const { data: existing } = await serviceClient
       .from('curriculum_tracking')
       .select('*')
       .eq('session_id', sessionId)
@@ -154,10 +158,19 @@ export async function POST(request: NextRequest) {
     let data;
     let error;
 
+    log.info('Attempting to save curriculum tracking', {
+      userId,
+      sessionId,
+      curriculumType,
+      curriculumLevel,
+      currentLesson,
+      hasExisting: !!existing
+    });
+
     if (existing) {
       // Update existing curriculum tracking
       const updatePerf = measurePerformanceWithAlerts('update_curriculum_tracking_db', 'database');
-      const result = await supabase
+      const result = await serviceClient
         .from('curriculum_tracking')
         .update({
           curriculum_level: curriculumLevel,
@@ -170,10 +183,19 @@ export async function POST(request: NextRequest) {
       updatePerf.end({ success: !result.error });
       data = result.data;
       error = result.error;
+
+      log.info('Update result', {
+        userId,
+        sessionId,
+        existingId: existing.id,
+        hasData: !!data,
+        hasError: !!error,
+        errorMessage: error?.message
+      });
     } else {
       // Create new curriculum tracking
       const createPerf = measurePerformanceWithAlerts('create_curriculum_tracking_db', 'database');
-      const result = await supabase
+      const result = await serviceClient
         .from('curriculum_tracking')
         .insert({
           session_id: sessionId,
@@ -186,16 +208,44 @@ export async function POST(request: NextRequest) {
       createPerf.end({ success: !result.error });
       data = result.data;
       error = result.error;
+
+      log.info('Insert result', {
+        userId,
+        sessionId,
+        hasData: !!data,
+        dataId: data?.id,
+        hasError: !!error,
+        errorMessage: error?.message,
+        errorCode: error?.code,
+        errorDetails: error?.details
+      });
     }
 
     if (error) {
       log.error('Error saving curriculum tracking', error, {
         userId,
-        sessionId
+        sessionId,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorDetails: error.details
       });
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'Failed to save curriculum tracking' },
+        { error: 'Failed to save curriculum tracking', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    // Additional check: if no data was returned, something went wrong
+    if (!data) {
+      log.error('No data returned from curriculum tracking save', {
+        userId,
+        sessionId,
+        isUpdate: !!existing
+      });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'Curriculum tracking save returned no data' },
         { status: 500 }
       );
     }

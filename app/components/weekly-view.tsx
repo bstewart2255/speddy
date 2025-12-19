@@ -91,6 +91,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   }>>({});
   const [loading, setLoading] = React.useState(true);
   const [showToggle, setShowToggle] = useState<boolean>(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const triggerRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
@@ -100,6 +102,19 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedGroupName, setSelectedGroupName] = useState<string>('');
   const [selectedGroupSessions, setSelectedGroupSessions] = useState<SessionWithCurriculum[]>([]);
+
+  // Keep selectedGroupSessions in sync with main sessions when data refreshes
+  useEffect(() => {
+    if (selectedGroupId && groupModalOpen) {
+      const updatedGroupSessions = sessions.filter(s => s.group_id === selectedGroupId);
+      // Deduplicate by session ID to prevent accumulation bugs
+      const uniqueSessions = Array.from(
+        new Map(updatedGroupSessions.map(s => [s.id, s])).values()
+      );
+      // Always update state to clear stale data when no sessions match
+      setSelectedGroupSessions(uniqueSessions);
+    }
+  }, [sessions, selectedGroupId, groupModalOpen]);
 
   const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionWithCurriculum | null>(null);
@@ -388,7 +403,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools, sessionGenerator]); // Re-run when viewMode, weekStart, or school changes
+  }, [viewMode, weekStart, currentSchool, worksAtMultipleSchools, sessionGenerator, refreshKey]); // Re-run when viewMode, weekStart, school, or refreshKey changes
 
   // Helper functions
   const getDayIndex = (session: any): number => {
@@ -989,6 +1004,7 @@ return (
             const sessionWithCurriculum = selectedGroupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
             return sessionWithCurriculum ? getFirstCurriculum(sessionWithCurriculum.curriculum_tracking) : null;
           })()}
+          onUpdate={triggerRefresh}
         />
       )}
 
