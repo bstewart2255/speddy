@@ -14,7 +14,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 | Undo Schedule          | `undo-schedule.tsx`    | Revert the last scheduling action. This will restore sessions to their previous state before the most recent auto-schedule or manual change.   |
 | Clear Day              | `clear-day-button.tsx` | Remove all sessions from this day. Sessions will return to the unscheduled pool and can be rescheduled later.                                  |
 | Re-schedule All        | `_reschedule-all.tsx`  | Clear the entire schedule and rebuild from scratch using the auto-scheduler. You can undo this action if needed.                               |
-| Export Schedule        | `export-pdf.tsx`       | Download your schedule as a text file. Choose to export all sessions or filter by provider type.                                               |
+| Print Week             | `export-pdf.tsx`       | Print your weekly schedule as a one-page view. Opens a print dialog where you can save as PDF or send to printer.                              |
 
 ### Filters
 

@@ -9,7 +9,6 @@ import { CalendarMonthView } from "../../../components/calendar/calendar-month-v
 import { CalendarEventModal } from "../../../components/calendar/calendar-event-modal";
 import { useSchool } from "../../../components/providers/school-context";
 import { ToastProvider } from "../../../contexts/toast-context";
-import { exportWeekToPDF } from "@/lib/utils/export-week-to-pdf";
 import type { Database } from "../../../../src/types/database";
 import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
@@ -366,37 +365,6 @@ export default function CalendarPage() {
     setCurrentView('week');
   };
 
-  const handleExportWeekToPDF = () => {
-    // Calculate the week dates based on weekOffset
-    const today = new Date();
-    today.setDate(today.getDate() + (weekOffset * 7));
-
-    const currentDay = today.getDay();
-    const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust for Monday start
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diff);
-
-    const weekDates: Date[] = [];
-    for (let i = 0; i < 5; i++) {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + i);
-      weekDates.push(date);
-    }
-
-    // Filter sessions to only include the current week
-    const weekSessions = sessions.filter((session) => {
-      if (!session.day_of_week) return false;
-      return session.day_of_week >= 1 && session.day_of_week <= 5;
-    });
-
-    // Export to PDF
-    exportWeekToPDF({
-      sessions: weekSessions,
-      students,
-      weekDates
-    });
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -547,7 +515,6 @@ export default function CalendarPage() {
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
-                  onExportPDF={handleExportWeekToPDF}
                 />
               </ToastProvider>
             )}

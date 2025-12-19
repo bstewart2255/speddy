@@ -1,34 +1,37 @@
-interface Student {
-  initials: string;
-  grade_level?: string;
-}
+import { ScheduleSession } from '../../src/types/database';
+import { filterScheduledSessions } from './session-helpers';
 
-interface Session {
+// Minimal student interface - just what we need for the export
+interface StudentForExport {
   id: string;
-  student_id: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  day_of_week: number | null;
-  group_id: string | null;
-  group_name: string | null;
+  initials: string;
 }
 
-interface WeekData {
-  sessions: Session[];
-  students: Map<string, Student>;
+interface WeekExportData {
+  sessions: ScheduleSession[];
+  students: StudentForExport[];
   weekDates: Date[]; // Array of 5 dates (Monday-Friday)
 }
 
-export function exportWeekToPDF(data: WeekData) {
+export function exportWeekToPDF(data: WeekExportData) {
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+  // Create students map for quick lookup
+  const studentsMap = new Map<string, StudentForExport>();
+  data.students.forEach(student => {
+    studentsMap.set(student.id, student);
+  });
+
+  // Filter for only scheduled sessions
+  const scheduledSessions = filterScheduledSessions(data.sessions);
+
   // Group sessions by day
-  const sessionsByDay: Map<number, Session[]> = new Map();
+  const sessionsByDay: Map<number, ScheduleSession[]> = new Map();
   for (let i = 1; i <= 5; i++) {
     sessionsByDay.set(i, []);
   }
 
-  data.sessions.forEach(session => {
+  scheduledSessions.forEach(session => {
     if (session.day_of_week && session.start_time && session.end_time) {
       const daySessions = sessionsByDay.get(session.day_of_week) || [];
       daySessions.push(session);
@@ -44,17 +47,26 @@ export function exportWeekToPDF(data: WeekData) {
     });
   });
 
+  // Format week header
+  const formatDateShort = (date: Date) => {
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  const weekHeader = data.weekDates.length >= 5
+    ? `${formatDateShort(data.weekDates[0])} - ${formatDateShort(data.weekDates[4])}`
+    : 'Week Schedule';
+
   // Generate HTML for printing
   const printContent = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Week Schedule - ${new Date().toLocaleDateString()}</title>
+      <title>Week Schedule</title>
       <style>
         @media print {
           @page {
             size: landscape;
-            margin: 0.4in;
+            margin: 0.5in;
           }
           body {
             margin: 0;
@@ -62,159 +74,153 @@ export function exportWeekToPDF(data: WeekData) {
           }
         }
 
+        * {
+          box-sizing: border-box;
+        }
+
         body {
-          font-family: Arial, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           padding: 20px;
+          margin: 0;
         }
 
         h1 {
           text-align: center;
-          margin: 0 0 12px 0;
-          font-size: 18px;
+          margin: 0 0 16px 0;
+          font-size: 20px;
+          font-weight: 600;
         }
 
         .week-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
           gap: 8px;
-          margin-bottom: 10px;
+          height: calc(100vh - 80px);
         }
 
         .day-column {
-          border: 1px solid #333;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .day-header {
-          background-color: #f0f0f0;
-          padding: 6px;
+          background-color: #f3f4f6;
+          padding: 8px;
           text-align: center;
-          font-weight: bold;
-          border-bottom: 2px solid #333;
-          font-size: 12px;
+          font-weight: 600;
+          font-size: 13px;
+          border-bottom: 1px solid #d1d5db;
+          flex-shrink: 0;
+        }
+
+        .day-date {
+          font-size: 11px;
+          font-weight: 400;
+          color: #6b7280;
         }
 
         .day-content {
-          padding: 6px;
+          padding: 8px;
+          flex: 1;
+          overflow-y: auto;
         }
 
         .session-item {
-          margin-bottom: 5px;
-          page-break-inside: avoid;
+          margin-bottom: 8px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .session-item:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+          padding-bottom: 0;
         }
 
         .session-time {
-          font-weight: bold;
-          font-size: 10px;
-          color: #333;
+          font-size: 11px;
+          color: #6b7280;
+          margin-bottom: 2px;
         }
 
         .session-student {
-          font-size: 11px;
-          margin-top: 2px;
-        }
-
-        .group-session {
-          background-color: #f5f5f5;
-          padding: 4px;
-          border-radius: 4px;
-          margin-bottom: 5px;
-          page-break-inside: avoid;
-        }
-
-        .group-name {
-          font-size: 11px;
-          margin-top: 2px;
-        }
-
-        .group-students {
-          font-size: 10px;
-          color: #666;
-          margin-top: 2px;
+          font-size: 13px;
+          font-weight: 500;
         }
 
         .no-sessions {
-          color: #999;
+          color: #9ca3af;
           text-align: center;
-          padding: 20px;
-          font-size: 11px;
-        }
-
-        .footer {
-          text-align: center;
-          color: #666;
-          font-size: 10px;
-          margin-top: 10px;
+          padding: 20px 8px;
+          font-size: 12px;
         }
       </style>
     </head>
     <body>
-      <h1>Week Schedule</h1>
+      <h1>Week of ${weekHeader}</h1>
       <div class="week-grid">
         ${dayNames.map((dayName, index) => {
           const dayOfWeek = index + 1;
           const daySessions = sessionsByDay.get(dayOfWeek) || [];
+          const dayDate = data.weekDates[index];
 
-          // Group sessions by time slot
-          const timeSlotGroups = new Map<string, Session[]>();
-          daySessions.forEach(session => {
-            if (!session.start_time || !session.end_time) return;
-            const timeSlot = `${session.start_time.substring(0, 5)}-${session.end_time.substring(0, 5)}`;
-            if (!timeSlotGroups.has(timeSlot)) {
-              timeSlotGroups.set(timeSlot, []);
-            }
-            timeSlotGroups.get(timeSlot)!.push(session);
-          });
+          const dateStr = dayDate
+            ? dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : '';
 
           let sessionsHtml = '';
 
           if (daySessions.length === 0) {
             sessionsHtml = '<div class="no-sessions">No sessions</div>';
           } else {
-            timeSlotGroups.forEach((sessions, timeSlot) => {
-              const isGroup = sessions.length > 1 && sessions[0].group_id;
+            // Group sessions by time slot to combine group sessions
+            const timeSlotMap = new Map<string, string[]>();
 
-              if (isGroup) {
-                const groupName = sessions[0].group_name || 'Group';
-                const studentInitials = sessions
-                  .map(s => data.students.get(s.student_id || '')?.initials || '?')
-                  .filter((v, i, a) => a.indexOf(v) === i)
-                  .join(', ');
+            daySessions.forEach(session => {
+              const timeKey = session.start_time!;
+              const student = studentsMap.get(session.student_id || '');
+              const initials = student?.initials || '?';
 
-                sessionsHtml += `
-                  <div class="group-session">
-                    <div class="session-time">${formatTime(timeSlot.split('-')[0])}</div>
-                    <div class="group-name">📚 ${groupName}</div>
-                    <div class="group-students">${studentInitials}</div>
-                  </div>
-                `;
-              } else {
-                sessions.forEach(session => {
-                  const student = data.students.get(session.student_id || '');
-                  const initials = student?.initials || '?';
-
-                  sessionsHtml += `
-                    <div class="session-item">
-                      <div class="session-time">${formatTime(session.start_time!.substring(0, 5))}</div>
-                      <div class="session-student">${initials}</div>
-                    </div>
-                  `;
-                });
+              if (!timeSlotMap.has(timeKey)) {
+                timeSlotMap.set(timeKey, []);
               }
+              const initialsArray = timeSlotMap.get(timeKey)!;
+              // Avoid duplicate initials in same time slot
+              if (!initialsArray.includes(initials)) {
+                initialsArray.push(initials);
+              }
+            });
+
+            // Sort time slots and render
+            const sortedTimeSlots = Array.from(timeSlotMap.entries()).sort((a, b) =>
+              a[0].localeCompare(b[0])
+            );
+
+            sortedTimeSlots.forEach(([timeKey, initials]) => {
+              sessionsHtml += `
+                <div class="session-item">
+                  <div class="session-time">${formatTime(timeKey)}</div>
+                  <div class="session-student">${initials.join(', ')}</div>
+                </div>
+              `;
             });
           }
 
           return `
             <div class="day-column">
-              <div class="day-header">${dayName}</div>
+              <div class="day-header">
+                ${dayName}
+                ${dateStr ? `<div class="day-date">${dateStr}</div>` : ''}
+              </div>
               <div class="day-content">
                 ${sessionsHtml}
               </div>
             </div>
           `;
         }).join('')}
-      </div>
-      <div class="footer">
-        Generated on ${new Date().toLocaleDateString()}
       </div>
     </body>
     </html>
@@ -238,7 +244,7 @@ export function exportWeekToPDF(data: WeekData) {
   }
 }
 
-// Helper function to format time (HH:MM to h:MM AM/PM)
+// Helper function to format time (HH:MM:SS to h:MM AM/PM)
 function formatTime(time: string): string {
   const [hours, minutes] = time.split(':').map(Number);
   const ampm = hours >= 12 ? 'PM' : 'AM';
