@@ -8,7 +8,6 @@ import { cn } from '@/src/utils/cn';
 import { useSchool } from '@/app/components/providers/school-context';
 import { ScheduleSession } from '@/src/types/database';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
-import { GroupDetailsModal } from '@/app/components/modals/group-details-modal';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
 import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
@@ -988,7 +987,8 @@ return (
 
       {/* Group Details Modal */}
       {selectedGroupId && (
-        <GroupDetailsModal
+        <SessionDetailsModal
+          mode="group"
           isOpen={groupModalOpen}
           onClose={() => {
             setGroupModalOpen(false);
@@ -1011,6 +1011,7 @@ return (
       {/* Session Details Modal */}
       {selectedSession && sessionModalOpen && selectedStudent && (
         <SessionDetailsModal
+          mode="session"
           isOpen={sessionModalOpen}
           onClose={() => {
             setSessionModalOpen(false);
@@ -1023,6 +1024,7 @@ return (
             grade_level: selectedStudent.grade_level || '',
           }}
           initialCurriculum={getFirstCurriculum(selectedSession.curriculum_tracking)}
+          onUpdate={triggerRefresh}
         />
       )}
     </div>

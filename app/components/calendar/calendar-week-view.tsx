@@ -10,7 +10,6 @@ import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
 import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
 import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
-import { GroupDetailsModal } from "../modals/group-details-modal";
 import { SessionDetailsModal } from "../modals/session-details-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
@@ -2369,7 +2368,8 @@ export function CalendarWeekView({
 
       {/* Group Details Modal */}
       {selectedGroupId && (
-        <GroupDetailsModal
+        <SessionDetailsModal
+          mode="group"
           isOpen={groupModalOpen}
           onClose={() => {
             setGroupModalOpen(false);
@@ -2392,6 +2392,7 @@ export function CalendarWeekView({
       {/* Session Details Modal */}
       {selectedSession && sessionModalOpen && (
         <SessionDetailsModal
+          mode="session"
           isOpen={sessionModalOpen}
           onClose={() => {
             setSessionModalOpen(false);
@@ -2400,6 +2401,7 @@ export function CalendarWeekView({
           session={selectedSession}
           student={selectedSession.student_id ? allStudents.get(selectedSession.student_id) : undefined}
           initialCurriculum={getFirstCurriculum(selectedSession.curriculum_tracking)}
+          onUpdate={onUpdate}
         />
       )}
     </div>
