@@ -87,41 +87,31 @@ export function ConflictFilterPanel({
       } as Teacher));
   }, [teachersFromTable, students, specialActivities]);
   
-  // Map teacher IDs to their primary grade - memoized for performance
-  const teacherGrades = useMemo(() => {
-    const grades = new Map<string, string>();
+  // Map teacher IDs to their special activity count - memoized for performance
+  const teacherActivityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
 
     teachers.forEach(teacher => {
-      let teacherStudents: Student[];
+      let activityCount: number;
 
       if (teacher.id.startsWith('legacy_')) {
         // For legacy synthetic IDs, match by teacher_name
         const teacherName = teacher.last_name; // We stored the full name here
-        teacherStudents = students.filter(s => s.teacher_name === teacherName);
+        activityCount = specialActivities.filter(sa => sa.teacher_name === teacherName).length;
       } else {
         // For real teacher IDs, match by teacher_id with fallback to teacher_name
         const teacherName = formatTeacherName(teacher);
-        teacherStudents = students.filter(s =>
-          s.teacher_id === teacher.id ||
-          (teacherName && s.teacher_name === teacherName)
-        );
+        activityCount = specialActivities.filter(sa =>
+          sa.teacher_id === teacher.id ||
+          (teacherName && sa.teacher_name === teacherName)
+        ).length;
       }
 
-      if (teacherStudents.length > 0) {
-        // Use the most common grade level for this teacher
-        const gradeCounts: Record<string, number> = teacherStudents.reduce((acc, s) => {
-          acc[s.grade_level] = (acc[s.grade_level] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        const primaryGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-        if (primaryGrade) {
-          grades.set(teacher.id, primaryGrade);
-        }
-      }
+      counts.set(teacher.id, activityCount);
     });
 
-    return grades;
-  }, [teachers, students]);
+    return counts;
+  }, [teachers, specialActivities]);
 
   const handleGradeChange = (grade: string | null) => {
     onFilterChange({
@@ -206,11 +196,11 @@ export function ConflictFilterPanel({
             >
               <option value="">None</option>
               {teachers.map((teacher) => {
-                const grade = teacherGrades.get(teacher.id);
+                const activityCount = teacherActivityCounts.get(teacher.id) || 0;
                 const displayName = formatTeacherName(teacher) || 'Unknown Teacher';
                 return (
                   <option key={teacher.id} value={teacher.id}>
-                    {displayName} {grade ? `(${grade})` : ''}
+                    {displayName} ({activityCount})
                   </option>
                 );
               })}
