@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
-import { Link as LinkIcon, Upload } from 'lucide-react';
 import {
   validateDocumentFile,
   getDocumentIcon,
@@ -10,7 +9,7 @@ import {
   getFileTypeName
 } from '@/lib/document-utils';
 import { formatTime } from '@/lib/utils/time-options';
-import { ensureSessionPersisted } from '@/lib/services/session-persistence';
+import { ensureSessionsPersisted, ensureSessionPersisted } from '@/lib/services/session-persistence';
 import { LessonControl } from '@/app/components/lesson-control';
 import type { Database } from '../../../src/types/database';
 
@@ -52,14 +51,34 @@ interface CurriculumData {
   current_lesson: number;
 }
 
-interface SessionDetailsModalProps {
+// Base props shared between both modes
+interface BaseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  session: ScheduleSession;
-  student: { initials: string; grade_level?: string } | undefined;
   /** Optional curriculum data from parent to avoid redundant API call */
   initialCurriculum?: CurriculumData | null;
+  /** Callback when data is saved (to refresh parent data) */
+  onUpdate?: () => void;
 }
+
+// Session mode props - for individual sessions
+interface SessionModeProps extends BaseModalProps {
+  mode: 'session';
+  session: ScheduleSession;
+  student: { initials: string; grade_level?: string } | undefined;
+}
+
+// Group mode props - for group sessions
+interface GroupModeProps extends BaseModalProps {
+  mode: 'group';
+  groupId: string;
+  groupName: string;
+  sessions: ScheduleSession[];
+  students: Map<string, { initials: string; grade_level?: string }>;
+}
+
+// Unified modal props using discriminated union
+type SessionDetailsModalProps = SessionModeProps | GroupModeProps;
 
 // Curriculum options
 const CURRICULUM_OPTIONS = [
@@ -70,36 +89,126 @@ const CURRICULUM_OPTIONS = [
 const SPIRE_LEVELS = ['Foundations', '1', '2', '3', '4', '5', '6', '7', '8'];
 const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5'];
 
-export function SessionDetailsModal({
-  isOpen,
-  onClose,
-  session,
-  student,
-  initialCurriculum
-}: SessionDetailsModalProps) {
+export function SessionDetailsModal(props: SessionDetailsModalProps) {
+  const { isOpen, onClose, initialCurriculum, onUpdate } = props;
+  const isGroupMode = props.mode === 'group';
+
+  // Extract mode-specific values for dependency arrays (avoids complex expressions)
+  const groupId = props.mode === 'group' ? props.groupId : undefined;
+  const groupSessions = props.mode === 'group' ? props.sessions : undefined;
+  const singleSession = props.mode === 'session' ? props.session : undefined;
+
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Track persisted session ID (may differ from prop if we auto-save a temp session)
-  const [currentSessionId, setCurrentSessionId] = useState<string>(session.id);
+  // Track persisted session ID for session mode (may differ from prop if we auto-save a temp session)
+  const [currentSessionId, setCurrentSessionId] = useState<string>(
+    props.mode === 'session' ? props.session.id : ''
+  );
 
-  // Helper to ensure session is persisted before operations that require a real ID
-  // Using useCallback with proper dependencies to avoid stale closure issues
-  const ensurePersistedSession = useCallback(async (): Promise<string> => {
-    // If already using a permanent ID, return it
-    if (!currentSessionId.startsWith('temp-')) {
-      return currentSessionId;
+  // Extract session ID for dependency tracking (undefined in group mode)
+  const sessionId = props.mode === 'session' ? props.session.id : undefined;
+
+  // Sync currentSessionId when session prop changes (session mode only)
+  useEffect(() => {
+    if (props.mode === 'session' && sessionId) {
+      setCurrentSessionId(sessionId);
     }
+  }, [props.mode, sessionId]);
 
-    // Persist the temp session and update our tracked ID
-    const persistedSession = await ensureSessionPersisted(session);
-    setCurrentSessionId(persistedSession.id);
-    return persistedSession.id;
-  }, [currentSessionId, session]);
+  /**
+   * Ensures sessions are persisted before operations.
+   * In group mode: persists all temp sessions and returns first persisted ID.
+   * In session mode: persists single temp session and returns its ID.
+   */
+  const ensureSessionsPersistence = async (): Promise<string | undefined> => {
+    if (props.mode === 'group') {
+      // Group mode: handle multiple sessions
+      const sessions = props.sessions;
+
+      // Check for already persisted sessions first
+      const alreadyPersisted = sessions.find(s => !s.id.startsWith('temp-'));
+      if (alreadyPersisted) {
+        return alreadyPersisted.id;
+      }
+
+      // Filter temp sessions
+      const tempSessions = sessions.filter(s => s.id.startsWith('temp-'));
+
+      if (tempSessions.length === 0) {
+        return undefined; // No sessions at all
+      }
+
+      // Persist all temp sessions and get the results
+      const persistedSessions = await ensureSessionsPersisted(tempSessions);
+
+      // Return the first persisted session ID
+      return persistedSessions[0]?.id;
+    } else {
+      // Session mode: handle single session
+      if (!currentSessionId.startsWith('temp-')) {
+        return currentSessionId;
+      }
+
+      // Persist the temp session and update our tracked ID
+      const persistedSession = await ensureSessionPersisted(props.session);
+      setCurrentSessionId(persistedSession.id);
+      return persistedSession.id;
+    }
+  };
 
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [loadingLesson, setLoadingLesson] = useState(true);
   const [notes, setNotes] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Helper to render notes with clickable links
+  const renderNotesWithLinks = (text: string) => {
+    if (!text) return null;
+    // Match URLs (http, https, or www, or domain.tld patterns)
+    // Global regex for splitting, non-global for testing individual parts
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+    const urlTestRegex = /^(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)$/;
+    const parts = text.split(urlRegex);
+
+    return parts.map((part, i) => {
+      // First check if this part matches the URL pattern
+      if (!urlTestRegex.test(part)) {
+        // Not a URL pattern, render as plain text
+        return <span key={i}>{part}</span>;
+      }
+
+      // Part matches URL pattern - validate with URL API for security
+      try {
+        // Prepend https:// if no protocol
+        const urlString = part.startsWith('http://') || part.startsWith('https://')
+          ? part
+          : `https://${part}`;
+        const url = new URL(urlString);
+        // Strictly validate protocol to prevent XSS via javascript: or other dangerous protocols
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          return <span key={i}>{part}</span>;
+        }
+        return (
+          <a
+            key={i}
+            href={url.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      } catch {
+        // Invalid URL, render as plain text
+        return <span key={i}>{part}</span>;
+      }
+    });
+  };
 
   // Curriculum tracking state - initialize from prop if provided
   const [curriculumTracking, setCurriculumTracking] = useState<CurriculumTracking | null>(null);
@@ -108,21 +217,21 @@ export function SessionDetailsModal({
   const [currentLesson, setCurrentLesson] = useState<number>(initialCurriculum?.current_lesson || 1);
   const [curriculumInitialized, setCurriculumInitialized] = useState(!!initialCurriculum);
 
+  // Sync curriculum state with prop when it changes (e.g., after parent refetch)
+  useEffect(() => {
+    if (initialCurriculum) {
+      setCurriculumType(initialCurriculum.curriculum_type);
+      setCurriculumLevel(initialCurriculum.curriculum_level);
+      setCurrentLesson(initialCurriculum.current_lesson);
+      setCurriculumInitialized(true);
+    }
+  }, [initialCurriculum]);
+
   // Documents state
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
-  const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [newDocType, setNewDocType] = useState<'file' | 'link'>('link');
-  const [newDocTitle, setNewDocTitle] = useState('');
-  const [newDocUrl, setNewDocUrl] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
-
-  // Sync currentSessionId when session prop changes
-  useEffect(() => {
-    setCurrentSessionId(session.id);
-  }, [session.id]);
 
   // Add escape key handler and body scroll prevention
   useEffect(() => {
@@ -143,22 +252,52 @@ export function SessionDetailsModal({
     };
   }, [isOpen, onClose]);
 
+  const fetchLesson = useCallback(async (signal?: AbortSignal) => {
+    // Session mode doesn't fetch lesson - it's created on save
+    if (props.mode === 'session') {
+      setLoadingLesson(false);
+      return;
+    }
+
+    setLoadingLesson(true);
+    try {
+      const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
+      if (!response.ok) throw new Error('Failed to fetch lesson');
+
+      const data = await response.json();
+      setLesson(data.lesson);
+
+      if (data.lesson) {
+        setNotes(data.lesson.notes || '');
+      }
+    } catch (error) {
+      // Ignore abort errors - expected during cleanup
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      console.error('Error fetching lesson:', error);
+      showToast('Failed to load lesson', 'error');
+    } finally {
+      setLoadingLesson(false);
+    }
+  }, [props.mode, groupId, showToast]);
+
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
-    // Skip documents for sessions that are still temporary (no real DB ID yet)
-    if (currentSessionId.startsWith('temp-')) {
+    // Session mode: skip for temp sessions
+    if (props.mode === 'session' && currentSessionId.startsWith('temp-')) {
       setDocuments([]);
+      setLoadingDocuments(false);
       return;
     }
 
     setLoadingDocuments(true);
     try {
-      const response = await fetch(`/api/sessions/${currentSessionId}/documents`, { signal });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('API Error:', response.status, errorData);
-        console.error('Error details:', errorData.details);
-        throw new Error(`${errorData.error}${errorData.details ? ': ' + errorData.details : ''}`);
-      }
+      const endpoint = props.mode === 'group'
+        ? `/api/groups/${groupId}/documents`
+        : `/api/sessions/${currentSessionId}/documents`;
+
+      const response = await fetch(endpoint, { signal });
+      if (!response.ok) throw new Error('Failed to fetch documents');
 
       const data = await response.json();
       setDocuments(data.documents || []);
@@ -172,7 +311,17 @@ export function SessionDetailsModal({
     } finally {
       setLoadingDocuments(false);
     }
-  }, [currentSessionId, showToast]);
+  }, [props.mode, groupId, currentSessionId, showToast]);
+
+  // Get first persisted session ID for curriculum tracking
+  const getPersistedSessionId = useCallback(() => {
+    if (props.mode === 'group') {
+      const persistedSession = groupSessions?.find(s => !s.id.startsWith('temp-'));
+      return persistedSession?.id;
+    } else {
+      return currentSessionId.startsWith('temp-') ? undefined : currentSessionId;
+    }
+  }, [props.mode, groupSessions, currentSessionId]);
 
   const fetchCurriculumTracking = useCallback(async (signal?: AbortSignal) => {
     // Skip if curriculum was already initialized from props
@@ -180,13 +329,15 @@ export function SessionDetailsModal({
       return;
     }
 
-    // Skip curriculum tracking for sessions that are still temporary (no real DB ID yet)
-    if (currentSessionId.startsWith('temp-')) {
-      return;
-    }
-
     try {
-      const response = await fetch(`/api/curriculum-tracking?sessionId=${currentSessionId}`, { signal });
+      // Find first persisted session to use for curriculum lookup
+      const sessionId = getPersistedSessionId();
+      if (!sessionId) {
+        // No persisted sessions yet, no curriculum to fetch
+        return;
+      }
+
+      const response = await fetch(`/api/curriculum-tracking?sessionId=${sessionId}`, { signal });
       if (!response.ok) {
         if (response.status === 404) {
           // No curriculum tracking exists yet, which is fine
@@ -211,51 +362,72 @@ export function SessionDetailsModal({
       // Silently fail for curriculum tracking - it's optional
       console.error('Error fetching curriculum tracking:', error);
     }
-  }, [currentSessionId, curriculumInitialized]);
+  }, [getPersistedSessionId, curriculumInitialized]);
 
-  // Initialize lesson, documents and curriculum tracking when modal opens
+  // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
-    if (isOpen) {
-      // Reset form if no lesson exists
-      if (!lesson) {
-        setNotes('');
-      }
+    if (!isOpen) return;
 
-      // Fetch documents and curriculum tracking
-      const controller = new AbortController();
-      Promise.all([
-        fetchDocuments(controller.signal),
-        fetchCurriculumTracking(controller.signal)
-      ]);
-      return () => controller.abort();
-    }
-  }, [isOpen, fetchDocuments, fetchCurriculumTracking, lesson]);
+    const controller = new AbortController();
+    fetchLesson(controller.signal);
+    fetchDocuments(controller.signal);
+    fetchCurriculumTracking(controller.signal);
 
-  const saveCurriculumTracking = async () => {
+    return () => controller.abort();
+  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking]);
+
+  /**
+   * Saves curriculum tracking for the session(s).
+   * @param persistedSessionId - Optional session ID to use. If not provided, will try to get one.
+   * @returns true if saved successfully, false if no session available
+   * @throws Error if API call fails
+   */
+  const saveCurriculumTracking = async (persistedSessionId?: string): Promise<boolean> => {
     // Only save if all curriculum fields are provided
     if (!curriculumType || !curriculumLevel || !currentLesson) {
-      return;
+      return false;
     }
 
     try {
-      // Ensure session is persisted before saving curriculum tracking
-      const sessionId = await ensurePersistedSession();
+      // Use provided sessionId or try to get one
+      let sessionId = persistedSessionId;
+      if (!sessionId) {
+        sessionId = await ensureSessionsPersistence();
+      }
+
+      if (!sessionId) {
+        console.error('No persisted session found for curriculum tracking');
+        return false;
+      }
+
+      const payload = {
+        sessionId,
+        curriculumType,
+        curriculumLevel,
+        currentLesson
+      };
 
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          curriculumType,
-          curriculumLevel,
-          currentLesson
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) throw new Error('Failed to save curriculum tracking');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Curriculum tracking API error:', response.status, errorData);
+        throw new Error(errorData.details || errorData.error || 'Failed to save curriculum tracking');
+      }
 
-      const { data } = await response.json();
-      setCurriculumTracking(data);
+      const responseData = await response.json();
+
+      if (!responseData.data) {
+        console.error('No data in curriculum API response:', responseData);
+        throw new Error('No data returned from curriculum save');
+      }
+
+      setCurriculumTracking(responseData.data);
+      return true;
     } catch (error) {
       console.error('Error saving curriculum tracking:', error);
       throw error;
@@ -264,59 +436,133 @@ export function SessionDetailsModal({
 
   const handleSaveLesson = async () => {
     try {
-      // Ensure session is persisted before saving lesson
-      await ensurePersistedSession();
+      // Ensure sessions are persisted before saving and get persisted session ID
+      const persistedSessionId = await ensureSessionsPersistence();
+      console.log('Persisted session ID:', persistedSessionId);
 
-      const sessionDate = session.session_date || new Date().toISOString().split('T')[0];
-      const timeSlot = `${session.start_time}-${session.end_time}`;
+      const hasNotes = notes.trim().length > 0;
+      const hasCurriculum = !!(curriculumType && curriculumLevel && currentLesson);
+      console.log('Curriculum state:', { curriculumType, curriculumLevel, currentLesson, hasCurriculum });
+      // Check if we need to clear existing notes (lesson exists but notes are now empty)
+      const shouldClearNotes = lesson !== null && !hasNotes;
 
-      const body = {
-        timeSlot,
-        students: [{ id: session.student_id, initials: student?.initials || '?' }],
-        content: null,
-        lessonDate: sessionDate,
-        notes: notes.trim() || null,
-        title: null,
-        subject: null
-      };
+      // Save lesson if there are notes OR if we need to clear existing notes
+      if (hasNotes || shouldClearNotes) {
+        let response: Response;
 
-      const response = await fetch('/api/save-lesson', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+        if (props.mode === 'group') {
+          // Group mode: POST to /api/groups/{groupId}/lesson
+          const body = {
+            title: null,
+            content: null,
+            lesson_source: 'manual',
+            subject: null,
+            notes: hasNotes ? notes.trim() : null
+          };
 
-      if (!response.ok) throw new Error('Failed to save lesson');
+          response = await fetch(`/api/groups/${props.groupId}/lesson`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        } else {
+          // Session mode: POST to /api/save-lesson
+          const sessionDate = props.session.session_date || new Date().toISOString().split('T')[0];
+          const timeSlot = `${props.session.start_time}-${props.session.end_time}`;
 
-      const data = await response.json();
-      setLesson(data.lesson);
+          const body = {
+            timeSlot,
+            students: [{ id: props.session.student_id, initials: props.student?.initials || '?' }],
+            content: null,
+            lessonDate: sessionDate,
+            notes: hasNotes ? notes.trim() : null,
+            title: null,
+            subject: null
+          };
 
-      // Save curriculum tracking if provided
-      if (curriculumType && curriculumLevel && currentLesson) {
+          response = await fetch('/api/save-lesson', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error || `Failed to save lesson (${response.status})`;
+          throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        setLesson(data.lesson);
+      }
+
+      // Save curriculum tracking if provided (independent of lesson)
+      if (hasCurriculum) {
+        console.log('Attempting to save curriculum with session ID:', persistedSessionId);
         try {
-          await saveCurriculumTracking();
+          const curriculumSaved = await saveCurriculumTracking(persistedSessionId);
+          console.log('Curriculum save result:', curriculumSaved);
+          if (!curriculumSaved) {
+            // No session available to save curriculum to
+            if (hasNotes || shouldClearNotes) {
+              showToast('Lesson saved, but no session available for curriculum', 'warning');
+            } else {
+              showToast('No session available to save curriculum', 'error');
+            }
+            return;
+          }
         } catch (currError) {
-          // Lesson saved but curriculum failed - warn user
-          showToast('Lesson saved, but curriculum tracking failed', 'warning');
+          // Curriculum API call failed
+          if (hasNotes || shouldClearNotes) {
+            showToast('Lesson saved, but curriculum tracking failed', 'warning');
+          } else {
+            showToast('Failed to save curriculum tracking', 'error');
+          }
           return;
         }
       }
 
-      showToast('Lesson saved successfully', 'success');
+      // Show appropriate success message and trigger refresh
+      if ((hasNotes || shouldClearNotes) && hasCurriculum) {
+        showToast('Lesson and curriculum saved', 'success');
+        onUpdate?.();
+      } else if (hasNotes) {
+        showToast('Lesson saved', 'success');
+        onUpdate?.();
+      } else if (shouldClearNotes) {
+        showToast('Notes cleared', 'success');
+        onUpdate?.();
+      } else if (hasCurriculum) {
+        showToast('Curriculum saved', 'success');
+        onUpdate?.();
+      } else {
+        showToast('Nothing to save', 'info');
+      }
     } catch (error) {
       console.error('Error saving lesson:', error);
-      showToast('Failed to save lesson', 'error');
+      const message = error instanceof Error ? error.message : 'Failed to save lesson';
+      showToast(message, 'error');
     }
   };
 
   const handleDeleteLesson = async () => {
     if (!confirm('Are you sure you want to delete this lesson?')) return;
-    if (!lesson?.id) return;
 
     try {
-      const response = await fetch(`/api/save-lesson/${lesson.id}`, {
-        method: 'DELETE'
-      });
+      let response: Response;
+
+      if (props.mode === 'group') {
+        response = await fetch(`/api/groups/${props.groupId}/lesson`, {
+          method: 'DELETE'
+        });
+      } else {
+        // Session mode: delete via /api/save-lesson/{lessonId}
+        if (!lesson?.id) return;
+        response = await fetch(`/api/save-lesson/${lesson.id}`, {
+          method: 'DELETE'
+        });
+      }
 
       if (!response.ok) throw new Error('Failed to delete lesson');
 
@@ -330,54 +576,33 @@ export function SessionDetailsModal({
     }
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection - immediately upload
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const validation = validateDocumentFile(file);
     if (!validation.valid) {
       showToast(validation.error || 'Invalid file', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    setSelectedFile(file);
-    setNewDocTitle(file.name.replace(/\.[^/.]+$/, ''));
-  };
-
-  const handleFileButtonClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleAddDocument = async () => {
-    if (newDocType === 'file') {
-      await handleFileUpload();
-    } else if (newDocType === 'link') {
-      await handleLinkAdd();
-    }
-  };
-
-  const handleFileUpload = async () => {
-    if (!selectedFile) {
-      showToast('Please select a file to upload', 'error');
-      return;
-    }
-
-    if (!newDocTitle.trim()) {
-      showToast('Please enter a title for the document', 'error');
-      return;
-    }
-
+    // Upload immediately with original filename
     setUploading(true);
     try {
-      // Ensure session is persisted before uploading document
-      const sessionId = await ensurePersistedSession();
+      const persistedId = await ensureSessionsPersistence();
 
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('title', newDocTitle.trim());
+      formData.append('file', file);
+      formData.append('title', file.name.replace(/\.[^/.]+$/, '')); // Use filename without extension
       formData.append('document_type', 'file');
 
-      const response = await fetch(`/api/sessions/${sessionId}/documents`, {
+      const endpoint = props.mode === 'group'
+        ? `/api/groups/${props.groupId}/documents`
+        : `/api/sessions/${persistedId}/documents`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData
       });
@@ -389,75 +614,13 @@ export function SessionDetailsModal({
 
       const data = await response.json();
       setDocuments(prev => [data.document, ...prev]);
-
-      // Reset form
-      setNewDocTitle('');
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      setAdding(false);
-
-      showToast('Document uploaded successfully', 'success');
+      showToast('Document uploaded', 'success');
     } catch (error) {
       console.error('Error uploading document:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to upload document', 'error');
+      showToast(error instanceof Error ? error.message : 'Failed to upload', 'error');
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleLinkAdd = async () => {
-    if (!newDocTitle.trim()) {
-      showToast('Please enter a link description', 'error');
-      return;
-    }
-
-    if (!newDocUrl.trim()) {
-      showToast('Please enter a URL', 'error');
-      return;
-    }
-
-    // Validate URL for links
-    try {
-      const u = new URL(newDocUrl.trim());
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        showToast('Only http(s) links are allowed', 'error');
-        return;
-      }
-    } catch {
-      showToast('Please enter a valid URL', 'error');
-      return;
-    }
-
-    try {
-      // Ensure session is persisted before adding link
-      const sessionId = await ensurePersistedSession();
-
-      const body = {
-        title: newDocTitle.trim(),
-        document_type: 'link',
-        url: newDocUrl.trim()
-      };
-
-      const response = await fetch(`/api/sessions/${sessionId}/documents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) throw new Error('Failed to add link');
-
-      const data = await response.json();
-      setDocuments(prev => [data.document, ...prev]);
-
-      // Reset form
-      setNewDocTitle('');
-      setNewDocUrl('');
-      setAdding(false);
-
-      showToast('Link added successfully', 'success');
-    } catch (error) {
-      console.error('Error adding link:', error);
-      showToast('Failed to add link', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -465,7 +628,11 @@ export function SessionDetailsModal({
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const response = await fetch(`/api/sessions/${currentSessionId}/documents?documentId=${documentId}`, {
+      const endpoint = props.mode === 'group'
+        ? `/api/groups/${props.groupId}/documents?documentId=${documentId}`
+        : `/api/sessions/${currentSessionId}/documents?documentId=${documentId}`;
+
+      const response = await fetch(endpoint, {
         method: 'DELETE'
       });
 
@@ -480,42 +647,27 @@ export function SessionDetailsModal({
   };
 
   const handleDocumentClick = async (doc: Document) => {
-    // Links open directly (handled by <a> tag)
-    if (doc.document_type === 'link') {
-      return;
-    }
+    setDownloadingDocId(doc.id);
+    try {
+      const response = await fetch(`/api/documents/${doc.id}/download`);
+      if (!response.ok) throw new Error('Failed to get download URL');
 
-    // Files need to fetch download URL
-    if (doc.document_type === 'file') {
-      setDownloadingDocId(doc.id);
-      try {
-        const response = await fetch(`/api/documents/${doc.id}/download`);
-
-        if (!response.ok) {
-          throw new Error('Failed to get download URL');
-        }
-
-        const data = await response.json();
-
-        if (data.type === 'file' && data.url) {
-          // Open in new tab or trigger download
-          const link = document.createElement('a');
-          link.href = data.url;
-          link.download = data.filename || 'download';
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-
-          showToast('Download started', 'success');
-        }
-      } catch (error) {
-        console.error('Error downloading document:', error);
-        showToast('Failed to download document', 'error');
-      } finally {
-        setDownloadingDocId(null);
+      const data = await response.json();
+      if (data.url) {
+        const link = document.createElement('a');
+        link.href = data.url;
+        link.download = data.filename || 'download';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      showToast('Failed to download', 'error');
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
@@ -525,62 +677,92 @@ export function SessionDetailsModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">
-              {student?.initials || '?'} - Session
+        <div className="p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {props.mode === 'group' ? props.groupName : `${props.student?.initials || '?'} - Session`}
             </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {formatTime(session.start_time)} - {formatTime(session.end_time)}
-            </p>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors text-2xl font-light w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+              aria-label="Close"
+            >
+              ×
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors text-2xl font-light w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
-            aria-label="Close"
-          >
-            ×
-          </button>
+          {/* Session info - different for group vs session mode */}
+          {props.mode === 'group' ? (
+            // Group mode: Session chips
+            <div className="flex flex-wrap gap-2">
+              {props.sessions.length === 0 ? (
+                <p className="text-gray-500 text-sm">No sessions in this group</p>
+              ) : (
+                props.sessions.map((session) => {
+                  const student = session.student_id ? props.students.get(session.student_id) : undefined;
+                  return (
+                    <div
+                      key={session.id}
+                      className="bg-gray-100 rounded-md px-2 py-1 text-xs flex items-center gap-1.5"
+                    >
+                      <span className="font-medium text-gray-900">
+                        {formatTime(session.start_time)}-{formatTime(session.end_time)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        {student?.initials || '?'}
+                      </span>
+                      {student?.grade_level && (
+                        <span className="text-gray-500">Gr{student.grade_level}</span>
+                      )}
+                      <span className={`px-1 py-0.5 rounded text-xs ${
+                        session.delivered_by === 'sea'
+                          ? 'bg-green-100 text-green-700'
+                          : session.delivered_by === 'specialist'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {session.delivered_by === 'sea'
+                          ? 'SEA'
+                          : session.delivered_by === 'specialist'
+                            ? 'Spec'
+                            : 'Me'}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            // Session mode: Single session info
+            <div className="bg-gray-100 rounded-md px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-gray-900">
+                {props.student?.initials || '?'}
+                {props.student?.grade_level && ` (Grade ${props.student.grade_level})`}
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className="font-medium text-gray-900">
+                {formatTime(props.session.start_time)} - {formatTime(props.session.end_time)}
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className={`px-2 py-1 rounded ${
+                props.session.delivered_by === 'sea'
+                  ? 'bg-green-100 text-green-700'
+                  : props.session.delivered_by === 'specialist'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
+              }`}>
+                {props.session.delivered_by === 'sea'
+                  ? 'SEA'
+                  : props.session.delivered_by === 'specialist'
+                    ? 'Specialist'
+                    : 'Me'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
-          {/* Fixed Section: Session Details */}
-          <div className="p-4 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Session Information</h3>
-            <div className="bg-white rounded-md px-3 py-2 border border-gray-200 text-xs flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-gray-900">
-                {student?.initials || '?'}
-                {student?.grade_level && ` (Grade ${student.grade_level})`}
-              </span>
-              <span className="text-gray-400">•</span>
-              <span className="font-medium text-gray-900">
-                {formatTime(session.start_time)} - {formatTime(session.end_time)}
-              </span>
-              <span className="text-gray-400">•</span>
-              <span className={`px-2 py-1 rounded ${
-                session.delivered_by === 'sea'
-                  ? 'bg-green-100 text-green-700'
-                  : session.delivered_by === 'specialist'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'bg-blue-100 text-blue-700'
-              }`}>
-                {session.delivered_by === 'sea'
-                  ? 'SEA'
-                  : session.delivered_by === 'specialist'
-                    ? 'Specialist'
-                    : 'Me'}
-              </span>
-              {session.service_type && (
-                <>
-                  <span className="text-gray-400">•</span>
-                  <span className="text-gray-900">{session.service_type}</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Curriculum Context Section */}
+          {/* Curriculum Context Section - Show above grid if tracking exists */}
           {curriculumTracking && (
             <div className="p-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between">
@@ -600,7 +782,7 @@ export function SessionDetailsModal({
                   setCurrentLesson={setCurrentLesson}
                   curriculumType={curriculumType}
                   curriculumLevel={curriculumLevel}
-                  getIdentifier={ensurePersistedSession}
+                  getIdentifier={ensureSessionsPersistence}
                   identifierKey="sessionId"
                   onError={(message) => showToast(message, 'error')}
                   size="small"
@@ -609,253 +791,73 @@ export function SessionDetailsModal({
             </div>
           )}
 
-          {/* Fixed Section: Documents */}
-          <div className="p-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-700">Documents</h3>
-              {/* Add Document Button */}
-              {!adding && (
+          {/* Two-column grid: Documents and Curriculum */}
+          <div className="grid grid-cols-2 gap-4 p-4 border-b border-gray-200">
+            {/* Column 1: Documents */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-700">Documents</h3>
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileSelect}
+                  accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv"
+                  className="hidden"
+                />
                 <button
-                  onClick={() => setAdding(true)}
-                  className="py-1.5 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="py-1 px-2 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50"
                 >
-                  <span>+</span>
-                  <span>Add Document</span>
+                  {uploading ? '...' : '+ Add'}
                 </button>
-              )}
-            </div>
-
-            {loadingDocuments ? (
-              <div className="flex items-center justify-center py-4">
-                <div className="text-gray-500 text-sm">Loading documents...</div>
               </div>
-            ) : (
-              <div className="space-y-3">
 
-                {/* Add Document Form */}
-                {adding && (
-                  <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3">
-                    <h4 className="font-medium text-gray-900">Add New Document</h4>
-
-                    {/* Document Type Selection */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setNewDocType('link');
-                          setSelectedFile(null);
-                          if (fileInputRef.current) fileInputRef.current.value = '';
-                        }}
-                        className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
-                          newDocType === 'link'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <LinkIcon className="w-4 h-4" />
-                        <span>Link</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setNewDocType('file');
-                          setNewDocUrl('');
-                        }}
-                        className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
-                          newDocType === 'file'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>File Upload</span>
-                      </button>
-                    </div>
-
-                    {/* File Input (hidden) */}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      onChange={handleFileSelect}
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv"
-                      className="hidden"
-                    />
-
-                    {/* File Upload UI */}
-                    {newDocType === 'file' && (
-                      <div className="space-y-3">
-                        {!selectedFile ? (
-                          <button
-                            onClick={handleFileButtonClick}
-                            className="w-full py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition-colors flex flex-col items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
-                          >
-                            <Upload className="w-8 h-8" />
-                            <span className="font-medium">Click to select file</span>
-                            <span className="text-sm">PDF, Word, Excel, PowerPoint, Images, Text (max 25MB)</span>
-                          </button>
-                        ) : (
-                          <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                {(() => {
-                                  const Icon = getDocumentIcon(selectedFile.type);
-                                  return <Icon className="w-8 h-8 text-gray-600" />;
-                                })()}
-                                <div>
-                                  <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                                  <p className="text-sm text-gray-500">
-                                    {getFileTypeName(selectedFile.type)} • {formatFileSize(selectedFile.size)}
-                                  </p>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setSelectedFile(null);
-                                  if (fileInputRef.current) fileInputRef.current.value = '';
-                                }}
-                                className="text-gray-400 hover:text-red-600 transition-colors"
-                              >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        <input
-                          type="text"
-                          value={newDocTitle}
-                          onChange={(e) => setNewDocTitle(e.target.value)}
-                          placeholder="Document Title"
-                          className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
-
-                    {/* Link Input UI */}
-                    {newDocType === 'link' && (
-                      <div className="space-y-3">
-                        <input
-                          type="text"
-                          value={newDocTitle}
-                          onChange={(e) => setNewDocTitle(e.target.value)}
-                          placeholder="Link Description"
-                          className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <input
-                          type="url"
-                          value={newDocUrl}
-                          onChange={(e) => setNewDocUrl(e.target.value)}
-                          placeholder="https://example.com"
-                          className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          setAdding(false);
-                          setNewDocTitle('');
-                          setNewDocUrl('');
-                          setSelectedFile(null);
-                          if (fileInputRef.current) fileInputRef.current.value = '';
-                        }}
-                        className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleAddDocument}
-                        disabled={uploading}
-                        className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {uploading ? 'Uploading...' : 'Add'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Documents List */}
-                <div className="space-y-2">
-                  {documents.length === 0 && !adding ? (
-                    <div className="text-center py-3 text-gray-500 bg-white rounded-md border border-gray-200">
-                      <p className="text-xs">No documents attached yet</p>
+              {loadingDocuments ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="text-gray-500 text-xs">Loading...</div>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {/* Documents List */}
+                  {documents.length === 0 ? (
+                    <div className="text-center py-2 text-gray-500 bg-white rounded border border-gray-200">
+                      <p className="text-xs">No documents yet</p>
                     </div>
                   ) : (
                     documents.map((doc) => {
-                      // Get the appropriate icon based on document type
-                      let Icon;
-                      if ((doc.document_type === 'file' || doc.document_type === 'pdf') && doc.mime_type) {
-                        Icon = getDocumentIcon(doc.mime_type);
-                      } else if (doc.document_type === 'link') {
-                        Icon = LinkIcon;
-                      } else {
-                        Icon = getDocumentIcon('application/octet-stream');
-                      }
-
+                      const Icon = doc.mime_type ? getDocumentIcon(doc.mime_type) : getDocumentIcon('application/octet-stream');
                       const isDownloading = downloadingDocId === doc.id;
 
                       return (
                         <div
                           key={doc.id}
-                          onClick={() => !isDownloading && (doc.document_type === 'file' || doc.document_type === 'pdf') && handleDocumentClick(doc)}
-                          className={`bg-white border border-gray-200 rounded-md p-2.5 hover:border-gray-300 transition-colors ${
-                            (doc.document_type === 'file' || doc.document_type === 'pdf') ? 'cursor-pointer hover:bg-gray-50' : ''
-                          } ${isDownloading ? 'opacity-60' : ''}`}
+                          onClick={() => !isDownloading && handleDocumentClick(doc)}
+                          className={`bg-white border border-gray-200 rounded p-1.5 hover:border-gray-300 cursor-pointer hover:bg-gray-50 ${isDownloading ? 'opacity-60' : ''}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 flex-1 min-w-0">
-                              {isDownloading ? (
-                                <div className="w-4 h-4 flex-shrink-0 mt-0.5">
-                                  <svg className="animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                </div>
-                              ) : (
-                                <Icon className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h5 className="text-sm font-medium text-gray-900 truncate">
-                                  {doc.title}
-                                  {isDownloading && <span className="ml-2 text-xs text-gray-500">Downloading...</span>}
-                                </h5>
-
-                                {/* File info */}
-                                {(doc.document_type === 'file' || doc.document_type === 'pdf') && (
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    {doc.mime_type && getFileTypeName(doc.mime_type)}
-                                    {doc.file_size && ` • ${formatFileSize(doc.file_size)}`}
-                                    <span className="ml-1 text-blue-600">• Click to download</span>
-                                  </p>
-                                )}
-
-                                {/* Link info */}
-                                {doc.document_type === 'link' && doc.url && (
-                                  <a
-                                    href={doc.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-blue-600 hover:text-blue-800 mt-0.5 inline-block truncate max-w-full"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {doc.url}
-                                  </a>
-                                )}
+                          <div className="flex items-center gap-1.5">
+                            {isDownloading ? (
+                              <div className="w-3 h-3 flex-shrink-0">
+                                <svg className="animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
                               </div>
-                            </div>
-
+                            ) : (
+                              <Icon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                            )}
+                            <span className="text-xs text-gray-900 truncate flex-1">{doc.title}</span>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteDocument(doc.id);
                               }}
-                              className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
-                              title="Delete document"
+                              className="text-gray-300 hover:text-red-500 flex-shrink-0"
+                              title="Delete"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </button>
                           </div>
@@ -864,68 +866,50 @@ export function SessionDetailsModal({
                     })
                   )}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Curriculum Tracking Section */}
-          <div className="p-6 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Curriculum Tracking</h3>
-            <div className="space-y-3 bg-white p-4 rounded-lg border border-gray-200">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Curriculum
-                  </label>
-                  <select
-                    value={curriculumType}
-                    onChange={(e) => {
-                      setCurriculumType(e.target.value);
-                      // Reset level when curriculum changes
-                      setCurriculumLevel('');
-                    }}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select curriculum...</option>
-                    {CURRICULUM_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
+            {/* Column 2: Curriculum Tracking */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Curriculum</h3>
+              <div className="space-y-2">
+                <select
+                  value={curriculumType}
+                  onChange={(e) => {
+                    setCurriculumType(e.target.value);
+                    setCurriculumLevel('');
+                  }}
+                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select curriculum...</option>
+                  {CURRICULUM_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
 
                 {curriculumType && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {curriculumType === 'SPIRE' ? 'Level/Foundations' : 'Grade'}
-                      </label>
-                      <select
-                        value={curriculumLevel}
-                        onChange={(e) => setCurriculumLevel(e.target.value)}
-                        className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Select {curriculumType === 'SPIRE' ? 'level' : 'grade'}...</option>
-                        {(curriculumType === 'SPIRE' ? SPIRE_LEVELS : REVEAL_MATH_GRADES).map(level => (
-                          <option key={level} value={level}>
-                            {curriculumType === 'SPIRE' && level !== 'Foundations' ? `Level ${level}` : level}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Current Lesson Number
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={currentLesson}
-                        onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
-                        className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </>
+                  <div className="flex gap-2">
+                    <select
+                      value={curriculumLevel}
+                      onChange={(e) => setCurriculumLevel(e.target.value)}
+                      className="flex-1 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">{curriculumType === 'SPIRE' ? 'Level' : 'Grade'}...</option>
+                      {(curriculumType === 'SPIRE' ? SPIRE_LEVELS : REVEAL_MATH_GRADES).map(level => (
+                        <option key={level} value={level}>
+                          {curriculumType === 'SPIRE' && level !== 'Foundations' ? `Lvl ${level}` : level}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={currentLesson}
+                      onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
+                      placeholder="Lesson"
+                      className="w-20 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -934,22 +918,33 @@ export function SessionDetailsModal({
           {/* Notes Section */}
           <div className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
-
-            {lesson && lesson.lesson_source && (
-              <p className="text-xs text-gray-500 mb-3">
-                {lesson.lesson_source === 'ai_generated' ? '✨ AI-Generated' : '📝 Manual'}
-              </p>
-            )}
-
-            <div>
+            {loadingLesson ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-gray-500">Loading...</div>
+              </div>
+            ) : editingNotes ? (
               <textarea
+                ref={notesTextareaRef}
+                id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => setEditingNotes(false)}
                 placeholder="Enter your notes..."
-                rows={15}
+                rows={10}
                 className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
+                autoFocus
               />
-            </div>
+            ) : (
+              <div
+                onClick={() => {
+                  setEditingNotes(true);
+                  setTimeout(() => notesTextareaRef.current?.focus(), 0);
+                }}
+                className="w-full min-h-[240px] p-3 border border-gray-300 rounded-md cursor-text font-mono text-sm whitespace-pre-wrap hover:border-gray-400"
+              >
+                {notes ? renderNotesWithLinks(notes) : <span className="text-gray-400">Enter your notes...</span>}
+              </div>
+            )}
           </div>
         </div>
 
@@ -984,3 +979,6 @@ export function SessionDetailsModal({
     </div>
   );
 }
+
+// Export with legacy name for backward compatibility during migration
+export { SessionDetailsModal as GroupDetailsModal };
