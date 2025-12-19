@@ -340,15 +340,12 @@ export function GroupDetailsModal({
         curriculumLevel,
         currentLesson
       };
-      console.log('Saving curriculum tracking with payload:', payload);
 
       const response = await fetch('/api/curriculum-tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      console.log('Curriculum API response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -357,14 +354,12 @@ export function GroupDetailsModal({
       }
 
       const responseData = await response.json();
-      console.log('Curriculum API response data:', responseData);
 
       if (!responseData.data) {
         console.error('No data in curriculum API response:', responseData);
         throw new Error('No data returned from curriculum save');
       }
 
-      console.log('Curriculum saved successfully:', responseData.data);
       setCurriculumTracking(responseData.data);
       return true;
     } catch (error) {
