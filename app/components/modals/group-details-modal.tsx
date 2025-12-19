@@ -123,11 +123,19 @@ export function GroupDetailsModal({
   const renderNotesWithLinks = (text: string) => {
     if (!text) return null;
     // Match URLs (http, https, or www, or domain.tld patterns)
+    // Global regex for splitting, non-global for testing individual parts
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+    const urlTestRegex = /^(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)$/;
     const parts = text.split(urlRegex);
 
     return parts.map((part, i) => {
-      // Try to create a safe URL - only allow http/https protocols
+      // First check if this part matches the URL pattern
+      if (!urlTestRegex.test(part)) {
+        // Not a URL pattern, render as plain text
+        return <span key={i}>{part}</span>;
+      }
+
+      // Part matches URL pattern - validate with URL API for security
       try {
         // Prepend https:// if no protocol
         const urlString = part.startsWith('http://') || part.startsWith('https://')
