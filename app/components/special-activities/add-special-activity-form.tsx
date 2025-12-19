@@ -97,6 +97,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
         const updatedActivity = {
           teacher_id: teacherId,
           teacher_name: teacherName || '',
+          activity_name: activityName,
           day_of_week: parseInt(dayOfWeek),
           start_time: startTime,
           end_time: endTime,
@@ -105,8 +106,8 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
 
         const result = await resolver.resolveSpecialActivityConflicts(updatedActivity);
 
-        if (result.resolved > 0 || result.failed > 0) {
-          alert(`Special activity updated. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+        if (result.marked > 0) {
+          alert(`Special activity updated. ${result.marked} session${result.marked > 1 ? 's' : ''} marked as conflicted.`);
         }
       } else {
         // Create new activity
@@ -132,6 +133,7 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
         const insertedActivity = {
           teacher_id: teacherId,
           teacher_name: teacherName || '',
+          activity_name: activityName,
           day_of_week: parseInt(dayOfWeek),
           start_time: startTime,
           end_time: endTime,
@@ -140,8 +142,8 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
 
         const result = await resolver.resolveSpecialActivityConflicts(insertedActivity);
 
-        if (result.resolved > 0 || result.failed > 0) {
-          alert(`Special activity added. ${result.resolved} sessions rescheduled, ${result.failed} could not be rescheduled.`);
+        if (result.marked > 0) {
+          alert(`Special activity added. ${result.marked} session${result.marked > 1 ? 's' : ''} marked as conflicted.`);
         }
       }
 

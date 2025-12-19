@@ -189,7 +189,7 @@ export async function POST(
         .update({
           lesson_date: existingLesson.lesson_date ?? today,
           title: title || null,
-          content: content || null,
+          content: content || {},
           lesson_source: lesson_source || 'manual',
           subject: subject || null,
           grade_levels: grade_levels || null,
@@ -217,7 +217,7 @@ export async function POST(
           group_id: groupId,
           lesson_date: today,
           title: title || null,
-          content: content || null,
+          content: content || {},
           lesson_source: lesson_source || 'manual',
           subject: subject || null,
           grade_levels: grade_levels || null,

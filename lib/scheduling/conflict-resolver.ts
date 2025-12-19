@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
-import { AutoScheduler } from './auto-scheduler';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
@@ -9,7 +8,9 @@ type Student = Database['public']['Tables']['students']['Row'];
 
 // Subset of fields needed for conflict resolution
 type BellScheduleConflictData = Pick<BellSchedule, 'grade_level' | 'day_of_week' | 'start_time' | 'end_time' | 'period_name' | 'school_id'>;
-type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'>;
+type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'> & {
+  activity_name?: string;
+};
 
 export class ConflictResolver {
   private supabase;
@@ -20,13 +21,13 @@ export class ConflictResolver {
     this.providerId = providerId;
   }
 
-  // Check and resolve conflicts after bell schedule changes
+  // Check and mark conflicts after bell schedule changes
   async resolveBellScheduleConflicts(newBellSchedule: BellScheduleConflictData) {
     try {
       // Validate school_id is present to prevent cross-school conflicts
       if (!newBellSchedule.school_id) {
         console.warn('resolveBellScheduleConflicts called without school_id - skipping conflict resolution');
-        return { resolved: 0, failed: 0 };
+        return { marked: 0, failed: 0 };
       }
 
       // Find all sessions that conflict with the new bell schedule
@@ -37,7 +38,7 @@ export class ConflictResolver {
         .eq('provider_id', this.providerId)
         .eq('students.school_id', newBellSchedule.school_id);
 
-      if (!allSessions) return { resolved: 0, failed: 0 };
+      if (!allSessions) return { marked: 0, failed: 0 };
 
       const conflictingSessions = allSessions.filter(session => {
         const student = session.students;
@@ -53,20 +54,21 @@ export class ConflictResolver {
                );
       });
 
-      return await this.rescheduleConflictingSessions(conflictingSessions);
+      const conflictReason = `Conflicts with ${newBellSchedule.period_name} (${newBellSchedule.start_time.slice(0, 5)}-${newBellSchedule.end_time.slice(0, 5)})`;
+      return await this.markSessionsAsConflicted(conflictingSessions, conflictReason);
     } catch (error) {
       console.error('Error resolving bell schedule conflicts:', error);
-      return { resolved: 0, failed: 0, error: error.message };
+      return { marked: 0, failed: 0, error: (error as Error).message };
     }
   }
 
-  // Check and resolve conflicts after special activity changes
+  // Check and mark conflicts after special activity changes
   async resolveSpecialActivityConflicts(newActivity: SpecialActivityConflictData) {
     try {
       // Validate school_id is present to prevent cross-school conflicts
       if (!newActivity.school_id) {
         console.warn('resolveSpecialActivityConflicts called without school_id - skipping conflict resolution');
-        return { resolved: 0, failed: 0 };
+        return { marked: 0, failed: 0 };
       }
 
       // Find all sessions that conflict with the new special activity
@@ -77,7 +79,7 @@ export class ConflictResolver {
         .eq('provider_id', this.providerId)
         .eq('students.school_id', newActivity.school_id);
 
-      if (!allSessions) return { resolved: 0, failed: 0 };
+      if (!allSessions) return { marked: 0, failed: 0 };
 
       const conflictingSessions = allSessions.filter(session => {
         const student = session.students;
@@ -92,58 +94,46 @@ export class ConflictResolver {
                );
       });
 
-      return await this.rescheduleConflictingSessions(conflictingSessions);
+      const activityName = newActivity.activity_name || 'special activity';
+      const conflictReason = `Conflicts with ${activityName} (${newActivity.start_time.slice(0, 5)}-${newActivity.end_time.slice(0, 5)})`;
+      return await this.markSessionsAsConflicted(conflictingSessions, conflictReason);
     } catch (error) {
       console.error('Error resolving special activity conflicts:', error);
-      return { resolved: 0, failed: 0, error: error.message };
+      return { marked: 0, failed: 0, error: (error as Error).message };
     }
   }
 
-  // Reschedule conflicting sessions
-  private async rescheduleConflictingSessions(conflictingSessions: any[]) {
-    let resolved = 0;
+  // Mark sessions as conflicted instead of deleting/rescheduling them
+  private async markSessionsAsConflicted(conflictingSessions: any[], conflictReason: string) {
+    let marked = 0;
     let failed = 0;
-
-    // Get provider role
-    const { data: profile } = await this.supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', this.providerId)
-      .single();
-
-    if (!profile) throw new Error('Profile not found');
-
-    const scheduler = new AutoScheduler(this.providerId, profile.role);
 
     for (const session of conflictingSessions) {
       try {
-        // Delete the conflicting session
-        await this.supabase
+        // Update the session to mark it as conflicted
+        // Using 'needs_attention' status to preserve grade color while showing alert icon
+        const { error } = await this.supabase
           .from('schedule_sessions')
-          .delete()
+          .update({
+            has_conflict: true,
+            conflict_reason: conflictReason,
+            status: 'needs_attention'
+          })
           .eq('id', session.id);
 
-        // Try to reschedule using the AutoScheduler which handles all the complexity
-        const student = session.students;
-        const result = await scheduler.scheduleStudent(student);
-
-        if (result.scheduledSessions.length > 0) {
-          // Save the new session
-          await this.supabase
-            .from('schedule_sessions')
-            .insert(result.scheduledSessions[0]);
-          resolved++;
-        } else {
+        if (error) {
           failed++;
-          console.warn(`Could not reschedule session for ${student.initials}`);
+          console.error(`Error marking session as conflicted:`, error);
+        } else {
+          marked++;
         }
       } catch (error) {
         failed++;
-        console.error(`Error rescheduling session:`, error);
+        console.error(`Error marking session as conflicted:`, error);
       }
     }
 
-    return { resolved, failed };
+    return { marked, failed };
   }
 
   private hasTimeOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
