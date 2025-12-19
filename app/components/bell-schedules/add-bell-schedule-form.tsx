@@ -116,7 +116,7 @@ export default function AddBellScheduleForm({
         return;
       }
 
-      let totalResolved = 0;
+      let totalMarked = 0;
       let totalFailed = 0;
       const insertErrors: string[] = [];
       const conflictErrors: string[] = [];
@@ -167,7 +167,7 @@ export default function AddBellScheduleForm({
               };
 
               const result = await resolver.resolveBellScheduleConflicts(insertedSchedule);
-              totalResolved += result.resolved;
+              totalMarked += result.marked;
               totalFailed += result.failed;
             } catch (conflictErr) {
               // Schedule was added but conflict check failed - don't count as insert failure
@@ -196,8 +196,8 @@ export default function AddBellScheduleForm({
           ? 'Bell schedule added successfully.'
           : `${successCount} bell schedules added successfully.`;
 
-        if (totalResolved > 0 || totalFailed > 0) {
-          alert(`${message} ${totalResolved} sessions rescheduled, ${totalFailed} could not be rescheduled.`);
+        if (totalMarked > 0) {
+          alert(`${message} ${totalMarked} session${totalMarked > 1 ? 's' : ''} marked as conflicted.`);
         }
 
         // Reset form

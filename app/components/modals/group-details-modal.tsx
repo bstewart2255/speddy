@@ -332,7 +332,11 @@ export function GroupDetailsModal({
           body: JSON.stringify(body)
         });
 
-        if (!response.ok) throw new Error('Failed to save lesson');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error || `Failed to save lesson (${response.status})`;
+          throw new Error(errorMessage);
+        }
 
         const data = await response.json();
         setLesson(data.lesson);
@@ -376,7 +380,8 @@ export function GroupDetailsModal({
       }
     } catch (error) {
       console.error('Error saving lesson:', error);
-      showToast('Failed to save lesson', 'error');
+      const message = error instanceof Error ? error.message : 'Failed to save lesson';
+      showToast(message, 'error');
     }
   };
 
