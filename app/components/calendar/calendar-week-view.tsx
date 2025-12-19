@@ -60,7 +60,7 @@ export function CalendarWeekView({
   onUpdate,
 }: CalendarWeekViewProps) {
   // Get school context for filtering lessons
-  const { currentSchool } = useSchool();
+  const { currentSchool, worksAtMultipleSchools } = useSchool();
   const weekDates = useMemo(() => {
     const today = new Date();
     // Apply week offset
@@ -204,8 +204,8 @@ export function CalendarWeekView({
         );
       }
 
-      // Then apply school filtering if current school is set
-      if (currentSchool) {
+      // Then apply school filtering if user works at multiple schools and has a current school selected
+      if (currentSchool && worksAtMultipleSchools && currentSchool.school_id) {
         const supabase = createClient<Database>();
         filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as SessionWithCurriculum[];
       }
@@ -214,7 +214,7 @@ export function CalendarWeekView({
     };
 
     syncSessions();
-  }, [sessions, currentSchool, weekDates, viewMode, currentUser]);
+  }, [sessions, currentSchool, worksAtMultipleSchools, weekDates, viewMode, currentUser]);
 
   // Keep selectedGroupSessions in sync when sessions refresh
   useEffect(() => {
@@ -234,9 +234,8 @@ export function CalendarWeekView({
       const uniqueSessions = Array.from(
         new Map(updatedGroupSessions.map(s => [s.id, s])).values()
       );
-      if (uniqueSessions.length > 0) {
-        setSelectedGroupSessions(uniqueSessions);
-      }
+      // Always update state to clear stale data when no sessions match
+      setSelectedGroupSessions(uniqueSessions);
     }
   }, [sessionsState, selectedGroupId, groupModalOpen, weekDates]);
 

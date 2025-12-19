@@ -60,6 +60,13 @@ export function createServiceClient() {
 
   return createSupabaseClient(
     supabaseUrl,
-    supabaseServiceRoleKey
+    supabaseServiceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    }
   )
 }

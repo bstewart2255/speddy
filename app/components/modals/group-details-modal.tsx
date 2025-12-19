@@ -123,11 +123,13 @@ export function GroupDetailsModal({
   const renderNotesWithLinks = (text: string) => {
     if (!text) return null;
     // Match URLs (http, https, or www, or domain.tld patterns)
+    // Use global flag for split, non-global for test to avoid lastIndex issues
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+    const urlTestRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/;
     const parts = text.split(urlRegex);
 
     return parts.map((part, i) => {
-      if (urlRegex.test(part)) {
+      if (urlTestRegex.test(part)) {
         const href = part.startsWith('http') ? part : `https://${part}`;
         return (
           <a

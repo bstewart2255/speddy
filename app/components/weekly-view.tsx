@@ -111,9 +111,8 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
       const uniqueSessions = Array.from(
         new Map(updatedGroupSessions.map(s => [s.id, s])).values()
       );
-      if (uniqueSessions.length > 0) {
-        setSelectedGroupSessions(uniqueSessions);
-      }
+      // Always update state to clear stale data when no sessions match
+      setSelectedGroupSessions(uniqueSessions);
     }
   }, [sessions, selectedGroupId, groupModalOpen]);
 
