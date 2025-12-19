@@ -123,18 +123,25 @@ export function GroupDetailsModal({
   const renderNotesWithLinks = (text: string) => {
     if (!text) return null;
     // Match URLs (http, https, or www, or domain.tld patterns)
-    // Use global flag for split, non-global for test to avoid lastIndex issues
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
-    const urlTestRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/;
     const parts = text.split(urlRegex);
 
     return parts.map((part, i) => {
-      if (urlTestRegex.test(part)) {
-        const href = part.startsWith('http') ? part : `https://${part}`;
+      // Try to create a safe URL - only allow http/https protocols
+      try {
+        // Prepend https:// if no protocol
+        const urlString = part.startsWith('http://') || part.startsWith('https://')
+          ? part
+          : `https://${part}`;
+        const url = new URL(urlString);
+        // Strictly validate protocol to prevent XSS via javascript: or other dangerous protocols
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          return <span key={i}>{part}</span>;
+        }
         return (
           <a
             key={i}
-            href={href}
+            href={url.href}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 underline"
@@ -143,8 +150,10 @@ export function GroupDetailsModal({
             {part}
           </a>
         );
+      } catch {
+        // Invalid URL, render as plain text
+        return <span key={i}>{part}</span>;
       }
-      return <span key={i}>{part}</span>;
     });
   };
 
