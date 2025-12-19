@@ -515,6 +515,7 @@ export default function CalendarPage() {
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
+                  onUpdate={fetchData}
                 />
               </ToastProvider>
             )}

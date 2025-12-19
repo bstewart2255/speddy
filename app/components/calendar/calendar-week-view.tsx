@@ -43,6 +43,8 @@ interface CalendarWeekViewProps {
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
+  /** Callback when session data is updated (to refresh parent data) */
+  onUpdate?: () => void;
 }
 
 
@@ -55,7 +57,8 @@ export function CalendarWeekView({
   calendarEvents = [],
   onAddEvent,
   onEventClick,
-  }: CalendarWeekViewProps) {
+  onUpdate,
+}: CalendarWeekViewProps) {
   // Get school context for filtering lessons
   const { currentSchool } = useSchool();
   const weekDates = useMemo(() => {
@@ -142,13 +145,104 @@ export function CalendarWeekView({
   const [selectedGroupName, setSelectedGroupName] = useState<string>('');
   const [selectedGroupSessions, setSelectedGroupSessions] = useState<SessionWithCurriculum[]>([]);
 
+  // State for assignment view mode (moved here so it's available in sync useEffect)
+  type ViewMode = 'my-sessions' | 'all-sessions' | 'specialist' | 'sea' | 'assigned-to-me';
+  const [viewMode, setViewMode] = useState<ViewMode>('my-sessions');
+
+  // Sync sessionsState with sessions prop when parent refreshes
+  // Apply week date, view mode, and school filtering to match the internal fetch behavior
+  useEffect(() => {
+    const syncSessions = async () => {
+      // Skip if we don't have user context yet
+      if (!currentUser) return;
+
+      // Get current week's date range
+      const weekStartStr = weekDates.length > 0 ? toLocalDateKey(weekDates[0]) : null;
+      const weekEndStr = weekDates.length > 0 ? toLocalDateKey(weekDates[weekDates.length - 1]) : null;
+
+      let filteredSessions = sessions;
+
+      // Filter by current week's date range first
+      if (weekStartStr && weekEndStr) {
+        filteredSessions = filteredSessions.filter(s =>
+          s.session_date &&
+          s.session_date >= weekStartStr &&
+          s.session_date <= weekEndStr
+        );
+      }
+
+      // Apply view mode filter (same logic as internal fetch)
+      const userId = currentUser.id;
+      if (viewMode === 'my-sessions') {
+        filteredSessions = filteredSessions.filter(s =>
+          (s.provider_id === userId && !s.assigned_to_specialist_id && !s.assigned_to_sea_id) ||
+          s.assigned_to_specialist_id === userId ||
+          s.assigned_to_sea_id === userId
+        );
+      } else if (viewMode === 'all-sessions') {
+        filteredSessions = filteredSessions.filter(s =>
+          s.provider_id === userId ||
+          s.assigned_to_specialist_id === userId ||
+          s.assigned_to_sea_id === userId
+        );
+      } else if (viewMode === 'specialist') {
+        filteredSessions = filteredSessions.filter(s =>
+          s.provider_id === userId &&
+          s.assigned_to_specialist_id !== null &&
+          s.assigned_to_specialist_id !== userId
+        );
+      } else if (viewMode === 'sea') {
+        filteredSessions = filteredSessions.filter(s =>
+          s.provider_id === userId &&
+          s.assigned_to_sea_id !== null &&
+          s.assigned_to_sea_id !== userId
+        );
+      } else if (viewMode === 'assigned-to-me') {
+        filteredSessions = filteredSessions.filter(s =>
+          s.assigned_to_specialist_id === userId &&
+          s.provider_id !== userId
+        );
+      }
+
+      // Then apply school filtering if current school is set
+      if (currentSchool) {
+        const supabase = createClient<Database>();
+        filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as SessionWithCurriculum[];
+      }
+
+      setSessionsState(filteredSessions);
+    };
+
+    syncSessions();
+  }, [sessions, currentSchool, weekDates, viewMode, currentUser]);
+
+  // Keep selectedGroupSessions in sync when sessions refresh
+  useEffect(() => {
+    if (selectedGroupId && groupModalOpen && weekDates.length > 0) {
+      // Get current week's date range
+      const weekStartStr = toLocalDateKey(weekDates[0]);
+      const weekEndStr = toLocalDateKey(weekDates[weekDates.length - 1]);
+
+      // Filter by BOTH group_id AND current week's date range
+      const updatedGroupSessions = sessionsState.filter(s =>
+        s.group_id === selectedGroupId &&
+        s.session_date &&
+        s.session_date >= weekStartStr &&
+        s.session_date <= weekEndStr
+      );
+      // Deduplicate by session ID to prevent accumulation bugs
+      const uniqueSessions = Array.from(
+        new Map(updatedGroupSessions.map(s => [s.id, s])).values()
+      );
+      if (uniqueSessions.length > 0) {
+        setSelectedGroupSessions(uniqueSessions);
+      }
+    }
+  }, [sessionsState, selectedGroupId, groupModalOpen, weekDates]);
+
   // State for session details modal
   const [sessionModalOpen, setSessionModalOpen] = useState(false);
   // Note: selectedSession is already declared above for notes modal, reusing it here
-
-  // State for assignment view mode
-  type ViewMode = 'my-sessions' | 'all-sessions' | 'specialist' | 'sea' | 'assigned-to-me';
-  const [viewMode, setViewMode] = useState<ViewMode>('my-sessions');
 
   const supabase = createClient<Database>();
   const { showToast } = useToast();
@@ -2292,6 +2386,7 @@ export function CalendarWeekView({
             const sessionWithCurriculum = selectedGroupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
             return sessionWithCurriculum ? getFirstCurriculum(sessionWithCurriculum.curriculum_tracking) : null;
           })()}
+          onUpdate={onUpdate}
         />
       )}
 
