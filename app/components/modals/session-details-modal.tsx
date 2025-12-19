@@ -91,12 +91,10 @@ const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5'];
 
 export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const { isOpen, onClose, initialCurriculum, onUpdate } = props;
-  const isGroupMode = props.mode === 'group';
 
   // Extract mode-specific values for dependency arrays (avoids complex expressions)
   const groupId = props.mode === 'group' ? props.groupId : undefined;
   const groupSessions = props.mode === 'group' ? props.sessions : undefined;
-  const singleSession = props.mode === 'session' ? props.session : undefined;
 
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -438,11 +436,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     try {
       // Ensure sessions are persisted before saving and get persisted session ID
       const persistedSessionId = await ensureSessionsPersistence();
-      console.log('Persisted session ID:', persistedSessionId);
 
       const hasNotes = notes.trim().length > 0;
       const hasCurriculum = !!(curriculumType && curriculumLevel && currentLesson);
-      console.log('Curriculum state:', { curriculumType, curriculumLevel, currentLesson, hasCurriculum });
       // Check if we need to clear existing notes (lesson exists but notes are now empty)
       const shouldClearNotes = lesson !== null && !hasNotes;
 
@@ -499,10 +495,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
       // Save curriculum tracking if provided (independent of lesson)
       if (hasCurriculum) {
-        console.log('Attempting to save curriculum with session ID:', persistedSessionId);
         try {
           const curriculumSaved = await saveCurriculumTracking(persistedSessionId);
-          console.log('Curriculum save result:', curriculumSaved);
           if (!curriculumSaved) {
             // No session available to save curriculum to
             if (hasNotes || shouldClearNotes) {
@@ -592,6 +586,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     setUploading(true);
     try {
       const persistedId = await ensureSessionsPersistence();
+
+      // In session mode, we need a valid session ID to upload documents
+      if (props.mode === 'session' && !persistedId) {
+        showToast('Failed to persist session for document upload', 'error');
+        return;
+      }
 
       const formData = new FormData();
       formData.append('file', file);
