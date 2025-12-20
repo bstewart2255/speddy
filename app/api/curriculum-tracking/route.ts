@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
       sessionId,
       curriculumType,
       curriculumLevel,
-      currentLesson
+      currentLesson,
+      promptAnswered
     } = body;
 
     // Validate required fields
@@ -175,7 +176,8 @@ export async function POST(request: NextRequest) {
         .update({
           curriculum_level: curriculumLevel,
           current_lesson: currentLesson,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          ...(promptAnswered !== undefined && { prompt_answered: promptAnswered })
         })
         .eq('id', existing.id)
         .select('*')
@@ -201,7 +203,8 @@ export async function POST(request: NextRequest) {
           session_id: sessionId,
           curriculum_type: curriculumType,
           curriculum_level: curriculumLevel,
-          current_lesson: currentLesson
+          current_lesson: currentLesson,
+          ...(promptAnswered !== undefined && { prompt_answered: promptAnswered })
         })
         .select('*')
         .single();

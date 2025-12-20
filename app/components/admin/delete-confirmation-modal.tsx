@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
 
 interface DependencyCount {
@@ -36,6 +36,11 @@ export function DeleteConfirmationModal({
   const [confirmText, setConfirmText] = useState('');
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
+  const handleClose = useCallback(() => {
+    setConfirmText('');
+    onClose();
+  }, [onClose]);
+
   // Handle Escape key to close modal
   useEffect(() => {
     if (!isOpen) return;
@@ -48,7 +53,7 @@ export function DeleteConfirmationModal({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isDeleting]);
+  }, [isOpen, isDeleting, handleClose]);
 
   // Auto-focus cancel button when modal opens
   useEffect(() => {
@@ -69,11 +74,6 @@ export function DeleteConfirmationModal({
     if (isConfirmEnabled) {
       onConfirm();
     }
-  };
-
-  const handleClose = () => {
-    setConfirmText('');
-    onClose();
   };
 
   return (
