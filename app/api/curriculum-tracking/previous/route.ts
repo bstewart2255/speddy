@@ -110,9 +110,13 @@ export async function GET(request: NextRequest) {
           groupId,
           sessionDate
         });
-      } else {
-        previousCurriculum = data;
+        perf.end({ success: false });
+        return NextResponse.json(
+          { error: 'Failed to fetch previous curriculum' },
+          { status: 500 }
+        );
       }
+      previousCurriculum = data;
     } else {
       // For individual sessions: find previous session matching template characteristics
       // First get the current session's characteristics
@@ -163,9 +167,13 @@ export async function GET(request: NextRequest) {
           sessionId,
           sessionDate
         });
-      } else {
-        previousCurriculum = data;
+        perf.end({ success: false });
+        return NextResponse.json(
+          { error: 'Failed to fetch previous curriculum' },
+          { status: 500 }
+        );
       }
+      previousCurriculum = data;
     }
 
     // Check if current session already has curriculum tracking (not first instance)
@@ -213,7 +221,8 @@ export async function GET(request: NextRequest) {
         session_id: previousCurriculum.session_id,
         previous_session_date: previousCurriculum.schedule_sessions?.session_date
       } : null,
-      isFirstInstance
+      isFirstInstance,
+      isCurrentInstance: false
     });
   } catch (error) {
     log.error('Error in get-previous-curriculum route', error, { userId });

@@ -30,10 +30,19 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!sessionId || !answer || !previousLesson || !curriculumType || !curriculumLevel) {
+    if (!sessionId || !answer || !curriculumType || !curriculumLevel) {
       perf.end({ success: false });
       return NextResponse.json(
-        { error: 'sessionId, answer, previousLesson, curriculumType, and curriculumLevel are required' },
+        { error: 'sessionId, answer, curriculumType, and curriculumLevel are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate previousLesson is a positive integer
+    if (typeof previousLesson !== 'number' || !Number.isInteger(previousLesson) || previousLesson < 1) {
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: 'previousLesson must be a positive integer' },
         { status: 400 }
       );
     }
@@ -83,11 +92,12 @@ export async function POST(request: NextRequest) {
     // Use service client to bypass RLS (access already verified)
     const serviceClient = createServiceClient();
 
-    // Check if curriculum tracking already exists for this session
+    // Check if curriculum tracking already exists for this session and curriculum type
     const { data: existing } = await serviceClient
       .from('curriculum_tracking')
       .select('*')
       .eq('session_id', sessionId)
+      .eq('curriculum_type', curriculumType)
       .maybeSingle();
 
     let data;

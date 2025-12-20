@@ -376,6 +376,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
   // Fetch previous curriculum for progression prompt
   const fetchPreviousCurriculum = useCallback(async (signal?: AbortSignal) => {
+    // Skip if curriculum was already initialized (avoid race with fetchCurriculumTracking)
+    if (curriculumInitialized) {
+      return;
+    }
+
     try {
       // Get session date and group info
       let sessionDate: string | null = null;
@@ -452,7 +457,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       }
       console.error('Error fetching previous curriculum:', error);
     }
-  }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionId]);
+  }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionId, curriculumInitialized]);
 
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
@@ -936,6 +941,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     onClick={() => handlePromptAnswer('yes')}
                     disabled={promptAnswering}
                     className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                    aria-label={`Yes, completed lesson ${previousCurriculum.current_lesson}`}
                   >
                     Yes ✓
                   </button>
@@ -943,6 +949,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     onClick={() => handlePromptAnswer('no')}
                     disabled={promptAnswering}
                     className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm font-medium hover:bg-gray-300 disabled:opacity-50"
+                    aria-label={`No, did not complete lesson ${previousCurriculum.current_lesson}`}
                   >
                     No ✗
                   </button>
