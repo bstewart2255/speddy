@@ -95,6 +95,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   // Extract mode-specific values for dependency arrays (avoids complex expressions)
   const groupId = props.mode === 'group' ? props.groupId : undefined;
   const groupSessions = props.mode === 'group' ? props.sessions : undefined;
+  const sessionDate = props.mode === 'session' ? props.session.session_date : undefined;
+  const sessionGroupId = props.mode === 'session' ? props.session.group_id : undefined;
 
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -289,7 +291,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     } finally {
       setLoadingLesson(false);
     }
-  }, [props.mode, groupId, showToast]);
+  }, [props.mode, groupId, showToast, lesson]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
@@ -321,7 +323,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     } finally {
       setLoadingDocuments(false);
     }
-  }, [props.mode, groupId, currentSessionId, showToast]);
+  }, [props.mode, groupId, currentSessionId, showToast, documents.length]);
 
   // Get first persisted session ID for curriculum tracking
   const getPersistedSessionId = useCallback(() => {
@@ -382,21 +384,21 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
 
     try {
-      // Get session date and group info
-      let sessionDate: string | null = null;
+      // Get session date and group info using extracted variables
+      let sessionDateParam: string | null = null;
       let groupIdParam: string | null = null;
       let sessionIdParam: string | null = null;
 
       if (props.mode === 'group') {
         // For groups, use the first session's date and group ID
-        const firstSession = props.sessions.find(s => s.session_date);
-        sessionDate = firstSession?.session_date || null;
-        groupIdParam = props.groupId;
+        const firstSession = groupSessions?.find(s => s.session_date);
+        sessionDateParam = firstSession?.session_date || null;
+        groupIdParam = groupId || null;
         // sessionId is optional for group queries
         sessionIdParam = getPersistedSessionId() || null;
       } else {
-        sessionDate = props.session.session_date;
-        groupIdParam = props.session.group_id;
+        sessionDateParam = sessionDate || null;
+        groupIdParam = sessionGroupId || null;
         // For individual sessions, we need sessionId for template matching
         sessionIdParam = getPersistedSessionId() || null;
         if (!sessionIdParam && !groupIdParam) {
@@ -405,13 +407,13 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         }
       }
 
-      if (!sessionDate) {
+      if (!sessionDateParam) {
         // No session date, can't look up previous
         return;
       }
 
       // Build params - sessionId is optional for group queries
-      const params = new URLSearchParams({ sessionDate });
+      const params = new URLSearchParams({ sessionDate: sessionDateParam });
       if (sessionIdParam) params.set('sessionId', sessionIdParam);
       if (groupIdParam) params.set('groupId', groupIdParam);
 
@@ -457,7 +459,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       }
       console.error('Error fetching previous curriculum:', error);
     }
-  }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionId, curriculumInitialized]);
+  }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionDate, sessionGroupId, curriculumInitialized]);
 
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
