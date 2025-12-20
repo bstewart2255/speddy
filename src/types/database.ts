@@ -367,6 +367,7 @@ export type Database = {
           curriculum_level: string
           curriculum_type: string
           id: string
+          prompt_answered: boolean
           session_id: string
           updated_at: string | null
         }
@@ -376,6 +377,7 @@ export type Database = {
           curriculum_level: string
           curriculum_type: string
           id?: string
+          prompt_answered?: boolean
           session_id: string
           updated_at?: string | null
         }
@@ -385,6 +387,7 @@ export type Database = {
           curriculum_level?: string
           curriculum_type?: string
           id?: string
+          prompt_answered?: boolean
           session_id?: string
           updated_at?: string | null
         }

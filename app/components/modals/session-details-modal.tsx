@@ -215,6 +215,16 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const [currentLesson, setCurrentLesson] = useState<number>(initialCurriculum?.current_lesson || 1);
   const [curriculumInitialized, setCurriculumInitialized] = useState(!!initialCurriculum);
 
+  // Curriculum progression prompt state
+  const [previousCurriculum, setPreviousCurriculum] = useState<{
+    curriculum_type: string;
+    curriculum_level: string;
+    current_lesson: number;
+    prompt_answered: boolean;
+  } | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [promptAnswering, setPromptAnswering] = useState(false);
+
   // Sync curriculum state with prop when it changes (e.g., after parent refetch)
   useEffect(() => {
     if (initialCurriculum) {
@@ -257,7 +267,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       return;
     }
 
-    setLoadingLesson(true);
+    // Only show loading on initial fetch, not refreshes
+    if (!lesson) setLoadingLesson(true);
     try {
       const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
       if (!response.ok) throw new Error('Failed to fetch lesson');
@@ -288,7 +299,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       return;
     }
 
-    setLoadingDocuments(true);
+    // Only show loading on initial fetch, not refreshes
+    if (documents.length === 0) setLoadingDocuments(true);
     try {
       const endpoint = props.mode === 'group'
         ? `/api/groups/${groupId}/documents`
@@ -362,6 +374,86 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   }, [getPersistedSessionId, curriculumInitialized]);
 
+  // Fetch previous curriculum for progression prompt
+  const fetchPreviousCurriculum = useCallback(async (signal?: AbortSignal) => {
+    try {
+      // Get session date and group info
+      let sessionDate: string | null = null;
+      let groupIdParam: string | null = null;
+      let sessionIdParam: string | null = null;
+
+      if (props.mode === 'group') {
+        // For groups, use the first session's date and group ID
+        const firstSession = props.sessions.find(s => s.session_date);
+        sessionDate = firstSession?.session_date || null;
+        groupIdParam = props.groupId;
+        // sessionId is optional for group queries
+        sessionIdParam = getPersistedSessionId() || null;
+      } else {
+        sessionDate = props.session.session_date;
+        groupIdParam = props.session.group_id;
+        // For individual sessions, we need sessionId for template matching
+        sessionIdParam = getPersistedSessionId() || null;
+        if (!sessionIdParam && !groupIdParam) {
+          // Individual session without group and not persisted - can't look up
+          return;
+        }
+      }
+
+      if (!sessionDate) {
+        // No session date, can't look up previous
+        return;
+      }
+
+      // Build params - sessionId is optional for group queries
+      const params = new URLSearchParams({ sessionDate });
+      if (sessionIdParam) params.set('sessionId', sessionIdParam);
+      if (groupIdParam) params.set('groupId', groupIdParam);
+
+      const response = await fetch(`/api/curriculum-tracking/previous?${params}`, { signal });
+      if (!response.ok) {
+        throw new Error('Failed to fetch previous curriculum');
+      }
+
+      const { data, isFirstInstance, isCurrentInstance } = await response.json();
+
+      // If current instance already has curriculum tracking, use that
+      if (isCurrentInstance && data) {
+        setCurriculumTracking(data);
+        setCurriculumType(data.curriculum_type);
+        setCurriculumLevel(data.curriculum_level);
+        setCurrentLesson(data.current_lesson);
+        setCurriculumInitialized(true);
+        // Always hide prompt if current instance has curriculum (user already dealt with it)
+        setShowPrompt(false);
+        setPreviousCurriculum(null);
+        return;
+      }
+
+      // If we have previous curriculum and it's not the first instance, show prompt
+      // (Current instance has no curriculum tracking - we already returned above if it did)
+      if (data && !isFirstInstance) {
+        setPreviousCurriculum({
+          curriculum_type: data.curriculum_type,
+          curriculum_level: data.curriculum_level,
+          current_lesson: data.current_lesson,
+          prompt_answered: false // Current instance hasn't answered yet
+        });
+        setShowPrompt(true);
+        // Pre-fill the curriculum fields
+        setCurriculumType(data.curriculum_type);
+        setCurriculumLevel(data.curriculum_level);
+        setCurrentLesson(data.current_lesson);
+      }
+    } catch (error) {
+      // Ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      console.error('Error fetching previous curriculum:', error);
+    }
+  }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionId]);
+
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
     if (!isOpen) return;
@@ -370,9 +462,10 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     fetchLesson(controller.signal);
     fetchDocuments(controller.signal);
     fetchCurriculumTracking(controller.signal);
+    fetchPreviousCurriculum(controller.signal);
 
     return () => controller.abort();
-  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking]);
+  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking, fetchPreviousCurriculum]);
 
   /**
    * Saves curriculum tracking for the session(s).
@@ -429,6 +522,67 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     } catch (error) {
       console.error('Error saving curriculum tracking:', error);
       throw error;
+    }
+  };
+
+  /**
+   * Handles the curriculum progression prompt answer (Yes/No).
+   * @param answer - 'yes' to increment lesson, 'no' to keep same lesson
+   */
+  const handlePromptAnswer = async (answer: 'yes' | 'no') => {
+    if (!previousCurriculum) return;
+
+    setPromptAnswering(true);
+    try {
+      // Ensure session is persisted first
+      const sessionId = await ensureSessionsPersistence();
+      if (!sessionId) {
+        showToast('Unable to save - no session available', 'error');
+        return;
+      }
+
+      const response = await fetch('/api/curriculum-tracking/answer-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          answer,
+          previousLesson: previousCurriculum.current_lesson,
+          curriculumType: previousCurriculum.curriculum_type,
+          curriculumLevel: previousCurriculum.curriculum_level
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save curriculum');
+      }
+
+      const { data } = await response.json();
+
+      // Update local state
+      setCurriculumTracking(data);
+      setCurriculumType(data.curriculum_type);
+      setCurriculumLevel(data.curriculum_level);
+      setCurrentLesson(data.current_lesson);
+      setCurriculumInitialized(true);
+      setShowPrompt(false);
+      setPreviousCurriculum(null);
+
+      // Trigger parent refresh
+      onUpdate?.();
+
+      showToast(
+        answer === 'yes'
+          ? `Advanced to Lesson ${data.current_lesson}`
+          : `Staying on Lesson ${data.current_lesson}`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Error answering prompt:', error);
+      showToast('Failed to save curriculum progress', 'error');
+    } finally {
+      setPromptAnswering(false);
     }
   };
 
@@ -762,8 +916,41 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
-          {/* Curriculum Context Section - Show above grid if tracking exists */}
-          {curriculumTracking && (
+          {/* Curriculum Context Section - Show prompt or normal display */}
+          {showPrompt && previousCurriculum ? (
+            // Show progression prompt
+            <div className="p-4 border-b border-gray-200 bg-blue-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📚</span>
+                  <span className="font-medium text-gray-900 text-sm">
+                    {previousCurriculum.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
+                    {previousCurriculum.curriculum_type === 'SPIRE'
+                      ? (previousCurriculum.curriculum_level === 'Foundations' ? '' : 'Level ')
+                      : 'Grade '}{previousCurriculum.curriculum_level} • Lesson {previousCurriculum.current_lesson}
+                  </span>
+                  <span className="text-gray-600 text-sm ml-2">Completed?</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePromptAnswer('yes')}
+                    disabled={promptAnswering}
+                    className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                  >
+                    Yes ✓
+                  </button>
+                  <button
+                    onClick={() => handlePromptAnswer('no')}
+                    disabled={promptAnswering}
+                    className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm font-medium hover:bg-gray-300 disabled:opacity-50"
+                  >
+                    No ✗
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : curriculumTracking ? (
+            // Show normal curriculum display with +/- controls
             <div className="p-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -789,7 +976,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                 />
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Two-column grid: Documents and Curriculum */}
           <div className="grid grid-cols-2 gap-4 p-4 border-b border-gray-200">
