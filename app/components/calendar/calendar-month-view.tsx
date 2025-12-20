@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Database } from '../../../src/types/database';
+import { toLocalDateKey } from '@/lib/utils/date-time';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -74,8 +75,8 @@ export function CalendarMonthView({
 
   // Count sessions for a specific date
   const getSessionCountForDate = (date: Date) => {
-    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay();
-    return sessions.filter(s => s.day_of_week === dayOfWeek).length;
+    const dateStr = toLocalDateKey(date);
+    return sessions.filter(s => s.session_date === dateStr).length;
   };
 
   // Check if date is a holiday
