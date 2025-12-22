@@ -49,9 +49,9 @@ export const CARE_CATEGORY_COLORS: Record<CareCategory, string> = {
   other: 'bg-gray-100 text-gray-600',
 };
 
-// Grade options (K-12)
+// Grade options (TK-5 for elementary CARE meetings)
 export const GRADE_OPTIONS = [
-  'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'
+  'TK', 'K', '1', '2', '3', '4', '5'
 ] as const;
 
 export type Grade = (typeof GRADE_OPTIONS)[number];

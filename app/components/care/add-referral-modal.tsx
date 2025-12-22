@@ -109,7 +109,7 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
             <option value="">Select grade...</option>
             {GRADE_OPTIONS.map((g) => (
               <option key={g} value={g}>
-                {g === 'K' ? 'Kindergarten' : `Grade ${g}`}
+                {g === 'TK' ? 'Transitional Kindergarten' : g === 'K' ? 'Kindergarten' : `Grade ${g}`}
               </option>
             ))}
           </select>
