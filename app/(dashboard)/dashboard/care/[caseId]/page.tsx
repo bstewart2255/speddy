@@ -1,0 +1,187 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { getCaseWithDetails, updateCase, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
+import { addNote, deleteNote } from '@/lib/supabase/queries/care-meeting-notes';
+import {
+  addActionItem,
+  completeActionItem,
+  uncompleteActionItem,
+  deleteActionItem,
+} from '@/lib/supabase/queries/care-action-items';
+import { CaseDetailHeader } from '@/app/components/care/case-detail-header';
+import { DispositionSelector } from '@/app/components/care/disposition-selector';
+import { CaseNotesSection } from '@/app/components/care/case-notes-section';
+import { CaseActionsSection } from '@/app/components/care/case-actions-section';
+import type { CareDisposition } from '@/lib/constants/care';
+
+export default function CaseDetailPage() {
+  const params = useParams();
+  const caseId = params.caseId as string;
+
+  const [caseData, setCaseData] = useState<CareCaseWithDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>();
+
+  const fetchCase = useCallback(async () => {
+    if (!caseId) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await getCaseWithDetails(caseId);
+      if (!data) {
+        setError('Case not found');
+        return;
+      }
+      setCaseData(data);
+    } catch (err) {
+      console.error('Error fetching case:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load case');
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    fetchCase();
+
+    // Get current user ID for note deletion permissions
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id);
+    });
+  }, [fetchCase]);
+
+  const handleDispositionChange = useCallback(
+    async (disposition: CareDisposition) => {
+      if (!caseId) return;
+
+      await updateCase(caseId, { current_disposition: disposition });
+      await fetchCase();
+    },
+    [caseId, fetchCase]
+  );
+
+  const handleAddNote = useCallback(
+    async (noteText: string) => {
+      if (!caseId) return;
+
+      await addNote(caseId, noteText);
+      await fetchCase();
+    },
+    [caseId, fetchCase]
+  );
+
+  const handleDeleteNote = useCallback(
+    async (noteId: string) => {
+      if (!confirm('Are you sure you want to delete this note?')) return;
+
+      await deleteNote(noteId);
+      await fetchCase();
+    },
+    [fetchCase]
+  );
+
+  const handleAddActionItem = useCallback(
+    async (item: { description: string; due_date?: string }) => {
+      if (!caseId) return;
+
+      await addActionItem(caseId, item);
+      await fetchCase();
+    },
+    [caseId, fetchCase]
+  );
+
+  const handleToggleComplete = useCallback(
+    async (itemId: string, completed: boolean) => {
+      if (completed) {
+        await completeActionItem(itemId);
+      } else {
+        await uncompleteActionItem(itemId);
+      }
+      await fetchCase();
+    },
+    [fetchCase]
+  );
+
+  const handleDeleteActionItem = useCallback(
+    async (itemId: string) => {
+      if (!confirm('Are you sure you want to delete this action item?')) return;
+
+      await deleteActionItem(itemId);
+      await fetchCase();
+    },
+    [fetchCase]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (error || !caseData) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          {error || 'Case not found'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
+      {/* Header with student info */}
+      <CaseDetailHeader caseData={caseData} />
+
+      {/* Disposition selector */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <DispositionSelector
+          value={caseData.current_disposition}
+          onChange={handleDispositionChange}
+        />
+      </div>
+
+      {/* Follow-up date */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <label htmlFor="followUpDate" className="block text-sm font-medium text-gray-700 mb-1">
+          Follow-up Date
+        </label>
+        <input
+          type="date"
+          id="followUpDate"
+          value={caseData.follow_up_date || ''}
+          onChange={async (e) => {
+            await updateCase(caseId, { follow_up_date: e.target.value || null });
+            await fetchCase();
+          }}
+          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      {/* Notes section */}
+      <CaseNotesSection
+        notes={caseData.care_meeting_notes || []}
+        onAddNote={handleAddNote}
+        onDeleteNote={handleDeleteNote}
+        currentUserId={currentUserId}
+      />
+
+      {/* Action items section */}
+      <CaseActionsSection
+        actionItems={caseData.care_action_items || []}
+        onAddItem={handleAddActionItem}
+        onToggleComplete={handleToggleComplete}
+        onDeleteItem={handleDeleteActionItem}
+      />
+    </div>
+  );
+}
