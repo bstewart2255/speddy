@@ -107,7 +107,13 @@ export async function middleware(request: NextRequest) {
   const isInternalRoute = pathname.startsWith('/internal')
   const isAdminRoute = pathname.startsWith('/dashboard/admin')
   const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
+  const isCareRoute = pathname.startsWith('/dashboard/care')
   const isDashboardRoute = pathname.startsWith('/dashboard')
+
+  // CARE routes are accessible to all authenticated users
+  if (isCareRoute) {
+    return response
+  }
 
   // Internal routes are only for Speddy admins
   if (isInternalRoute && !isSpeddyAdmin) {

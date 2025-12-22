@@ -360,6 +360,218 @@ export type Database = {
           },
         ]
       }
+      care_action_items: {
+        Row: {
+          assignee_id: string | null
+          case_id: string
+          completed_at: string | null
+          created_at: string | null
+          description: string
+          due_date: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assignee_id?: string | null
+          case_id: string
+          completed_at?: string | null
+          created_at?: string | null
+          description: string
+          due_date?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          assignee_id?: string | null
+          case_id?: string
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string
+          due_date?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_action_items_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_action_items_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "care_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      care_cases: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          current_disposition: string | null
+          follow_up_date: string | null
+          id: string
+          referral_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          current_disposition?: string | null
+          follow_up_date?: string | null
+          id?: string
+          referral_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          current_disposition?: string | null
+          follow_up_date?: string | null
+          id?: string
+          referral_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_cases_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_cases_referral_id_fkey"
+            columns: ["referral_id"]
+            isOneToOne: false
+            referencedRelation: "care_referrals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      care_meeting_notes: {
+        Row: {
+          case_id: string
+          created_at: string | null
+          created_by: string
+          id: string
+          note_text: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string | null
+          created_by: string
+          id?: string
+          note_text: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          note_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_meeting_notes_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "care_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_meeting_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      care_referrals: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          deleted_at: string | null
+          district_id: string | null
+          grade: string
+          id: string
+          referral_reason: string
+          referring_user_id: string
+          school_id: string | null
+          state_id: string | null
+          status: string
+          student_name: string
+          submitted_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          district_id?: string | null
+          grade: string
+          id?: string
+          referral_reason: string
+          referring_user_id: string
+          school_id?: string | null
+          state_id?: string | null
+          status?: string
+          student_name: string
+          submitted_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          district_id?: string | null
+          grade?: string
+          id?: string
+          referral_reason?: string
+          referring_user_id?: string
+          school_id?: string | null
+          state_id?: string | null
+          status?: string
+          student_name?: string
+          submitted_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_referrals_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_referrals_referring_user_id_fkey"
+            columns: ["referring_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_referrals_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_referrals_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       curriculum_tracking: {
         Row: {
           created_at: string | null
@@ -1652,42 +1864,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "unmatched_student_teachers"
             referencedColumns: ["student_id"]
-          },
-        ]
-      }
-      schedule_share_requests: {
-        Row: {
-          created_at: string | null
-          id: string
-          school_id: string
-          sharer_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          school_id: string
-          sharer_id: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          school_id?: string
-          sharer_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_share_requests_school_id_fkey"
-            columns: ["school_id"]
-            isOneToOne: false
-            referencedRelation: "schools"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "schedule_share_requests_sharer_id_fkey"
-            columns: ["sharer_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -3134,3 +3310,9 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type School = Database['public']['Tables']['schools']['Row'];
 export type District = Database['public']['Tables']['districts']['Row'];
 export type Teacher = Database['public']['Tables']['teachers']['Row'];
+
+// CARE module types
+export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];
+export type CareCase = Database['public']['Tables']['care_cases']['Row'];
+export type CareMeetingNote = Database['public']['Tables']['care_meeting_notes']['Row'];
+export type CareActionItem = Database['public']['Tables']['care_action_items']['Row'];
