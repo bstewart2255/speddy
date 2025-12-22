@@ -14,6 +14,8 @@ export interface CareCaseWithDetails {
     id: string;
     student_name: string;
     grade: string;
+    teacher_id: string | null;
+    teacher_name: string | null;
     referral_reason: string;
     category: string | null;
     status: string;

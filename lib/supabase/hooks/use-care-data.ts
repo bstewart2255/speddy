@@ -95,6 +95,8 @@ export function useCareData(): UseCareDataReturn {
     async (data: {
       student_name: string;
       grade: string;
+      teacher_id?: string;
+      teacher_name?: string;
       referral_reason: string;
       category?: CareCategory;
     }): Promise<CareReferral> => {

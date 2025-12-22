@@ -5,6 +5,8 @@ export interface CareReferral {
   id: string;
   student_name: string;
   grade: string;
+  teacher_id: string | null;
+  teacher_name: string | null;
   referring_user_id: string;
   referral_reason: string;
   category: CareCategory | null;
@@ -79,6 +81,8 @@ export async function getCareReferrals(
 export async function addCareReferral(referral: {
   student_name: string;
   grade: string;
+  teacher_id?: string;
+  teacher_name?: string;
   referral_reason: string;
   category?: CareCategory;
   school_id: string;

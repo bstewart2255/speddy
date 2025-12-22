@@ -45,6 +45,12 @@ export function ReferralCard({ referral, onClick, onActivate, onDelete }: Referr
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium text-gray-900 truncate">{referral.student_name}</h3>
             <span className="text-sm text-gray-500">Grade {referral.grade}</span>
+            {referral.teacher_name && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="text-sm text-gray-500">{referral.teacher_name}</span>
+              </>
+            )}
           </div>
 
           <p className="mt-1 text-sm text-gray-600 line-clamp-2">{referral.referral_reason}</p>

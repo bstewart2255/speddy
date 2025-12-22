@@ -75,6 +75,11 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
 
       {/* Meta info */}
       <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-4 text-sm text-gray-500">
+        {referral.teacher_name && (
+          <div>
+            <span className="font-medium">Teacher:</span> {referral.teacher_name}
+          </div>
+        )}
         <div>
           <span className="font-medium">Referred by:</span> {referrerName}
         </div>

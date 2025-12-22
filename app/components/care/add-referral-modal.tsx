@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Modal } from '@/app/components/ui/modal';
+import { TeacherAutocomplete } from '@/app/components/teachers/teacher-autocomplete';
+import { useSchool } from '@/app/components/providers/school-context';
 import { CARE_CATEGORIES, GRADE_OPTIONS, type CareCategory } from '@/lib/constants/care';
 
 interface AddReferralModalProps {
@@ -12,12 +14,17 @@ interface AddReferralModalProps {
     grade: string;
     referral_reason: string;
     category?: CareCategory;
+    teacher_id?: string;
+    teacher_name?: string;
   }) => Promise<void>;
 }
 
 export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModalProps) {
+  const { currentSchool } = useSchool();
   const [studentName, setStudentName] = useState('');
   const [grade, setGrade] = useState('');
+  const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [teacherName, setTeacherName] = useState<string | null>(null);
   const [referralReason, setReferralReason] = useState('');
   const [category, setCategory] = useState<CareCategory | ''>('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +33,8 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
   const resetForm = () => {
     setStudentName('');
     setGrade('');
+    setTeacherId(null);
+    setTeacherName(null);
     setReferralReason('');
     setCategory('');
     setError('');
@@ -49,6 +58,10 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
       setError('Grade is required');
       return;
     }
+    if (!teacherId || !teacherName) {
+      setError('Teacher is required');
+      return;
+    }
     if (!referralReason.trim()) {
       setError('Referral reason is required');
       return;
@@ -59,6 +72,8 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
       await onSubmit({
         student_name: studentName.trim(),
         grade,
+        teacher_id: teacherId,
+        teacher_name: teacherName,
         referral_reason: referralReason.trim(),
         category: category || undefined,
       });
@@ -113,6 +128,24 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Teacher <span className="text-red-500">*</span>
+          </label>
+          <TeacherAutocomplete
+            value={teacherId}
+            teacherName={teacherName || undefined}
+            onChange={(id, name) => {
+              setTeacherId(id);
+              setTeacherName(name);
+            }}
+            placeholder="Search for teacher..."
+            schoolId={currentSchool?.school_id}
+            disabled={loading}
+            required
+          />
         </div>
 
         <div>
