@@ -29,7 +29,12 @@ export default function CareDashboardPage() {
       category?: string;
     }) => {
       setActionError(null);
-      await addReferral(data as Parameters<typeof addReferral>[0]);
+      try {
+        await addReferral(data as Parameters<typeof addReferral>[0]);
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : 'Failed to add referral');
+        throw err; // Re-throw so the modal knows it failed
+      }
     },
     [addReferral]
   );

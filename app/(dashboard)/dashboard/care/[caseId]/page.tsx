@@ -24,6 +24,7 @@ export default function CaseDetailPage() {
   const [caseData, setCaseData] = useState<CareCaseWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
 
   const fetchCase = useCallback(async () => {
@@ -60,9 +61,32 @@ export default function CaseDetailPage() {
   const handleDispositionChange = useCallback(
     async (disposition: CareDisposition) => {
       if (!caseId) return;
+      setActionError(null);
 
-      await updateCase(caseId, { current_disposition: disposition });
-      await fetchCase();
+      try {
+        await updateCase(caseId, { current_disposition: disposition });
+        await fetchCase();
+      } catch (err) {
+        console.error('Error updating disposition:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to update disposition');
+        throw err; // Re-throw so component knows it failed
+      }
+    },
+    [caseId, fetchCase]
+  );
+
+  const handleFollowUpDateChange = useCallback(
+    async (date: string | null) => {
+      if (!caseId) return;
+      setActionError(null);
+
+      try {
+        await updateCase(caseId, { follow_up_date: date });
+        await fetchCase();
+      } catch (err) {
+        console.error('Error updating follow-up date:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to update follow-up date');
+      }
     },
     [caseId, fetchCase]
   );
@@ -70,9 +94,16 @@ export default function CaseDetailPage() {
   const handleAddNote = useCallback(
     async (noteText: string) => {
       if (!caseId) return;
+      setActionError(null);
 
-      await addNote(caseId, noteText);
-      await fetchCase();
+      try {
+        await addNote(caseId, noteText);
+        await fetchCase();
+      } catch (err) {
+        console.error('Error adding note:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to add note');
+        throw err;
+      }
     },
     [caseId, fetchCase]
   );
@@ -80,9 +111,15 @@ export default function CaseDetailPage() {
   const handleDeleteNote = useCallback(
     async (noteId: string) => {
       if (!confirm('Are you sure you want to delete this note?')) return;
+      setActionError(null);
 
-      await deleteNote(noteId);
-      await fetchCase();
+      try {
+        await deleteNote(noteId);
+        await fetchCase();
+      } catch (err) {
+        console.error('Error deleting note:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to delete note');
+      }
     },
     [fetchCase]
   );
@@ -90,21 +127,35 @@ export default function CaseDetailPage() {
   const handleAddActionItem = useCallback(
     async (item: { description: string; due_date?: string }) => {
       if (!caseId) return;
+      setActionError(null);
 
-      await addActionItem(caseId, item);
-      await fetchCase();
+      try {
+        await addActionItem(caseId, item);
+        await fetchCase();
+      } catch (err) {
+        console.error('Error adding action item:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to add action item');
+        throw err;
+      }
     },
     [caseId, fetchCase]
   );
 
   const handleToggleComplete = useCallback(
     async (itemId: string, completed: boolean) => {
-      if (completed) {
-        await completeActionItem(itemId);
-      } else {
-        await uncompleteActionItem(itemId);
+      setActionError(null);
+
+      try {
+        if (completed) {
+          await completeActionItem(itemId);
+        } else {
+          await uncompleteActionItem(itemId);
+        }
+        await fetchCase();
+      } catch (err) {
+        console.error('Error toggling action item:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to update action item');
       }
-      await fetchCase();
     },
     [fetchCase]
   );
@@ -112,9 +163,15 @@ export default function CaseDetailPage() {
   const handleDeleteActionItem = useCallback(
     async (itemId: string) => {
       if (!confirm('Are you sure you want to delete this action item?')) return;
+      setActionError(null);
 
-      await deleteActionItem(itemId);
-      await fetchCase();
+      try {
+        await deleteActionItem(itemId);
+        await fetchCase();
+      } catch (err) {
+        console.error('Error deleting action item:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to delete action item');
+      }
     },
     [fetchCase]
   );
@@ -139,6 +196,13 @@ export default function CaseDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
+      {/* Action error message */}
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+          {actionError}
+        </div>
+      )}
+
       {/* Header with student info */}
       <CaseDetailHeader caseData={caseData} />
 
@@ -159,10 +223,7 @@ export default function CaseDetailPage() {
           type="date"
           id="followUpDate"
           value={caseData.follow_up_date || ''}
-          onChange={async (e) => {
-            await updateCase(caseId, { follow_up_date: e.target.value || null });
-            await fetchCase();
-          }}
+          onChange={(e) => handleFollowUpDateChange(e.target.value || null)}
           className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

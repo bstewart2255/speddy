@@ -83,6 +83,8 @@ export async function getCaseWithDetails(caseId: string): Promise<CareCaseWithDe
         id,
         student_name,
         grade,
+        teacher_id,
+        teacher_name,
         referral_reason,
         category,
         status,
@@ -134,6 +136,8 @@ export async function getCaseByReferralId(referralId: string): Promise<CareCaseW
         id,
         student_name,
         grade,
+        teacher_id,
+        teacher_name,
         referral_reason,
         category,
         status,
@@ -184,36 +188,37 @@ export async function updateCase(
     throw new Error('User not authenticated');
   }
 
-  const { error } = await supabase
+  const { data: updatedCase, error } = await supabase
     .from('care_cases')
     .update({
       ...updates,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', caseId);
+    .eq('id', caseId)
+    .select('id, referral_id')
+    .single();
 
   if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Case not found');
+    }
     console.error('Error updating case:', error);
     throw error;
   }
 
   // If disposition is closed_resolved, also close the referral
-  if (updates.current_disposition === 'closed_resolved') {
-    // Get the referral_id first
-    const { data: caseData } = await supabase
-      .from('care_cases')
-      .select('referral_id')
-      .eq('id', caseId)
-      .single();
+  if (updates.current_disposition === 'closed_resolved' && updatedCase?.referral_id) {
+    const { error: referralError } = await supabase
+      .from('care_referrals')
+      .update({
+        status: 'closed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', updatedCase.referral_id);
 
-    if (caseData) {
-      await supabase
-        .from('care_referrals')
-        .update({
-          status: 'closed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', caseData.referral_id);
+    if (referralError) {
+      console.error('Error closing referral:', referralError);
+      throw new Error('Case updated but failed to close referral');
     }
   }
 }

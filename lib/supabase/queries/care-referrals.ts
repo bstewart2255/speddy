@@ -164,8 +164,29 @@ export async function updateReferralStatus(
       });
 
     if (caseError) {
-      console.error('Error creating case:', caseError);
-      // Don't throw - the referral was updated successfully
+      // Handle race condition: if unique constraint violation (23505),
+      // another user already created the case - this is OK
+      if (caseError.code === '23505') {
+        console.log('Case already exists for referral (created by concurrent request)');
+      } else {
+        console.error('Error creating case:', caseError);
+        // Don't throw - the referral was updated successfully
+      }
+    }
+
+    // Refetch to get the case data (whether we created it or someone else did)
+    const { data: updatedReferral } = await supabase
+      .from('care_referrals')
+      .select(`
+        *,
+        referring_user:profiles!referring_user_id(id, full_name),
+        care_cases(*)
+      `)
+      .eq('id', referralId)
+      .single();
+
+    if (updatedReferral) {
+      return updatedReferral as CareReferral;
     }
   }
 

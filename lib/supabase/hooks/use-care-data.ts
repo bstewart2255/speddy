@@ -104,6 +104,7 @@ export function useCareData(): UseCareDataReturn {
         throw new Error('No school selected');
       }
 
+      // Call API first, then update state on success
       const referral = await addCareReferral({
         ...data,
         school_id: currentSchool.school_id,
@@ -111,7 +112,7 @@ export function useCareData(): UseCareDataReturn {
         state_id: currentSchool.state_id || undefined,
       });
 
-      // Optimistically update state
+      // Update state only after successful API call
       setState(prev => ({
         ...prev,
         referrals: {
@@ -137,9 +138,10 @@ export function useCareData(): UseCareDataReturn {
 
   const deleteReferral = useCallback(
     async (referralId: string): Promise<void> => {
+      // Call API first
       await softDeleteReferral(referralId);
 
-      // Optimistically remove from state
+      // Update state only after successful API call
       setState(prev => ({
         ...prev,
         referrals: {
