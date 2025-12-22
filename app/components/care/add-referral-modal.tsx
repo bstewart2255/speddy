@@ -142,7 +142,7 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
               setTeacherName(name);
             }}
             placeholder="Search for teacher..."
-            schoolId={currentSchool?.school_id}
+            schoolId={currentSchool?.school_id ?? undefined}
             disabled={loading}
             required
           />
