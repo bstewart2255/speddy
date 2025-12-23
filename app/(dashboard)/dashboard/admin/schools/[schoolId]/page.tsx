@@ -61,7 +61,7 @@ export default function SchoolDetailPage() {
   const [showProviderCredentials, setShowProviderCredentials] = useState(false);
   const [providerCredentials, setProviderCredentials] = useState({ email: '', temporaryPassword: '' });
   const [newProviderName, setNewProviderName] = useState('');
-  const [providerFormData, setProviderFormData] = useState<{ firstName: string; lastName: string; email: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' }>({ firstName: '', lastName: '', email: '', role: 'resource' });
+  const [providerFormData, setProviderFormData] = useState<{ firstName: string; lastName: string; email: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist' }>({ firstName: '', lastName: '', email: '', role: 'resource' });
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [removingProviderId, setRemovingProviderId] = useState<string | null>(null);
@@ -999,7 +999,7 @@ export default function SchoolDetailPage() {
                 </label>
                 <select
                   value={providerFormData.role}
-                  onChange={(e) => setProviderFormData(prev => ({ ...prev, role: e.target.value as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' }))}
+                  onChange={(e) => setProviderFormData(prev => ({ ...prev, role: e.target.value as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist' }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="resource">Resource Specialist</option>
@@ -1007,6 +1007,7 @@ export default function SchoolDetailPage() {
                   <option value="ot">Occupational Therapist</option>
                   <option value="counseling">Counselor</option>
                   <option value="sea">Special Education Assistant</option>
+                  <option value="psychologist">School Psychologist</option>
                 </select>
               </div>
 
