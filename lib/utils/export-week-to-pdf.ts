@@ -195,19 +195,12 @@ export function exportWeekToPDF(data: WeekExportData) {
           margin: 0 1px;
         }
 
-        /* Legend styles */
+        /* Legend styles - displayed in header area */
         .legend {
-          margin-top: 12px;
-          padding-top: 8px;
-          border-top: 1px solid #d1d5db;
           font-size: 10px;
           text-align: center;
           color: #374151;
-        }
-
-        .legend-title {
-          font-weight: 600;
-          margin-right: 12px;
+          margin-bottom: 12px;
         }
 
         .legend-item {
@@ -219,6 +212,13 @@ export function exportWeekToPDF(data: WeekExportData) {
     <body>
       <h1>Week of ${weekHeader}</h1>
       <div class="view-mode-label">View: ${VIEW_MODE_LABELS[viewMode]}</div>
+      ${viewMode === 'all-sessions' ? `
+        <div class="legend">
+          <span class="legend-item"><span class="shape-square">AB</span> = Assigned to SEA</span>
+          <span class="legend-item"><span class="shape-circle">AB</span> = Assigned to Specialist</span>
+          <span class="legend-item">AB = My Sessions</span>
+        </div>
+      ` : ''}
       <div class="week-grid">
         ${dayNames.map((dayName, index) => {
           const dayOfWeek = index + 1;
@@ -290,14 +290,6 @@ export function exportWeekToPDF(data: WeekExportData) {
           `;
         }).join('')}
       </div>
-      ${viewMode === 'all-sessions' ? `
-        <div class="legend">
-          <span class="legend-title">Legend:</span>
-          <span class="legend-item"><span class="shape-square">AB</span> Assigned to SEA</span>
-          <span class="legend-item"><span class="shape-circle">AB</span> Assigned to Specialist</span>
-          <span class="legend-item">AB = My Sessions</span>
-        </div>
-      ` : ''}
     </body>
     </html>
   `;
