@@ -1340,6 +1340,7 @@ export function CalendarWeekView({
       sessions: sessionsState, // Use filtered sessions from current view
       students: studentsArray,
       weekDates,
+      viewMode, // Pass current view mode for header label and shape rendering
     });
   };
 

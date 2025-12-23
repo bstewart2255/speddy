@@ -1,6 +1,18 @@
 import { ScheduleSession } from '../../src/types/database';
 import { filterScheduledSessions } from './session-helpers';
 
+// View mode type matching calendar-week-view.tsx
+type ViewMode = 'my-sessions' | 'all-sessions' | 'specialist' | 'sea' | 'assigned-to-me';
+
+// Human-readable labels for view modes
+const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  'my-sessions': 'My Sessions',
+  'all-sessions': 'All Sessions',
+  'specialist': 'Assigned to Specialist',
+  'sea': 'Assigned to SEA',
+  'assigned-to-me': 'Assigned to Me',
+};
+
 // Minimal student interface - just what we need for the export
 interface StudentForExport {
   id: string;
@@ -11,9 +23,11 @@ interface WeekExportData {
   sessions: ScheduleSession[];
   students: StudentForExport[];
   weekDates: Date[]; // Array of 5 dates (Monday-Friday)
+  viewMode?: ViewMode; // Optional - defaults to 'my-sessions'
 }
 
 export function exportWeekToPDF(data: WeekExportData) {
+  const viewMode = data.viewMode || 'my-sessions'; // Default to my-sessions
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   // Create students map for quick lookup
@@ -157,10 +171,54 @@ export function exportWeekToPDF(data: WeekExportData) {
           padding: 20px 8px;
           font-size: 12px;
         }
+
+        .view-mode-label {
+          text-align: center;
+          font-size: 12px;
+          color: #6b7280;
+          margin-bottom: 12px;
+        }
+
+        /* Shape styles for session type differentiation */
+        .shape-square {
+          display: inline-block;
+          border: 1.5px solid #333;
+          padding: 0 3px;
+          margin: 0 1px;
+        }
+
+        .shape-circle {
+          display: inline-block;
+          border: 1.5px solid #333;
+          border-radius: 50%;
+          padding: 0 4px;
+          margin: 0 1px;
+        }
+
+        /* Legend styles */
+        .legend {
+          margin-top: 12px;
+          padding-top: 8px;
+          border-top: 1px solid #d1d5db;
+          font-size: 10px;
+          text-align: center;
+          color: #374151;
+        }
+
+        .legend-title {
+          font-weight: 600;
+          margin-right: 12px;
+        }
+
+        .legend-item {
+          display: inline-block;
+          margin: 0 8px;
+        }
       </style>
     </head>
     <body>
       <h1>Week of ${weekHeader}</h1>
+      <div class="view-mode-label">View: ${VIEW_MODE_LABELS[viewMode]}</div>
       <div class="week-grid">
         ${dayNames.map((dayName, index) => {
           const dayOfWeek = index + 1;
@@ -177,7 +235,12 @@ export function exportWeekToPDF(data: WeekExportData) {
             sessionsHtml = '<div class="no-sessions">No sessions</div>';
           } else {
             // Group sessions by time slot to combine group sessions
-            const timeSlotMap = new Map<string, string[]>();
+            // Store session objects along with initials for shape rendering
+            interface SessionEntry {
+              initials: string;
+              session: ScheduleSession;
+            }
+            const timeSlotMap = new Map<string, SessionEntry[]>();
 
             daySessions.forEach(session => {
               const timeKey = session.start_time!;
@@ -187,10 +250,10 @@ export function exportWeekToPDF(data: WeekExportData) {
               if (!timeSlotMap.has(timeKey)) {
                 timeSlotMap.set(timeKey, []);
               }
-              const initialsArray = timeSlotMap.get(timeKey)!;
+              const entries = timeSlotMap.get(timeKey)!;
               // Avoid duplicate initials in same time slot
-              if (!initialsArray.includes(initials)) {
-                initialsArray.push(initials);
+              if (!entries.some(e => e.initials === initials)) {
+                entries.push({ initials, session });
               }
             });
 
@@ -199,11 +262,16 @@ export function exportWeekToPDF(data: WeekExportData) {
               a[0].localeCompare(b[0])
             );
 
-            sortedTimeSlots.forEach(([timeKey, initials]) => {
+            sortedTimeSlots.forEach(([timeKey, entries]) => {
+              // Render initials with shapes for all-sessions view
+              const initialsHtml = entries.map(entry => {
+                return renderInitialsWithShape(entry.initials, entry.session, viewMode);
+              }).join(', ');
+
               sessionsHtml += `
                 <div class="session-item">
                   <div class="session-time">${formatTime(timeKey)}</div>
-                  <div class="session-student">${initials.join(', ')}</div>
+                  <div class="session-student">${initialsHtml}</div>
                 </div>
               `;
             });
@@ -222,6 +290,14 @@ export function exportWeekToPDF(data: WeekExportData) {
           `;
         }).join('')}
       </div>
+      ${viewMode === 'all-sessions' ? `
+        <div class="legend">
+          <span class="legend-title">Legend:</span>
+          <span class="legend-item"><span class="shape-square">AB</span> Assigned to SEA</span>
+          <span class="legend-item"><span class="shape-circle">AB</span> Assigned to Specialist</span>
+          <span class="legend-item">AB = My Sessions</span>
+        </div>
+      ` : ''}
     </body>
     </html>
   `;
@@ -250,4 +326,27 @@ function formatTime(time: string): string {
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${displayHour}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+}
+
+// Helper function to render initials with shapes based on assignment type
+// Only applies shapes in "all-sessions" view
+function renderInitialsWithShape(
+  initials: string,
+  session: ScheduleSession,
+  viewMode: ViewMode
+): string {
+  // Only apply shapes in all-sessions view
+  if (viewMode !== 'all-sessions') {
+    return initials;
+  }
+
+  if (session.assigned_to_sea_id) {
+    // Square shape for sessions assigned to SEA
+    return `<span class="shape-square">${initials}</span>`;
+  } else if (session.assigned_to_specialist_id) {
+    // Circle shape for sessions assigned to Specialist
+    return `<span class="shape-circle">${initials}</span>`;
+  }
+  // Plain text for sessions I own and deliver (no assignment)
+  return initials;
 }
