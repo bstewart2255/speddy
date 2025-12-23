@@ -1,6 +1,7 @@
 'use client';
 
 import { CareReferral } from '@/lib/supabase/queries/care-referrals';
+import { AssignableUser } from '@/lib/supabase/queries/care-cases';
 import {
   CARE_STATUS_COLORS,
   CARE_CATEGORY_COLORS,
@@ -14,9 +15,18 @@ interface ReferralCardProps {
   onClick?: () => void;
   onActivate?: () => void;
   onDelete?: () => void;
+  onAssign?: (caseId: string, userId: string | null) => void;
+  assignableUsers?: AssignableUser[];
 }
 
-export function ReferralCard({ referral, onClick, onActivate, onDelete }: ReferralCardProps) {
+export function ReferralCard({
+  referral,
+  onClick,
+  onActivate,
+  onDelete,
+  onAssign,
+  assignableUsers,
+}: ReferralCardProps) {
   const statusColor = CARE_STATUS_COLORS[referral.status as CareStatus] || CARE_STATUS_COLORS.pending;
   const categoryColor = referral.category
     ? CARE_CATEGORY_COLORS[referral.category as CareCategory] || CARE_CATEGORY_COLORS.other
@@ -32,6 +42,24 @@ export function ReferralCard({ referral, onClick, onActivate, onDelete }: Referr
   });
 
   const referrerName = referral.referring_user?.full_name || 'Unknown';
+
+  // Get the case data (can be array or single object due to UNIQUE constraint)
+  const caseData = referral.care_cases
+    ? Array.isArray(referral.care_cases)
+      ? referral.care_cases[0]
+      : referral.care_cases
+    : null;
+
+  const currentAssignee = caseData?.assigned_user?.full_name || null;
+  const currentAssigneeId = caseData?.assigned_to || '';
+
+  const handleAssignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation();
+    if (onAssign && caseData) {
+      const value = e.target.value;
+      onAssign(caseData.id, value || null);
+    }
+  };
 
   return (
     <div
@@ -60,6 +88,36 @@ export function ReferralCard({ referral, onClick, onActivate, onDelete }: Referr
             <span className="text-gray-300">|</span>
             <span className="text-gray-500">{submittedDate}</span>
           </div>
+
+          {/* Assignment dropdown for active cases */}
+          {referral.status === 'active' && onAssign && assignableUsers && assignableUsers.length > 0 && (
+            <div className="mt-3 flex items-center gap-2">
+              <label htmlFor={`assign-${referral.id}`} className="text-xs text-gray-600">
+                Assigned to:
+              </label>
+              <select
+                id={`assign-${referral.id}`}
+                value={currentAssigneeId}
+                onChange={handleAssignChange}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Unassigned</option>
+                {assignableUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name || 'Unknown'} ({user.type === 'admin' ? 'Admin' : user.role || 'Provider'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Show assigned user for closed cases (read-only) */}
+          {referral.status === 'closed' && currentAssignee && (
+            <div className="mt-2 text-xs text-gray-500">
+              Assigned to: {currentAssignee}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2">

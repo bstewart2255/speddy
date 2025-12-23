@@ -223,6 +223,45 @@ export async function updateCase(
   }
 }
 
+export interface AssignableUser {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  type: 'provider' | 'admin';
+}
+
+/**
+ * Get users who can be assigned to CARE cases at a school
+ * Returns providers (specialists) and site admins
+ * Uses a SECURITY DEFINER function to bypass RLS on profiles
+ */
+export async function getAssignableUsers(schoolId: string): Promise<AssignableUser[]> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // Use RPC function that bypasses RLS
+  const { data, error } = await supabase.rpc('get_care_assignable_users', {
+    p_school_id: schoolId,
+  });
+
+  if (error) {
+    console.error('Error fetching assignable users:', error);
+    throw error;
+  }
+
+  return (data || []).map((row: { id: string; full_name: string | null; role: string | null; user_type: string }) => ({
+    id: row.id,
+    full_name: row.full_name,
+    role: row.role,
+    type: row.user_type as 'provider' | 'admin',
+  }));
+}
+
 /**
  * Create a new case for a referral
  */

@@ -75,22 +75,6 @@ export default function CaseDetailPage() {
     [caseId, fetchCase]
   );
 
-  const handleFollowUpDateChange = useCallback(
-    async (date: string | null) => {
-      if (!caseId) return;
-      setActionError(null);
-
-      try {
-        await updateCase(caseId, { follow_up_date: date });
-        await fetchCase();
-      } catch (err) {
-        console.error('Error updating follow-up date:', err);
-        setActionError(err instanceof Error ? err.message : 'Failed to update follow-up date');
-      }
-    },
-    [caseId, fetchCase]
-  );
-
   const handleAddNote = useCallback(
     async (noteText: string) => {
       if (!caseId) return;
@@ -211,20 +195,6 @@ export default function CaseDetailPage() {
         <DispositionSelector
           value={caseData.current_disposition}
           onChange={handleDispositionChange}
-        />
-      </div>
-
-      {/* Follow-up date */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <label htmlFor="followUpDate" className="block text-sm font-medium text-gray-700 mb-1">
-          Follow-up Date
-        </label>
-        <input
-          type="date"
-          id="followUpDate"
-          value={caseData.follow_up_date || ''}
-          onChange={(e) => handleFollowUpDateChange(e.target.value || null)}
-          className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
