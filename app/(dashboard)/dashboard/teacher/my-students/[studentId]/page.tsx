@@ -23,10 +23,10 @@ type StudentDetail = {
 
 type ScheduleSession = {
   id: string;
-  session_date: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
+  session_date: string | null;
+  day_of_week: number | null;
+  start_time: string | null;
+  end_time: string | null;
   service_type: string;
 };
 
@@ -68,7 +68,8 @@ export default function StudentDetailPage() {
     }
   }, [studentId]);
 
-  const formatTime = (time: string) => {
+  const formatTime = (time: string | null) => {
+    if (!time) return 'TBD';
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -76,11 +77,13 @@ export default function StudentDetailPage() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const getDayName = (dayNumber: number) => {
+  const getDayName = (dayNumber: number | null) => {
+    if (dayNumber === null) return 'TBD';
     return DAYS_OF_WEEK[dayNumber - 1] || 'Unknown';
   };
 
-  const calculateDuration = (startTime: string, endTime: string) => {
+  const calculateDuration = (startTime: string | null, endTime: string | null) => {
+    if (!startTime || !endTime) return null;
     const start = new Date(`1970-01-01T${startTime}`);
     const end = new Date(`1970-01-01T${endTime}`);
     const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
@@ -246,9 +249,11 @@ export default function StudentDetailPage() {
                     <p className="font-medium text-gray-900">
                       {formatTime(session.start_time)} - {formatTime(session.end_time)}
                     </p>
-                    <p className="text-sm text-gray-600">
-                      {calculateDuration(session.start_time, session.end_time)} minutes
-                    </p>
+                    {calculateDuration(session.start_time, session.end_time) !== null && (
+                      <p className="text-sm text-gray-600">
+                        {calculateDuration(session.start_time, session.end_time)} minutes
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
