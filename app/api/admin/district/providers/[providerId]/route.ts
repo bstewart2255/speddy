@@ -44,7 +44,7 @@ async function verifyDistrictAdminAccess(
   }
 
   // Check if it's a provider role
-  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea'];
+  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'];
   if (!providerRoles.includes(profile.role || '')) {
     return { allowed: false, error: 'User is not a provider' };
   }
