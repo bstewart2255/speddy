@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSchool } from '@/app/components/providers/school-context';
 import { useCareData } from '@/lib/supabase/hooks/use-care-data';
 import { AddReferralModal } from '@/app/components/care/add-referral-modal';
 import { ReferralList } from '@/app/components/care/referral-list';
 import { CareReferral } from '@/lib/supabase/queries/care-referrals';
+import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/queries/care-cases';
 import type { CareStatus } from '@/lib/constants/care';
 
 type TabType = 'pending' | 'active' | 'closed';
@@ -20,6 +21,19 @@ export default function CareDashboardPage() {
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [showAddModal, setShowAddModal] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+
+  // Fetch assignable users when school changes
+  useEffect(() => {
+    if (currentSchool?.school_id) {
+      getAssignableUsers(currentSchool.school_id)
+        .then(setAssignableUsers)
+        .catch((err) => {
+          console.error('Error fetching assignable users:', err);
+          setAssignableUsers([]);
+        });
+    }
+  }, [currentSchool?.school_id]);
 
   const handleAddReferral = useCallback(
     async (data: {
@@ -71,12 +85,31 @@ export default function CareDashboardPage() {
 
   const handleReferralClick = useCallback(
     (referral: CareReferral) => {
-      // Only navigate if there's a case (active or closed referrals)
-      if (referral.care_cases && referral.care_cases.length > 0) {
-        router.push(`/dashboard/care/${referral.care_cases[0].id}`);
+      // Navigate if there's a case (active or closed referrals)
+      // care_cases can be an array or single object due to UNIQUE constraint
+      const cases = referral.care_cases;
+      if (cases) {
+        const caseId = Array.isArray(cases) ? cases[0]?.id : cases.id;
+        if (caseId) {
+          router.push(`/dashboard/care/${caseId}`);
+        }
       }
     },
     [router]
+  );
+
+  const handleAssign = useCallback(
+    async (caseId: string, userId: string | null) => {
+      setActionError(null);
+      try {
+        await updateCase(caseId, { assigned_to: userId });
+        await refreshData();
+      } catch (err) {
+        console.error('Error assigning case:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to assign case');
+      }
+    },
+    [refreshData]
   );
 
   const tabs: { key: TabType; label: string; count: number }[] = [
@@ -179,6 +212,8 @@ export default function CareDashboardPage() {
           onReferralClick={handleReferralClick}
           onActivate={activeTab === 'pending' ? handleActivateReferral : undefined}
           onDelete={activeTab === 'pending' ? handleDeleteReferral : undefined}
+          onAssign={activeTab === 'active' ? handleAssign : undefined}
+          assignableUsers={activeTab === 'active' ? assignableUsers : undefined}
         />
       )}
 

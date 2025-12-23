@@ -1,6 +1,7 @@
 'use client';
 
 import { CareReferral } from '@/lib/supabase/queries/care-referrals';
+import { AssignableUser } from '@/lib/supabase/queries/care-cases';
 import { ReferralCard } from './referral-card';
 
 interface ReferralListProps {
@@ -9,6 +10,8 @@ interface ReferralListProps {
   onReferralClick?: (referral: CareReferral) => void;
   onActivate?: (referral: CareReferral) => void;
   onDelete?: (referral: CareReferral) => void;
+  onAssign?: (caseId: string, userId: string | null) => void;
+  assignableUsers?: AssignableUser[];
 }
 
 export function ReferralList({
@@ -17,6 +20,8 @@ export function ReferralList({
   onReferralClick,
   onActivate,
   onDelete,
+  onAssign,
+  assignableUsers,
 }: ReferralListProps) {
   if (referrals.length === 0) {
     return (
@@ -48,6 +53,8 @@ export function ReferralList({
           onClick={onReferralClick ? () => onReferralClick(referral) : undefined}
           onActivate={onActivate ? () => onActivate(referral) : undefined}
           onDelete={onDelete ? () => onDelete(referral) : undefined}
+          onAssign={onAssign}
+          assignableUsers={assignableUsers}
         />
       ))}
     </div>

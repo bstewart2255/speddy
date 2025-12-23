@@ -23,7 +23,8 @@ export interface CareReferral {
     id: string;
     full_name: string | null;
   };
-  care_cases?: CareCase[];
+  // care_cases can be array or single object due to UNIQUE constraint on referral_id
+  care_cases?: CareCase[] | CareCase;
 }
 
 export interface CareCase {
@@ -34,6 +35,11 @@ export interface CareCase {
   follow_up_date: string | null;
   created_at: string;
   updated_at: string;
+  // Joined data
+  assigned_user?: {
+    id: string;
+    full_name: string | null;
+  } | null;
 }
 
 /**
@@ -56,7 +62,10 @@ export async function getCareReferrals(
     .select(`
       *,
       referring_user:profiles!referring_user_id(id, full_name),
-      care_cases(*)
+      care_cases(
+        *,
+        assigned_user:profiles!assigned_to(id, full_name)
+      )
     `)
     .eq('school_id', schoolId)
     .is('deleted_at', null);
@@ -156,7 +165,11 @@ export async function updateReferralStatus(
   }
 
   // If status changed to 'active' and no case exists, create one
-  if (status === 'active' && (!referral.care_cases || referral.care_cases.length === 0)) {
+  // care_cases can be array or single object due to UNIQUE constraint
+  const hasCase = referral.care_cases && (
+    Array.isArray(referral.care_cases) ? referral.care_cases.length > 0 : true
+  );
+  if (status === 'active' && !hasCase) {
     const { error: caseError } = await supabase
       .from('care_cases')
       .insert({
