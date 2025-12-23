@@ -27,31 +27,48 @@ export default function CareDashboardPage() {
   // Fetch user role and teacher record on mount
   useEffect(() => {
     async function fetchUserData() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-      if (user) {
-        // Get role from profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
+        if (authError) {
+          console.error('Error fetching user:', authError);
+          setUserDataLoading(false);
+          return;
+        }
 
-        setUserRole(profile?.role || null);
+        if (user) {
+          // Get role from profile
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
 
-        // If teacher, get their teacher record
-        if (profile?.role === 'teacher') {
-          const teacherData = await getTeacherByAccountId(user.id);
-          if (teacherData) {
-            setTeacherRecord({
-              id: teacherData.id,
-              name: `${teacherData.first_name} ${teacherData.last_name}`,
-            });
+          if (profileError) {
+            console.error('Error fetching profile:', profileError);
+          }
+
+          setUserRole(profile?.role || null);
+
+          // If teacher, get their teacher record
+          if (profile?.role === 'teacher') {
+            const teacherData = await getTeacherByAccountId(user.id);
+            if (teacherData) {
+              setTeacherRecord({
+                id: teacherData.id,
+                name: `${teacherData.first_name} ${teacherData.last_name}`,
+              });
+            }
+            // Note: If no teacher record found, teacherRecord stays null
+            // and shouldSkipFetch will remain true, preventing data fetch
           }
         }
+      } catch (err) {
+        console.error('Error in fetchUserData:', err);
+      } finally {
+        setUserDataLoading(false);
       }
-      setUserDataLoading(false);
     }
     fetchUserData();
   }, []);
@@ -182,6 +199,17 @@ export default function CareDashboardPage() {
       <div className="max-w-4xl mx-auto py-8 px-4">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
           Please select a school to view CARE referrals.
+        </div>
+      </div>
+    );
+  }
+
+  // Edge case: Teacher role but no linked teacher record
+  if (isTeacher && !teacherRecord) {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
+          Your account is not linked to a teacher record. Please contact your administrator to set up your teacher profile.
         </div>
       </div>
     );

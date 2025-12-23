@@ -253,6 +253,19 @@ export async function getTeacherByAccountId(
 ): Promise<{ id: string; first_name: string; last_name: string } | null> {
   const supabase = createClient();
 
+  // Verify auth - user should only be able to look up their own teacher record
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    console.error('User not authenticated when fetching teacher record');
+    return null;
+  }
+
+  // Security check: ensure user is querying their own account
+  if (user.id !== accountId) {
+    console.error('User attempted to fetch teacher record for different account');
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('teachers')
     .select('id, first_name, last_name')
