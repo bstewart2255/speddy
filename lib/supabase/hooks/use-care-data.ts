@@ -24,6 +24,8 @@ interface CareDataState {
 
 interface UseCareDataOptions {
   teacherId?: string;
+  /** Skip fetching data (useful when waiting for async dependencies like teacher record) */
+  skip?: boolean;
 }
 
 interface UseCareDataReturn extends CareDataState {
@@ -40,6 +42,7 @@ interface UseCareDataReturn extends CareDataState {
 
 export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
   const teacherId = options?.teacherId;
+  const skip = options?.skip ?? false;
   const { currentSchool } = useSchool();
   const [state, setState] = useState<CareDataState>({
     referrals: {
@@ -53,6 +56,11 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
   });
 
   const fetchData = useCallback(async () => {
+    // Skip fetching if requested (e.g., waiting for teacher record)
+    if (skip) {
+      return;
+    }
+
     if (!currentSchool?.school_id) {
       setState(prev => ({
         ...prev,
@@ -90,7 +98,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
         error: err instanceof Error ? err.message : 'Failed to load CARE data',
       }));
     }
-  }, [currentSchool?.school_id, teacherId]);
+  }, [currentSchool?.school_id, teacherId, skip]);
 
   useEffect(() => {
     fetchData();

@@ -56,9 +56,16 @@ export default function CareDashboardPage() {
     fetchUserData();
   }, []);
 
+  // For teachers: skip fetching until we have their teacher record
+  // For non-teachers: skip fetching until we've confirmed they're not a teacher
+  const shouldSkipFetch = userDataLoading || (isTeacher && !teacherRecord);
+
   // Pass teacherId to filter referrals for teachers
   const { referrals, loading, error, addReferral, updateStatus, deleteReferral, refreshData } =
-    useCareData({ teacherId: isTeacher && teacherRecord ? teacherRecord.id : undefined });
+    useCareData({
+      teacherId: isTeacher && teacherRecord ? teacherRecord.id : undefined,
+      skip: shouldSkipFetch,
+    });
 
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [showAddModal, setShowAddModal] = useState(false);

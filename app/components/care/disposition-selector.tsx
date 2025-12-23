@@ -29,7 +29,7 @@ export function DispositionSelector({ value, onChange, disabled }: DispositionSe
   return (
     <div>
       <label htmlFor="disposition" className="block text-sm font-medium text-gray-700 mb-1">
-        Disposition / Outcome
+        Outcome
       </label>
       <select
         id="disposition"
