@@ -525,110 +525,6 @@ export async function linkTeacherToProfile(
 }
 
 // ============================================================================
-// GET DUPLICATE TEACHERS (FOR CLEANUP UI)
-// ============================================================================
-
-export async function findPotentialDuplicates(schoolId: string) {
-  const supabase = createClient<Database>();
-
-  // Verify admin has permission
-  const hasPermission = await isAdminForSchool(schoolId);
-  if (!hasPermission) {
-    throw new Error('You do not have permission to view teachers at this school');
-  }
-
-  const fetchPerf = measurePerformanceWithAlerts('find_duplicate_teachers', 'database');
-
-  // Get all teachers at school
-  const teachersResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('teachers')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('last_name', { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    { operation: 'fetch_all_teachers_for_duplicates', schoolId }
-  );
-
-  fetchPerf.end();
-
-  if (teachersResult.error) throw teachersResult.error;
-
-  const teachers = teachersResult.data || [];
-
-  // Group teachers by similar names
-  const duplicateGroups: Teacher[][] = [];
-  const processed = new Set<string>();
-
-  for (const teacher of teachers) {
-    if (processed.has(teacher.id)) continue;
-
-    // Skip teachers without last names for duplicate detection
-    if (!teacher.last_name) continue;
-
-    const teacherLastName = teacher.last_name.toLowerCase();
-
-    const similar = teachers.filter(t => {
-      if (t.id === teacher.id || processed.has(t.id) || !t.last_name) {
-        return false;
-      }
-
-      const tLastName = t.last_name.toLowerCase();
-
-      return (
-        // Exact last name match
-        tLastName === teacherLastName ||
-        // Very similar last names (Levenshtein distance <= 2)
-        levenshteinDistance(tLastName, teacherLastName) <= 2
-      );
-    });
-
-    if (similar.length > 0) {
-      const group = [teacher, ...similar];
-      duplicateGroups.push(group);
-      group.forEach(t => processed.add(t.id));
-    }
-  }
-
-  return duplicateGroups;
-}
-
-// ============================================================================
-// HELPER: Levenshtein distance for fuzzy name matching
-// ============================================================================
-
-function levenshteinDistance(str1: string, str2: string): number {
-  const matrix: number[][] = [];
-
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        );
-      }
-    }
-  }
-
-  return matrix[str2.length][str1.length];
-}
-
-// ============================================================================
 // DISTRICT ADMIN FUNCTIONS
 // ============================================================================
 
@@ -953,5 +849,259 @@ export async function deleteTeacher(teacherId: string) {
 
   if (deleteResult.error) throw deleteResult.error;
 
+  return true;
+}
+
+// ============================================================================
+// ADMIN STUDENT FUNCTIONS
+// ============================================================================
+
+export interface AdminStudentView {
+  id: string;
+  initials: string;
+  grade_level: string;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  sessions_per_week: number | null;
+  minutes_per_session: number | null;
+  provider_id: string | null;
+  specialist_name: string | null;
+  created_at: string | null;
+}
+
+/**
+ * Get the count of students at a school for dashboard display.
+ * @param schoolId - The school ID
+ * @returns The count of students at the school
+ */
+export async function getSchoolStudentCount(schoolId: string): Promise<number> {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to view students at this school');
+  }
+
+  const countResult = await safeQuery(
+    async () => {
+      const { count, error } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true })
+        .eq('school_id', schoolId);
+      if (error) throw error;
+      return count || 0;
+    },
+    { operation: 'count_school_students', schoolId }
+  );
+
+  if (countResult.error) throw countResult.error;
+  return countResult.data || 0;
+}
+
+/**
+ * Get all students at a school with their specialist (provider) name.
+ * @param schoolId - The school ID
+ * @returns Array of students with specialist name included
+ */
+export async function getSchoolStudents(schoolId: string): Promise<AdminStudentView[]> {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to view students at this school');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_school_students_admin', 'database');
+
+  const studentsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select(`
+          id,
+          initials,
+          grade_level,
+          teacher_id,
+          teacher_name,
+          sessions_per_week,
+          minutes_per_session,
+          provider_id,
+          created_at,
+          provider:profiles!students_provider_id_fkey (
+            full_name
+          )
+        `)
+        .eq('school_id', schoolId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_school_students_admin', schoolId }
+  );
+
+  fetchPerf.end();
+
+  if (studentsResult.error) throw studentsResult.error;
+
+  // Transform to AdminStudentView format
+  return (studentsResult.data || []).map(student => ({
+    id: student.id,
+    initials: student.initials,
+    grade_level: student.grade_level,
+    teacher_id: student.teacher_id,
+    teacher_name: student.teacher_name,
+    sessions_per_week: student.sessions_per_week,
+    minutes_per_session: student.minutes_per_session,
+    provider_id: student.provider_id,
+    specialist_name: (student.provider as any)?.full_name || null,
+    created_at: student.created_at,
+  }));
+}
+
+/**
+ * Update a student as an admin (not restricted to provider ownership).
+ * @param studentId - The student ID
+ * @param schoolId - The school ID (for permission check)
+ * @param updates - The fields to update
+ */
+export async function updateStudentAsAdmin(
+  studentId: string,
+  schoolId: string,
+  updates: {
+    initials?: string;
+    grade_level?: string;
+    teacher_id?: string | null;
+    teacher_name?: string;
+    sessions_per_week?: number;
+    minutes_per_session?: number;
+  }
+) {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to update students at this school');
+  }
+
+  // Verify student belongs to this school
+  const studentCheck = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, school_id')
+        .eq('id', studentId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'verify_student_school', studentId }
+  );
+
+  if (studentCheck.error || !studentCheck.data) {
+    throw new Error('Student not found');
+  }
+
+  if (studentCheck.data.school_id !== schoolId) {
+    throw new Error('Student does not belong to this school');
+  }
+
+  const updatePerf = measurePerformanceWithAlerts('update_student_admin', 'database');
+
+  const updateResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', studentId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'update_student_admin', studentId }
+  );
+
+  updatePerf.end();
+
+  if (updateResult.error) throw updateResult.error;
+  return updateResult.data;
+}
+
+/**
+ * Delete a student as an admin (not restricted to provider ownership).
+ * Also deletes associated schedule_sessions.
+ * @param studentId - The student ID
+ * @param schoolId - The school ID (for permission check)
+ */
+export async function deleteStudentAsAdmin(studentId: string, schoolId: string) {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to delete students at this school');
+  }
+
+  // Verify student belongs to this school
+  const studentCheck = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, school_id')
+        .eq('id', studentId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'verify_student_school_for_delete', studentId }
+  );
+
+  if (studentCheck.error || !studentCheck.data) {
+    throw new Error('Student not found');
+  }
+
+  if (studentCheck.data.school_id !== schoolId) {
+    throw new Error('Student does not belong to this school');
+  }
+
+  const deletePerf = measurePerformanceWithAlerts('delete_student_admin', 'database');
+
+  // First delete schedule_sessions
+  const deleteSessionsResult = await safeQuery(
+    async () => {
+      const { error } = await supabase
+        .from('schedule_sessions')
+        .delete()
+        .eq('student_id', studentId);
+      if (error) throw error;
+      return null;
+    },
+    { operation: 'delete_student_sessions_admin', studentId }
+  );
+
+  if (deleteSessionsResult.error) {
+    deletePerf.end();
+    throw deleteSessionsResult.error;
+  }
+
+  // Then delete the student
+  const deleteResult = await safeQuery(
+    async () => {
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', studentId);
+      if (error) throw error;
+      return true;
+    },
+    { operation: 'delete_student_admin', studentId }
+  );
+
+  deletePerf.end();
+
+  if (deleteResult.error) throw deleteResult.error;
   return true;
 }
