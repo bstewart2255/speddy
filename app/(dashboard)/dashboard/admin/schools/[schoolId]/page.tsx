@@ -615,6 +615,7 @@ export default function SchoolDetailPage() {
                          specialist.role === 'ot' ? 'OT' :
                          specialist.role === 'counseling' ? 'Counselor' :
                          specialist.role === 'sea' ? 'SEA' :
+                         specialist.role === 'psychologist' ? 'School Psychologist' :
                          specialist.role}
                       </span>
                     </td>

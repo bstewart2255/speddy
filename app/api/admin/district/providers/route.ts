@@ -6,7 +6,7 @@ import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 
 const log = logger.child({ module: 'district-admin-providers' });
 
-type ProviderRole = 'resource' | 'speech' | 'ot' | 'counseling' | 'sea';
+type ProviderRole = 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist';
 
 interface CreateProviderRequest {
   first_name: string;
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    const validRoles: ProviderRole[] = ['resource', 'speech', 'ot', 'counseling', 'sea'];
+    const validRoles: ProviderRole[] = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
