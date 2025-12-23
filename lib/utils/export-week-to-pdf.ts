@@ -80,11 +80,47 @@ export function exportWeekToPDF(data: WeekExportData) {
         @media print {
           @page {
             size: landscape;
-            margin: 0.5in;
+            margin: 0.25in;
           }
           body {
             margin: 0;
-            padding: 0 !important;
+            padding: 6px !important;
+            zoom: 0.92;
+          }
+          h1 {
+            font-size: 16px;
+            margin-bottom: 4px;
+          }
+          .view-mode-label {
+            font-size: 10px;
+            margin-bottom: 3px;
+          }
+          .legend {
+            font-size: 9px;
+            margin-bottom: 4px;
+          }
+          .week-grid {
+            gap: 3px;
+          }
+          .day-header {
+            padding: 3px;
+            font-size: 11px;
+          }
+          .day-date {
+            font-size: 9px;
+          }
+          .day-content {
+            padding: 3px;
+          }
+          .session-item {
+            margin-bottom: 2px;
+            padding-bottom: 2px;
+          }
+          .session-time {
+            font-size: 9px;
+          }
+          .session-student {
+            font-size: 11px;
           }
         }
 
@@ -94,7 +130,7 @@ export function exportWeekToPDF(data: WeekExportData) {
 
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          padding: 20px;
+          padding: 12px;
           margin: 0;
         }
 
@@ -109,7 +145,6 @@ export function exportWeekToPDF(data: WeekExportData) {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
           gap: 8px;
-          height: calc(100vh - 80px);
         }
 
         .day-column {
@@ -215,7 +250,7 @@ export function exportWeekToPDF(data: WeekExportData) {
       ${viewMode === 'all-sessions' ? `
         <div class="legend">
           <span class="legend-item"><span class="shape-square">AB</span> = Assigned to SEA</span>
-          <span class="legend-item"><span class="shape-circle">AB</span> = Assigned to Specialist</span>
+          <span class="legend-item"><span class="shape-circle">AB</span> = Assigned to Me</span>
           <span class="legend-item">AB = My Sessions</span>
         </div>
       ` : ''}
