@@ -46,12 +46,20 @@ export function filterScheduleSessions({
       return selectedSeaId ? filtered.filter(s => s.assigned_to_sea_id === selectedSeaId) : filtered;
     }
     case 'specialist': {
-      const filtered = sessions.filter(s =>
-        s.delivered_by === 'specialist' && s.provider_id === currentUserId
+      if (!currentUserId) {
+        return [];
+      }
+      if (selectedSpecialistId) {
+        return sessions.filter(
+          s =>
+            s.delivered_by === 'specialist' &&
+            s.provider_id === currentUserId &&
+            s.assigned_to_specialist_id === selectedSpecialistId
+        );
+      }
+      return sessions.filter(
+        s => s.delivered_by === 'specialist' && s.provider_id === currentUserId
       );
-      return selectedSpecialistId
-        ? filtered.filter(s => s.assigned_to_specialist_id === selectedSpecialistId)
-        : filtered;
     }
     default:
       return sessions;
