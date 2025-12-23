@@ -43,11 +43,12 @@ export interface CareCase {
 }
 
 /**
- * Get all CARE referrals for a school, optionally filtered by status
+ * Get all CARE referrals for a school, optionally filtered by status and/or teacher
  */
 export async function getCareReferrals(
   schoolId: string,
-  status?: CareStatus
+  status?: CareStatus,
+  teacherId?: string
 ): Promise<CareReferral[]> {
   const supabase = createClient();
 
@@ -72,6 +73,11 @@ export async function getCareReferrals(
 
   if (status) {
     query = query.eq('status', status);
+  }
+
+  // Filter by teacher (used for teacher-specific views)
+  if (teacherId) {
+    query = query.eq('teacher_id', teacherId);
   }
 
   const { data, error } = await query.order('submitted_at', { ascending: false });
@@ -236,6 +242,33 @@ export async function softDeleteReferral(referralId: string): Promise<void> {
     console.error('Error soft-deleting referral:', error);
     throw error;
   }
+}
+
+/**
+ * Get teacher record by their user account ID
+ * Used to link a logged-in teacher user to their teacher record
+ */
+export async function getTeacherByAccountId(
+  accountId: string
+): Promise<{ id: string; first_name: string; last_name: string } | null> {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('teachers')
+    .select('id, first_name, last_name')
+    .eq('account_id', accountId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // No matching teacher record found
+      return null;
+    }
+    console.error('Error fetching teacher by account ID:', error);
+    return null;
+  }
+
+  return data;
 }
 
 /**

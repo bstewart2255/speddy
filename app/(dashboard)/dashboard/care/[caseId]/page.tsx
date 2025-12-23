@@ -26,6 +26,7 @@ export default function CaseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
+  const [isTeacher, setIsTeacher] = useState(false);
 
   const fetchCase = useCallback(async () => {
     if (!caseId) return;
@@ -51,10 +52,19 @@ export default function CaseDetailPage() {
   useEffect(() => {
     fetchCase();
 
-    // Get current user ID for note deletion permissions
+    // Get current user ID and role
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id);
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        setCurrentUserId(user.id);
+        // Fetch user role to apply teacher restrictions
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        setIsTeacher(profile?.role === 'teacher');
+      }
     });
   }, [fetchCase]);
 
@@ -190,15 +200,16 @@ export default function CaseDetailPage() {
       {/* Header with student info */}
       <CaseDetailHeader caseData={caseData} />
 
-      {/* Disposition selector */}
+      {/* Disposition selector - read-only for teachers */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <DispositionSelector
           value={caseData.current_disposition}
           onChange={handleDispositionChange}
+          disabled={isTeacher}
         />
       </div>
 
-      {/* Notes section */}
+      {/* Notes section - teachers can add and view */}
       <CaseNotesSection
         notes={caseData.care_meeting_notes || []}
         onAddNote={handleAddNote}
@@ -206,13 +217,15 @@ export default function CaseDetailPage() {
         currentUserId={currentUserId}
       />
 
-      {/* Action items section */}
-      <CaseActionsSection
-        actionItems={caseData.care_action_items || []}
-        onAddItem={handleAddActionItem}
-        onToggleComplete={handleToggleComplete}
-        onDeleteItem={handleDeleteActionItem}
-      />
+      {/* Action items section - hidden for teachers */}
+      {!isTeacher && (
+        <CaseActionsSection
+          actionItems={caseData.care_action_items || []}
+          onAddItem={handleAddActionItem}
+          onToggleComplete={handleToggleComplete}
+          onDeleteItem={handleDeleteActionItem}
+        />
+      )}
     </div>
   );
 }

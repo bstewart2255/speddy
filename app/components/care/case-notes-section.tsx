@@ -49,14 +49,14 @@ export function CaseNotesSection({
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">Meeting Notes</h3>
+      <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
 
       {/* Add note form */}
       <form onSubmit={handleSubmit} className="mb-4">
         <textarea
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Add a note from the meeting..."
+          placeholder="Add a note..."
           rows={3}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           disabled={loading}
