@@ -1330,8 +1330,9 @@ export function CalendarWeekView({
 
   // Handle printing the week schedule
   const handlePrintWeek = () => {
-    // Convert students Map to array with id for the export function
-    const studentsArray = Array.from(students.entries()).map(([id, student]) => ({
+    // Convert allStudents Map (merged prop + additional) to array for the export function
+    // Using allStudents ensures we have initials for students fetched after initial load
+    const studentsArray = Array.from(allStudents.entries()).map(([id, student]) => ({
       id,
       initials: student.initials,
     }));
