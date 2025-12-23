@@ -306,22 +306,20 @@ export default function AdminDashboardPage() {
             </Link>
           )}
 
-          {!isDistrictAdmin && (
-            <Link
-              href="/dashboard/admin/create-account"
-              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
-            >
-              <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
-                <p className="text-sm text-gray-600">Add a teacher or provider account</p>
-              </div>
-            </Link>
-          )}
+          <Link
+            href="/dashboard/admin/create-account"
+            className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+          >
+            <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <div className="ml-4">
+              <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
+              <p className="text-sm text-gray-600">Add a teacher or provider account</p>
+            </div>
+          </Link>
 
           {!isDistrictAdmin && (
             <Link
