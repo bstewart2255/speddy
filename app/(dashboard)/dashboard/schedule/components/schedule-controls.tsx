@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { formatTime } from '@/lib/utils/time-options';
 
 interface SeaProfile {
   id: string;
@@ -67,14 +68,6 @@ export function ScheduleControls({
   onSeaSelect,
   onSpecialistSelect,
 }: ScheduleControlsProps) {
-  const formatTime = (time: string): string => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
   return (
     <>
       {/* Session Filter and Grade Level Filter - Side by Side */}

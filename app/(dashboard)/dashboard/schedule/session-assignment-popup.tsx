@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
+import { formatTime } from '@/lib/utils/time-options';
 import type { Database, ScheduleSession, Student } from '@/src/types/database';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
@@ -51,15 +52,6 @@ export function SessionAssignmentPopup({
       allTags: sessionTags
     });
   }, [session.id, session.student_id, sessionTags]);
-
-  // Format time for display (12-hour format)
-  const formatTime = (time: string): string => {
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
 
   // Auto-save when assignment changes
   const handleAssignmentChange = async (value: string) => {
