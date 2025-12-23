@@ -39,7 +39,7 @@ BEGIN
     'provider'::TEXT as user_type
   FROM profiles p
   WHERE p.school_id = p_school_id
-    AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist', 'sea')
+    AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist')
 
   UNION
 
@@ -52,7 +52,7 @@ BEGIN
   FROM provider_schools ps
   JOIN profiles p ON p.id = ps.provider_id
   WHERE ps.school_id = p_school_id
-    AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist', 'sea')
+    AND p.role IN ('resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist')
 
   UNION
 

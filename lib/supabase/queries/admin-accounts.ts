@@ -198,7 +198,7 @@ export async function getSchoolStaff(schoolId: string) {
         .from('profiles')
         .select('*')
         .eq('school_id', schoolId)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
         .order('full_name', { ascending: true });
       if (error) throw error;
       return data;
@@ -231,7 +231,7 @@ export async function getSchoolStaff(schoolId: string) {
         .from('profiles')
         .select('*')
         .in('id', secondaryProviderIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
         .order('full_name', { ascending: true });
 
       if (profilesError) throw profilesError;
@@ -729,7 +729,7 @@ export async function getDistrictSchools(districtId: string) {
             .from('profiles')
             .select('*', { count: 'exact', head: true })
             .eq('school_id', school.id)
-            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
           if (primaryError) throw primaryError;
 
           // Get secondary specialists from provider_schools
@@ -751,7 +751,7 @@ export async function getDistrictSchools(districtId: string) {
               .select('*', { count: 'exact', head: true })
               .in('id', secondaryProviderIds as string[])
               .neq('school_id', school.id) // Don't double-count if primary is same school
-              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
             if (secError) throw secError;
             secondaryCount = count || 0;
           }
@@ -835,7 +835,7 @@ export async function getDistrictStaffCounts(districtId: string) {
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .in('school_id', schoolIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']);
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
       if (error) throw error;
       return count || 0;
     },

@@ -11,7 +11,7 @@ export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
  * Centralized list of roles that map to 'specialist' delivered_by value
  * Export this to avoid duplication across the codebase
  */
-export const SPECIALIST_SOURCE_ROLES = ['resource', 'specialist', 'speech', 'ot', 'counseling'] as const;
+export const SPECIALIST_SOURCE_ROLES = ['resource', 'specialist', 'speech', 'ot', 'counseling', 'psychologist'] as const;
 
 /**
  * Type for specialist source roles

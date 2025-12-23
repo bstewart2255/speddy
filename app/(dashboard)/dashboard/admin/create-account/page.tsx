@@ -14,6 +14,7 @@ const SPECIALIST_ROLES = [
   { value: 'ot', label: 'Occupational Therapist' },
   { value: 'counseling', label: 'Counselor' },
   { value: 'sea', label: 'Special Education Assistant' },
+  { value: 'psychologist', label: 'School Psychologist' },
 ] as const;
 
 export default function CreateAccountPage() {
@@ -43,7 +44,7 @@ export default function CreateAccountPage() {
     first_name: '',
     last_name: '',
     email: '',
-    role: 'resource' as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea',
+    role: 'resource' as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist',
     school_ids: [] as string[],
     primary_school_id: '',
   });
