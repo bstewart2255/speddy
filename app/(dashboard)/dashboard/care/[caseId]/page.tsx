@@ -53,19 +53,37 @@ export default function CaseDetailPage() {
     fetchCase();
 
     // Get current user ID and role
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        setCurrentUserId(user.id);
-        // Fetch user role to apply teacher restrictions
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        setIsTeacher(profile?.role === 'teacher');
+    async function fetchUserData() {
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError) {
+          console.error('Error fetching user:', authError);
+          return;
+        }
+
+        if (user) {
+          setCurrentUserId(user.id);
+          // Fetch user role to apply teacher restrictions
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+          if (profileError) {
+            console.error('Error fetching profile:', profileError);
+          }
+
+          setIsTeacher(profile?.role === 'teacher');
+        }
+      } catch (err) {
+        console.error('Error in fetchUserData:', err);
       }
-    });
+    }
+
+    fetchUserData();
   }, [fetchCase]);
 
   const handleDispositionChange = useCallback(
