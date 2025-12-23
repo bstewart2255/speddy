@@ -304,16 +304,8 @@ export default function TeacherDirectoryPage() {
       )}
 
       {/* Summary Stats */}
-      <div className="mt-6 flex justify-between items-center text-sm text-gray-600">
-        <div>
-          Showing {filteredTeachers.length} of {teachers.length} teachers
-        </div>
-        <Link
-          href="/dashboard/admin/duplicates"
-          className="text-blue-600 hover:text-blue-700 font-medium"
-        >
-          Check for duplicate teachers →
-        </Link>
+      <div className="mt-6 text-sm text-gray-600">
+        Showing {filteredTeachers.length} of {teachers.length} teachers
       </div>
 
       {/* Password Reset Credentials Modal */}

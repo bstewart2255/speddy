@@ -6,14 +6,15 @@ import {
   getCurrentAdminPermissions,
   getSchoolStaff,
   getDistrictInfo,
-  getDistrictStaffCounts
+  getDistrictStaffCounts,
+  getSchoolStudentCount
 } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
 
 export default function AdminDashboardPage() {
   const [permissions, setPermissions] = useState<any>(null);
-  const [staffCounts, setStaffCounts] = useState({ teachers: 0, specialists: 0, schools: 0 });
+  const [staffCounts, setStaffCounts] = useState({ teachers: 0, specialists: 0, schools: 0, students: 0 });
   const [districtInfo, setDistrictInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,15 +65,20 @@ export default function AdminDashboardPage() {
           setStaffCounts({
             teachers: counts.teachers ?? 0,
             specialists: counts.specialists ?? 0,
-            schools: counts.schools ?? 0
+            schools: counts.schools ?? 0,
+            students: 0 // Students not shown on district admin dashboard
           });
         } else if (perms[0]?.school_id) {
           // Site admin - fetch school-level data
-          const staff = await getSchoolStaff(perms[0].school_id);
+          const [staff, studentCount] = await Promise.all([
+            getSchoolStaff(perms[0].school_id),
+            getSchoolStudentCount(perms[0].school_id)
+          ]);
           setStaffCounts({
             teachers: staff.teachers.length,
             specialists: staff.specialists.length,
-            schools: 1
+            schools: 1,
+            students: studentCount
           });
         }
       } catch (err) {
@@ -252,37 +258,32 @@ export default function AdminDashboardPage() {
           )}
         </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Staff</p>
-              <p className="mt-2 text-3xl font-bold text-gray-900">
-                {staffCounts.teachers + staffCounts.specialists}
-              </p>
+        {!isDistrictAdmin && (
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Students</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  {staffCounts.students}
+                </p>
+              </div>
+              <div className="p-3 bg-amber-100 rounded-full">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
             </div>
-            <div className="p-3 bg-purple-100 rounded-full">
-              <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-          </div>
-          {!isDistrictAdmin && (
             <Link
-              href="/dashboard/admin/duplicates"
-              className="mt-4 text-sm font-medium text-purple-600 hover:text-purple-700 inline-flex items-center"
+              href="/dashboard/admin/students"
+              className="mt-4 text-sm font-medium text-amber-600 hover:text-amber-700 inline-flex items-center"
             >
-              Check for duplicates
+              View all students
               <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
-          )}
-          {isDistrictAdmin && (
-            <p className="mt-4 text-sm text-gray-500">
-              District-wide total
-            </p>
-          )}
-        </Card>
+          </Card>
+        )}
       </div>
 
       {/* Quick Actions */}
