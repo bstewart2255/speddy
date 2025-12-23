@@ -17,6 +17,7 @@ import { useSessionTags } from './hooks/useSessionTags';
 import { useVisualFilters } from './hooks/useVisualFilters';
 import { useTeachers } from './hooks/useTeachers';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
+import { filterScheduleSessions } from './utils/session-filters';
 import type { ScheduleSession } from '@/src/types/database';
 
 export default function SchedulePage() {
@@ -373,59 +374,25 @@ export default function SchedulePage() {
     }
   }, [selectedDay, clearDay, setSelectedDay, setSelectedTimeSlot]);
 
-  const getFilteredSessions = useCallback(
-    (allSessions: ScheduleSession[]) => {
-      // Special handling for SEA users - always show their assigned sessions
-      if (providerRole === 'sea' && currentUserId) {
-        return allSessions.filter(s => s.assigned_to_sea_id === currentUserId);
-      }
-
-      // Handle 'assigned' filter - show only sessions assigned to the current specialist
-      if (sessionFilter === 'assigned' && currentUserId) {
-        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
-      }
-
-      // Special handling for specialist users - show their assigned sessions for 'mine' filter
-      if (['speech', 'ot', 'counseling', 'specialist', 'resource'].includes(providerRole) && currentUserId && sessionFilter === 'mine') {
-        return allSessions.filter(s =>
-          s.assigned_to_specialist_id === currentUserId ||
-          (s.delivered_by === 'provider' && !s.assigned_to_sea_id && !s.assigned_to_specialist_id)
-        );
-      }
-
-      // Standard filtering based on delivered_by
-      let filtered: ScheduleSession[];
-      switch (sessionFilter) {
-        case 'mine':
-          filtered = allSessions.filter(s => s.delivered_by === 'provider');
-          break;
-        case 'sea':
-          filtered = allSessions.filter(s => s.delivered_by === 'sea');
-          // Further filter by specific SEA if selected
-          if (selectedSeaId) {
-            filtered = filtered.filter(s => s.assigned_to_sea_id === selectedSeaId);
-          }
-          break;
-        case 'specialist':
-          filtered = allSessions.filter(s => s.delivered_by === 'specialist');
-          // Further filter by specific specialist if selected
-          if (selectedSpecialistId) {
-            filtered = filtered.filter(s => s.assigned_to_specialist_id === selectedSpecialistId);
-          }
-          break;
-        default:
-          filtered = allSessions;
-      }
-      return filtered;
-    },
-    [providerRole, currentUserId, sessionFilter, selectedSeaId, selectedSpecialistId]
-  );
-
   // Count filtered sessions using the same logic as the grid (templates only)
-  const filteredSessionsCount = useMemo(
-    () => getFilteredSessions(sessions.filter(s => s.session_date === null)).length,
-    [getFilteredSessions, sessions]
-  );
+  const filteredSessionsCount = useMemo(() => {
+    const templateSessions = sessions.filter(s => s.session_date === null);
+    return filterScheduleSessions({
+      sessions: templateSessions,
+      sessionFilter,
+      providerRole,
+      currentUserId,
+      selectedSeaId,
+      selectedSpecialistId,
+    }).length;
+  }, [
+    sessions,
+    sessionFilter,
+    providerRole,
+    currentUserId,
+    selectedSeaId,
+    selectedSpecialistId,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -511,6 +478,8 @@ export default function SchedulePage() {
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
             sessionFilter={sessionFilter}
+            selectedSeaId={selectedSeaId}
+            selectedSpecialistId={selectedSpecialistId}
             draggedSession={draggedSession}
             dragPosition={dragPosition}
             selectedSession={selectedSession}

@@ -7,6 +7,8 @@ import { SessionAssignmentPopup } from '../session-assignment-popup';
 import { VisualAvailabilityLayer } from './VisualAvailabilityLayer';
 import { DayColumnMenu } from './day-column-menu';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
+import { formatTime } from '@/lib/utils/time-options';
+import { filterScheduleSessions } from '../utils/session-filters';
 import type {
   BellSchedule,
   ScheduleSession,
@@ -33,6 +35,8 @@ interface ScheduleGridProps {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
+  selectedSeaId: string | null;
+  selectedSpecialistId: string | null;
   draggedSession: ScheduleSession | null;
   dragPosition: ScheduleDragPosition | null;
   selectedSession: ScheduleSession | null;
@@ -88,6 +92,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   selectedDay,
   highlightedStudentId,
   sessionFilter,
+  selectedSeaId,
+  selectedSpecialistId,
   draggedSession,
   dragPosition,
   selectedSession,
@@ -126,15 +132,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     [gridConfig]
   );
 
-  // Helper functions
-  const formatTime = (time: string): string => {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
   const timeToPixels = (timeStr: string): number => {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const totalMinutes = (hours - gridConfig.startHour) * 60 + minutes;
@@ -155,24 +152,6 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     const sessionEndMinutes = sessionEndHour * 60 + sessionEndMinute;
 
     return sessionStartMinutes < slotEndMinutes && sessionEndMinutes > slotStartMinutes;
-  };
-
-  // Filter sessions
-  const getFilteredSessions = (allSessions: ScheduleSession[]) => {
-    switch (sessionFilter) {
-      case 'mine':
-        return allSessions.filter(s => s.delivered_by === 'provider');
-      case 'sea':
-        return allSessions.filter(s => s.delivered_by === 'sea');
-      case 'specialist':
-        // Show only sessions owned by current user that they've assigned to other specialists
-        return allSessions.filter(s => s.provider_id === currentUserId && s.delivered_by === 'specialist');
-      case 'assigned':
-        // Show only sessions assigned TO the current user by other specialists
-        return allSessions.filter(s => s.assigned_to_specialist_id === currentUserId);
-      default:
-        return allSessions;
-    }
   };
 
   // Calculate session columns to prevent overlaps
@@ -335,10 +314,14 @@ export const ScheduleGrid = memo(function ScheduleGrid({
               const daySessions = (() => {
                 // Filter for templates only (session_date IS NULL) and matching day
                 const allDaySessions = sessions.filter(s => s.day_of_week === dayNumber && s.session_date === null);
-                if (providerRole === 'sea' && currentUserId) {
-                  return allDaySessions.filter(s => s.assigned_to_sea_id === currentUserId);
-                }
-                return getFilteredSessions(allDaySessions);
+                return filterScheduleSessions({
+                  sessions: allDaySessions,
+                  sessionFilter,
+                  providerRole,
+                  currentUserId,
+                  selectedSeaId,
+                  selectedSpecialistId,
+                });
               })();
 
               const columnData = daySessionColumns[dayNumber] || [];
