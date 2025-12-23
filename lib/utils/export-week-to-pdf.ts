@@ -286,8 +286,8 @@ export function exportWeekToPDF(data: WeekExportData) {
                 timeSlotMap.set(timeKey, []);
               }
               const entries = timeSlotMap.get(timeKey)!;
-              // Avoid duplicate initials in same time slot
-              if (!entries.some(e => e.initials === initials)) {
+              // Avoid duplicate students in same time slot (check by student_id, not initials)
+              if (!entries.some(e => e.session.student_id === session.student_id)) {
                 entries.push({ initials, session });
               }
             });
