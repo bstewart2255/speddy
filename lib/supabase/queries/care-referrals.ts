@@ -116,7 +116,10 @@ export async function addCareReferral(referral: {
     .select(`
       *,
       referring_user:profiles!referring_user_id(id, full_name),
-      care_cases(*)
+      care_cases(
+        *,
+        assigned_user:profiles!assigned_to(id, full_name)
+      )
     `)
     .single();
 
@@ -193,7 +196,10 @@ export async function updateReferralStatus(
       .select(`
         *,
         referring_user:profiles!referring_user_id(id, full_name),
-        care_cases(*)
+        care_cases(
+          *,
+          assigned_user:profiles!assigned_to(id, full_name)
+        )
       `)
       .eq('id', referralId)
       .single();
@@ -249,7 +255,10 @@ export async function getReferralById(referralId: string): Promise<CareReferral 
     .select(`
       *,
       referring_user:profiles!referring_user_id(id, full_name),
-      care_cases(*)
+      care_cases(
+        *,
+        assigned_user:profiles!assigned_to(id, full_name)
+      )
     `)
     .eq('id', referralId)
     .is('deleted_at', null)

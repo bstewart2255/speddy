@@ -90,7 +90,7 @@ export function ReferralCard({
           </div>
 
           {/* Assignment dropdown for active cases */}
-          {referral.status === 'active' && onAssign && assignableUsers && (
+          {referral.status === 'active' && onAssign && assignableUsers && assignableUsers.length > 0 && (
             <div className="mt-3 flex items-center gap-2">
               <label htmlFor={`assign-${referral.id}`} className="text-xs text-gray-600">
                 Assigned to:
