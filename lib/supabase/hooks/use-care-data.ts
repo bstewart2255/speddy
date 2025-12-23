@@ -22,6 +22,10 @@ interface CareDataState {
   error: string | null;
 }
 
+interface UseCareDataOptions {
+  teacherId?: string;
+}
+
 interface UseCareDataReturn extends CareDataState {
   addReferral: (data: {
     student_name: string;
@@ -34,7 +38,8 @@ interface UseCareDataReturn extends CareDataState {
   refreshData: () => Promise<void>;
 }
 
-export function useCareData(): UseCareDataReturn {
+export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
+  const teacherId = options?.teacherId;
   const { currentSchool } = useSchool();
   const [state, setState] = useState<CareDataState>({
     referrals: {
@@ -60,7 +65,7 @@ export function useCareData(): UseCareDataReturn {
     setState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const allReferrals = await getCareReferrals(currentSchool.school_id);
+      const allReferrals = await getCareReferrals(currentSchool.school_id, undefined, teacherId);
 
       // Group by status
       const pending = allReferrals.filter(r => r.status === 'pending');
@@ -85,7 +90,7 @@ export function useCareData(): UseCareDataReturn {
         error: err instanceof Error ? err.message : 'Failed to load CARE data',
       }));
     }
-  }, [currentSchool?.school_id]);
+  }, [currentSchool?.school_id, teacherId]);
 
   useEffect(() => {
     fetchData();

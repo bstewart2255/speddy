@@ -6,8 +6,9 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { useCareData } from '@/lib/supabase/hooks/use-care-data';
 import { AddReferralModal } from '@/app/components/care/add-referral-modal';
 import { ReferralList } from '@/app/components/care/referral-list';
-import { CareReferral } from '@/lib/supabase/queries/care-referrals';
+import { CareReferral, getTeacherByAccountId } from '@/lib/supabase/queries/care-referrals';
 import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/queries/care-cases';
+import { createClient } from '@/lib/supabase/client';
 import type { CareStatus } from '@/lib/constants/care';
 
 type TabType = 'pending' | 'active' | 'closed';
@@ -15,8 +16,49 @@ type TabType = 'pending' | 'active' | 'closed';
 export default function CareDashboardPage() {
   const router = useRouter();
   const { currentSchool, loading: schoolLoading } = useSchool();
+
+  // User role and teacher record state
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [teacherRecord, setTeacherRecord] = useState<{ id: string; name: string } | null>(null);
+  const [userDataLoading, setUserDataLoading] = useState(true);
+
+  const isTeacher = userRole === 'teacher';
+
+  // Fetch user role and teacher record on mount
+  useEffect(() => {
+    async function fetchUserData() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Get role from profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        setUserRole(profile?.role || null);
+
+        // If teacher, get their teacher record
+        if (profile?.role === 'teacher') {
+          const teacherData = await getTeacherByAccountId(user.id);
+          if (teacherData) {
+            setTeacherRecord({
+              id: teacherData.id,
+              name: `${teacherData.first_name} ${teacherData.last_name}`,
+            });
+          }
+        }
+      }
+      setUserDataLoading(false);
+    }
+    fetchUserData();
+  }, []);
+
+  // Pass teacherId to filter referrals for teachers
   const { referrals, loading, error, addReferral, updateStatus, deleteReferral, refreshData } =
-    useCareData();
+    useCareData({ teacherId: isTeacher && teacherRecord ? teacherRecord.id : undefined });
 
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -120,7 +162,7 @@ export default function CareDashboardPage() {
 
   const currentReferrals = referrals[activeTab];
 
-  if (schoolLoading) {
+  if (schoolLoading || userDataLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -204,16 +246,23 @@ export default function CareDashboardPage() {
           referrals={currentReferrals}
           emptyMessage={
             activeTab === 'pending'
-              ? 'No pending referrals. Click "Add Referral" to create one.'
+              ? isTeacher
+                ? 'No pending referrals for your students.'
+                : 'No pending referrals. Click "Add Referral" to create one.'
               : activeTab === 'active'
-              ? 'No active cases.'
+              ? isTeacher
+                ? 'No active cases for your students.'
+                : 'No active cases.'
+              : isTeacher
+              ? 'No closed cases for your students.'
               : 'No closed cases.'
           }
           onReferralClick={handleReferralClick}
-          onActivate={activeTab === 'pending' ? handleActivateReferral : undefined}
-          onDelete={activeTab === 'pending' ? handleDeleteReferral : undefined}
-          onAssign={activeTab === 'active' ? handleAssign : undefined}
-          assignableUsers={activeTab === 'active' ? assignableUsers : undefined}
+          // Teachers: view-only, no activate, delete, or assign
+          onActivate={!isTeacher && activeTab === 'pending' ? handleActivateReferral : undefined}
+          onDelete={!isTeacher && activeTab === 'pending' ? handleDeleteReferral : undefined}
+          onAssign={!isTeacher && activeTab === 'active' ? handleAssign : undefined}
+          assignableUsers={!isTeacher && activeTab === 'active' ? assignableUsers : undefined}
         />
       )}
 
@@ -222,6 +271,7 @@ export default function CareDashboardPage() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSubmit={handleAddReferral}
+        lockedTeacher={isTeacher && teacherRecord ? teacherRecord : undefined}
       />
     </div>
   );

@@ -17,14 +17,19 @@ interface AddReferralModalProps {
     teacher_id?: string;
     teacher_name?: string;
   }) => Promise<void>;
+  /** When provided, the teacher field is locked to this value (for teacher users) */
+  lockedTeacher?: {
+    id: string;
+    name: string;
+  };
 }
 
-export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModalProps) {
+export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: AddReferralModalProps) {
   const { currentSchool } = useSchool();
   const [studentName, setStudentName] = useState('');
   const [grade, setGrade] = useState('');
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [teacherName, setTeacherName] = useState<string | null>(null);
+  const [teacherId, setTeacherId] = useState<string | null>(lockedTeacher?.id ?? null);
+  const [teacherName, setTeacherName] = useState<string | null>(lockedTeacher?.name ?? null);
   const [referralReason, setReferralReason] = useState('');
   const [category, setCategory] = useState<CareCategory | ''>('');
   const [loading, setLoading] = useState(false);
@@ -33,8 +38,11 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
   const resetForm = () => {
     setStudentName('');
     setGrade('');
-    setTeacherId(null);
-    setTeacherName(null);
+    // Keep locked teacher values if teacher is locked
+    if (!lockedTeacher) {
+      setTeacherId(null);
+      setTeacherName(null);
+    }
     setReferralReason('');
     setCategory('');
     setError('');
@@ -134,18 +142,25 @@ export function AddReferralModal({ isOpen, onClose, onSubmit }: AddReferralModal
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Teacher <span className="text-red-500">*</span>
           </label>
-          <TeacherAutocomplete
-            value={teacherId}
-            teacherName={teacherName || undefined}
-            onChange={(id, name) => {
-              setTeacherId(id);
-              setTeacherName(name);
-            }}
-            placeholder="Search for teacher..."
-            schoolId={currentSchool?.school_id ?? undefined}
-            disabled={loading}
-            required
-          />
+          {lockedTeacher ? (
+            // Display locked teacher (for teacher users)
+            <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700">
+              {lockedTeacher.name}
+            </div>
+          ) : (
+            <TeacherAutocomplete
+              value={teacherId}
+              teacherName={teacherName || undefined}
+              onChange={(id, name) => {
+                setTeacherId(id);
+                setTeacherName(name);
+              }}
+              placeholder="Search for teacher..."
+              schoolId={currentSchool?.school_id ?? undefined}
+              disabled={loading}
+              required
+            />
+          )}
         </div>
 
         <div>
