@@ -267,6 +267,7 @@ export default function AdminStudentsPage() {
                         type="number"
                         min="0"
                         max="10"
+                        aria-label={`Sessions per week for ${student.initials}`}
                         value={editFormData?.sessions_per_week || 0}
                         onChange={(e) => setEditFormData(prev => prev ? {
                           ...prev,
@@ -286,6 +287,7 @@ export default function AdminStudentsPage() {
                         type="number"
                         min="0"
                         max="120"
+                        aria-label={`Minutes per session for ${student.initials}`}
                         value={editFormData?.minutes_per_session || 0}
                         onChange={(e) => setEditFormData(prev => prev ? {
                           ...prev,

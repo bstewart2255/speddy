@@ -1070,7 +1070,7 @@ export async function deleteStudentAsAdmin(studentId: string, schoolId: string) 
   const deletePerf = measurePerformanceWithAlerts('delete_student_admin', 'database');
 
   // First delete schedule_sessions
-  await safeQuery(
+  const deleteSessionsResult = await safeQuery(
     async () => {
       const { error } = await supabase
         .from('schedule_sessions')
@@ -1081,6 +1081,11 @@ export async function deleteStudentAsAdmin(studentId: string, schoolId: string) 
     },
     { operation: 'delete_student_sessions_admin', studentId }
   );
+
+  if (deleteSessionsResult.error) {
+    deletePerf.end();
+    throw deleteSessionsResult.error;
+  }
 
   // Then delete the student
   const deleteResult = await safeQuery(
