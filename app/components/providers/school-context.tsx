@@ -12,7 +12,7 @@ interface SchoolDistrictRelation {
   name: string;
   states: {
     name: string;
-    abbreviation: string;
+    full_name: string;
   }[];
 }
 
@@ -118,7 +118,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               name,
               states!inner(
                 name,
-                abbreviation
+                full_name
               )
             )
           `)
@@ -138,9 +138,9 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               nces_id: schoolDetails.nces_id,
             };
 
-            // Update display name with richer data
-            enrichedSchool.display_name = `${schoolDetails.name} (${district.name}, ${state.abbreviation})`;
-            enrichedSchool.full_address = `${schoolDetails.name}, ${district.name}, ${state.name}`;
+            // Update display name with richer data (use short state name)
+            enrichedSchool.display_name = `${schoolDetails.name} (${district.name}, ${state.name})`;
+            enrichedSchool.full_address = `${schoolDetails.name}, ${district.name}, ${state.full_name}`;
           }
         }
       } catch (error) {
