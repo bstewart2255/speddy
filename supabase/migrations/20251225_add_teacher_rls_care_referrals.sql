@@ -1,9 +1,12 @@
 -- =====================================================
 -- Issue #507: Add RLS policies for teacher-level CARE referral filtering
--- 
+--
 -- Security Gap: Teachers could bypass UI restrictions to view all school referrals
 -- Fix: Teachers can only see referrals for their students or ones they submitted
 -- Non-teacher roles retain existing school-level access
+--
+-- NOTE: This migration MUST run AFTER 20251224_fix_rls_performance.sql
+-- which defines the base care_referrals policies
 -- =====================================================
 
 -- Update SELECT policy to add teacher-level filtering
@@ -37,6 +40,7 @@ CREATE POLICY "care_referrals_select" ON care_referrals
   );
 
 -- Update UPDATE policy - teachers can only update referrals for their students
+-- Includes WITH CHECK to prevent moving referrals outside permitted scope
 DROP POLICY IF EXISTS "care_referrals_update" ON care_referrals;
 CREATE POLICY "care_referrals_update" ON care_referrals
   FOR UPDATE TO authenticated
@@ -62,10 +66,31 @@ CREATE POLICY "care_referrals_update" ON care_referrals
         referring_user_id = (SELECT auth.uid())
       )
     )
+  )
+  WITH CHECK (
+    -- Same restrictions apply to the updated row to prevent scope escalation
+    (
+      (SELECT role FROM profiles WHERE id = (SELECT auth.uid())) != 'teacher'
+      AND
+      school_id::text IN (
+        SELECT profiles.school_id FROM profiles WHERE profiles.id = (SELECT auth.uid())
+        UNION
+        SELECT provider_schools.school_id FROM provider_schools WHERE provider_schools.provider_id = (SELECT auth.uid())
+      )
+    )
+    OR
+    (
+      (SELECT role FROM profiles WHERE id = (SELECT auth.uid())) = 'teacher'
+      AND
+      (
+        teacher_id IN (SELECT id FROM teachers WHERE account_id = (SELECT auth.uid()))
+        OR
+        referring_user_id = (SELECT auth.uid())
+      )
+    )
   );
 
 -- DELETE policy - teachers should not delete referrals (only admins/providers)
--- Keep existing school-level policy but exclude teachers
 DROP POLICY IF EXISTS "care_referrals_delete" ON care_referrals;
 CREATE POLICY "care_referrals_delete" ON care_referrals
   FOR DELETE TO authenticated
