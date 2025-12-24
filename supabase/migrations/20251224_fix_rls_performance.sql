@@ -599,8 +599,8 @@ CREATE POLICY "students_select" ON students
     (school_id::text IN (SELECT profiles.school_id FROM profiles WHERE profiles.id = (SELECT auth.uid())) AND
      (SELECT auth.uid()) IN (SELECT profiles.id FROM profiles WHERE profiles.role = 'sea'))
     OR
-    -- Site admins can view students
-    EXISTS (SELECT 1 FROM admin_permissions WHERE admin_permissions.admin_id = (SELECT auth.uid()) AND admin_permissions.role = 'site_admin')
+    -- Site admins can view students at their school
+    EXISTS (SELECT 1 FROM admin_permissions WHERE admin_permissions.admin_id = (SELECT auth.uid()) AND admin_permissions.role = 'site_admin' AND admin_permissions.school_id::text = students.school_id::text)
   );
 
 CREATE POLICY "students_insert" ON students
