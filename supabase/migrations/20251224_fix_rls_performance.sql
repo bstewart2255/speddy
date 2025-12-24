@@ -23,13 +23,12 @@ DROP POLICY IF EXISTS "Users can insert bell schedules" ON bell_schedules;
 CREATE POLICY "Users can insert bell schedules" ON bell_schedules
   FOR INSERT TO public
   WITH CHECK (
-    ((provider_id = (SELECT auth.uid()) AND created_by_role = 'provider' AND
+    (provider_id = (SELECT auth.uid()) AND created_by_role = 'provider' AND
       (EXISTS (SELECT 1 FROM profiles p WHERE p.id = (SELECT auth.uid()) AND p.school_id::text = bell_schedules.school_id::text)
        OR EXISTS (SELECT 1 FROM provider_schools ps WHERE ps.provider_id = (SELECT auth.uid()) AND ps.school_id::text = bell_schedules.school_id::text)))
-    ) OR
+    OR
     (created_by_id = (SELECT auth.uid()) AND created_by_role = 'site_admin' AND
       EXISTS (SELECT 1 FROM admin_permissions ap WHERE ap.admin_id = (SELECT auth.uid()) AND ap.role = 'site_admin' AND ap.school_id::text = bell_schedules.school_id::text))
-    )
   );
 
 DROP POLICY IF EXISTS "Users can view bell schedules" ON bell_schedules;
