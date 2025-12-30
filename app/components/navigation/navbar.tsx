@@ -124,8 +124,8 @@ export default function Navbar() {
         },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
-    } else if (role === 'speech' || role === 'ot' || role === 'counseling') {
-      // Speech, OT, Counseling providers see standard navigation WITHOUT Tools
+    } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
+      // Speech, OT, Counseling, Psychologist providers see standard navigation WITHOUT Tools
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
