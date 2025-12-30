@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
-import { getStudentDetails, upsertStudentDetails, StudentDetails } from '../../../lib/supabase/queries/student-details';
+import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
 import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
+import { SharedStudentBadge } from './shared-student-badge';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export function StudentDetailsModal({
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'accommodations'>('current');
+  const [matchingRoles, setMatchingRoles] = useState<string[]>([]);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -80,11 +82,15 @@ export function StudentDetailsModal({
         minutes_per_session: student.minutes_per_session,
       });
 
-      // Load existing student details and assessments
+      // Load existing student details and matching provider roles
       const loadData = async () => {
         try {
-          // Load student details
-          const existingDetails = await getStudentDetails(student.id);
+          // Load student details and matching provider roles in parallel
+          const [existingDetails, roles] = await Promise.all([
+            getStudentDetails(student.id),
+            getMatchingProviderRoles(student.id)
+          ]);
+
           if (existingDetails) {
             setDetails(existingDetails);
           } else {
@@ -100,6 +106,8 @@ export function StudentDetailsModal({
               accommodations: []
             });
           }
+
+          setMatchingRoles(roles);
         } catch (error) {
           console.error('Error loading student data:', error);
         }
@@ -187,9 +195,12 @@ export function StudentDetailsModal({
         <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Student Details: {student.initials}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Student Details: {student.initials}
+              </h2>
+              <SharedStudentBadge roles={matchingRoles} />
+            </div>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-500 text-2xl font-light leading-none pb-1"
