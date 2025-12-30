@@ -82,13 +82,14 @@ export default function Navbar() {
         { name: 'Schools', href: '/dashboard/admin/schools' },
       ];
     } else if (role === 'site_admin') {
-      // Site admins see their dashboard, bell schedules, teacher directory, provider directory, students, and settings
+      // Site admins see their dashboard, bell schedules, teacher directory, provider directory, students, CARE, and settings
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Bell Schedules', href: '/dashboard/admin/bell-schedules' },
         { name: 'Teachers', href: '/dashboard/admin/teachers' },
         { name: 'Providers', href: '/dashboard/admin/providers' },
         { name: 'Students', href: '/dashboard/admin/students' },
+        { name: 'CARE', href: '/dashboard/care' },
         { name: 'Create Account', href: '/dashboard/admin/create-account' },
       ];
     } else if (role === 'teacher') {
