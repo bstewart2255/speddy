@@ -502,11 +502,3 @@ function isGoalForProvider(goalType: string, providerRole?: string): boolean {
   return goalType.includes(serviceTypeCode);
 }
 
-/**
- * @deprecated Use isGoalForProvider instead
- * Kept for backward compatibility - defaults to resource specialist filtering
- */
-function isProviderGoal(goalType: string): boolean {
-  return isGoalForProvider(goalType, 'resource');
-}
-

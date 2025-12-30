@@ -4,6 +4,7 @@
  */
 
 import * as ExcelJS from 'exceljs';
+import { getServiceTypeCode } from './service-type-mapping';
 
 // ExcelJS cell value types for rich text and formula results
 interface ExcelRichTextValue {
@@ -30,7 +31,12 @@ export interface ParseResult {
   metadata: {
     totalRows: number;
     sheetsProcessed: string[];
+    goalsFiltered?: number;
   };
+}
+
+export interface ParseOptions {
+  providerRole?: string; // Provider's role for service type filtering (resource, speech, ot, counseling)
 }
 
 interface ColumnMapping {
@@ -38,13 +44,19 @@ interface ColumnMapping {
   lastName?: number;
   grade?: number;
   schoolOfAttendance?: number; // Column G in SEIS reports
+  goalType?: number; // Annual Goal # / Service type column (Column M in SEIS)
   goalColumns: number[];
 }
 
 /**
  * Parse SEIS Excel file and extract student IEP goals
+ * @param buffer - The Excel file buffer
+ * @param options - Options including providerRole for service type filtering
  */
-export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
+export async function parseSEISReport(
+  buffer: Buffer,
+  options: ParseOptions = {}
+): Promise<ParseResult> {
   const workbook = new ExcelJS.Workbook();
   // ExcelJS expects ArrayBuffer, but Buffer is compatible
   await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
@@ -52,6 +64,11 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
   const students: ParsedStudent[] = [];
   const errors: Array<{ row: number; message: string }> = [];
   const sheetsProcessed: string[] = [];
+
+  // Get the service type code for the provider's role
+  const providerRole = options.providerRole || 'resource';
+  const serviceTypeCode = getServiceTypeCode(providerRole);
+  let goalsFiltered = 0;
 
   // Temporary map to consolidate duplicate students across all worksheets
   const studentMap = new Map<string, ParsedStudent>();
@@ -95,9 +112,18 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
           // Skip rows without student data
           if (!firstName || !lastName || !grade) return;
 
-          // Extract goals from all goal columns
+          // Extract goals from all goal columns, filtering by service type if applicable
           const goals: string[] = [];
           for (const goalColIndex of columnMapping.goalColumns) {
+            // Check goal type column for service type filtering
+            if (serviceTypeCode && columnMapping.goalType) {
+              const goalType = getCellValue(row, columnMapping.goalType);
+              if (goalType && !goalType.includes(serviceTypeCode)) {
+                goalsFiltered++;
+                continue; // Skip goals that don't match provider's service type
+              }
+            }
+
             const goalText = getCellValue(row, goalColIndex);
             if (goalText && goalText.trim().length > 10) {
               goals.push(goalText.trim());
@@ -160,7 +186,8 @@ export async function parseSEISReport(buffer: Buffer): Promise<ParseResult> {
     errors,
     metadata: {
       totalRows: students.length + errors.length,
-      sheetsProcessed
+      sheetsProcessed,
+      goalsFiltered
     }
   };
 }
@@ -178,6 +205,7 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
   const schoolPatterns = /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i;
+  const goalTypePatterns = /annual\s*goal\s*#|goal\s*type|service\s*type|service\s*area/i;
   const goalPatterns = /goal|iep\s*goal|objective|target|present\s*level/i;
 
   // Check first 5 rows for headers
@@ -208,6 +236,11 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
       // Check for school of attendance
       if (!mapping.schoolOfAttendance && schoolPatterns.test(headerText)) {
         mapping.schoolOfAttendance = colNumber;
+      }
+
+      // Check for goal type / service type column
+      if (!mapping.goalType && goalTypePatterns.test(headerText)) {
+        mapping.goalType = colNumber;
       }
 
       // Check for goal columns

@@ -5,7 +5,7 @@
  */
 
 import { normalizeStudentName } from './name-utils';
-import { isServiceCodeForRole, getServiceTypeCode, getServiceTypeNameForRole } from './service-type-mapping';
+import { isServiceCodeForRole, getServiceTypeCode } from './service-type-mapping';
 
 export interface DeliveryRecord {
   normalizedName: string;

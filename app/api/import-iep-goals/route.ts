@@ -233,7 +233,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           providerRole: userProfile?.role
         });
       } else {
-        parseResult = await parseSEISReport(buffer);
+        parseResult = await parseSEISReport(buffer, {
+          providerRole: userProfile?.role
+        });
       }
 
       parsePerf.end({ success: true });
