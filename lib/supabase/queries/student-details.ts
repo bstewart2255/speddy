@@ -91,6 +91,44 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
 }
 
 /**
+ * Finds provider roles for other students matching the same criteria.
+ * Used to show "Also seen by: Speech, OT" badge in student details modal.
+ *
+ * Matches on: initials (case-insensitive), school_id, grade_level, teacher
+ *
+ * @param studentId - UUID of the student to find matches for
+ * @returns Array of role strings (e.g., ['speech', 'ot'])
+ */
+export async function getMatchingProviderRoles(studentId: string): Promise<string[]> {
+  const supabase = createClient<Database>();
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_matching_provider_roles', 'database');
+  const fetchResult = await safeQuery(
+    async () => {
+      // Note: 'find_matching_provider_roles' is defined in migration 20251230_add_find_matching_provider_roles_function.sql
+      // Using type assertion since the RPC function may not be in generated types yet
+      const { data, error } = await (supabase.rpc as any)('find_matching_provider_roles', {
+        p_student_id: studentId
+      });
+      if (error) throw error;
+      return data as string[] | null;
+    },
+    {
+      operation: 'find_matching_provider_roles',
+      studentId
+    }
+  );
+  fetchPerf.end({ success: !fetchResult.error });
+
+  if (fetchResult.error) {
+    console.error('Error fetching matching provider roles:', fetchResult.error);
+    return [];
+  }
+
+  return fetchResult.data || [];
+}
+
+/**
  * Creates or updates student details in the student_details table.
  * Uses an upsert operation to handle both new records and updates to existing ones.
  *
