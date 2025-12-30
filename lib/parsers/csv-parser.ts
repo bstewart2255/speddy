@@ -5,6 +5,7 @@
 
 import { parse } from 'csv-parse/sync';
 import { normalizeSchoolName } from '../school-helpers';
+import { getServiceTypeCode, getServiceTypeNameForRole } from './service-type-mapping';
 
 export interface ParsedStudent {
   firstName: string;
@@ -47,6 +48,7 @@ export interface ParseOptions {
     firstName?: string;
     lastName?: string;
   }; // If provided, only parse goals for this specific student
+  providerRole?: string; // Provider's role for service type filtering (resource, speech, ot, counseling)
 }
 
 /**
@@ -229,13 +231,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         for (const goalColIndex of columnMapping.goalColumns) {
           const goalText = row[goalColIndex] || '';
 
-          // For SEIS format, filter by goal type (Column M)
+          // For SEIS format, filter by goal type (Column M) based on provider role
           if (isSEISFormat && columnMapping.goalType !== undefined) {
             const goalType = row[columnMapping.goalType] || '';
 
-            if (!isProviderGoal(goalType)) {
+            if (!isGoalForProvider(goalType, options.providerRole)) {
               goalsFiltered++;
-              continue; // Skip non-provider goals (Speech, OT, Counseling, etc.)
+              continue; // Skip goals that don't match provider's service type
             }
           }
 
@@ -470,61 +472,41 @@ function detectSEISStudentGoalsFormat(records: string[][]): boolean {
 }
 
 /**
- * Check if a goal type indicates a provider/resource goal
- * (vs. Speech, OT, Counseling, etc.)
+ * Check if a goal type matches the provider's service type
+ * Uses SEIS service type codes for filtering:
+ * - 330: Specialized Academic Instruction (Resource Specialist)
+ * - 415: Language and Speech (Speech Therapist)
+ * - 450: Occupational Therapy (OT)
+ * - 510: Individual Counseling (Counselor)
+ *
+ * @param goalType - The Annual Goal # column value (Column M in SEIS)
+ * @param providerRole - The provider's role (resource, speech, ot, counseling)
+ * @returns true if the goal should be included for this provider
+ */
+function isGoalForProvider(goalType: string, providerRole?: string): boolean {
+  // If no goal type specified, include it (conservative approach)
+  if (!goalType) {
+    return true;
+  }
+
+  // Get the service type code for the provider's role
+  const serviceTypeCode = getServiceTypeCode(providerRole || 'resource');
+
+  // If no specific code for this role (e.g., psychologist), include all goals
+  if (!serviceTypeCode) {
+    return true;
+  }
+
+  // Check if the goal type contains the service code
+  // SEIS format typically includes the code in the goal type (e.g., "330 - Specialized Academic Instruction")
+  return goalType.includes(serviceTypeCode);
+}
+
+/**
+ * @deprecated Use isGoalForProvider instead
+ * Kept for backward compatibility - defaults to resource specialist filtering
  */
 function isProviderGoal(goalType: string): boolean {
-  if (!goalType) {
-    return true; // If no goal type specified, include it
-  }
-
-  const goalTypeLower = goalType.toLowerCase();
-
-  // Resource/Academic goal keywords
-  const providerKeywords = [
-    'resource',
-    'academic',
-    'sai', // Special Academic Instruction
-    'classroom',
-    'reading',
-    'writing',
-    'math',
-    'ela'
-  ];
-
-  // Non-provider goal keywords (to exclude)
-  const excludeKeywords = [
-    'speech',
-    'slp',
-    'language pathologist',
-    'ot', // Occupational Therapy
-    'occupational',
-    'pt', // Physical Therapy
-    'physical',
-    'counseling',
-    'counsel',
-    'behavior',
-    'social work',
-    'apt', // Adapted Physical Education
-    'adaptive pe'
-  ];
-
-  // Check if it matches exclude keywords first (higher priority)
-  for (const keyword of excludeKeywords) {
-    if (goalTypeLower.includes(keyword)) {
-      return false;
-    }
-  }
-
-  // Check if it matches provider keywords
-  for (const keyword of providerKeywords) {
-    if (goalTypeLower.includes(keyword)) {
-      return true;
-    }
-  }
-
-  // If no specific keywords found, default to including it
-  // (Better to over-include than miss goals)
-  return true;
+  return isGoalForProvider(goalType, 'resource');
 }
 

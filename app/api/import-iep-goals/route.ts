@@ -86,10 +86,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Step 1: Get user profile to check if they work at multiple schools
+    // Step 1: Get user profile to check if they work at multiple schools and get their role
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
-      .select('works_at_multiple_schools')
+      .select('works_at_multiple_schools, role')
       .eq('id', userId)
       .single();
 
@@ -227,7 +227,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     try {
       // Use appropriate parser based on file type
       if (isCSV) {
-        parseResult = await parseCSVReport(buffer, { userSchools, targetStudent });
+        parseResult = await parseCSVReport(buffer, {
+          userSchools,
+          targetStudent,
+          providerRole: userProfile?.role
+        });
       } else {
         parseResult = await parseSEISReport(buffer);
       }

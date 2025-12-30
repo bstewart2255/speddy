@@ -1,10 +1,11 @@
 /**
  * SEIS Deliveries Parser
  * Parses SEIS Deliveries CSV to extract schedule requirements (sessions per week)
- * for 330 Specialized Academic Instruction services
+ * for service type codes based on provider role
  */
 
 import { normalizeStudentName } from './name-utils';
+import { isServiceCodeForRole, getServiceTypeCode, getServiceTypeNameForRole } from './service-type-mapping';
 
 export interface DeliveryRecord {
   normalizedName: string;
@@ -25,9 +26,14 @@ export interface DeliveriesParseResult {
   warnings: Array<{ row: number; message: string }>;
   metadata: {
     totalRows: number;
-    filtered330Rows: number;
+    filteredServiceRows: number;
     uniqueStudents: number;
+    serviceTypeCode: string | null;
   };
+}
+
+export interface DeliveriesParseOptions {
+  providerRole?: string; // Provider's role for service type filtering (resource, speech, ot, counseling)
 }
 
 /**
@@ -159,8 +165,13 @@ function parseCSVLine(line: string): string[] {
 
 /**
  * Parse SEIS Deliveries CSV buffer
+ * @param buffer - The CSV file buffer
+ * @param options - Options including providerRole for service type filtering
  */
-export async function parseDeliveriesCSV(buffer: Buffer): Promise<DeliveriesParseResult> {
+export async function parseDeliveriesCSV(
+  buffer: Buffer,
+  options: DeliveriesParseOptions = {}
+): Promise<DeliveriesParseResult> {
   const content = buffer.toString('utf-8');
   const lines = content.split(/\r?\n/).filter((line) => line.trim());
 
@@ -168,8 +179,12 @@ export async function parseDeliveriesCSV(buffer: Buffer): Promise<DeliveriesPars
   const errors: Array<{ row: number; message: string }> = [];
   const warnings: Array<{ row: number; message: string }> = [];
 
+  // Get the service type code for the provider's role
+  const providerRole = options.providerRole || 'resource';
+  const serviceTypeCode = getServiceTypeCode(providerRole);
+
   let totalRows = 0;
-  let filtered330Rows = 0;
+  let filteredServiceRows = 0;
 
   // Expected columns (0-indexed):
   // 0: Name, 1: SEIS ID, 2: Service, 3: Delivery, 4: Start Date, 5: End Date,
@@ -198,12 +213,12 @@ export async function parseDeliveriesCSV(buffer: Buffer): Promise<DeliveriesPars
       const endDateStr = fields[5].trim();
       const sessionsFrequency = fields[6].trim();
 
-      // Filter for 330 Specialized Academic Instruction only
-      if (!service.includes('330') || !service.toLowerCase().includes('specialized academic instruction')) {
+      // Filter by service type code based on provider role
+      if (!isServiceCodeForRole(service, providerRole)) {
         continue;
       }
 
-      filtered330Rows++;
+      filteredServiceRows++;
 
       // Parse start date
       const startDate = parseDate(startDateStr);
@@ -275,8 +290,9 @@ export async function parseDeliveriesCSV(buffer: Buffer): Promise<DeliveriesPars
     warnings,
     metadata: {
       totalRows,
-      filtered330Rows,
-      uniqueStudents: deliveries.size
+      filteredServiceRows,
+      uniqueStudents: deliveries.size,
+      serviceTypeCode
     }
   };
 }

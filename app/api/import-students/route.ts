@@ -173,6 +173,15 @@ async function handleDeliveriesOrClassListOnly(
     hasClassList: !!classListFile
   });
 
+  // Get user's role for service type filtering
+  const { data: userProfile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single();
+
+  const providerRole = userProfile?.role || 'resource';
+
   // Get existing students with their details (names) for matching
   const { data: dbStudents, error: dbError } = await supabase
     .from('students')
@@ -220,14 +229,15 @@ async function handleDeliveriesOrClassListOnly(
     try {
       const deliveriesBytes = await deliveriesFile.arrayBuffer();
       const deliveriesBuffer = Buffer.from(deliveriesBytes);
-      const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer);
+      const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer, { providerRole });
       deliveriesData = deliveriesResult.deliveries;
       deliveriesWarnings.push(...deliveriesResult.warnings);
 
       log.info('Deliveries file parsed (standalone)', {
         userId,
         totalStudents: deliveriesResult.metadata.uniqueStudents,
-        filtered330Rows: deliveriesResult.metadata.filtered330Rows
+        filteredServiceRows: deliveriesResult.metadata.filteredServiceRows,
+        serviceTypeCode: deliveriesResult.metadata.serviceTypeCode
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -519,10 +529,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Get user profile to check if they work at multiple schools
+    // Get user profile to check if they work at multiple schools and get their role
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
-      .select('works_at_multiple_schools')
+      .select('works_at_multiple_schools, role')
       .eq('id', userId)
       .single();
 
@@ -574,7 +584,10 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     let parseResult;
     try {
       if (isCSV) {
-        parseResult = await parseCSVReport(buffer, { userSchools });
+        parseResult = await parseCSVReport(buffer, {
+          userSchools,
+          providerRole: userProfile?.role
+        });
       } else {
         parseResult = await parseSEISReport(buffer);
       }
@@ -685,14 +698,17 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       try {
         const deliveriesBytes = await deliveriesFile.arrayBuffer();
         const deliveriesBuffer = Buffer.from(deliveriesBytes);
-        const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer);
+        const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer, {
+          providerRole: userProfile?.role
+        });
         deliveriesData = deliveriesResult.deliveries;
         deliveriesWarnings.push(...deliveriesResult.warnings);
 
         log.info('Deliveries file parsed', {
           userId,
           totalStudents: deliveriesResult.metadata.uniqueStudents,
-          filtered330Rows: deliveriesResult.metadata.filtered330Rows
+          filteredServiceRows: deliveriesResult.metadata.filteredServiceRows,
+          serviceTypeCode: deliveriesResult.metadata.serviceTypeCode
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error';
