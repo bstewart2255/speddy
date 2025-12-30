@@ -1,8 +1,16 @@
 -- Security fix: Add auth.uid() check to find_matching_provider_roles
 -- Ensures callers can only query students they own
+--
+-- SECURITY DEFINER is required because the function must query students
+-- across all providers to find matches. The auth.uid() check ensures
+-- callers can only query their own students.
 
 CREATE OR REPLACE FUNCTION find_matching_provider_roles(p_student_id UUID)
-RETURNS TEXT[] AS $$
+RETURNS TEXT[]
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
 DECLARE
   result TEXT[];
   caller_id UUID;
@@ -45,4 +53,7 @@ BEGIN
 
   RETURN COALESCE(result, ARRAY[]::TEXT[]);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION find_matching_provider_roles(UUID) TO authenticated;
