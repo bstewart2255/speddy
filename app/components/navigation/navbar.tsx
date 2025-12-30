@@ -124,8 +124,24 @@ export default function Navbar() {
         },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
+    } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
+      // Speech, OT, Counseling, Psychologist providers see standard navigation WITHOUT Tools
+      return [
+        { name: 'Dashboard', href: '/dashboard' },
+        { name: 'Students', href: '/dashboard/students' },
+        { name: 'Calendar', href: '/dashboard/calendar' },
+        {
+          name: 'Schedule',
+          href: '/dashboard/schedule',
+          subItems: [
+            { name: 'Main Schedule', href: '/dashboard/schedule' },
+            { name: 'Bell Schedules', href: '/dashboard/bell-schedules' },
+            { name: 'Special Activities', href: '/dashboard/special-activities' }
+          ]
+        },
+      ];
     } else {
-      // Other roles (speech, ot, counseling, specialist) see standard navigation
+      // Other roles (specialist, psychologist) see standard navigation with Tools
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
