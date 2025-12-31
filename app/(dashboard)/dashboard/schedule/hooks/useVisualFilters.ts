@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Teacher } from '../types/teacher';
+import type { Student } from '@/src/types/database';
 
 export type VisualFilters = {
-  bellScheduleGrade: string | null;
-  specialActivityTeacher: string | null; // teacher_id (UUID)
+  grade: string | null;
+  teacherId: string | null; // teacher_id (UUID)
+  studentId: string | null; // student_id (UUID)
 };
 
 const DEFAULT_VISUAL_FILTERS: VisualFilters = {
-  bellScheduleGrade: null,
-  specialActivityTeacher: null,
+  grade: null,
+  teacherId: null,
+  studentId: null,
 };
 
-const VISUAL_FILTERS_KEY = 'speddy-visual-filters';
+// Use v2 key to force clean migration from old format
+const VISUAL_FILTERS_KEY = 'speddy-visual-filters-v2';
 
 const getSchoolSpecificKey = (key: string, schoolId?: string | null) =>
   schoolId ? `${key}-${schoolId}` : key;
@@ -43,7 +47,8 @@ const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
 
 export const useVisualFilters = (
   schoolId: string | null | undefined,
-  teachers: readonly Teacher[]
+  teachers: readonly Teacher[],
+  students: readonly Student[]
 ) => {
   const [visualFilters, setVisualFilters] = useState<VisualFilters>(() =>
     loadVisualFilters(schoolId)
@@ -78,8 +83,9 @@ export const useVisualFilters = (
     };
   }, []);
 
+  // Validate teacherId still exists
   useEffect(() => {
-    if (!schoolId || !visualFilters.specialActivityTeacher) {
+    if (!schoolId || !visualFilters.teacherId) {
       return;
     }
 
@@ -90,16 +96,40 @@ export const useVisualFilters = (
 
     // Check if teacher_id still exists in the teachers table
     const teacherExists = teachers.some(
-      teacher => teacher.id === visualFilters.specialActivityTeacher
+      teacher => teacher.id === visualFilters.teacherId
     );
 
     if (!teacherExists) {
       setVisualFilters(previous => ({
         ...previous,
-        specialActivityTeacher: null,
+        teacherId: null,
       }));
     }
-  }, [schoolId, teachers, visualFilters.specialActivityTeacher]);
+  }, [schoolId, teachers, visualFilters.teacherId]);
+
+  // Validate studentId still exists
+  useEffect(() => {
+    if (!schoolId || !visualFilters.studentId) {
+      return;
+    }
+
+    // Wait until students list is populated to avoid false negatives
+    if (students.length === 0) {
+      return;
+    }
+
+    // Check if student_id still exists
+    const studentExists = students.some(
+      student => student.id === visualFilters.studentId
+    );
+
+    if (!studentExists) {
+      setVisualFilters(previous => ({
+        ...previous,
+        studentId: null,
+      }));
+    }
+  }, [schoolId, students, visualFilters.studentId]);
 
   return { visualFilters, setVisualFilters } as const;
 };

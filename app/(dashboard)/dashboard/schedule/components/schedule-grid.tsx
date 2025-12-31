@@ -18,6 +18,7 @@ import type {
 } from '@/src/types/database';
 import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
 import type { Teacher } from '../types/teacher';
+import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
 
 interface ScheduleGridProps {
   sessions: ScheduleSession[];
@@ -27,9 +28,11 @@ interface ScheduleGridProps {
   specialActivities: SpecialActivity[];
   teachers: Teacher[];
   visualFilters: {
-    bellScheduleGrade: string | null;
-    specialActivityTeacher: string | null;
+    grade: string | null;
+    teacherId: string | null;
+    studentId: string | null;
   };
+  otherProviderSessions?: OtherProviderSession[];
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
@@ -87,6 +90,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   specialActivities,
   teachers,
   visualFilters,
+  otherProviderSessions,
   selectedGrades,
   selectedTimeSlot,
   selectedDay,
@@ -351,6 +355,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       students={students}
                       teachers={teachers}
                       filters={visualFilters}
+                      otherProviderSessions={otherProviderSessions}
                       gridConfig={gridConfig}
                     />
 
