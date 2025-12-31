@@ -192,31 +192,35 @@ export function VisualAvailabilityLayer({
     return bands;
   }, [day, bellSchedules, specialActivities, students, teachers, filters, otherProviderSessions, gridConfig]);
 
-  // Merge overlapping bands
+  // Merge overlapping bands of the SAME TYPE only
+  // Different types (bell, activity, other-provider) should not merge together
   const mergedBands = useMemo(() => {
     if (availabilityBands.length === 0) return [];
-    
-    // Sort bands by start time
-    const sorted = [...availabilityBands].sort((a, b) => a.startMin - b.startMin);
+
+    // Sort bands by type first, then by start time
+    const sorted = [...availabilityBands].sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return a.startMin - b.startMin;
+    });
     const merged: typeof availabilityBands = [];
-    
+
     let current = { ...sorted[0] };
-    
+
     for (let i = 1; i < sorted.length; i++) {
       const next = sorted[i];
-      
-      // If bands overlap or touch
-      if (next.startMin <= current.endMin) {
+
+      // Only merge if same type AND bands overlap or touch
+      if (next.type === current.type && next.startMin <= current.endMin) {
         // Merge them, extend the time range
         current.endMin = Math.max(current.endMin, next.endMin);
         // Keep the existing color (no gradient blending since we're only showing one grade/teacher at a time)
       } else {
-        // No overlap, push current and start new
+        // Different type or no overlap, push current and start new
         merged.push(current);
         current = { ...next };
       }
     }
-    
+
     merged.push(current);
     return merged;
   }, [availabilityBands]);
