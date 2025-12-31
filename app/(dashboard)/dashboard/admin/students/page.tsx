@@ -1,29 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   getCurrentAdminPermissions,
   getSchoolStudents,
-  updateStudentAsAdmin,
   deleteStudentAsAdmin,
+  groupStudentsByIdentity,
+  type GroupedStudent,
   type AdminStudentView
 } from '@/lib/supabase/queries/admin-accounts';
 import { Card } from '@/app/components/ui/card';
 import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
+import { formatRoleLabel } from '@/lib/utils/role-utils';
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<AdminStudentView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingGroupKey, setDeletingGroupKey] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [schoolId, setSchoolId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFormData, setEditFormData] = useState<{
-    sessions_per_week: number;
-    minutes_per_session: number;
-  } | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
 
   const fetchStudents = async () => {
     try {
@@ -54,77 +50,82 @@ export default function AdminStudentsPage() {
     fetchStudents();
   }, []);
 
-  const handleDelete = async (studentId: string, studentInitials: string) => {
+  // Group students by identity (initials + grade + teacher)
+  const groupedStudents = useMemo(() => {
+    return groupStudentsByIdentity(students);
+  }, [students]);
+
+  // Filter grouped students based on search term
+  const filteredGroupedStudents = useMemo(() => {
+    if (!searchTerm) return groupedStudents;
+
+    const searchLower = searchTerm.toLowerCase();
+    return groupedStudents.filter(student => {
+      const initials = student.initials?.toLowerCase() || '';
+      const grade = student.grade_level?.toLowerCase() || '';
+      const teacher = student.teacher_name?.toLowerCase() || '';
+      // Also search across all specialist names
+      const specialists = student.providerRecords
+        .map(r => r.specialist_name?.toLowerCase() || '')
+        .join(' ');
+
+      return initials.includes(searchLower) ||
+             grade.includes(searchLower) ||
+             teacher.includes(searchLower) ||
+             specialists.includes(searchLower);
+    });
+  }, [groupedStudents, searchTerm]);
+
+  const handleDeleteGrouped = async (student: GroupedStudent) => {
     if (!schoolId) return;
 
-    if (!confirm(`Are you sure you want to delete student "${studentInitials}"? This will also delete all their scheduled sessions. This action cannot be undone.`)) {
+    const providerCount = student.providerRecords.length;
+    const providerNames = student.providerRecords
+      .map(r => formatRoleLabel(r.specialist_role))
+      .join(', ');
+
+    const confirmMessage = providerCount > 1
+      ? `Are you sure you want to delete student "${student.initials}"? This will remove records for ${providerCount} providers (${providerNames}) and all their scheduled sessions. This action cannot be undone.`
+      : `Are you sure you want to delete student "${student.initials}"? This will also delete all their scheduled sessions. This action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
-      setDeletingId(studentId);
-      await deleteStudentAsAdmin(studentId, schoolId);
-      setStudents(students.filter(s => s.id !== studentId));
+      setDeletingGroupKey(student.groupKey);
+
+      // Delete all provider records for this student
+      await Promise.all(
+        student.providerRecords.map(r => deleteStudentAsAdmin(r.id, schoolId))
+      );
+
+      // Remove all related student records from local state
+      const idsToRemove = new Set(student.providerRecords.map(r => r.id));
+      setStudents(prev => prev.filter(s => !idsToRemove.has(s.id)));
     } catch (err) {
       console.error('Error deleting student:', err);
       alert(err instanceof Error ? err.message : 'Failed to delete student');
     } finally {
-      setDeletingId(null);
+      setDeletingGroupKey(null);
     }
   };
 
-  const handleEdit = (student: AdminStudentView) => {
-    setEditingId(student.id);
-    setEditFormData({
-      sessions_per_week: student.sessions_per_week || 0,
-      minutes_per_session: student.minutes_per_session || 0,
-    });
-  };
+  // Calculate caseload totals across all provider records
+  const totalSessionsPerWeek = filteredGroupedStudents.reduce((sum, student) =>
+    sum + student.providerRecords.reduce((pSum, r) => pSum + (r.sessions_per_week || 0), 0),
+    0
+  );
 
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditFormData(null);
-  };
+  const totalMinutesPerWeek = filteredGroupedStudents.reduce((sum, student) =>
+    sum + student.providerRecords.reduce((pSum, r) =>
+      pSum + ((r.sessions_per_week || 0) * (r.minutes_per_session || 0)), 0
+    ),
+    0
+  );
 
-  const handleSaveEdit = async (studentId: string) => {
-    if (!schoolId || !editFormData) return;
-
-    try {
-      setSavingId(studentId);
-      await updateStudentAsAdmin(studentId, schoolId, editFormData);
-
-      // Update local state
-      setStudents(students.map(s =>
-        s.id === studentId
-          ? { ...s, ...editFormData }
-          : s
-      ));
-
-      setEditingId(null);
-      setEditFormData(null);
-    } catch (err) {
-      console.error('Error updating student:', err);
-      alert(err instanceof Error ? err.message : 'Failed to update student');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const filteredStudents = students.filter(student => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    const initials = student.initials?.toLowerCase() || '';
-    const grade = student.grade_level?.toLowerCase() || '';
-    const teacher = student.teacher_name?.toLowerCase() || '';
-    const specialist = student.specialist_name?.toLowerCase() || '';
-    return initials.includes(searchLower) || grade.includes(searchLower) ||
-           teacher.includes(searchLower) || specialist.includes(searchLower);
-  });
-
-  // Calculate caseload totals
-  const totalSessionsPerWeek = filteredStudents.reduce((sum, s) => sum + (s.sessions_per_week || 0), 0);
-  const totalMinutesPerWeek = filteredStudents.reduce((sum, s) =>
-    sum + ((s.sessions_per_week || 0) * (s.minutes_per_session || 0)), 0);
+  // Count total provider records
+  const totalProviderRecords = students.length;
 
   if (loading) {
     return (
@@ -165,7 +166,7 @@ export default function AdminStudentsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Students</h1>
             <p className="mt-2 text-gray-600">
-              View and manage students at your school
+              View students at your school
             </p>
           </div>
         </div>
@@ -194,7 +195,7 @@ export default function AdminStudentsPage() {
       </Card>
 
       {/* Students Table */}
-      {filteredStudents.length === 0 ? (
+      {filteredGroupedStudents.length === 0 ? (
         <Card className="p-8 text-center">
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -219,13 +220,7 @@ export default function AdminStudentsPage() {
                   Teacher
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Specialist
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Sessions/Wk
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Min/Session
+                  Specialists
                 </th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -233,8 +228,8 @@ export default function AdminStudentsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="hover:bg-gray-50">
+              {filteredGroupedStudents.map((student) => (
+                <tr key={student.groupKey} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {student.initials}
@@ -254,92 +249,43 @@ export default function AdminStudentsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {student.specialist_name || (
-                        <span className="text-gray-400 italic">Not assigned</span>
-                      )}
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      {student.providerRecords.map((record) => (
+                        <LongHoverTooltip
+                          key={record.id}
+                          content={
+                            record.sessions_per_week && record.minutes_per_session
+                              ? `${record.specialist_name || 'Unknown'}: ${record.sessions_per_week} sessions/week, ${record.minutes_per_session} min each`
+                              : `${record.specialist_name || 'Unknown'}: Schedule not set`
+                          }
+                        >
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                            {formatRoleLabel(record.specialist_role)}
+                            <span className="ml-1 text-gray-500">
+                              ({record.sessions_per_week || 0}x{record.minutes_per_session || 0})
+                            </span>
+                          </span>
+                        </LongHoverTooltip>
+                      ))}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {editingId === student.id ? (
-                      <input
-                        type="number"
-                        min="0"
-                        max="10"
-                        aria-label={`Sessions per week for ${student.initials}`}
-                        value={editFormData?.sessions_per_week || 0}
-                        onChange={(e) => setEditFormData(prev => prev ? {
-                          ...prev,
-                          sessions_per_week: parseInt(e.target.value) || 0
-                        } : null)}
-                        className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    ) : (
-                      <div className="text-sm text-gray-900">
-                        {student.sessions_per_week ?? '-'}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {editingId === student.id ? (
-                      <input
-                        type="number"
-                        min="0"
-                        max="120"
-                        aria-label={`Minutes per session for ${student.initials}`}
-                        value={editFormData?.minutes_per_session || 0}
-                        onChange={(e) => setEditFormData(prev => prev ? {
-                          ...prev,
-                          minutes_per_session: parseInt(e.target.value) || 0
-                        } : null)}
-                        className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    ) : (
-                      <div className="text-sm text-gray-900">
-                        {student.minutes_per_session ?? '-'}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                    {editingId === student.id ? (
-                      <>
-                        <button
-                          onClick={() => handleSaveEdit(student.id)}
-                          disabled={savingId === student.id}
-                          className="text-green-600 hover:text-green-900 disabled:text-gray-400"
-                        >
-                          {savingId === student.id ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          disabled={savingId === student.id}
-                          className="text-gray-600 hover:text-gray-900 disabled:text-gray-400"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <LongHoverTooltip content="Edit the student's session requirements">
-                          <button
-                            onClick={() => handleEdit(student)}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            Edit
-                          </button>
-                        </LongHoverTooltip>
-                        <LongHoverTooltip content="Delete this student and all their scheduled sessions. This cannot be undone.">
-                          <button
-                            onClick={() => handleDelete(student.id, student.initials)}
-                            disabled={deletingId === student.id}
-                            className="text-red-600 hover:text-red-900 disabled:text-gray-400"
-                          >
-                            {deletingId === student.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </LongHoverTooltip>
-                      </>
-                    )}
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <LongHoverTooltip
+                      content={
+                        student.providerRecords.length > 1
+                          ? `Delete all ${student.providerRecords.length} provider records for this student`
+                          : "Delete this student and all their scheduled sessions"
+                      }
+                    >
+                      <button
+                        onClick={() => handleDeleteGrouped(student)}
+                        disabled={deletingGroupKey === student.groupKey}
+                        className="text-red-600 hover:text-red-900 disabled:text-gray-400"
+                      >
+                        {deletingGroupKey === student.groupKey ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </LongHoverTooltip>
                   </td>
                 </tr>
               ))}
@@ -347,14 +293,11 @@ export default function AdminStudentsPage() {
             {/* Summary Row */}
             <tfoot className="bg-gray-50">
               <tr>
-                <td colSpan={4} className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td colSpan={3} className="px-6 py-3 text-sm font-medium text-gray-900">
                   Total Caseload
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900">
-                  {totalSessionsPerWeek}
-                </td>
                 <td className="px-6 py-3 text-sm text-gray-600">
-                  ({totalMinutesPerWeek} min/wk)
+                  {totalSessionsPerWeek} sessions/wk ({totalMinutesPerWeek} min/wk)
                 </td>
                 <td></td>
               </tr>
@@ -366,7 +309,7 @@ export default function AdminStudentsPage() {
       {/* Summary Stats */}
       <div className="mt-6 flex justify-between items-center text-sm text-gray-600">
         <div>
-          Showing {filteredStudents.length} of {students.length} students
+          Showing {filteredGroupedStudents.length} unique students ({totalProviderRecords} provider records)
         </div>
       </div>
     </div>

@@ -1,32 +1,10 @@
 'use client';
 
 import { UsersIcon } from '@heroicons/react/24/outline';
+import { formatRoleLabel } from '@/lib/utils/role-utils';
 
 interface SharedStudentBadgeProps {
   roles: string[];
-}
-
-/**
- * Format role code to display label
- */
-function formatRoleLabel(role: string): string {
-  switch (role.toLowerCase()) {
-    case 'speech':
-      return 'Speech';
-    case 'ot':
-      return 'OT';
-    case 'counseling':
-      return 'Counseling';
-    case 'resource':
-      return 'Resource';
-    case 'psychologist':
-      return 'Psych';
-    case 'specialist':
-      return 'Specialist';
-    default:
-      // Capitalize first letter for unknown roles
-      return role.charAt(0).toUpperCase() + role.slice(1);
-  }
 }
 
 /**

@@ -866,7 +866,66 @@ export interface AdminStudentView {
   minutes_per_session: number | null;
   provider_id: string | null;
   specialist_name: string | null;
+  specialist_role: string | null;
   created_at: string | null;
+}
+
+// Types for grouped student display
+export interface ProviderRecord {
+  id: string;
+  provider_id: string | null;
+  specialist_name: string | null;
+  specialist_role: string | null;
+  sessions_per_week: number | null;
+  minutes_per_session: number | null;
+}
+
+export interface GroupedStudent {
+  groupKey: string;
+  initials: string;
+  grade_level: string;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  providerRecords: ProviderRecord[];
+  created_at: string | null;
+}
+
+/**
+ * Groups students by their identity (initials + grade + teacher).
+ * Multiple provider records for the same student are combined.
+ */
+export function groupStudentsByIdentity(students: AdminStudentView[]): GroupedStudent[] {
+  const groupMap = new Map<string, GroupedStudent>();
+
+  for (const student of students) {
+    // Null-safe grouping key - handle missing initials/grade gracefully
+    const initials = (student.initials || '').toLowerCase();
+    const gradeLevel = student.grade_level || '';
+    const groupKey = `${initials}_${gradeLevel}_${student.teacher_id || ''}`;
+
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, {
+        groupKey,
+        initials: student.initials,
+        grade_level: student.grade_level,
+        teacher_id: student.teacher_id,
+        teacher_name: student.teacher_name,
+        providerRecords: [],
+        created_at: student.created_at,
+      });
+    }
+
+    groupMap.get(groupKey)!.providerRecords.push({
+      id: student.id,
+      provider_id: student.provider_id,
+      specialist_name: student.specialist_name,
+      specialist_role: student.specialist_role,
+      sessions_per_week: student.sessions_per_week,
+      minutes_per_session: student.minutes_per_session,
+    });
+  }
+
+  return Array.from(groupMap.values());
 }
 
 /**
@@ -930,7 +989,8 @@ export async function getSchoolStudents(schoolId: string): Promise<AdminStudentV
           provider_id,
           created_at,
           provider:profiles!students_provider_id_fkey (
-            full_name
+            full_name,
+            role
           )
         `)
         .eq('school_id', schoolId)
@@ -956,6 +1016,7 @@ export async function getSchoolStudents(schoolId: string): Promise<AdminStudentV
     minutes_per_session: student.minutes_per_session,
     provider_id: student.provider_id,
     specialist_name: (student.provider as any)?.full_name || null,
+    specialist_role: (student.provider as any)?.role || null,
     created_at: student.created_at,
   }));
 }
