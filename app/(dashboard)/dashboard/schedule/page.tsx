@@ -16,6 +16,7 @@ import { createClient } from '../../../../lib/supabase/client';
 import { useSessionTags } from './hooks/useSessionTags';
 import { useVisualFilters } from './hooks/useVisualFilters';
 import { useTeachers } from './hooks/useTeachers';
+import { useOtherProviderSessions } from './hooks/useOtherProviderSessions';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { filterScheduleSessions } from './utils/session-filters';
 import type { ScheduleSession } from '@/src/types/database';
@@ -24,13 +25,9 @@ export default function SchedulePage() {
   const { currentSchool } = useSchool();
   const supabase = createClient();
   const teachers = useTeachers(supabase, currentSchool);
-  const { visualFilters, setVisualFilters } = useVisualFilters(
-    currentSchool?.school_id,
-    teachers
-  );
   const { sessionTags, setSessionTags } = useSessionTags();
 
-  // Data management hook
+  // Data management hook - called before useVisualFilters to have students available
   const {
     students,
     sessions,
@@ -50,6 +47,18 @@ export default function SchedulePage() {
     refreshUnscheduledCount,
     optimisticUpdateSession,
   } = useScheduleData();
+
+  // Visual filters hook - needs students for validation
+  const { visualFilters, setVisualFilters } = useVisualFilters(
+    currentSchool?.school_id,
+    teachers,
+    students
+  );
+
+  // Fetch other provider sessions when a student is selected in filters
+  const { sessions: otherProviderSessions } = useOtherProviderSessions(
+    visualFilters.studentId
+  );
 
   // UI state management hook
   const {
@@ -473,6 +482,7 @@ export default function SchedulePage() {
             specialActivities={specialActivities}
             teachers={teachers}
             visualFilters={visualFilters}
+            otherProviderSessions={otherProviderSessions}
             selectedGrades={selectedGrades}
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}

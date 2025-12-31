@@ -12,12 +12,14 @@ interface ConflictFilterPanelProps {
   students: Student[];
   teachers?: Teacher[];
   selectedFilters: {
-    bellScheduleGrade: string | null;
-    specialActivityTeacher: string | null;
+    grade: string | null;
+    teacherId: string | null;
+    studentId: string | null;
   };
   onFilterChange: (filters: {
-    bellScheduleGrade: string | null;
-    specialActivityTeacher: string | null;
+    grade: string | null;
+    teacherId: string | null;
+    studentId: string | null;
   }) => void;
 }
 
@@ -113,10 +115,19 @@ export function ConflictFilterPanel({
     return counts;
   }, [teachers, specialActivities]);
 
+  // Sort students by initials for dropdown
+  const sortedStudents = useMemo(() => {
+    return [...students].sort((a, b) => {
+      const initialsA = (a.initials || '').toLowerCase();
+      const initialsB = (b.initials || '').toLowerCase();
+      return initialsA.localeCompare(initialsB);
+    });
+  }, [students]);
+
   const handleGradeChange = (grade: string | null) => {
     onFilterChange({
       ...selectedFilters,
-      bellScheduleGrade: grade,
+      grade,
     });
   };
 
@@ -130,21 +141,47 @@ export function ConflictFilterPanel({
 
     onFilterChange({
       ...selectedFilters,
-      specialActivityTeacher: teacherId,
+      teacherId,
     });
   };
 
+  const handleStudentChange = (studentId: string | null) => {
+    if (studentId) {
+      // When a student is selected, RESET grade and teacher (they become inferred)
+      onFilterChange({
+        grade: null,
+        teacherId: null,
+        studentId,
+      });
+    } else {
+      onFilterChange({
+        ...selectedFilters,
+        studentId: null,
+      });
+    }
+  };
 
   const handleClear = () => {
     onFilterChange({
-      bellScheduleGrade: null,
-      specialActivityTeacher: null,
+      grade: null,
+      teacherId: null,
+      studentId: null,
     });
   };
 
-  const hasActiveFilters = 
-    selectedFilters.bellScheduleGrade ||
-    selectedFilters.specialActivityTeacher;
+  const hasActiveFilters =
+    selectedFilters.grade ||
+    selectedFilters.teacherId ||
+    selectedFilters.studentId;
+
+  // Get inferred grade and teacher when student is selected
+  const selectedStudent = selectedFilters.studentId
+    ? students.find(s => s.id === selectedFilters.studentId)
+    : null;
+  const inferredGrade = selectedStudent?.grade_level || null;
+  const inferredTeacher = selectedStudent?.teacher_id
+    ? teachers.find(t => t.id === selectedStudent.teacher_id)
+    : null;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
@@ -160,22 +197,23 @@ export function ConflictFilterPanel({
         )}
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Bell Schedule Filter */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Grade Filter */}
         <div className="relative">
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            Bell Schedule
+            Grade
           </label>
           <div className="relative">
             <select
-              value={selectedFilters.bellScheduleGrade || ''}
+              value={selectedFilters.grade || ''}
               onChange={(e) => handleGradeChange(e.target.value || null)}
-              className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+              disabled={!!selectedFilters.studentId}
+              className={`w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white ${selectedFilters.studentId ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <option value="">None</option>
               {gradeLevels.map((grade) => (
                 <option key={grade} value={grade}>
-                  {grade === 'TK' ? 'Transitional Kindergarten' : grade === 'K' ? 'Kindergarten' : `Grade ${grade}`}
+                  {grade === 'TK' ? 'TK' : grade === 'K' ? 'K' : grade}
                 </option>
               ))}
             </select>
@@ -183,16 +221,17 @@ export function ConflictFilterPanel({
           </div>
         </div>
 
-        {/* Special Activities Filter */}
+        {/* Teacher Filter */}
         <div className="relative">
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            Special Activities
+            Teacher
           </label>
           <div className="relative">
             <select
-              value={selectedFilters.specialActivityTeacher || ''}
+              value={selectedFilters.teacherId || ''}
               onChange={(e) => handleTeacherChange(e.target.value || null)}
-              className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+              disabled={!!selectedFilters.studentId}
+              className={`w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white ${selectedFilters.studentId ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <option value="">None</option>
               {teachers.map((teacher) => {
@@ -208,25 +247,73 @@ export function ConflictFilterPanel({
             <ChevronDownIcon className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
+
+        {/* Student Filter */}
+        <div className="relative">
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Student
+          </label>
+          <div className="relative">
+            <select
+              value={selectedFilters.studentId || ''}
+              onChange={(e) => handleStudentChange(e.target.value || null)}
+              className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+            >
+              <option value="">None</option>
+              {sortedStudents.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.initials} ({student.grade_level || '?'})
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
       </div>
 
       {/* Active Filters Summary */}
       {hasActiveFilters && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {selectedFilters.bellScheduleGrade && (
-            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
-              Bell: {selectedFilters.bellScheduleGrade === 'TK' ? 'Transitional Kindergarten' : selectedFilters.bellScheduleGrade === 'K' ? 'Kindergarten' : `Grade ${selectedFilters.bellScheduleGrade}`}
+          {/* Show selected student */}
+          {selectedFilters.studentId && selectedStudent && (
+            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
+              Student: {selectedStudent.initials}
             </span>
           )}
-          {selectedFilters.specialActivityTeacher && (() => {
-            const teacher = teachers.find(t => t.id === selectedFilters.specialActivityTeacher);
-            const teacherName = teacher ? (formatTeacherName(teacher) || 'Unknown Teacher') : selectedFilters.specialActivityTeacher;
+          {/* Show inferred grade (dimmed/italic) when student is selected */}
+          {selectedFilters.studentId && inferredGrade && (
+            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-600 italic">
+              Grade: {inferredGrade}
+            </span>
+          )}
+          {/* Show inferred teacher (dimmed/italic) when student is selected */}
+          {selectedFilters.studentId && inferredTeacher && (
+            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-600 italic">
+              Teacher: {formatTeacherName(inferredTeacher) || 'Unknown'}
+            </span>
+          )}
+          {/* Show explicit grade selection (when no student selected) */}
+          {!selectedFilters.studentId && selectedFilters.grade && (
+            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+              Grade: {selectedFilters.grade}
+            </span>
+          )}
+          {/* Show explicit teacher selection (when no student selected) */}
+          {!selectedFilters.studentId && selectedFilters.teacherId && (() => {
+            const teacher = teachers.find(t => t.id === selectedFilters.teacherId);
+            const teacherName = teacher ? (formatTeacherName(teacher) || 'Unknown Teacher') : selectedFilters.teacherId;
             return (
               <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
-                Activity: {teacherName}
+                Teacher: {teacherName}
               </span>
             );
           })()}
+          {/* Show indicator for other provider sessions when student is selected */}
+          {selectedFilters.studentId && (
+            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+              + Other Provider Sessions
+            </span>
+          )}
         </div>
       )}
     </div>

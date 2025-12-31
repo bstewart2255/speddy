@@ -11,6 +11,7 @@ import type {
   Student,
 } from '@/src/types/database';
 import type { Teacher } from '../types/teacher';
+import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
 
 interface VisualAvailabilityLayerProps {
   day: number;
@@ -21,9 +22,11 @@ interface VisualAvailabilityLayerProps {
   students: Student[];
   teachers: Teacher[];
   filters: {
-    bellScheduleGrade: string | null;
-    specialActivityTeacher: string | null; // teacher_id
+    grade: string | null;
+    teacherId: string | null;
+    studentId: string | null;
   };
+  otherProviderSessions?: OtherProviderSession[];
   gridConfig: {
     startHour: number;
     endHour: number;
@@ -40,6 +43,7 @@ export function VisualAvailabilityLayer({
   students,
   teachers,
   filters,
+  otherProviderSessions = [],
   gridConfig,
 }: VisualAvailabilityLayerProps) {
   // Calculate availability bands based on filters
@@ -48,33 +52,46 @@ export function VisualAvailabilityLayer({
       startMin: number;
       endMin: number;
       color: string;
-      type: 'bell' | 'activity';
+      type: 'bell' | 'activity' | 'other-provider';
       opacity: number;
     }> = [];
 
     const gridStartMin = gridConfig.startHour * 60;
     const gridEndMin = gridConfig.endHour * 60;
 
-    // Bell Schedule conflicts
-    if (filters.bellScheduleGrade) {
+    // Determine effective grade and teacher (inferred from student if selected)
+    let effectiveGrade = filters.grade;
+    let effectiveTeacherId = filters.teacherId;
+    let selectedStudent: Student | null = null;
+
+    if (filters.studentId) {
+      selectedStudent = students.find(s => s.id === filters.studentId) || null;
+      if (selectedStudent) {
+        effectiveGrade = selectedStudent.grade_level;
+        effectiveTeacherId = selectedStudent.teacher_id;
+      }
+    }
+
+    // Bell Schedule conflicts (based on effective grade)
+    if (effectiveGrade) {
       const gradeBellSchedules = bellSchedules.filter(bs => {
         if (bs.day_of_week !== day) return false;
         // Handle comma-separated grade levels
         const grades = bs.grade_level.split(',').map(g => g.trim());
-        return grades.includes(filters.bellScheduleGrade!);
+        return grades.includes(effectiveGrade!);
       });
-      
+
       gradeBellSchedules.forEach(schedule => {
         const [startH, startM] = schedule.start_time.split(':').map(Number);
         const [endH, endM] = schedule.end_time.split(':').map(Number);
         const startMin = startH * 60 + startM;
         const endMin = endH * 60 + endM;
-        
+
         if (startMin < gridEndMin && endMin > gridStartMin) {
           bands.push({
             startMin: Math.max(startMin, gridStartMin),
             endMin: Math.min(endMin, gridEndMin),
-            color: GRADE_COLOR_MAP[filters.bellScheduleGrade!] || 'bg-gray-300',
+            color: GRADE_COLOR_MAP[effectiveGrade!] || 'bg-gray-300',
             type: 'bell',
             opacity: 40,
           });
@@ -82,11 +99,11 @@ export function VisualAvailabilityLayer({
       });
     }
 
-    // Teacher/Special Activities conflicts
-    if (filters.specialActivityTeacher) {
+    // Teacher/Special Activities conflicts (based on effective teacher)
+    if (effectiveTeacherId) {
       // Find the selected teacher to get their name for fallback filtering
-      const selectedTeacher = teachers.find(t => t.id === filters.specialActivityTeacher);
-      const isLegacyId = filters.specialActivityTeacher.startsWith('legacy_');
+      const selectedTeacher = teachers.find(t => t.id === effectiveTeacherId);
+      const isLegacyId = effectiveTeacherId.startsWith('legacy_');
 
       // For legacy IDs, the full teacher name is stored in last_name
       const teacherName = isLegacyId && selectedTeacher
@@ -104,7 +121,7 @@ export function VisualAvailabilityLayer({
         }
 
         // For real teacher IDs, check teacher_id first (preferred), then fall back to teacher_name
-        if (sa.teacher_id === filters.specialActivityTeacher) return true;
+        if (sa.teacher_id === effectiveTeacherId) return true;
         if (teacherName && sa.teacher_name === teacherName) return true;
         return false;
       });
@@ -117,7 +134,7 @@ export function VisualAvailabilityLayer({
         }
 
         // For real teacher IDs, check teacher_id first (preferred), then fall back to teacher_name
-        if (s.teacher_id === filters.specialActivityTeacher) return true;
+        if (s.teacher_id === effectiveTeacherId) return true;
         if (teacherName && s.teacher_name === teacherName) return true;
         return false;
       });
@@ -126,15 +143,15 @@ export function VisualAvailabilityLayer({
         return acc;
       }, {} as Record<string, number>);
       const primaryGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-      
+
       // Add bands for special activities
       teacherActivities.forEach(activity => {
         const [startH, startM] = activity.start_time.split(':').map(Number);
         const [endH, endM] = activity.end_time.split(':').map(Number);
         const startMin = startH * 60 + startM;
         const endMin = endH * 60 + endM;
-        
-        
+
+
         if (startMin < gridEndMin && endMin > gridStartMin) {
           const band = {
             startMin: Math.max(startMin, gridStartMin),
@@ -146,14 +163,34 @@ export function VisualAvailabilityLayer({
           bands.push(band);
         }
       });
-      
-      // Note: We only show the teacher's special activities as conflict zones,
-      // not the student sessions themselves
     }
 
+    // Other Provider Sessions (only when student is selected)
+    if (filters.studentId && otherProviderSessions.length > 0) {
+      const studentOtherSessions = otherProviderSessions.filter(
+        s => s.day_of_week === day
+      );
+
+      studentOtherSessions.forEach(session => {
+        const [startH, startM] = session.start_time.split(':').map(Number);
+        const [endH, endM] = session.end_time.split(':').map(Number);
+        const startMin = startH * 60 + startM;
+        const endMin = endH * 60 + endM;
+
+        if (startMin < gridEndMin && endMin > gridStartMin) {
+          bands.push({
+            startMin: Math.max(startMin, gridStartMin),
+            endMin: Math.min(endMin, gridEndMin),
+            color: 'bg-gray-400', // Gray for other provider sessions
+            type: 'other-provider',
+            opacity: 50, // Slightly more visible
+          });
+        }
+      });
+    }
 
     return bands;
-  }, [day, bellSchedules, specialActivities, students, teachers, filters, gridConfig]);
+  }, [day, bellSchedules, specialActivities, students, teachers, filters, otherProviderSessions, gridConfig]);
 
   // Merge overlapping bands
   const mergedBands = useMemo(() => {
