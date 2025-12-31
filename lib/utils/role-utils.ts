@@ -4,7 +4,7 @@
  * @returns The display label (e.g., 'Speech', 'OT', 'Resource')
  */
 export function formatRoleLabel(role: string | null): string {
-  if (!role) return 'Unknown';
+  if (!role || role.trim() === '') return 'Unknown';
 
   switch (role.toLowerCase()) {
     case 'speech':

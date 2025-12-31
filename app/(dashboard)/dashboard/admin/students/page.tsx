@@ -254,7 +254,11 @@ export default function AdminStudentsPage() {
                       {student.providerRecords.map((record) => (
                         <LongHoverTooltip
                           key={record.id}
-                          content={`${record.specialist_name || 'Unknown'}: ${record.sessions_per_week || 0} sessions/week, ${record.minutes_per_session || 0} min each`}
+                          content={
+                            record.sessions_per_week && record.minutes_per_session
+                              ? `${record.specialist_name || 'Unknown'}: ${record.sessions_per_week} sessions/week, ${record.minutes_per_session} min each`
+                              : `${record.specialist_name || 'Unknown'}: Schedule not set`
+                          }
                         >
                           <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
                             {formatRoleLabel(record.specialist_role)}

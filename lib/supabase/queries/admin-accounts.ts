@@ -898,7 +898,10 @@ export function groupStudentsByIdentity(students: AdminStudentView[]): GroupedSt
   const groupMap = new Map<string, GroupedStudent>();
 
   for (const student of students) {
-    const groupKey = `${student.initials.toLowerCase()}_${student.grade_level}_${student.teacher_id || ''}`;
+    // Null-safe grouping key - handle missing initials/grade gracefully
+    const initials = (student.initials || '').toLowerCase();
+    const gradeLevel = student.grade_level || '';
+    const groupKey = `${initials}_${gradeLevel}_${student.teacher_id || ''}`;
 
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, {
