@@ -21,6 +21,7 @@ interface ConflictFilterPanelProps {
     teacherId: string | null;
     studentId: string | null;
   }) => void;
+  hasOtherProviderSessions?: boolean;
 }
 
 export function ConflictFilterPanel({
@@ -30,6 +31,7 @@ export function ConflictFilterPanel({
   teachers: teachersFromTable,
   selectedFilters,
   onFilterChange,
+  hasOtherProviderSessions = false,
 }: ConflictFilterPanelProps) {
   // Get unique grade levels from bell schedules, sorted in logical grade order (TK, K, 1, 2, 3...)
   const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level)))
@@ -208,6 +210,8 @@ export function ConflictFilterPanel({
               value={selectedFilters.grade || ''}
               onChange={(e) => handleGradeChange(e.target.value || null)}
               disabled={!!selectedFilters.studentId}
+              aria-label={selectedFilters.studentId ? 'Grade filter (disabled - inferred from selected student)' : 'Grade filter'}
+              title={selectedFilters.studentId ? 'Grade is automatically inferred from the selected student' : undefined}
               className={`w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white ${selectedFilters.studentId ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <option value="">None</option>
@@ -231,6 +235,8 @@ export function ConflictFilterPanel({
               value={selectedFilters.teacherId || ''}
               onChange={(e) => handleTeacherChange(e.target.value || null)}
               disabled={!!selectedFilters.studentId}
+              aria-label={selectedFilters.studentId ? 'Teacher filter (disabled - inferred from selected student)' : 'Teacher filter'}
+              title={selectedFilters.studentId ? 'Teacher is automatically inferred from the selected student' : undefined}
               className={`w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white ${selectedFilters.studentId ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <option value="">None</option>
@@ -262,7 +268,7 @@ export function ConflictFilterPanel({
               <option value="">None</option>
               {sortedStudents.map((student) => (
                 <option key={student.id} value={student.id}>
-                  {student.initials} ({student.grade_level || '?'})
+                  {student.initials} ({student.grade_level || 'No grade'})
                 </option>
               ))}
             </select>
@@ -308,8 +314,8 @@ export function ConflictFilterPanel({
               </span>
             );
           })()}
-          {/* Show indicator for other provider sessions when student is selected */}
-          {selectedFilters.studentId && (
+          {/* Show indicator for other provider sessions when student is selected AND sessions exist */}
+          {selectedFilters.studentId && hasOtherProviderSessions && (
             <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
               + Other Provider Sessions
             </span>

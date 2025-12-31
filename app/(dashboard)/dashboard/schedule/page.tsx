@@ -451,6 +451,7 @@ export default function SchedulePage() {
             teachers={teachers}
             selectedFilters={visualFilters}
             onFilterChange={setVisualFilters}
+            hasOtherProviderSessions={otherProviderSessions.length > 0}
           />
 
           <ScheduleControls
