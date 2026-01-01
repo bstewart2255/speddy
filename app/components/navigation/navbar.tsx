@@ -103,7 +103,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard/sea' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/calendar' },
+        { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
 
@@ -112,7 +112,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/calendar' },
+        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
@@ -129,7 +129,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/calendar' },
+        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
@@ -145,7 +145,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/calendar' },
+        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
