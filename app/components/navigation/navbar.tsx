@@ -112,7 +112,6 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
@@ -122,6 +121,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
     } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
@@ -129,7 +129,6 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
@@ -139,13 +138,13 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Plan', href: '/dashboard/plan' },
       ];
     } else {
-      // Other roles (specialist, psychologist) see standard navigation with Tools
+      // Other roles (specialist) see standard navigation with Tools
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
-        { name: 'Plan', href: '/dashboard/plan' },
         {
           name: 'Schedule',
           href: '/dashboard/schedule',
@@ -155,6 +154,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Tools', href: '/dashboard/tools' },
       ];
     }
