@@ -45,6 +45,46 @@ export async function getSpecialActivities(schoolId?: string): Promise<SpecialAc
 export async function addSpecialActivity(
   activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string; school_id?: string }
 ): Promise<SpecialActivity> {
+  return addSpecialActivityInternal(activity, 'provider');
+}
+
+/**
+ * Add a new special activity as a site admin.
+ */
+export async function addSpecialActivityAsAdmin(
+  activity: {
+    teacher_id: string;
+    teacher_name: string;
+    activity_name: string;
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    school_id: string;
+  }
+): Promise<SpecialActivity> {
+  // Cast to satisfy the type - the internal function handles nulls appropriately
+  const activityData = {
+    ...activity,
+    content_hash: null,
+    created_by_id: null,
+    created_by_role: 'site_admin',
+    deleted_at: null,
+    district_id: null,
+    school_site: null,
+    state_id: null,
+    updated_at: null
+  } as unknown as Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string; school_id?: string };
+
+  return addSpecialActivityInternal(activityData, 'site_admin');
+}
+
+/**
+ * Internal function to add a special activity.
+ */
+async function addSpecialActivityInternal(
+  activity: Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string; school_id?: string },
+  role: 'provider' | 'site_admin'
+): Promise<SpecialActivity> {
   const supabase = createClient();
 
   // Get current user
@@ -74,9 +114,9 @@ export async function addSpecialActivity(
     .from('special_activities')
     .insert({
       ...activity,
-      provider_id: user.id,
+      provider_id: role === 'provider' ? user.id : null,
       created_by_id: user.id,
-      created_by_role: 'provider',
+      created_by_role: role,
       school_site: finalSchoolSite,
       school_id: finalSchoolId
     })
