@@ -13,6 +13,7 @@ interface AdminScheduleGridProps {
   specialActivities: SpecialActivity[];
   schoolId: string | null;
   onRefresh: () => Promise<void>;
+  viewFilter?: 'all' | 'bell' | 'activities';
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -31,9 +32,9 @@ const ACTIVITY_COLOR = 'bg-indigo-200 border-indigo-400';
 
 // Grid configuration
 const GRID_CONFIG = {
-  startHour: 7,  // 7 AM
-  endHour: 16,   // 4 PM
-  pixelsPerHour: 60,
+  startHour: 7.5,  // 7:30 AM
+  endHour: 15,     // 3:00 PM
+  pixelsPerHour: 80,  // Larger for less compact view
   get totalHeight() {
     return (this.endHour - this.startHour) * this.pixelsPerHour;
   }
@@ -43,7 +44,8 @@ export function AdminScheduleGrid({
   bellSchedules,
   specialActivities,
   schoolId,
-  onRefresh
+  onRefresh,
+  viewFilter = 'all'
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -58,9 +60,13 @@ export function AdminScheduleGrid({
   // Generate time markers (every 30 minutes)
   const timeMarkers = useMemo(() => {
     const markers: string[] = [];
-    for (let hour = GRID_CONFIG.startHour; hour < GRID_CONFIG.endHour; hour++) {
-      markers.push(`${hour.toString().padStart(2, '0')}:00`);
-      markers.push(`${hour.toString().padStart(2, '0')}:30`);
+    const startMinutes = GRID_CONFIG.startHour * 60;
+    const endMinutes = GRID_CONFIG.endHour * 60;
+
+    for (let mins = startMinutes; mins < endMinutes; mins += 30) {
+      const hour = Math.floor(mins / 60);
+      const minute = mins % 60;
+      markers.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
     }
     return markers;
   }, []);
@@ -158,29 +164,22 @@ export function AdminScheduleGrid({
                     if (e.target === e.currentTarget) {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const y = e.clientY - rect.top;
-                      const minutes = Math.round((y / GRID_CONFIG.pixelsPerHour) * 60 / 15) * 15;
-                      const hour = GRID_CONFIG.startHour + Math.floor(minutes / 60);
-                      const minute = minutes % 60;
+                      // Calculate minutes from start of grid, snap to 15-minute intervals
+                      const minutesFromStart = Math.round((y / GRID_CONFIG.pixelsPerHour) * 60 / 15) * 15;
+                      const totalMinutes = Math.floor(GRID_CONFIG.startHour * 60) + minutesFromStart;
+                      const hour = Math.floor(totalMinutes / 60);
+                      const minute = totalMinutes % 60;
                       const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                       handleCellClick(dayNumber, time);
                     }
                   }}
                 >
-                  {/* Hour grid lines */}
-                  {Array.from({ length: GRID_CONFIG.endHour - GRID_CONFIG.startHour }).map((_, i) => (
+                  {/* Grid lines every 30 minutes */}
+                  {timeMarkers.map((time, i) => (
                     <div
-                      key={i}
-                      className="absolute left-0 right-0 border-t border-gray-100"
-                      style={{ top: i * GRID_CONFIG.pixelsPerHour }}
-                    />
-                  ))}
-
-                  {/* Half-hour grid lines */}
-                  {Array.from({ length: GRID_CONFIG.endHour - GRID_CONFIG.startHour }).map((_, i) => (
-                    <div
-                      key={`half-${i}`}
-                      className="absolute left-0 right-0 border-t border-gray-50"
-                      style={{ top: i * GRID_CONFIG.pixelsPerHour + GRID_CONFIG.pixelsPerHour / 2 }}
+                      key={time}
+                      className={`absolute left-0 right-0 border-t ${i % 2 === 0 ? 'border-gray-100' : 'border-gray-50'}`}
+                      style={{ top: timeToPixels(time) }}
                     />
                   ))}
 
@@ -238,6 +237,7 @@ export function AdminScheduleGrid({
           schoolId={schoolId}
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
+          defaultTab={viewFilter === 'activities' ? 'activity' : 'bell'}
         />
       )}
 

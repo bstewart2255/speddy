@@ -13,6 +13,7 @@ interface CreateItemModalProps {
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
+  defaultTab?: 'bell' | 'activity';
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -23,9 +24,10 @@ export function CreateItemModal({
   startTime,
   schoolId,
   onClose,
-  onSuccess
+  onSuccess,
+  defaultTab = 'bell'
 }: CreateItemModalProps) {
-  const [tab, setTab] = useState<'bell' | 'activity'>('bell');
+  const [tab, setTab] = useState<'bell' | 'activity'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
