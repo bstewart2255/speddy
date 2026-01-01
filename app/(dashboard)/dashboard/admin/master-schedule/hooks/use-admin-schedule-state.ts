@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { Teacher } from '@/src/types/database';
 
 interface UseAdminScheduleStateReturn {
@@ -12,16 +12,9 @@ interface UseAdminScheduleStateReturn {
 }
 
 export function useAdminScheduleState(teachers: Teacher[]): UseAdminScheduleStateReturn {
+  // Start with no teachers selected (show all activities)
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set());
-
-  // Initialize with all teachers selected when teachers load
-  useEffect(() => {
-    if (teachers.length > 0 && selectedTeacherIds.size === 0) {
-      // Start with no teachers selected (show all)
-      setSelectedTeacherIds(new Set());
-    }
-  }, [teachers, selectedTeacherIds.size]);
 
   const toggleTeacher = useCallback((teacherId: string) => {
     setSelectedTeacherIds(prev => {

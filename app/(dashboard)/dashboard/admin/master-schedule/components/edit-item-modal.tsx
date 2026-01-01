@@ -1,16 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '../../../../../components/ui/button';
-import { deleteBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
-import { deleteSpecialActivity, updateSpecialActivity } from '../../../../../../lib/supabase/queries/special-activities';
-import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
+import { deleteBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
+import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
+import { SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
   type: 'bell' | 'activity';
   item: BellScheduleWithCreator | SpecialActivity;
+  schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -20,12 +21,15 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 export function EditItemModal({
   type,
   item,
+  schoolId,
   onClose,
   onSuccess
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const headingId = 'edit-modal-heading';
 
   // Form state for activities (bell schedules are read-only for now)
   const activity = type === 'activity' ? item as SpecialActivity : null;
@@ -34,6 +38,22 @@ export function EditItemModal({
   const [endTime, setEndTime] = useState(activity?.end_time || '');
 
   const bellSchedule = type === 'bell' ? item as BellScheduleWithCreator : null;
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [loading, onClose]);
+
+  // Focus trap and initial focus
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
 
   const handleDelete = async () => {
     if (!confirmDelete) {
@@ -46,9 +66,9 @@ export function EditItemModal({
 
     try {
       if (type === 'bell') {
-        await deleteBellSchedule(item.id);
+        await deleteBellScheduleAsAdmin(item.id, schoolId);
       } else {
-        await deleteSpecialActivity(item.id);
+        await deleteSpecialActivityAsAdmin(item.id, schoolId);
       }
       onSuccess();
     } catch (err: any) {
@@ -63,11 +83,17 @@ export function EditItemModal({
   const handleUpdate = async () => {
     if (type !== 'activity') return;
 
+    // Validate times
+    if (startTime && endTime && startTime >= endTime) {
+      setError('End time must be after start time');
+      return;
+    }
+
     setError(null);
     setLoading(true);
 
     try {
-      await updateSpecialActivity(item.id, {
+      await updateSpecialActivityAsAdmin(item.id, schoolId, {
         activity_name: activityName,
         start_time: startTime,
         end_time: endTime
@@ -92,11 +118,20 @@ export function EditItemModal({
   const dayName = item.day_of_week ? DAYS[item.day_of_week - 1] : '';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={headingId}
+    >
+      <div
+        ref={modalRef}
+        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+        tabIndex={-1}
+      >
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 id={headingId} className="text-lg font-semibold text-gray-900">
             {type === 'bell' ? 'Bell Schedule' : 'Special Activity'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">

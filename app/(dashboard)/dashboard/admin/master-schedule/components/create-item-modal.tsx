@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
@@ -19,6 +19,17 @@ interface CreateItemModalProps {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 
+/**
+ * Calculate a default end time by adding offset minutes to a start time.
+ */
+const calculateDefaultEndTime = (time: string, offsetMinutes: number = 30): string => {
+  const [h, m] = time.split(':').map(Number);
+  const endMinutes = h * 60 + m + offsetMinutes;
+  const endH = Math.floor(endMinutes / 60);
+  const endM = endMinutes % 60;
+  return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+};
+
 export function CreateItemModal({
   day,
   startTime,
@@ -30,30 +41,35 @@ export function CreateItemModal({
   const [tab, setTab] = useState<'bell' | 'activity'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const headingId = 'create-modal-heading';
 
   // Bell schedule form state
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [periodName, setPeriodName] = useState('');
-  const [bellEndTime, setBellEndTime] = useState(() => {
-    // Default to 30 minutes after start
-    const [h, m] = startTime.split(':').map(Number);
-    const endMinutes = h * 60 + m + 30;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
-    return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
-  });
+  const [bellEndTime, setBellEndTime] = useState(() => calculateDefaultEndTime(startTime));
 
   // Activity form state
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [teacherName, setTeacherName] = useState('');
   const [activityName, setActivityName] = useState('');
-  const [activityEndTime, setActivityEndTime] = useState(() => {
-    const [h, m] = startTime.split(':').map(Number);
-    const endMinutes = h * 60 + m + 30;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
-    return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
-  });
+  const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [loading, onClose]);
+
+  // Focus trap and initial focus
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
 
   const handleGradeToggle = (grade: string) => {
     setSelectedGrades(prev =>
@@ -70,22 +86,25 @@ export function CreateItemModal({
 
   const handleSubmit = async () => {
     setError(null);
-    setLoading(true);
 
     try {
       if (tab === 'bell') {
         // Validate bell schedule
         if (selectedGrades.length === 0) {
           setError('Please select at least one grade');
-          setLoading(false);
           return;
         }
         if (!periodName) {
           setError('Please select an activity type');
-          setLoading(false);
+          return;
+        }
+        // Validate time range
+        if (bellEndTime <= startTime) {
+          setError('End time must be after start time');
           return;
         }
 
+        setLoading(true);
         await addBellSchedule({
           grade_level: selectedGrades.join(','),
           day_of_week: day,
@@ -98,15 +117,19 @@ export function CreateItemModal({
         // Validate activity
         if (!teacherId) {
           setError('Please select a teacher');
-          setLoading(false);
           return;
         }
         if (!activityName) {
           setError('Please select an activity type');
-          setLoading(false);
+          return;
+        }
+        // Validate time range
+        if (activityEndTime <= startTime) {
+          setError('End time must be after start time');
           return;
         }
 
+        setLoading(true);
         await addSpecialActivityAsAdmin({
           teacher_id: teacherId,
           teacher_name: teacherName,
@@ -135,11 +158,20 @@ export function CreateItemModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={headingId}
+    >
+      <div
+        ref={modalRef}
+        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+        tabIndex={-1}
+      >
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 id={headingId} className="text-lg font-semibold text-gray-900">
             Add to Schedule
           </h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -148,8 +180,11 @@ export function CreateItemModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200" role="tablist">
           <button
+            role="tab"
+            aria-selected={tab === 'bell'}
+            aria-controls="bell-panel"
             className={`flex-1 px-4 py-3 text-sm font-medium ${
               tab === 'bell'
                 ? 'text-blue-600 border-b-2 border-blue-600'
@@ -160,6 +195,9 @@ export function CreateItemModal({
             Bell Schedule
           </button>
           <button
+            role="tab"
+            aria-selected={tab === 'activity'}
+            aria-controls="activity-panel"
             className={`flex-1 px-4 py-3 text-sm font-medium ${
               tab === 'activity'
                 ? 'text-blue-600 border-b-2 border-blue-600'

@@ -74,8 +74,9 @@ export function AdminScheduleGrid({
   // Convert time string to pixel position
   const timeToPixels = useCallback((timeStr: string): number => {
     const [hours, minutes] = timeStr.split(':').map(Number);
-    const totalMinutes = (hours - GRID_CONFIG.startHour) * 60 + minutes;
-    return (totalMinutes * GRID_CONFIG.pixelsPerHour) / 60;
+    const totalMinutes = (hours * 60 + minutes) - (GRID_CONFIG.startHour * 60);
+    // Clamp to grid boundaries to prevent negative positions
+    return Math.max(0, (totalMinutes * GRID_CONFIG.pixelsPerHour) / 60);
   }, []);
 
   // Calculate item height based on duration
@@ -242,10 +243,11 @@ export function AdminScheduleGrid({
       )}
 
       {/* Edit Modal */}
-      {editModal && (
+      {editModal && schoolId && (
         <EditItemModal
           type={editModal.type}
           item={editModal.item}
+          schoolId={schoolId}
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
         />

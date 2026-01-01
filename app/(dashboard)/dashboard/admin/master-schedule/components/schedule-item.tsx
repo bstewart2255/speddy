@@ -5,11 +5,11 @@ import React from 'react';
 interface ScheduleItemProps {
   type: 'bell' | 'activity';
   label: string;
-  sublabel: string;
+  sublabel?: string;
   top: number;
   height: number;
   colorClass: string;
-  onClick: () => void;
+  onClick?: () => void;
 }
 
 export function ScheduleItem({
@@ -31,7 +31,7 @@ export function ScheduleItem({
       style={{ top, height: displayHeight }}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        onClick?.();
       }}
     >
       {isCompact ? (

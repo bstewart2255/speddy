@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -56,7 +56,6 @@ export default function MasterSchedulePage() {
     toggleTeacher,
     selectAllTeachers,
     deselectAllTeachers,
-    toggleGrade,
   } = useAdminScheduleState(teachers);
 
   // Filter special activities by selected teachers and view filter
