@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
-import { updateTeacher, type UpdateTeacherData } from '@/lib/supabase/queries/admin-accounts';
+import { updateTeacher, deleteTeacher, type UpdateTeacherData } from '@/lib/supabase/queries/admin-accounts';
 
 const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 
@@ -14,12 +14,15 @@ interface Teacher {
   classroom_number: string | null;
   phone_number: string | null;
   grade_level: string | null;
+  account_id: string | null;
+  student_count?: number;
 }
 
 interface TeacherEditModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onResetPassword?: (accountId: string, teacherName: string) => void;
   teacher: Teacher | null;
 }
 
@@ -27,6 +30,7 @@ export function TeacherEditModal({
   isOpen,
   onClose,
   onSuccess,
+  onResetPassword,
   teacher,
 }: TeacherEditModalProps) {
   const [firstName, setFirstName] = useState('');
@@ -36,6 +40,7 @@ export function TeacherEditModal({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset form when teacher changes
@@ -50,8 +55,50 @@ export function TeacherEditModal({
         teacher.grade_level ? teacher.grade_level.split(',').map(g => g.trim()) : []
       );
       setError(null);
+      setDeleting(false);
     }
   }, [teacher]);
+
+  const getTeacherName = () => {
+    if (!teacher) return '';
+    return `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() || 'this teacher';
+  };
+
+  const handleDelete = async () => {
+    if (!teacher) return;
+
+    const teacherName = getTeacherName();
+    const hasStudents = (teacher.student_count || 0) > 0;
+    const hasAccount = !!teacher.account_id;
+
+    let warningMessage = `Are you sure you want to delete ${teacherName}? This action cannot be undone.`;
+    if (hasStudents) {
+      warningMessage = `Warning: ${teacherName} has ${teacher.student_count} student(s) assigned. Deleting will unassign these students. Continue?`;
+    }
+    if (hasAccount) {
+      warningMessage = `Warning: ${teacherName} has an active account. The account will be orphaned but not deleted. Continue?`;
+    }
+
+    if (!confirm(warningMessage)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setError(null);
+      await deleteTeacher(teacher.id);
+      onSuccess();
+    } catch (err) {
+      console.error('Error deleting teacher:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete teacher');
+      setDeleting(false);
+    }
+  };
+
+  const handleResetPassword = () => {
+    if (!teacher?.account_id || !onResetPassword) return;
+    onResetPassword(teacher.account_id, getTeacherName());
+  };
 
   if (!isOpen || !teacher) return null;
 
@@ -216,25 +263,71 @@ export function TeacherEditModal({
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Save Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <Button
               type="button"
               variant="secondary"
               onClick={onClose}
-              disabled={loading}
+              disabled={loading || deleting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
-              disabled={loading}
+              disabled={loading || deleting}
             >
               {loading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </form>
+
+        {/* Account & Danger Zone */}
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Account Actions</h3>
+          <div className="space-y-3">
+            {/* Reset Password - only show if teacher has an account */}
+            {teacher.account_id && onResetPassword && (
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Reset Password</p>
+                  <p className="text-xs text-gray-500">Generate a new temporary password</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleResetPassword}
+                  disabled={loading || deleting}
+                >
+                  Reset
+                </Button>
+              </div>
+            )}
+
+            {/* Delete Teacher */}
+            <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+              <div>
+                <p className="text-sm font-medium text-red-900">Delete Teacher</p>
+                <p className="text-xs text-red-600">
+                  {teacher.account_id
+                    ? 'Account will be orphaned'
+                    : (teacher.student_count || 0) > 0
+                    ? `${teacher.student_count} student(s) will be unassigned`
+                    : 'Permanently remove this teacher'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={loading || deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

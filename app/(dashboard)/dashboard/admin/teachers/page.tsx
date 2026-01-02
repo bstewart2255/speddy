@@ -2,10 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { getTeachersWithStudentCount, formatTeacherName } from '@/lib/supabase/queries/school-directory';
-import { deleteTeacher } from '@/lib/supabase/queries/admin-accounts';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
-import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 import { TeacherEditModal } from '@/app/components/admin/teacher-edit-modal';
 
@@ -15,7 +13,6 @@ export default function TeacherDirectoryPage() {
   const [teachers, setTeachers] = useState<TeacherWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [resetCredentials, setResetCredentials] = useState<{
@@ -42,23 +39,6 @@ export default function TeacherDirectoryPage() {
   useEffect(() => {
     fetchTeachers();
   }, []);
-
-  const handleDelete = async (teacherId: string, teacherName: string) => {
-    if (!confirm(`Are you sure you want to delete ${teacherName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      setDeletingId(teacherId);
-      await deleteTeacher(teacherId);
-      setTeachers(teachers.filter(t => t.id !== teacherId));
-    } catch (err) {
-      console.error('Error deleting teacher:', err);
-      alert(err instanceof Error ? err.message : 'Failed to delete teacher');
-    } finally {
-      setDeletingId(null);
-    }
-  };
 
   const handleResetPassword = async (accountId: string, teacherName: string) => {
     if (!confirm(`Are you sure you want to reset the password for ${teacherName}? They will need to use the new password to log in.`)) {
@@ -289,41 +269,13 @@ export default function TeacherDirectoryPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
                       onClick={() => setEditingTeacher(teacher)}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       Edit
                     </button>
-                    {teacher.account_id && (
-                      <LongHoverTooltip content="Reset a teacher's password by generating a new one. Then share the new one with them so they can access their account.">
-                        <button
-                          onClick={() => handleResetPassword(teacher.account_id!, formatTeacherName(teacher))}
-                          disabled={resettingId === teacher.account_id}
-                          className="text-blue-600 hover:text-blue-900 disabled:text-gray-400"
-                        >
-                          {resettingId === teacher.account_id ? (
-                            <span className="inline-block animate-spin">⏳</span>
-                          ) : (
-                            'Reset Password'
-                          )}
-                        </button>
-                      </LongHoverTooltip>
-                    )}
-                    <LongHoverTooltip content="Remove this teacher from the system. Note: Teachers with active accounts cannot be deleted.">
-                      <button
-                        onClick={() => handleDelete(teacher.id, formatTeacherName(teacher))}
-                        disabled={!!teacher.account_id || deletingId === teacher.id}
-                        className="text-red-600 hover:text-red-900 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {deletingId === teacher.id ? (
-                          <span className="inline-block animate-spin">⏳</span>
-                        ) : (
-                          'Delete'
-                        )}
-                      </button>
-                    </LongHoverTooltip>
                   </td>
                 </tr>
               ))}
@@ -354,6 +306,7 @@ export default function TeacherDirectoryPage() {
           setEditingTeacher(null);
           fetchTeachers();
         }}
+        onResetPassword={handleResetPassword}
         teacher={editingTeacher}
       />
     </div>
