@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
+import { GradeFilter } from './components/grade-filter';
+import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
 
@@ -49,35 +51,57 @@ export default function MasterSchedulePage() {
     refreshData
   } = useAdminScheduleData(schoolId);
 
+  // Derive available activity types from the data
+  const availableActivityTypes = useMemo(() => {
+    const types = new Set<string>();
+    specialActivities.forEach(activity => {
+      if (activity.activity_name) {
+        types.add(activity.activity_name);
+      }
+    });
+    return Array.from(types).sort();
+  }, [specialActivities]);
+
   // UI state management hook
   const {
     selectedTeacherIds,
     selectedGrades,
+    selectedActivityTypes,
     toggleTeacher,
     selectAllTeachers,
     deselectAllTeachers,
-  } = useAdminScheduleState(teachers);
+    toggleGrade,
+    selectAllGrades,
+    clearGrades,
+    toggleActivityType,
+    selectAllActivityTypes,
+    clearActivityTypes,
+  } = useAdminScheduleState(teachers, availableActivityTypes);
 
-  // Filter special activities by selected teachers and view filter
+  // Filter special activities by selected teachers, activity types, and view filter
   const filteredActivities = viewFilter === 'bell'
     ? []
-    : selectedTeacherIds.size === 0
-      ? specialActivities
-      : specialActivities.filter(activity =>
-          activity.teacher_id && selectedTeacherIds.has(activity.teacher_id)
-        );
+    : specialActivities.filter(activity => {
+        // Filter by activity type
+        if (!activity.activity_name || !selectedActivityTypes.has(activity.activity_name)) {
+          return false;
+        }
+        // Filter by teacher (if any teachers are selected)
+        if (selectedTeacherIds.size > 0) {
+          return activity.teacher_id && selectedTeacherIds.has(activity.teacher_id);
+        }
+        return true;
+      });
 
   // Filter bell schedules by selected grades and view filter
   const filteredBellSchedules = viewFilter === 'activities'
     ? []
-    : selectedGrades.size === 0
-      ? bellSchedules
-      : bellSchedules.filter(schedule => {
-          if (!schedule.grade_level) return false;
-          // grade_level can be comma-separated like "K,1,2"
-          const grades = schedule.grade_level.split(',').map(g => g.trim());
-          return grades.some(g => selectedGrades.has(g));
-        });
+    : bellSchedules.filter(schedule => {
+        if (!schedule.grade_level) return false;
+        // grade_level can be comma-separated like "K,1,2"
+        const grades = schedule.grade_level.split(',').map(g => g.trim());
+        return grades.some(g => selectedGrades.has(g));
+      });
 
   const loading = permissionsLoading || dataLoading;
 
@@ -148,6 +172,32 @@ export default function MasterSchedulePage() {
                 Special Activities
               </button>
             </div>
+          </div>
+
+          {/* Secondary Filters */}
+          <div className={`mt-4 pt-4 border-t border-gray-200 flex gap-6 ${
+            viewFilter === 'all' ? 'flex-row flex-wrap' : 'flex-col'
+          }`}>
+            {/* Grade Filter - for bell schedules */}
+            {viewFilter !== 'activities' && (
+              <GradeFilter
+                selectedGrades={selectedGrades}
+                onToggleGrade={toggleGrade}
+                onClearAll={clearGrades}
+                onSelectAll={selectAllGrades}
+              />
+            )}
+
+            {/* Activity Type Filter - for special activities */}
+            {viewFilter !== 'bell' && (
+              <ActivityTypeFilter
+                selectedTypes={selectedActivityTypes}
+                availableTypes={availableActivityTypes}
+                onToggleType={toggleActivityType}
+                onClearAll={clearActivityTypes}
+                onSelectAll={selectAllActivityTypes}
+              />
+            )}
           </div>
         </div>
 

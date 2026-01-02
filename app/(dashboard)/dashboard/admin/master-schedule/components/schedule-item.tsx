@@ -10,6 +10,9 @@ interface ScheduleItemProps {
   height: number;
   colorClass: string;
   onClick?: () => void;
+  // For handling overlapping items
+  overlapIndex?: number;
+  overlapTotal?: number;
 }
 
 export function ScheduleItem({
@@ -19,16 +22,27 @@ export function ScheduleItem({
   top,
   height,
   colorClass,
-  onClick
+  onClick,
+  overlapIndex = 0,
+  overlapTotal = 1
 }: ScheduleItemProps) {
   const minHeight = 20;
   const displayHeight = Math.max(height, minHeight);
   const isCompact = height < 40;
 
+  // Calculate horizontal position for overlapping items
+  const widthPercent = overlapTotal > 1 ? 100 / overlapTotal : 100;
+  const leftPercent = overlapIndex * widthPercent;
+
   return (
     <div
-      className={`absolute left-1 right-1 rounded border-l-4 px-2 py-1 cursor-pointer transition-all hover:shadow-md overflow-hidden ${colorClass}`}
-      style={{ top, height: displayHeight }}
+      className={`absolute rounded border-l-4 px-1 py-0.5 cursor-pointer transition-all hover:shadow-md hover:z-10 overflow-hidden ${colorClass}`}
+      style={{
+        top,
+        height: displayHeight,
+        left: overlapTotal > 1 ? `calc(${leftPercent}% + 2px)` : '4px',
+        width: overlapTotal > 1 ? `calc(${widthPercent}% - 4px)` : 'calc(100% - 8px)',
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();

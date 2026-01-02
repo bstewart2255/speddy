@@ -46,14 +46,28 @@ export function CreateItemModal({
 
   // Bell schedule form state
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([day]); // Pre-select the day modal was opened from
   const [periodName, setPeriodName] = useState('');
+  const [bellStartTime, setBellStartTime] = useState(startTime);
   const [bellEndTime, setBellEndTime] = useState(() => calculateDefaultEndTime(startTime));
 
   // Activity form state
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [teacherName, setTeacherName] = useState('');
   const [activityName, setActivityName] = useState('');
+  const [activityStartTime, setActivityStartTime] = useState(startTime);
   const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
+
+  // Handle start time change - auto-adjust end time to maintain 30min duration
+  const handleBellStartTimeChange = (newStartTime: string) => {
+    setBellStartTime(newStartTime);
+    setBellEndTime(calculateDefaultEndTime(newStartTime, 30));
+  };
+
+  const handleActivityStartTimeChange = (newStartTime: string) => {
+    setActivityStartTime(newStartTime);
+    setActivityEndTime(calculateDefaultEndTime(newStartTime, 30));
+  };
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -79,6 +93,14 @@ export function CreateItemModal({
     );
   };
 
+  const handleDayToggle = (dayNum: number) => {
+    setSelectedDays(prev =>
+      prev.includes(dayNum)
+        ? prev.filter(d => d !== dayNum)
+        : [...prev, dayNum].sort((a, b) => a - b)
+    );
+  };
+
   const handleTeacherChange = (newTeacherId: string | null, newTeacherName: string | null) => {
     setTeacherId(newTeacherId);
     setTeacherName(newTeacherName || '');
@@ -94,25 +116,34 @@ export function CreateItemModal({
           setError('Please select at least one grade');
           return;
         }
+        if (selectedDays.length === 0) {
+          setError('Please select at least one day');
+          return;
+        }
         if (!periodName) {
           setError('Please select an activity type');
           return;
         }
         // Validate time range
-        if (bellEndTime <= startTime) {
+        if (bellEndTime <= bellStartTime) {
           setError('End time must be after start time');
           return;
         }
 
         setLoading(true);
-        await addBellSchedule({
-          grade_level: selectedGrades.join(','),
-          day_of_week: day,
-          start_time: startTime,
-          end_time: bellEndTime,
-          period_name: periodName,
-          school_id: schoolId
-        }, 'site_admin');
+        // Create a bell schedule for each selected day
+        await Promise.all(
+          selectedDays.map(selectedDay =>
+            addBellSchedule({
+              grade_level: selectedGrades.join(','),
+              day_of_week: selectedDay,
+              start_time: bellStartTime,
+              end_time: bellEndTime,
+              period_name: periodName,
+              school_id: schoolId
+            }, 'site_admin')
+          )
+        );
       } else {
         // Validate activity
         if (!teacherId) {
@@ -124,7 +155,7 @@ export function CreateItemModal({
           return;
         }
         // Validate time range
-        if (activityEndTime <= startTime) {
+        if (activityEndTime <= activityStartTime) {
           setError('End time must be after start time');
           return;
         }
@@ -135,7 +166,7 @@ export function CreateItemModal({
           teacher_name: teacherName,
           activity_name: activityName,
           day_of_week: day,
-          start_time: startTime,
+          start_time: activityStartTime,
           end_time: activityEndTime,
           school_id: schoolId
         });
@@ -175,7 +206,7 @@ export function CreateItemModal({
             Add to Schedule
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            {DAYS[day - 1]} at {formatTime(startTime)}
+            {DAYS[day - 1]}
           </p>
         </div>
 
@@ -242,6 +273,32 @@ export function CreateItemModal({
                 </div>
               </div>
 
+              {/* Day selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Day(s)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.map((dayName, index) => {
+                    const dayNum = index + 1;
+                    return (
+                      <button
+                        key={dayName}
+                        type="button"
+                        onClick={() => handleDayToggle(dayNum)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                          selectedDays.includes(dayNum)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {dayName.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Activity type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -261,17 +318,30 @@ export function CreateItemModal({
                 </select>
               </div>
 
-              {/* End time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Time
-                </label>
-                <input
-                  type="time"
-                  value={bellEndTime}
-                  onChange={(e) => setBellEndTime(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={bellStartTime}
+                    onChange={(e) => handleBellStartTimeChange(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={bellEndTime}
+                    onChange={(e) => setBellEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
             </>
           ) : (
@@ -308,17 +378,30 @@ export function CreateItemModal({
                 </select>
               </div>
 
-              {/* End time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Time
-                </label>
-                <input
-                  type="time"
-                  value={activityEndTime}
-                  onChange={(e) => setActivityEndTime(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={activityStartTime}
+                    onChange={(e) => handleActivityStartTimeChange(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={activityEndTime}
+                    onChange={(e) => setActivityEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
             </>
           )}

@@ -19,16 +19,26 @@ interface AdminScheduleGridProps {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 const GRADE_COLOR_MAP: Record<string, string> = {
-  TK: 'bg-pink-200 border-pink-400',
-  K: 'bg-purple-200 border-purple-400',
-  '1': 'bg-sky-200 border-sky-400',
-  '2': 'bg-cyan-200 border-cyan-400',
-  '3': 'bg-emerald-200 border-emerald-400',
-  '4': 'bg-amber-200 border-amber-400',
-  '5': 'bg-rose-200 border-rose-400',
+  TK: 'bg-slate-50 border-slate-200',
+  K: 'bg-slate-100 border-slate-300',
+  '1': 'bg-slate-200 border-slate-400',
+  '2': 'bg-slate-300 border-slate-400',
+  '3': 'bg-slate-300 border-slate-500',
+  '4': 'bg-slate-400 border-slate-500',
+  '5': 'bg-slate-400 border-slate-600',
 };
 
-const ACTIVITY_COLOR = 'bg-indigo-200 border-indigo-400';
+const ACTIVITY_COLOR_MAP: Record<string, string> = {
+  Library: 'bg-blue-200 border-blue-400',
+  STEAM: 'bg-orange-200 border-orange-400',
+  STEM: 'bg-teal-200 border-teal-400',
+  Garden: 'bg-lime-200 border-lime-400',
+  Music: 'bg-violet-200 border-violet-400',
+  ART: 'bg-fuchsia-200 border-fuchsia-400',
+  PE: 'bg-red-200 border-red-400',
+};
+
+const DEFAULT_ACTIVITY_COLOR = 'bg-gray-200 border-gray-400';
 
 // Grid configuration
 const GRID_CONFIG = {
@@ -39,6 +49,70 @@ const GRID_CONFIG = {
     return (this.endHour - this.startHour) * this.pixelsPerHour;
   }
 };
+
+// Helper to check if two time ranges overlap
+function timeRangesOverlap(
+  start1: string,
+  end1: string,
+  start2: string,
+  end2: string
+): boolean {
+  return start1 < end2 && start2 < end1;
+}
+
+// Calculate overlap groups for a list of items using transitive grouping
+// If A overlaps B, and B overlaps C, then A, B, C are all in the same group
+function calculateOverlaps<T extends { start_time: string | null; end_time: string | null; id: string }>(
+  items: T[]
+): Map<string, { index: number; total: number }> {
+  const result = new Map<string, { index: number; total: number }>();
+
+  // Filter items with valid times
+  const validItems = items.filter(item => item.start_time && item.end_time);
+
+  // Find overlapping groups using transitive closure
+  const processed = new Set<string>();
+
+  for (const item of validItems) {
+    if (processed.has(item.id)) continue;
+
+    // Build group transitively - keep expanding until no new items found
+    const group: T[] = [item];
+    const groupIds = new Set<string>([item.id]);
+    let expanded = true;
+
+    while (expanded) {
+      expanded = false;
+      for (const candidate of validItems) {
+        if (groupIds.has(candidate.id)) continue;
+
+        // Check if candidate overlaps with ANY item in the current group
+        const overlapsWithGroup = group.some(groupItem =>
+          timeRangesOverlap(
+            groupItem.start_time!,
+            groupItem.end_time!,
+            candidate.start_time!,
+            candidate.end_time!
+          )
+        );
+
+        if (overlapsWithGroup) {
+          group.push(candidate);
+          groupIds.add(candidate.id);
+          expanded = true;
+        }
+      }
+    }
+
+    // Assign indices to the group
+    group.forEach((groupItem, idx) => {
+      result.set(groupItem.id, { index: idx, total: group.length });
+      processed.add(groupItem.id);
+    });
+  }
+
+  return result;
+}
 
 export function AdminScheduleGrid({
   bellSchedules,
@@ -123,6 +197,12 @@ export function AdminScheduleGrid({
     return GRADE_COLOR_MAP[firstGrade] || 'bg-gray-200 border-gray-400';
   };
 
+  // Get color for a special activity based on its type
+  const getActivityColor = (activityName: string | null): string => {
+    if (!activityName) return DEFAULT_ACTIVITY_COLOR;
+    return ACTIVITY_COLOR_MAP[activityName] || DEFAULT_ACTIVITY_COLOR;
+  };
+
   return (
     <Card className="overflow-hidden">
       <CardBody className="p-0">
@@ -135,7 +215,7 @@ export function AdminScheduleGrid({
                 <div
                   key={time}
                   className="absolute left-0 right-0 text-xs text-gray-500 pr-2 text-right"
-                  style={{ top: timeToPixels(time) - 8 }}
+                  style={{ top: timeToPixels(time) + 12 }}
                 >
                   {formatTime(time)}
                 </div>
@@ -148,6 +228,10 @@ export function AdminScheduleGrid({
             const dayNumber = dayIndex + 1;
             const dayBellSchedules = bellSchedules.filter(s => s.day_of_week === dayNumber);
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
+
+            // Calculate overlaps for this day
+            const bellOverlaps = calculateOverlaps(dayBellSchedules);
+            const activityOverlaps = calculateOverlaps(dayActivities);
 
             return (
               <div key={day} className="flex-1 border-r border-gray-200 last:border-r-0">
@@ -189,6 +273,7 @@ export function AdminScheduleGrid({
                     if (!schedule.start_time || !schedule.end_time) return null;
                     const top = timeToPixels(schedule.start_time);
                     const height = calculateHeight(schedule.start_time, schedule.end_time);
+                    const overlap = bellOverlaps.get(schedule.id);
 
                     return (
                       <ScheduleItem
@@ -200,6 +285,8 @@ export function AdminScheduleGrid({
                         height={height}
                         colorClass={getBellScheduleColor(schedule.grade_level)}
                         onClick={() => handleItemClick('bell', schedule)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
                       />
                     );
                   })}
@@ -209,6 +296,7 @@ export function AdminScheduleGrid({
                     if (!activity.start_time || !activity.end_time) return null;
                     const top = timeToPixels(activity.start_time);
                     const height = calculateHeight(activity.start_time, activity.end_time);
+                    const overlap = activityOverlaps.get(activity.id);
 
                     return (
                       <ScheduleItem
@@ -218,8 +306,10 @@ export function AdminScheduleGrid({
                         sublabel={activity.teacher_name || ''}
                         top={top}
                         height={height}
-                        colorClass={ACTIVITY_COLOR}
+                        colorClass={getActivityColor(activity.activity_name)}
                         onClick={() => handleItemClick('activity', activity)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
                       />
                     );
                   })}
