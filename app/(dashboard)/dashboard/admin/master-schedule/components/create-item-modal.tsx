@@ -46,6 +46,7 @@ export function CreateItemModal({
 
   // Bell schedule form state
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([day]); // Pre-select the day modal was opened from
   const [periodName, setPeriodName] = useState('');
   const [bellStartTime, setBellStartTime] = useState(startTime);
   const [bellEndTime, setBellEndTime] = useState(() => calculateDefaultEndTime(startTime));
@@ -92,6 +93,14 @@ export function CreateItemModal({
     );
   };
 
+  const handleDayToggle = (dayNum: number) => {
+    setSelectedDays(prev =>
+      prev.includes(dayNum)
+        ? prev.filter(d => d !== dayNum)
+        : [...prev, dayNum].sort((a, b) => a - b)
+    );
+  };
+
   const handleTeacherChange = (newTeacherId: string | null, newTeacherName: string | null) => {
     setTeacherId(newTeacherId);
     setTeacherName(newTeacherName || '');
@@ -107,6 +116,10 @@ export function CreateItemModal({
           setError('Please select at least one grade');
           return;
         }
+        if (selectedDays.length === 0) {
+          setError('Please select at least one day');
+          return;
+        }
         if (!periodName) {
           setError('Please select an activity type');
           return;
@@ -118,14 +131,19 @@ export function CreateItemModal({
         }
 
         setLoading(true);
-        await addBellSchedule({
-          grade_level: selectedGrades.join(','),
-          day_of_week: day,
-          start_time: bellStartTime,
-          end_time: bellEndTime,
-          period_name: periodName,
-          school_id: schoolId
-        }, 'site_admin');
+        // Create a bell schedule for each selected day
+        await Promise.all(
+          selectedDays.map(selectedDay =>
+            addBellSchedule({
+              grade_level: selectedGrades.join(','),
+              day_of_week: selectedDay,
+              start_time: bellStartTime,
+              end_time: bellEndTime,
+              period_name: periodName,
+              school_id: schoolId
+            }, 'site_admin')
+          )
+        );
       } else {
         // Validate activity
         if (!teacherId) {
@@ -252,6 +270,32 @@ export function CreateItemModal({
                       {grade}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Day selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Day(s)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.map((dayName, index) => {
+                    const dayNum = index + 1;
+                    return (
+                      <button
+                        key={dayName}
+                        type="button"
+                        onClick={() => handleDayToggle(dayNum)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                          selectedDays.includes(dayNum)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {dayName.slice(0, 3)}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
