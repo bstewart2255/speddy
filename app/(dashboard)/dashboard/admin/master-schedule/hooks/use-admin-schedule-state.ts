@@ -1,6 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Teacher } from '@/src/types/database';
-import { SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 
 const ALL_GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 
@@ -19,15 +18,23 @@ interface UseAdminScheduleStateReturn {
   clearActivityTypes: () => void;
 }
 
-export function useAdminScheduleState(teachers: Teacher[]): UseAdminScheduleStateReturn {
+export function useAdminScheduleState(
+  teachers: Teacher[],
+  availableActivityTypes: string[] = []
+): UseAdminScheduleStateReturn {
   // Start with no teachers selected (show all activities)
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
   // Start with all grades selected (show all bell schedules)
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(new Set(ALL_GRADES));
-  // Start with all activity types selected (show all special activities)
+  // Start with all available activity types selected
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<Set<string>>(
-    new Set(SPECIAL_ACTIVITY_TYPES)
+    new Set(availableActivityTypes)
   );
+
+  // Update selected activity types when available types change
+  useEffect(() => {
+    setSelectedActivityTypes(new Set(availableActivityTypes));
+  }, [availableActivityTypes.join(',')]);
 
   const toggleTeacher = useCallback((teacherId: string) => {
     setSelectedTeacherIds(prev => {
@@ -82,8 +89,8 @@ export function useAdminScheduleState(teachers: Teacher[]): UseAdminScheduleStat
   }, []);
 
   const selectAllActivityTypes = useCallback(() => {
-    setSelectedActivityTypes(new Set(SPECIAL_ACTIVITY_TYPES));
-  }, []);
+    setSelectedActivityTypes(new Set(availableActivityTypes));
+  }, [availableActivityTypes]);
 
   const clearActivityTypes = useCallback(() => {
     setSelectedActivityTypes(new Set());

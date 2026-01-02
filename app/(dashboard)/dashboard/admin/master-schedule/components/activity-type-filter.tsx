@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 
 interface ActivityTypeFilterProps {
   selectedTypes: Set<string>;
+  availableTypes: string[];
   onToggleType: (type: string) => void;
   onClearAll: () => void;
   onSelectAll: () => void;
@@ -24,18 +24,24 @@ const DEFAULT_COLOR = { bg: 'bg-gray-50', border: 'border-gray-300', selectedBg:
 
 export function ActivityTypeFilter({
   selectedTypes,
+  availableTypes,
   onToggleType,
   onClearAll,
   onSelectAll
 }: ActivityTypeFilterProps) {
-  const allSelected = selectedTypes.size === SPECIAL_ACTIVITY_TYPES.length;
+  const allSelected = selectedTypes.size === availableTypes.length;
   const noneSelected = selectedTypes.size === 0;
+
+  // Don't render if no activity types are available
+  if (availableTypes.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs font-medium text-gray-700">Activity:</span>
       <div className="flex items-center gap-1">
-        {SPECIAL_ACTIVITY_TYPES.map((type) => {
+        {availableTypes.map((type) => {
           const isSelected = selectedTypes.has(type);
           const colors = ACTIVITY_COLOR_MAP[type] || DEFAULT_COLOR;
 

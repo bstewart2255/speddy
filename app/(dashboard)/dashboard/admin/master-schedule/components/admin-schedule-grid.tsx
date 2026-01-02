@@ -197,7 +197,7 @@ export function AdminScheduleGrid({
                 <div
                   key={time}
                   className="absolute left-0 right-0 text-xs text-gray-500 pr-2 text-right"
-                  style={{ top: timeToPixels(time) - 8 }}
+                  style={{ top: timeToPixels(time) + 12 }}
                 >
                   {formatTime(time)}
                 </div>

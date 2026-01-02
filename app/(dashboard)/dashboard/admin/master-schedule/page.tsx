@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -51,6 +51,17 @@ export default function MasterSchedulePage() {
     refreshData
   } = useAdminScheduleData(schoolId);
 
+  // Derive available activity types from the data
+  const availableActivityTypes = useMemo(() => {
+    const types = new Set<string>();
+    specialActivities.forEach(activity => {
+      if (activity.activity_name) {
+        types.add(activity.activity_name);
+      }
+    });
+    return Array.from(types).sort();
+  }, [specialActivities]);
+
   // UI state management hook
   const {
     selectedTeacherIds,
@@ -65,7 +76,7 @@ export default function MasterSchedulePage() {
     toggleActivityType,
     selectAllActivityTypes,
     clearActivityTypes,
-  } = useAdminScheduleState(teachers);
+  } = useAdminScheduleState(teachers, availableActivityTypes);
 
   // Filter special activities by selected teachers, activity types, and view filter
   const filteredActivities = viewFilter === 'bell'
@@ -181,6 +192,7 @@ export default function MasterSchedulePage() {
             {viewFilter !== 'bell' && (
               <ActivityTypeFilter
                 selectedTypes={selectedActivityTypes}
+                availableTypes={availableActivityTypes}
                 onToggleType={toggleActivityType}
                 onClearAll={clearActivityTypes}
                 onSelectAll={selectAllActivityTypes}
