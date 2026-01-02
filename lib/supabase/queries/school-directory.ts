@@ -263,6 +263,7 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
           email,
           classroom_number,
           phone_number,
+          grade_level,
           school_id,
           school_site,
           account_id,

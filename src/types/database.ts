@@ -2344,6 +2344,7 @@ export type Database = {
           created_by_admin: boolean | null
           email: string | null
           first_name: string | null
+          grade_level: string | null
           id: string
           last_name: string | null
           phone_number: string | null
@@ -2358,6 +2359,7 @@ export type Database = {
           created_by_admin?: boolean | null
           email?: string | null
           first_name?: string | null
+          grade_level?: string | null
           id?: string
           last_name?: string | null
           phone_number?: string | null
@@ -2372,6 +2374,7 @@ export type Database = {
           created_by_admin?: boolean | null
           email?: string | null
           first_name?: string | null
+          grade_level?: string | null
           id?: string
           last_name?: string | null
           phone_number?: string | null
