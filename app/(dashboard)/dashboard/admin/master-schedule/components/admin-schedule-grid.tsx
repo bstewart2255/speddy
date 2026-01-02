@@ -60,7 +60,8 @@ function timeRangesOverlap(
   return start1 < end2 && start2 < end1;
 }
 
-// Calculate overlap groups for a list of items
+// Calculate overlap groups for a list of items using transitive grouping
+// If A overlaps B, and B overlaps C, then A, B, C are all in the same group
 function calculateOverlaps<T extends { start_time: string | null; end_time: string | null; id: string }>(
   items: T[]
 ): Map<string, { index: number; total: number }> {
@@ -69,22 +70,39 @@ function calculateOverlaps<T extends { start_time: string | null; end_time: stri
   // Filter items with valid times
   const validItems = items.filter(item => item.start_time && item.end_time);
 
-  // Find overlapping groups
+  // Find overlapping groups using transitive closure
   const processed = new Set<string>();
 
   for (const item of validItems) {
     if (processed.has(item.id)) continue;
 
-    // Find all items that overlap with this one
-    const group = validItems.filter(other =>
-      !processed.has(other.id) &&
-      timeRangesOverlap(
-        item.start_time!,
-        item.end_time!,
-        other.start_time!,
-        other.end_time!
-      )
-    );
+    // Build group transitively - keep expanding until no new items found
+    const group: T[] = [item];
+    const groupIds = new Set<string>([item.id]);
+    let expanded = true;
+
+    while (expanded) {
+      expanded = false;
+      for (const candidate of validItems) {
+        if (groupIds.has(candidate.id)) continue;
+
+        // Check if candidate overlaps with ANY item in the current group
+        const overlapsWithGroup = group.some(groupItem =>
+          timeRangesOverlap(
+            groupItem.start_time!,
+            groupItem.end_time!,
+            candidate.start_time!,
+            candidate.end_time!
+          )
+        );
+
+        if (overlapsWithGroup) {
+          group.push(candidate);
+          groupIds.add(candidate.id);
+          expanded = true;
+        }
+      }
+    }
 
     // Assign indices to the group
     group.forEach((groupItem, idx) => {

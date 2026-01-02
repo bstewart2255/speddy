@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Teacher } from '@/src/types/database';
 
 const ALL_GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
@@ -31,10 +31,20 @@ export function useAdminScheduleState(
     new Set(availableActivityTypes)
   );
 
-  // Update selected activity types when available types change
+  // Track previous available types to detect actual changes
+  const prevAvailableTypesRef = useRef<string[]>(availableActivityTypes);
+
+  // Update selected activity types when available types actually change
   useEffect(() => {
-    setSelectedActivityTypes(new Set(availableActivityTypes));
-  }, [availableActivityTypes.join(',')]);
+    const prev = prevAvailableTypesRef.current;
+    const changed = availableActivityTypes.length !== prev.length ||
+      availableActivityTypes.some((type, i) => type !== prev[i]);
+
+    if (changed) {
+      setSelectedActivityTypes(new Set(availableActivityTypes));
+      prevAvailableTypesRef.current = availableActivityTypes;
+    }
+  }, [availableActivityTypes]);
 
   const toggleTeacher = useCallback((teacherId: string) => {
     setSelectedTeacherIds(prev => {
