@@ -10,6 +10,18 @@ interface ActivityTypeFilterProps {
   onSelectAll: () => void;
 }
 
+const ACTIVITY_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
+  Library: { bg: 'bg-blue-50', border: 'border-blue-300', selectedBg: 'bg-blue-200' },
+  STEAM: { bg: 'bg-orange-50', border: 'border-orange-300', selectedBg: 'bg-orange-200' },
+  STEM: { bg: 'bg-teal-50', border: 'border-teal-300', selectedBg: 'bg-teal-200' },
+  Garden: { bg: 'bg-lime-50', border: 'border-lime-300', selectedBg: 'bg-lime-200' },
+  Music: { bg: 'bg-violet-50', border: 'border-violet-300', selectedBg: 'bg-violet-200' },
+  ART: { bg: 'bg-fuchsia-50', border: 'border-fuchsia-300', selectedBg: 'bg-fuchsia-200' },
+  PE: { bg: 'bg-red-50', border: 'border-red-300', selectedBg: 'bg-red-200' },
+};
+
+const DEFAULT_COLOR = { bg: 'bg-gray-50', border: 'border-gray-300', selectedBg: 'bg-gray-200' };
+
 export function ActivityTypeFilter({
   selectedTypes,
   onToggleType,
@@ -25,6 +37,7 @@ export function ActivityTypeFilter({
       <div className="flex items-center gap-1">
         {SPECIAL_ACTIVITY_TYPES.map((type) => {
           const isSelected = selectedTypes.has(type);
+          const colors = ACTIVITY_COLOR_MAP[type] || DEFAULT_COLOR;
 
           return (
             <button
@@ -33,8 +46,8 @@ export function ActivityTypeFilter({
               className={`
                 px-2 py-0.5 text-xs font-medium rounded border transition-all
                 ${isSelected
-                  ? 'bg-indigo-200 border-indigo-400 text-gray-900'
-                  : 'bg-indigo-50 border-indigo-300 text-gray-600 opacity-60 hover:opacity-100'
+                  ? `${colors.selectedBg} ${colors.border} text-gray-900`
+                  : `${colors.bg} ${colors.border} text-gray-600 opacity-60 hover:opacity-100`
                 }
               `}
               title={`${isSelected ? 'Hide' : 'Show'} ${type}`}

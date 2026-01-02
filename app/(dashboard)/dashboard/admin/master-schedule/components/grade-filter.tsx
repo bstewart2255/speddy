@@ -12,13 +12,13 @@ interface GradeFilterProps {
 const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 
 const GRADE_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
-  TK: { bg: 'bg-pink-50', border: 'border-pink-300', selectedBg: 'bg-pink-200' },
-  K: { bg: 'bg-purple-50', border: 'border-purple-300', selectedBg: 'bg-purple-200' },
-  '1': { bg: 'bg-sky-50', border: 'border-sky-300', selectedBg: 'bg-sky-200' },
-  '2': { bg: 'bg-cyan-50', border: 'border-cyan-300', selectedBg: 'bg-cyan-200' },
-  '3': { bg: 'bg-emerald-50', border: 'border-emerald-300', selectedBg: 'bg-emerald-200' },
-  '4': { bg: 'bg-amber-50', border: 'border-amber-300', selectedBg: 'bg-amber-200' },
-  '5': { bg: 'bg-rose-50', border: 'border-rose-300', selectedBg: 'bg-rose-200' },
+  TK: { bg: 'bg-slate-50', border: 'border-slate-200', selectedBg: 'bg-slate-100' },
+  K: { bg: 'bg-slate-50', border: 'border-slate-300', selectedBg: 'bg-slate-200' },
+  '1': { bg: 'bg-slate-100', border: 'border-slate-400', selectedBg: 'bg-slate-300' },
+  '2': { bg: 'bg-slate-200', border: 'border-slate-400', selectedBg: 'bg-slate-300' },
+  '3': { bg: 'bg-slate-200', border: 'border-slate-500', selectedBg: 'bg-slate-400' },
+  '4': { bg: 'bg-slate-300', border: 'border-slate-500', selectedBg: 'bg-slate-400' },
+  '5': { bg: 'bg-slate-300', border: 'border-slate-600', selectedBg: 'bg-slate-500' },
 };
 
 export function GradeFilter({
