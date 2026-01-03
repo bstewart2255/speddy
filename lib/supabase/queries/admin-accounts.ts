@@ -792,6 +792,125 @@ export async function getSchoolDetails(schoolId: string) {
 }
 
 // ============================================================================
+// UPDATE TEACHER
+// ============================================================================
+
+export type UpdateTeacherData = {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  classroom_number?: string | null;
+  phone_number?: string | null;
+  grade_level?: string | null;
+};
+
+/**
+ * Updates a teacher's information.
+ * Requires site_admin or district_admin permission for the teacher's school.
+ *
+ * @param teacherId - UUID of the teacher to update
+ * @param updates - Object containing fields to update
+ * @returns Updated teacher data
+ * @throws Error if user lacks permission or teacher not found
+ */
+export async function updateTeacher(teacherId: string, updates: UpdateTeacherData) {
+  const supabase = createClient<Database>();
+
+  // Get teacher to check school
+  const teacherResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('school_id, email')
+        .eq('id', teacherId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'get_teacher_for_update', teacherId }
+  );
+
+  if (teacherResult.error || !teacherResult.data) {
+    throw new Error('Teacher not found');
+  }
+
+  const teacher = teacherResult.data;
+  const schoolId = requireNonNull(teacher.school_id, 'teacher.school_id');
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to update teachers at this school');
+  }
+
+  // Build update object, trimming strings
+  const updateData: Record<string, unknown> = {};
+  if (updates.first_name !== undefined) updateData.first_name = updates.first_name.trim();
+  if (updates.last_name !== undefined) updateData.last_name = updates.last_name.trim();
+  if (updates.email !== undefined) updateData.email = updates.email.trim().toLowerCase();
+  if (updates.classroom_number !== undefined) {
+    updateData.classroom_number = updates.classroom_number?.trim() || null;
+  }
+  if (updates.phone_number !== undefined) {
+    updateData.phone_number = updates.phone_number?.trim() || null;
+  }
+  if (updates.grade_level !== undefined) {
+    updateData.grade_level = updates.grade_level?.trim() || null;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('No fields to update');
+  }
+
+  // Check for email uniqueness if email is being changed
+  // Compare against lowercase since updateData.email is lowercased
+  if (updateData.email && updateData.email !== teacher.email?.toLowerCase()) {
+    const emailCheckResult = await safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('teachers')
+          .select('id')
+          .eq('school_id', schoolId)
+          .eq('email', updateData.email as string)
+          .neq('id', teacherId)
+          .maybeSingle();
+        if (error) throw error;
+        return data;
+      },
+      { operation: 'check_teacher_email_uniqueness', email: updateData.email }
+    );
+
+    if (emailCheckResult.error) {
+      throw emailCheckResult.error;
+    }
+
+    if (emailCheckResult.data) {
+      throw new Error('A teacher with this email already exists at this school');
+    }
+  }
+
+  const updatePerf = measurePerformanceWithAlerts('update_teacher', 'database');
+  const updateResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('teachers')
+        .update(updateData)
+        .eq('id', teacherId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'update_teacher', teacherId, fields: Object.keys(updateData) }
+  );
+  updatePerf.end();
+
+  if (updateResult.error) throw updateResult.error;
+
+  return updateResult.data;
+}
+
+// ============================================================================
 // DELETE TEACHER (FOR DUPLICATE CLEANUP)
 // ============================================================================
 
