@@ -414,6 +414,112 @@ export async function deleteBellScheduleAsAdmin(id: string, schoolId: string) {
 }
 
 /**
+ * Update a bell schedule by id as a site admin.
+ * Site admins can update any bell schedule at their school, not just ones they created.
+ * @param id - The bell schedule ID to update
+ * @param schoolId - The school ID to verify admin access
+ * @param updates - The fields to update (period_name, start_time, end_time)
+ */
+export async function updateBellScheduleAsAdmin(
+  id: string,
+  schoolId: string,
+  updates: {
+    period_name?: string;
+    start_time?: string;
+    end_time?: string;
+  }
+) {
+  const supabase = createClient<Database>();
+
+  // Get current user
+  const authResult = await safeQuery(
+    async () => supabase.auth.getUser(),
+    { operation: 'get_user_for_admin_update_bell_schedule' }
+  );
+
+  if (authResult.error || !authResult.data?.data.user) {
+    throw new Error('Not authenticated');
+  }
+
+  const user = authResult.data.data.user;
+
+  // Verify user is a site admin for this school
+  const adminResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('admin_permissions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('school_id', schoolId)
+        .eq('role', 'site_admin')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'verify_site_admin_for_update', userId: user.id, schoolId }
+  );
+
+  if (adminResult.error || !adminResult.data) {
+    throw new Error('You do not have site admin permission for this school');
+  }
+
+  // Verify the schedule exists and belongs to this school
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('bell_schedules')
+        .select('id, school_id')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_bell_schedule_for_admin_update', scheduleId: id }
+  );
+
+  if (fetchResult.error || !fetchResult.data) {
+    throw new Error('Bell schedule not found');
+  }
+
+  if (fetchResult.data.school_id !== schoolId) {
+    throw new Error('Bell schedule does not belong to your school');
+  }
+
+  // Update the schedule
+  const updatePerf = measurePerformanceWithAlerts('admin_update_bell_schedule', 'database');
+  const updateResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('bell_schedules')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    {
+      operation: 'admin_update_bell_schedule',
+      userId: user.id,
+      scheduleId: id,
+      schoolId
+    }
+  );
+  updatePerf.end({ success: !updateResult.error });
+
+  if (updateResult.error) throw updateResult.error;
+
+  if (!updateResult.data) {
+    throw new Error('Failed to update bell schedule');
+  }
+
+  return updateResult.data;
+}
+
+/**
  * Fetch ALL bell schedules for a school (for site admins).
  * Unlike getBellSchedules, this returns all schedules at the school, not just the current user's.
  * Includes creator information for display.
