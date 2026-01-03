@@ -330,7 +330,7 @@ export function TeacherEditModal({
                 disabled={loading || deleting || !!teacher.account_id}
                 className={`px-4 py-2 text-sm font-medium rounded-md ${
                   teacher.account_id
-                    ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                    ? 'text-gray-600 bg-gray-200 cursor-not-allowed'
                     : 'text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed'
                 }`}
               >
