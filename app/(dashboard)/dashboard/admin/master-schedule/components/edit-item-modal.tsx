@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '../../../../../components/ui/button';
-import { deleteBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
+import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
-import { SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
+import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 
@@ -31,13 +31,17 @@ export function EditItemModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const headingId = 'edit-modal-heading';
 
-  // Form state for activities (bell schedules are read-only for now)
+  // Form state for activities
   const activity = type === 'activity' ? item as SpecialActivity : null;
   const [activityName, setActivityName] = useState(activity?.activity_name || '');
   const [startTime, setStartTime] = useState(activity?.start_time || '');
   const [endTime, setEndTime] = useState(activity?.end_time || '');
 
+  // Form state for bell schedules
   const bellSchedule = type === 'bell' ? item as BellScheduleWithCreator : null;
+  const [bellPeriodName, setBellPeriodName] = useState(bellSchedule?.period_name || '');
+  const [bellStartTime, setBellStartTime] = useState(bellSchedule?.start_time || '');
+  const [bellEndTime, setBellEndTime] = useState(bellSchedule?.end_time || '');
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -107,6 +111,33 @@ export function EditItemModal({
     }
   };
 
+  const handleBellUpdate = async () => {
+    if (type !== 'bell') return;
+
+    // Validate times
+    if (bellStartTime && bellEndTime && bellStartTime >= bellEndTime) {
+      setError('End time must be after start time');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      await updateBellScheduleAsAdmin(item.id, schoolId, {
+        period_name: bellPeriodName,
+        start_time: bellStartTime,
+        end_time: bellEndTime
+      });
+      onSuccess();
+    } catch (err: any) {
+      console.error('Error updating bell schedule:', err);
+      setError(err.message || 'Failed to update bell schedule');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatTime = (time: string | null): string => {
     if (!time) return '';
     const [hours, minutes] = time.split(':').map(Number);
@@ -149,14 +180,7 @@ export function EditItemModal({
 
           {type === 'bell' && bellSchedule && (
             <>
-              {/* Bell schedule details (read-only) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Activity
-                </label>
-                <p className="text-sm text-gray-900">{bellSchedule.period_name || 'Not specified'}</p>
-              </div>
-
+              {/* Grade Level (read-only - defines the schedule slot) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Grade Level
@@ -164,18 +188,48 @@ export function EditItemModal({
                 <p className="text-sm text-gray-900">{bellSchedule.grade_level || 'Not specified'}</p>
               </div>
 
+              {/* Activity (editable) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Activity
+                </label>
+                <select
+                  value={bellPeriodName}
+                  onChange={(e) => setBellPeriodName(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select activity...</option>
+                  {BELL_SCHEDULE_ACTIVITIES.map((activity) => (
+                    <option key={activity} value={activity}>
+                      {activity}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Times (editable) */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Start Time
                   </label>
-                  <p className="text-sm text-gray-900">{formatTime(bellSchedule.start_time)}</p>
+                  <input
+                    type="time"
+                    value={bellStartTime}
+                    onChange={(e) => setBellStartTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     End Time
                   </label>
-                  <p className="text-sm text-gray-900">{formatTime(bellSchedule.end_time)}</p>
+                  <input
+                    type="time"
+                    value={bellEndTime}
+                    onChange={(e) => setBellEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
               </div>
             </>
@@ -263,6 +317,11 @@ export function EditItemModal({
             <Button variant="secondary" onClick={onClose} disabled={loading}>
               {confirmDelete ? 'Cancel' : 'Close'}
             </Button>
+            {type === 'bell' && (
+              <Button variant="primary" onClick={handleBellUpdate} disabled={loading}>
+                {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
+              </Button>
+            )}
             {type === 'activity' && (
               <Button variant="primary" onClick={handleUpdate} disabled={loading}>
                 {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
