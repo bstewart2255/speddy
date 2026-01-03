@@ -78,6 +78,19 @@ export default function MasterSchedulePage() {
     clearActivityTypes,
   } = useAdminScheduleState(teachers, availableActivityTypes);
 
+  // Get grade levels from selected teachers (for filtering bell schedules)
+  const selectedTeacherGrades = useMemo(() => {
+    if (selectedTeacherIds.size === 0) return null;
+
+    const grades = new Set<string>();
+    teachers.forEach(teacher => {
+      if (selectedTeacherIds.has(teacher.id) && teacher.grade_level) {
+        teacher.grade_level.split(',').forEach(g => grades.add(g.trim()));
+      }
+    });
+    return grades.size > 0 ? grades : null;
+  }, [selectedTeacherIds, teachers]);
+
   // Filter special activities by selected teachers, activity types, and view filter
   const filteredActivities = viewFilter === 'bell'
     ? []
@@ -94,13 +107,25 @@ export default function MasterSchedulePage() {
       });
 
   // Filter bell schedules by selected grades and view filter
+  // When teachers are selected, also filter by their grade levels
   const filteredBellSchedules = viewFilter === 'activities'
     ? []
     : bellSchedules.filter(schedule => {
         if (!schedule.grade_level) return false;
         // grade_level can be comma-separated like "K,1,2"
         const grades = schedule.grade_level.split(',').map(g => g.trim());
-        return grades.some(g => selectedGrades.has(g));
+
+        // Must match selected grades filter
+        if (!grades.some(g => selectedGrades.has(g))) {
+          return false;
+        }
+
+        // If teachers are selected, also filter by their grade levels
+        if (selectedTeacherGrades) {
+          return grades.some(g => selectedTeacherGrades.has(g));
+        }
+
+        return true;
       });
 
   const loading = permissionsLoading || dataLoading;
