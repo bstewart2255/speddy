@@ -69,14 +69,10 @@ export function TeacherEditModal({
 
     const teacherName = getTeacherName();
     const hasStudents = (teacher.student_count || 0) > 0;
-    const hasAccount = !!teacher.account_id;
 
     let warningMessage = `Are you sure you want to delete ${teacherName}? This action cannot be undone.`;
     if (hasStudents) {
       warningMessage = `Warning: ${teacherName} has ${teacher.student_count} student(s) assigned. Deleting will unassign these students. Continue?`;
-    }
-    if (hasAccount) {
-      warningMessage = `Warning: ${teacherName} has an active account. The account will be orphaned but not deleted. Continue?`;
     }
 
     if (!confirm(warningMessage)) {
@@ -131,13 +127,18 @@ export function TeacherEditModal({
     try {
       setLoading(true);
 
+      // Sort grades by GRADES array order for consistent storage
+      const sortedGrades = [...selectedGrades].sort(
+        (a, b) => GRADES.indexOf(a) - GRADES.indexOf(b)
+      );
+
       const updates: UpdateTeacherData = {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
         classroom_number: classroomNumber.trim() || null,
         phone_number: phoneNumber.trim() || null,
-        grade_level: selectedGrades.length > 0 ? selectedGrades.join(',') : null,
+        grade_level: sortedGrades.length > 0 ? sortedGrades.join(',') : null,
       };
 
       await updateTeacher(teacher.id, updates);
@@ -306,12 +307,18 @@ export function TeacherEditModal({
             )}
 
             {/* Delete Teacher */}
-            <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+            <div className={`flex items-center justify-between p-3 rounded-lg border ${
+              teacher.account_id
+                ? 'bg-gray-50 border-gray-200'
+                : 'bg-red-50 border-red-100'
+            }`}>
               <div>
-                <p className="text-sm font-medium text-red-900">Delete Teacher</p>
-                <p className="text-xs text-red-600">
+                <p className={`text-sm font-medium ${teacher.account_id ? 'text-gray-700' : 'text-red-900'}`}>
+                  Delete Teacher
+                </p>
+                <p className={`text-xs ${teacher.account_id ? 'text-gray-500' : 'text-red-600'}`}>
                   {teacher.account_id
-                    ? 'Account will be orphaned'
+                    ? 'Cannot delete - has active account'
                     : (teacher.student_count || 0) > 0
                     ? `${teacher.student_count} student(s) will be unassigned`
                     : 'Permanently remove this teacher'}
@@ -320,8 +327,12 @@ export function TeacherEditModal({
               <button
                 type="button"
                 onClick={handleDelete}
-                disabled={loading || deleting}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed"
+                disabled={loading || deleting || !!teacher.account_id}
+                className={`px-4 py-2 text-sm font-medium rounded-md ${
+                  teacher.account_id
+                    ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                    : 'text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed'
+                }`}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>

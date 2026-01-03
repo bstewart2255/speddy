@@ -863,7 +863,8 @@ export async function updateTeacher(teacherId: string, updates: UpdateTeacherDat
   }
 
   // Check for email uniqueness if email is being changed
-  if (updateData.email && updateData.email !== teacher.email) {
+  // Compare against lowercase since updateData.email is lowercased
+  if (updateData.email && updateData.email !== teacher.email?.toLowerCase()) {
     const emailCheckResult = await safeQuery(
       async () => {
         const { data, error } = await supabase
@@ -878,6 +879,10 @@ export async function updateTeacher(teacherId: string, updates: UpdateTeacherDat
       },
       { operation: 'check_teacher_email_uniqueness', email: updateData.email }
     );
+
+    if (emailCheckResult.error) {
+      throw emailCheckResult.error;
+    }
 
     if (emailCheckResult.data) {
       throw new Error('A teacher with this email already exists at this school');
