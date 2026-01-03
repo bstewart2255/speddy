@@ -67,6 +67,7 @@ export default function MasterSchedulePage() {
     selectedTeacherIds,
     selectedGrades,
     selectedActivityTypes,
+    showDailyTimes,
     toggleTeacher,
     selectAllTeachers,
     deselectAllTeachers,
@@ -76,6 +77,7 @@ export default function MasterSchedulePage() {
     toggleActivityType,
     selectAllActivityTypes,
     clearActivityTypes,
+    toggleDailyTimes,
   } = useAdminScheduleState(teachers, availableActivityTypes);
 
   // Get grade levels from selected teachers (for filtering bell schedules)
@@ -201,8 +203,19 @@ export default function MasterSchedulePage() {
 
           {/* Secondary Filters */}
           <div className={`mt-4 pt-4 border-t border-gray-200 flex gap-6 ${
-            viewFilter === 'all' ? 'flex-row flex-wrap' : 'flex-col'
+            viewFilter === 'all' ? 'flex-row flex-wrap items-center' : 'flex-col'
           }`}>
+            {/* Daily Times Toggle */}
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showDailyTimes}
+                onChange={toggleDailyTimes}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+              />
+              <span className="text-sm font-medium text-gray-700">Show Daily Times</span>
+            </label>
+
             {/* Grade Filter - for bell schedules */}
             {viewFilter !== 'activities' && (
               <GradeFilter
@@ -236,6 +249,8 @@ export default function MasterSchedulePage() {
               schoolId={schoolId}
               onRefresh={refreshData}
               viewFilter={viewFilter}
+              showDailyTimes={showDailyTimes}
+              allBellSchedules={bellSchedules}
             />
           </div>
 

@@ -5,8 +5,12 @@ import { Card, CardBody } from '../../../../../components/ui/card';
 import { ScheduleItem } from './schedule-item';
 import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
+import { DailyTimeMarker } from './daily-time-marker';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
+
+// Special period names that indicate daily time markers
+const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
 
 interface AdminScheduleGridProps {
   bellSchedules: BellScheduleWithCreator[];
@@ -14,6 +18,8 @@ interface AdminScheduleGridProps {
   schoolId: string | null;
   onRefresh: () => Promise<void>;
   viewFilter?: 'all' | 'bell' | 'activities';
+  showDailyTimes?: boolean;
+  allBellSchedules?: BellScheduleWithCreator[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -119,7 +125,9 @@ export function AdminScheduleGrid({
   specialActivities,
   schoolId,
   onRefresh,
-  viewFilter = 'all'
+  viewFilter = 'all',
+  showDailyTimes = false,
+  allBellSchedules = []
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -130,6 +138,28 @@ export function AdminScheduleGrid({
     type: 'bell' | 'activity';
     item: BellScheduleWithCreator | SpecialActivity;
   } | null>(null);
+
+  // Extract daily time markers from bell schedules (School Start, Dismissal, etc.)
+  const dailyTimeMarkers = useMemo(() => {
+    if (!showDailyTimes) return new Map<number, BellScheduleWithCreator[]>();
+
+    const markers = new Map<number, BellScheduleWithCreator[]>();
+
+    allBellSchedules.forEach(schedule => {
+      if (
+        schedule.period_name &&
+        DAILY_TIME_PERIOD_NAMES.includes(schedule.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]) &&
+        schedule.day_of_week &&
+        schedule.start_time
+      ) {
+        const dayMarkers = markers.get(schedule.day_of_week) || [];
+        dayMarkers.push(schedule);
+        markers.set(schedule.day_of_week, dayMarkers);
+      }
+    });
+
+    return markers;
+  }, [allBellSchedules, showDailyTimes]);
 
   // Generate time markers (every 30 minutes)
   const timeMarkers = useMemo(() => {
@@ -226,7 +256,11 @@ export function AdminScheduleGrid({
           {/* Day columns */}
           {DAYS.map((day, dayIndex) => {
             const dayNumber = dayIndex + 1;
-            const dayBellSchedules = bellSchedules.filter(s => s.day_of_week === dayNumber);
+            // Filter out daily time markers from regular bell schedules (they render separately)
+            const dayBellSchedules = bellSchedules.filter(s =>
+              s.day_of_week === dayNumber &&
+              (!s.period_name || !DAILY_TIME_PERIOD_NAMES.includes(s.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]))
+            );
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
 
             // Calculate overlaps for this day
@@ -267,6 +301,22 @@ export function AdminScheduleGrid({
                       style={{ top: timeToPixels(time) }}
                     />
                   ))}
+
+                  {/* Daily time markers (School Start, Dismissal, etc.) */}
+                  {showDailyTimes && dailyTimeMarkers.get(dayNumber)?.map((marker) => {
+                    if (!marker.start_time) return null;
+                    const isStart = marker.period_name === 'School Start';
+                    return (
+                      <DailyTimeMarker
+                        key={marker.id}
+                        time={marker.start_time}
+                        label={marker.period_name === 'School Start' ? 'Start' : marker.period_name || 'Dismissal'}
+                        color={isStart ? 'blue' : 'orange'}
+                        pixelPosition={timeToPixels(marker.start_time)}
+                        gradeLevel={marker.grade_level || undefined}
+                      />
+                    );
+                  })}
 
                   {/* Bell schedules */}
                   {dayBellSchedules.map((schedule) => {
