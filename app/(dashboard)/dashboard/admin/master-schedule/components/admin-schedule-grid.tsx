@@ -314,6 +314,7 @@ export function AdminScheduleGrid({
                         color={isStart ? 'blue' : 'orange'}
                         pixelPosition={timeToPixels(marker.start_time)}
                         gradeLevel={marker.grade_level || undefined}
+                        onClick={() => handleItemClick('bell', marker)}
                       />
                     );
                   })}

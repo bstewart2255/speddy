@@ -17,6 +17,16 @@ interface EditItemModalProps {
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
+
+// Helper to add minutes to a time string
+const addMinutesToTime = (time: string, minutes: number): string => {
+  const [h, m] = time.split(':').map(Number);
+  const totalMinutes = h * 60 + m + minutes;
+  const newH = Math.floor(totalMinutes / 60);
+  const newM = totalMinutes % 60;
+  return `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
+};
 
 export function EditItemModal({
   type,
@@ -111,11 +121,17 @@ export function EditItemModal({
     }
   };
 
+  // Check if this is a daily time marker
+  const isDailyTimeMarker = bellPeriodName && DAILY_TIME_PERIOD_NAMES.includes(bellPeriodName as typeof DAILY_TIME_PERIOD_NAMES[number]);
+
   const handleBellUpdate = async () => {
     if (type !== 'bell') return;
 
-    // Validate times
-    if (bellStartTime && bellEndTime && bellStartTime >= bellEndTime) {
+    // For daily time markers, auto-calculate end_time as start_time + 1 minute
+    const effectiveEndTime = isDailyTimeMarker ? addMinutesToTime(bellStartTime, 1) : bellEndTime;
+
+    // Validate times (skip for daily time markers since we auto-calculate)
+    if (!isDailyTimeMarker && bellStartTime && effectiveEndTime && bellStartTime >= effectiveEndTime) {
       setError('End time must be after start time');
       return;
     }
@@ -127,7 +143,7 @@ export function EditItemModal({
       await updateBellScheduleAsAdmin(item.id, schoolId, {
         period_name: bellPeriodName,
         start_time: bellStartTime,
-        end_time: bellEndTime
+        end_time: effectiveEndTime
       });
       onSuccess();
     } catch (err: any) {
@@ -163,7 +179,7 @@ export function EditItemModal({
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 id={headingId} className="text-lg font-semibold text-gray-900">
-            {type === 'bell' ? 'Bell Schedule' : 'Special Activity'}
+            {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : 'Special Activity'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
             {dayName} at {formatTime(item.start_time || null)}
@@ -188,30 +204,38 @@ export function EditItemModal({
                 <p className="text-sm text-gray-900">{bellSchedule.grade_level || 'Not specified'}</p>
               </div>
 
-              {/* Activity (editable) */}
+              {/* Activity/Type (editable) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Activity
+                  {isDailyTimeMarker ? 'Type' : 'Activity'}
                 </label>
                 <select
                   value={bellPeriodName}
                   onChange={(e) => setBellPeriodName(e.target.value)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">Select activity...</option>
-                  {BELL_SCHEDULE_ACTIVITIES.map((activity) => (
-                    <option key={activity} value={activity}>
-                      {activity}
-                    </option>
-                  ))}
+                  <option value="">Select {isDailyTimeMarker ? 'type' : 'activity'}...</option>
+                  {isDailyTimeMarker ? (
+                    DAILY_TIME_PERIOD_NAMES.map((periodName) => (
+                      <option key={periodName} value={periodName}>
+                        {periodName}
+                      </option>
+                    ))
+                  ) : (
+                    BELL_SCHEDULE_ACTIVITIES.map((activity) => (
+                      <option key={activity} value={activity}>
+                        {activity}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
               {/* Times (editable) */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className={isDailyTimeMarker ? '' : 'grid grid-cols-2 gap-4'}>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Start Time
+                    {isDailyTimeMarker ? 'Time' : 'Start Time'}
                   </label>
                   <input
                     type="time"
@@ -220,17 +244,19 @@ export function EditItemModal({
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={bellEndTime}
-                    onChange={(e) => setBellEndTime(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+                {!isDailyTimeMarker && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={bellEndTime}
+                      onChange={(e) => setBellEndTime(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                )}
               </div>
             </>
           )}
