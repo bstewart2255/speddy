@@ -92,6 +92,17 @@ export default function MasterSchedulePage() {
     return Array.from(types).sort();
   }, [specialActivities, configuredActivityTypes]);
 
+  // Track which activity types are currently in use (have scheduled activities)
+  const inUseActivityTypes = useMemo(() => {
+    const types = new Set<string>();
+    specialActivities.forEach(activity => {
+      if (activity.activity_name) {
+        types.add(activity.activity_name);
+      }
+    });
+    return types;
+  }, [specialActivities]);
+
   // UI state management hook
   const {
     selectedTeacherIds,
@@ -269,6 +280,7 @@ export default function MasterSchedulePage() {
                 onSelectAll={selectAllActivityTypes}
                 schoolId={schoolId}
                 onAvailabilityChange={fetchActivityAvailability}
+                inUseActivityTypes={inUseActivityTypes}
               />
             )}
           </div>

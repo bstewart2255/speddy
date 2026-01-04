@@ -412,3 +412,30 @@ export async function getConfiguredActivityTypes(
 
   return (data || []).map(row => row.activity_type);
 }
+
+/**
+ * Delete activity availability configuration for a specific activity type at a school.
+ * This only removes the availability config, not any scheduled activities.
+ */
+export async function deleteActivityAvailability(
+  schoolId: string,
+  activityType: string
+): Promise<void> {
+  const supabase = createClient();
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { error } = await supabase
+    .from('activity_type_availability')
+    .delete()
+    .eq('school_id', schoolId)
+    .eq('activity_type', activityType);
+
+  if (error) {
+    console.error('Error deleting activity availability:', error);
+    throw error;
+  }
+}

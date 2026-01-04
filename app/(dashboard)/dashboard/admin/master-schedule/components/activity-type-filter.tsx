@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ActivityContextMenu } from './activity-context-menu';
 import { AvailabilityModal } from './availability-modal';
+import { deleteActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface ActivityTypeFilterProps {
   selectedTypes: Set<string>;
@@ -12,6 +13,7 @@ interface ActivityTypeFilterProps {
   onSelectAll: () => void;
   schoolId: string | null;
   onAvailabilityChange?: () => void;
+  inUseActivityTypes?: Set<string>;
 }
 
 const ACTIVITY_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
@@ -33,13 +35,15 @@ export function ActivityTypeFilter({
   onClearAll,
   onSelectAll,
   schoolId,
-  onAvailabilityChange
+  onAvailabilityChange,
+  inUseActivityTypes = new Set()
 }: ActivityTypeFilterProps) {
   const [contextMenu, setContextMenu] = useState<{
     activityType: string;
     position: { x: number; y: number };
   } | null>(null);
   const [availabilityModal, setAvailabilityModal] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const allSelected = selectedTypes.size === availableTypes.length && availableTypes.length > 0;
   const noneSelected = selectedTypes.size === 0;
@@ -69,6 +73,27 @@ export function ActivityTypeFilter({
   const handleAvailabilitySuccess = () => {
     setAvailabilityModal(null);
     onAvailabilityChange?.();
+  };
+
+  const handleDelete = async () => {
+    if (!contextMenu || !schoolId) return;
+
+    const activityType = contextMenu.activityType;
+
+    // Double-check it's not in use
+    if (inUseActivityTypes.has(activityType)) {
+      setDeleteError(`Cannot delete "${activityType}" - it is currently in use`);
+      return;
+    }
+
+    try {
+      setDeleteError(null);
+      await deleteActivityAvailability(schoolId, activityType);
+      onAvailabilityChange?.();
+    } catch (err) {
+      console.error('Error deleting activity type:', err);
+      setDeleteError('Failed to delete activity type');
+    }
   };
 
   return (
@@ -130,6 +155,8 @@ export function ActivityTypeFilter({
           position={contextMenu.position}
           onClose={handleCloseContextMenu}
           onConfigureAvailability={handleOpenAvailabilityModal}
+          onDelete={handleDelete}
+          canDelete={!inUseActivityTypes.has(contextMenu.activityType)}
         />
       )}
 

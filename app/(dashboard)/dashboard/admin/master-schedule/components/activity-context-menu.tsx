@@ -2,13 +2,15 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { Cog6ToothIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface ActivityContextMenuProps {
   activityType: string;
   position: { x: number; y: number };
   onClose: () => void;
   onConfigureAvailability: () => void;
+  onDelete?: () => void;
+  canDelete?: boolean;
 }
 
 export function ActivityContextMenu({
@@ -16,6 +18,8 @@ export function ActivityContextMenu({
   position,
   onClose,
   onConfigureAvailability,
+  onDelete,
+  canDelete = false,
 }: ActivityContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -57,6 +61,13 @@ export function ActivityContextMenu({
     onClose();
   };
 
+  const handleDeleteClick = () => {
+    if (onDelete && canDelete) {
+      onDelete();
+      onClose();
+    }
+  };
+
   return createPortal(
     <div
       ref={menuRef}
@@ -76,6 +87,24 @@ export function ActivityContextMenu({
         <Cog6ToothIcon className="w-4 h-4" />
         <span>Configure Availability...</span>
       </button>
+      {onDelete && (
+        <button
+          onClick={handleDeleteClick}
+          disabled={!canDelete}
+          className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
+            canDelete
+              ? 'text-red-600 hover:bg-red-50'
+              : 'text-gray-400 cursor-not-allowed'
+          }`}
+          title={canDelete ? 'Delete this activity type' : 'Cannot delete: activity type is in use'}
+        >
+          <TrashIcon className="w-4 h-4" />
+          <span>Delete</span>
+          {!canDelete && (
+            <span className="text-xs text-gray-400 ml-auto">(in use)</span>
+          )}
+        </button>
+      )}
     </div>,
     document.body
   );
