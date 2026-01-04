@@ -37,7 +37,7 @@ interface TeacherAssignment {
 
 interface GroupData {
   name: string;
-  teacherIds: Set<string>;
+  teacherIds: string[];
   assignments: TeacherAssignment[];
 }
 
@@ -73,12 +73,12 @@ export function RotationGroupModal({
   // Step 2: Group and teacher assignment
   const [groupA, setGroupA] = useState<GroupData>({
     name: 'Group A',
-    teacherIds: new Set<string>(),
+    teacherIds: [],
     assignments: [],
   });
   const [groupB, setGroupB] = useState<GroupData>({
     name: 'Group B',
-    teacherIds: new Set<string>(),
+    teacherIds: [],
     assignments: [],
   });
 
@@ -126,7 +126,7 @@ export function RotationGroupModal({
       if (groupAData) {
         setGroupA({
           name: groupAData.name,
-          teacherIds: new Set(groupAData.members.map(m => m.teacher_id)),
+          teacherIds: groupAData.members.map(m => m.teacher_id),
           assignments: groupAData.members.map(m => ({
             teacherId: m.teacher_id,
             dayOfWeek: m.day_of_week,
@@ -139,7 +139,7 @@ export function RotationGroupModal({
       if (groupBData) {
         setGroupB({
           name: groupBData.name,
-          teacherIds: new Set(groupBData.members.map(m => m.teacher_id)),
+          teacherIds: groupBData.members.map(m => m.teacher_id),
           assignments: groupBData.members.map(m => ({
             teacherId: m.teacher_id,
             dayOfWeek: m.day_of_week,
@@ -201,7 +201,7 @@ export function RotationGroupModal({
   // Teachers not assigned to either group
   const unassignedTeachers = useMemo(() => {
     return teachers.filter(
-      t => !groupA.teacherIds.has(t.id) && !groupB.teacherIds.has(t.id)
+      t => !groupA.teacherIds.includes(t.id) && !groupB.teacherIds.includes(t.id)
     );
   }, [teachers, groupA.teacherIds, groupB.teacherIds]);
 
@@ -211,11 +211,11 @@ export function RotationGroupModal({
       case 1:
         return activityA !== '' && activityB !== '';
       case 2:
-        return groupA.teacherIds.size > 0 && groupB.teacherIds.size > 0;
+        return groupA.teacherIds.length > 0 && groupB.teacherIds.length > 0;
       case 3:
         return (
-          groupA.assignments.length === groupA.teacherIds.size &&
-          groupB.assignments.length === groupB.teacherIds.size
+          groupA.assignments.length === groupA.teacherIds.length &&
+          groupB.assignments.length === groupB.teacherIds.length
         );
       case 4:
         return schoolYearStart !== '' && schoolYearEnd !== '' &&
@@ -245,26 +245,24 @@ export function RotationGroupModal({
     const setOtherGroup = group === 'A' ? setGroupB : setGroupA;
 
     setGroup(prev => {
-      const newTeacherIds = new Set(prev.teacherIds);
-      if (newTeacherIds.has(teacherId)) {
-        newTeacherIds.delete(teacherId);
-        // Also remove assignment
+      if (prev.teacherIds.includes(teacherId)) {
+        // Uncheck - remove teacher
         return {
           ...prev,
-          teacherIds: newTeacherIds,
+          teacherIds: prev.teacherIds.filter(id => id !== teacherId),
           assignments: prev.assignments.filter(a => a.teacherId !== teacherId),
         };
       } else {
-        newTeacherIds.add(teacherId);
+        // Check - add teacher
         // Remove from other group if present
-        if (otherGroup.teacherIds.has(teacherId)) {
+        if (otherGroup.teacherIds.includes(teacherId)) {
           setOtherGroup(other => ({
             ...other,
-            teacherIds: new Set([...other.teacherIds].filter(id => id !== teacherId)),
+            teacherIds: other.teacherIds.filter(id => id !== teacherId),
             assignments: other.assignments.filter(a => a.teacherId !== teacherId),
           }));
         }
-        return { ...prev, teacherIds: newTeacherIds };
+        return { ...prev, teacherIds: [...prev.teacherIds, teacherId] };
       }
     });
   };
@@ -537,25 +535,25 @@ export function RotationGroupModal({
                 {/* Group A */}
                 <div className="border border-gray-200 rounded-lg p-3">
                   <h3 className="font-medium text-gray-900 mb-2">
-                    Group A ({groupA.teacherIds.size} teachers)
+                    Group A ({groupA.teacherIds.length} teachers)
                   </h3>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {teachers.map(teacher => (
                       <label
                         key={teacher.id}
                         className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
-                          groupA.teacherIds.has(teacher.id)
+                          groupA.teacherIds.includes(teacher.id)
                             ? 'bg-blue-50'
-                            : groupB.teacherIds.has(teacher.id)
+                            : groupB.teacherIds.includes(teacher.id)
                             ? 'opacity-50'
                             : 'hover:bg-gray-50'
                         }`}
                       >
                         <input
                           type="checkbox"
-                          checked={groupA.teacherIds.has(teacher.id)}
+                          checked={groupA.teacherIds.includes(teacher.id)}
                           onChange={() => toggleTeacherInGroup(teacher.id, 'A')}
-                          disabled={groupB.teacherIds.has(teacher.id)}
+                          disabled={groupB.teacherIds.includes(teacher.id)}
                           className="w-4 h-4 text-blue-600"
                         />
                         <span className="text-sm">{formatTeacherName(teacher)}</span>
@@ -567,25 +565,25 @@ export function RotationGroupModal({
                 {/* Group B */}
                 <div className="border border-gray-200 rounded-lg p-3">
                   <h3 className="font-medium text-gray-900 mb-2">
-                    Group B ({groupB.teacherIds.size} teachers)
+                    Group B ({groupB.teacherIds.length} teachers)
                   </h3>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {teachers.map(teacher => (
                       <label
                         key={teacher.id}
                         className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
-                          groupB.teacherIds.has(teacher.id)
+                          groupB.teacherIds.includes(teacher.id)
                             ? 'bg-green-50'
-                            : groupA.teacherIds.has(teacher.id)
+                            : groupA.teacherIds.includes(teacher.id)
                             ? 'opacity-50'
                             : 'hover:bg-gray-50'
                         }`}
                       >
                         <input
                           type="checkbox"
-                          checked={groupB.teacherIds.has(teacher.id)}
+                          checked={groupB.teacherIds.includes(teacher.id)}
                           onChange={() => toggleTeacherInGroup(teacher.id, 'B')}
-                          disabled={groupA.teacherIds.has(teacher.id)}
+                          disabled={groupA.teacherIds.includes(teacher.id)}
                           className="w-4 h-4 text-green-600"
                         />
                         <span className="text-sm">{formatTeacherName(teacher)}</span>
