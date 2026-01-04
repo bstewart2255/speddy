@@ -1,3 +1,14 @@
+/**
+ * SchedulingCoordinator orchestrates the full scheduling flow:
+ * - Loads student, bell schedule, and provider context through `SchedulingDataManager`
+ * - Validates requested sessions against configurable constraints (max concurrent sessions, grade grouping, etc.)
+ *   via `ConstraintValidator`
+ * - Uses `SchedulingEngine` to pick optimal time slots from availability windows
+ * - Persists sessions and updates in-memory context so subsequent students respect earlier placements
+ *
+ * The coordinator is stateful per provider/school pairing. Call `initialize` before scheduling to ensure
+ * shared caches and the scheduling context are populated.
+ */
 import { createClient } from '@/lib/supabase/client';
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ConstraintValidator } from './constraint-validator';

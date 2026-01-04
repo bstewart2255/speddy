@@ -1,3 +1,10 @@
+/**
+ * ManualPlacementService lets staff assign sessions directly while still respecting conflicts.
+ * It synthesizes candidate time slots, checks them against existing provider sessions via
+ * `SchedulingDataManager`, and optionally persists placements with conflict details when
+ * overrides are allowed. Use this when a deterministic manual schedule is needed instead of
+ * the automated scheduling engine.
+ */
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SchedulingDataManager } from '../scheduling/scheduling-data-manager';
 import { sessionUpdateService } from './session-update-service';
