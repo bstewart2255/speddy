@@ -4,11 +4,14 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
+import { RotationGroupsPanel } from './components/rotation-groups-panel';
+import { RotationGroupModal } from './components/rotation-group-modal';
 import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
 import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
+import { getRotationPairsWithGroups, type RotationPairWithGroups } from '../../../../../lib/supabase/queries/rotation-groups';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -19,6 +22,12 @@ export default function MasterSchedulePage() {
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [activityAvailability, setActivityAvailability] = useState<Map<string, FullDayAvailability>>(new Map());
   const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
+
+  // Rotation groups state
+  const [rotationPairs, setRotationPairs] = useState<RotationPairWithGroups[]>([]);
+  const [rotationPairsLoading, setRotationPairsLoading] = useState(false);
+  const [showRotationModal, setShowRotationModal] = useState(false);
+  const [editingPair, setEditingPair] = useState<RotationPairWithGroups | undefined>(undefined);
 
   // Fetch activity availability and configured types for the school
   const fetchActivityAvailability = useCallback(async () => {
@@ -35,12 +44,49 @@ export default function MasterSchedulePage() {
     }
   }, [schoolId]);
 
-  // Fetch availability when schoolId changes
+  // Fetch rotation pairs for the school
+  const fetchRotationPairs = useCallback(async () => {
+    if (!schoolId) return;
+    setRotationPairsLoading(true);
+    try {
+      const pairs = await getRotationPairsWithGroups(schoolId);
+      setRotationPairs(pairs);
+    } catch (err) {
+      console.error('Error fetching rotation pairs:', err);
+    } finally {
+      setRotationPairsLoading(false);
+    }
+  }, [schoolId]);
+
+  // Fetch availability and rotation pairs when schoolId changes
   useEffect(() => {
     if (schoolId) {
       fetchActivityAvailability();
+      fetchRotationPairs();
     }
-  }, [schoolId, fetchActivityAvailability]);
+  }, [schoolId, fetchActivityAvailability, fetchRotationPairs]);
+
+  // Handlers for rotation groups modal
+  const handleCreateGroups = () => {
+    setEditingPair(undefined);
+    setShowRotationModal(true);
+  };
+
+  const handleEditPair = (pair: RotationPairWithGroups) => {
+    setEditingPair(pair);
+    setShowRotationModal(true);
+  };
+
+  const handleRotationModalClose = () => {
+    setShowRotationModal(false);
+    setEditingPair(undefined);
+  };
+
+  const handleRotationModalSuccess = () => {
+    setShowRotationModal(false);
+    setEditingPair(undefined);
+    fetchRotationPairs();
+  };
 
   // Fetch site admin permissions and school ID
   useEffect(() => {
@@ -312,9 +358,26 @@ export default function MasterSchedulePage() {
               onSelectAll={selectAllTeachers}
               onDeselectAll={deselectAllTeachers}
             />
+            <RotationGroupsPanel
+              rotationPairs={rotationPairs}
+              onCreateGroups={handleCreateGroups}
+              onEditPair={handleEditPair}
+              loading={rotationPairsLoading}
+            />
           </div>
         </div>
       </div>
+
+      {/* Rotation Group Modal */}
+      {showRotationModal && schoolId && (
+        <RotationGroupModal
+          schoolId={schoolId}
+          teachers={teachers}
+          existingPair={editingPair}
+          onClose={handleRotationModalClose}
+          onSuccess={handleRotationModalSuccess}
+        />
+      )}
     </div>
   );
 }
