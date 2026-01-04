@@ -310,7 +310,7 @@ export function AdminScheduleGrid({
                       <DailyTimeMarker
                         key={marker.id}
                         time={marker.start_time}
-                        label={marker.period_name === 'School Start' ? 'Start' : marker.period_name || 'Dismissal'}
+                        label={marker.period_name === 'School Start' ? 'Start' : marker.period_name ?? 'Daily Time'}
                         color={isStart ? 'blue' : 'orange'}
                         pixelPosition={timeToPixels(marker.start_time)}
                         gradeLevel={marker.grade_level || undefined}

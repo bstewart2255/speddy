@@ -39,7 +39,7 @@ export function CreateItemModal({
   onSuccess,
   defaultTab = 'bell'
 }: CreateItemModalProps) {
-  const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab === 'dailyTime' ? 'dailyTime' : defaultTab);
+  const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);

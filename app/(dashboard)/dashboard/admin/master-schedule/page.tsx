@@ -206,15 +206,18 @@ export default function MasterSchedulePage() {
             viewFilter === 'all' ? 'flex-row flex-wrap items-center' : 'flex-col'
           }`}>
             {/* Daily Times Toggle */}
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <div className="flex items-center gap-2">
               <input
                 type="checkbox"
+                id="show-daily-times"
                 checked={showDailyTimes}
                 onChange={toggleDailyTimes}
                 className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
               />
-              <span className="text-sm font-medium text-gray-700">Show Daily Times</span>
-            </label>
+              <label htmlFor="show-daily-times" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                Show Daily Times
+              </label>
+            </div>
 
             {/* Grade Filter - for bell schedules */}
             {viewFilter !== 'activities' && (
