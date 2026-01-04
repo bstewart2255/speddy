@@ -346,6 +346,8 @@ export default function MasterSchedulePage() {
               allBellSchedules={bellSchedules}
               activityAvailability={activityAvailability}
               availableActivityTypes={availableActivityTypes}
+              rotationPairs={rotationPairs}
+              onEditRotationPair={handleEditPair}
             />
           </div>
 

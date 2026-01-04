@@ -3,12 +3,14 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Card, CardBody } from '../../../../../components/ui/card';
 import { ScheduleItem } from './schedule-item';
+import { RotationScheduleItem } from './rotation-schedule-item';
 import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
+import type { RotationPairWithGroups } from '../../../../../../lib/supabase/queries/rotation-groups';
 
 // Special period names that indicate daily time markers
 const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
@@ -23,6 +25,19 @@ interface AdminScheduleGridProps {
   allBellSchedules?: BellScheduleWithCreator[];
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
+  rotationPairs?: RotationPairWithGroups[];
+  onEditRotationPair?: (pair: RotationPairWithGroups) => void;
+}
+
+// Flattened rotation item for grid rendering
+interface RotationGridItem {
+  id: string;
+  pair: RotationPairWithGroups;
+  teacherId: string;
+  teacherName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -132,7 +147,9 @@ export function AdminScheduleGrid({
   showDailyTimes = false,
   allBellSchedules = [],
   activityAvailability = new Map(),
-  availableActivityTypes = []
+  availableActivityTypes = [],
+  rotationPairs = [],
+  onEditRotationPair,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -165,6 +182,33 @@ export function AdminScheduleGrid({
 
     return markers;
   }, [allBellSchedules, showDailyTimes]);
+
+  // Flatten rotation pairs into grid items
+  const rotationGridItems = useMemo((): RotationGridItem[] => {
+    const items: RotationGridItem[] = [];
+
+    for (const pair of rotationPairs) {
+      for (const group of pair.groups) {
+        for (const member of group.members) {
+          const teacherName = member.teacher
+            ? `${member.teacher.first_name || ''} ${member.teacher.last_name || ''}`.trim() || 'Unknown'
+            : 'Unknown';
+
+          items.push({
+            id: member.id,
+            pair,
+            teacherId: member.teacher_id,
+            teacherName,
+            dayOfWeek: member.day_of_week,
+            startTime: member.start_time.substring(0, 5), // Normalize to HH:MM
+            endTime: member.end_time.substring(0, 5),
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [rotationPairs]);
 
   // Generate time markers (every 30 minutes)
   const timeMarkers = useMemo(() => {
@@ -267,10 +311,27 @@ export function AdminScheduleGrid({
               (!s.period_name || !DAILY_TIME_PERIOD_NAMES.includes(s.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]))
             );
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
+            const dayRotations = rotationGridItems.filter(r => r.dayOfWeek === dayNumber);
 
             // Calculate overlaps for this day
             const bellOverlaps = calculateOverlaps(dayBellSchedules);
-            const activityOverlaps = calculateOverlaps(dayActivities);
+
+            // Combine activities and rotations for overlap calculation
+            const allActivityItems = [
+              ...dayActivities.map(a => ({
+                id: a.id,
+                start_time: a.start_time,
+                end_time: a.end_time,
+                type: 'activity' as const,
+              })),
+              ...dayRotations.map(r => ({
+                id: r.id,
+                start_time: r.startTime,
+                end_time: r.endTime,
+                type: 'rotation' as const,
+              })),
+            ];
+            const combinedOverlaps = calculateOverlaps(allActivityItems);
 
             return (
               <div key={day} className="flex-1 border-r border-gray-200 last:border-r-0">
@@ -352,7 +413,7 @@ export function AdminScheduleGrid({
                     if (!activity.start_time || !activity.end_time) return null;
                     const top = timeToPixels(activity.start_time);
                     const height = calculateHeight(activity.start_time, activity.end_time);
-                    const overlap = activityOverlaps.get(activity.id);
+                    const overlap = combinedOverlaps.get(activity.id);
 
                     return (
                       <ScheduleItem
@@ -364,6 +425,27 @@ export function AdminScheduleGrid({
                         height={height}
                         colorClass={getActivityColor(activity.activity_name)}
                         onClick={() => handleItemClick('activity', activity)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
+                      />
+                    );
+                  })}
+
+                  {/* Rotation group items */}
+                  {dayRotations.map((rotation) => {
+                    const top = timeToPixels(rotation.startTime);
+                    const height = calculateHeight(rotation.startTime, rotation.endTime);
+                    const overlap = combinedOverlaps.get(rotation.id);
+
+                    return (
+                      <RotationScheduleItem
+                        key={rotation.id}
+                        activityA={rotation.pair.activity_type_a}
+                        activityB={rotation.pair.activity_type_b}
+                        teacherName={rotation.teacherName}
+                        top={top}
+                        height={height}
+                        onClick={() => onEditRotationPair?.(rotation.pair)}
                         overlapIndex={overlap?.index}
                         overlapTotal={overlap?.total}
                       />
