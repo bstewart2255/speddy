@@ -52,6 +52,20 @@ export interface DayAvailabilityWithTimes {
   useTimeRanges: boolean; // Toggle for whether time ranges are enabled
 }
 
+// Full availability info including time ranges for validation
+export interface FullDayAvailability {
+  monday: boolean;
+  tuesday: boolean;
+  wednesday: boolean;
+  thursday: boolean;
+  friday: boolean;
+  mondayTimeRange?: TimeRange;
+  tuesdayTimeRange?: TimeRange;
+  wednesdayTimeRange?: TimeRange;
+  thursdayTimeRange?: TimeRange;
+  fridayTimeRange?: TimeRange;
+}
+
 // Default availability when no row exists (all days available, no time restrictions)
 const DEFAULT_AVAILABILITY: DayAvailability = {
   monday: true,
@@ -383,6 +397,155 @@ export function isActivityAvailableOnDay(
 export function getDayName(dayOfWeek: number): string {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   return days[dayOfWeek - 1] || '';
+}
+
+/**
+ * Get activity availability with time ranges for a school.
+ * Returns a Map of activity type -> full day availability including time ranges.
+ */
+export async function getActivityAvailabilityWithTimeRanges(
+  schoolId: string
+): Promise<Map<string, FullDayAvailability>> {
+  const supabase = createClient();
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { data, error } = await supabase
+    .from('activity_type_availability')
+    .select('*')
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error('Error fetching activity availability:', error);
+    throw error;
+  }
+
+  const availabilityMap = new Map<string, FullDayAvailability>();
+
+  for (const row of data || []) {
+    availabilityMap.set(row.activity_type, {
+      monday: row.monday,
+      tuesday: row.tuesday,
+      wednesday: row.wednesday,
+      thursday: row.thursday,
+      friday: row.friday,
+      mondayTimeRange: extractTimeRange(row.monday_start_time, row.monday_end_time),
+      tuesdayTimeRange: extractTimeRange(row.tuesday_start_time, row.tuesday_end_time),
+      wednesdayTimeRange: extractTimeRange(row.wednesday_start_time, row.wednesday_end_time),
+      thursdayTimeRange: extractTimeRange(row.thursday_start_time, row.thursday_end_time),
+      fridayTimeRange: extractTimeRange(row.friday_start_time, row.friday_end_time),
+    });
+  }
+
+  return availabilityMap;
+}
+
+/**
+ * Check if a time is within a time range.
+ * @param time - Time to check in HH:MM format
+ * @param range - Time range with start and end in HH:MM format
+ * @returns true if time is within the range (inclusive of start, exclusive of end)
+ */
+function isTimeInRange(time: string, range: TimeRange): boolean {
+  return time >= range.start && time < range.end;
+}
+
+/**
+ * Get the time range for a specific day from full availability.
+ */
+function getTimeRangeForDay(availability: FullDayAvailability, dayOfWeek: number): TimeRange | undefined {
+  switch (dayOfWeek) {
+    case 1: return availability.mondayTimeRange;
+    case 2: return availability.tuesdayTimeRange;
+    case 3: return availability.wednesdayTimeRange;
+    case 4: return availability.thursdayTimeRange;
+    case 5: return availability.fridayTimeRange;
+    default: return undefined;
+  }
+}
+
+/**
+ * Get the day availability boolean for a specific day.
+ */
+function isDayAvailable(availability: FullDayAvailability, dayOfWeek: number): boolean {
+  switch (dayOfWeek) {
+    case 1: return availability.monday;
+    case 2: return availability.tuesday;
+    case 3: return availability.wednesday;
+    case 4: return availability.thursday;
+    case 5: return availability.friday;
+    default: return true;
+  }
+}
+
+/**
+ * Validation result for activity availability check.
+ */
+export interface AvailabilityCheckResult {
+  available: boolean;
+  reason?: string;
+  timeRange?: TimeRange;
+}
+
+/**
+ * Check if an activity type is available at a specific day and time.
+ * @param availability - Map of activity type -> full availability (from getActivityAvailabilityWithTimeRanges)
+ * @param activityType - The activity type to check
+ * @param dayOfWeek - Day number (1=Monday, 2=Tuesday, ..., 5=Friday)
+ * @param startTime - Start time in HH:MM format
+ * @param endTime - End time in HH:MM format
+ * @returns Object with available boolean and reason if not available
+ */
+export function checkActivityAvailability(
+  availability: Map<string, FullDayAvailability>,
+  activityType: string,
+  dayOfWeek: number,
+  startTime: string,
+  endTime: string
+): AvailabilityCheckResult {
+  const dayAvailability = availability.get(activityType);
+  const dayName = getDayName(dayOfWeek);
+
+  // If no availability configured, assume all times available
+  if (!dayAvailability) {
+    return { available: true };
+  }
+
+  // Check if the day is available
+  if (!isDayAvailable(dayAvailability, dayOfWeek)) {
+    return {
+      available: false,
+      reason: `${activityType} is not available on ${dayName}s`
+    };
+  }
+
+  // Check if there's a time range restriction
+  const timeRange = getTimeRangeForDay(dayAvailability, dayOfWeek);
+  if (timeRange) {
+    // Check if the scheduled time falls within the available time range
+    const startInRange = isTimeInRange(startTime, timeRange);
+    const endInRange = endTime <= timeRange.end && endTime > timeRange.start;
+
+    if (!startInRange || !endInRange) {
+      const formatTime = (t: string) => {
+        const [h, m] = t.split(':').map(Number);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
+        return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+      };
+
+      return {
+        available: false,
+        reason: `${activityType} is only available ${formatTime(timeRange.start)} - ${formatTime(timeRange.end)} on ${dayName}s`,
+        timeRange
+      };
+    }
+  }
+
+  return { available: true };
 }
 
 /**

@@ -8,7 +8,7 @@ import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
-import { getActivityAvailability, getConfiguredActivityTypes, DayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
+import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -17,7 +17,7 @@ export default function MasterSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
-  const [activityAvailability, setActivityAvailability] = useState<Map<string, DayAvailability>>(new Map());
+  const [activityAvailability, setActivityAvailability] = useState<Map<string, FullDayAvailability>>(new Map());
   const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
 
   // Fetch activity availability and configured types for the school
@@ -25,7 +25,7 @@ export default function MasterSchedulePage() {
     if (!schoolId) return;
     try {
       const [availability, configuredTypes] = await Promise.all([
-        getActivityAvailability(schoolId),
+        getActivityAvailabilityWithTimeRanges(schoolId),
         getConfiguredActivityTypes(schoolId),
       ]);
       setActivityAvailability(availability);

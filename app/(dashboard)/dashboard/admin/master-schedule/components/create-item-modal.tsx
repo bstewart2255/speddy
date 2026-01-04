@@ -6,7 +6,7 @@ import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-sch
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
-import { DayAvailability, isActivityAvailableOnDay, getDayName } from '../../../../../../lib/supabase/queries/activity-availability';
+import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface CreateItemModalProps {
   day: number;
@@ -15,7 +15,7 @@ interface CreateItemModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultTab?: 'bell' | 'activity' | 'dailyTime';
-  activityAvailability?: Map<string, DayAvailability>;
+  activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
 }
 
@@ -81,14 +81,20 @@ export function CreateItemModal({
   // Get the effective activity name (either selected or custom)
   const effectiveActivityName = activityName === '__other__' ? customActivityName : activityName;
 
-  // Check if selected activity is available on the selected day
+  // Check if selected activity is available on the selected day and time
   const activityAvailabilityWarning = useMemo(() => {
     if (tab !== 'activity' || !effectiveActivityName) return null;
-    if (!isActivityAvailableOnDay(activityAvailability, effectiveActivityName, day)) {
-      return `${effectiveActivityName} is not available on ${getDayName(day)}s`;
-    }
-    return null;
-  }, [tab, effectiveActivityName, day, activityAvailability]);
+
+    const result = checkActivityAvailability(
+      activityAvailability,
+      effectiveActivityName,
+      day,
+      activityStartTime,
+      activityEndTime
+    );
+
+    return result.available ? null : result.reason || null;
+  }, [tab, effectiveActivityName, day, activityAvailability, activityStartTime, activityEndTime]);
 
   // Handle start time change - auto-adjust end time to maintain 30min duration
   const handleBellStartTimeChange = (newStartTime: string) => {
