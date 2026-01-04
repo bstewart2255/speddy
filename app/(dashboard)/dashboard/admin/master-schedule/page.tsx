@@ -339,6 +339,7 @@ export default function MasterSchedulePage() {
             <AdminScheduleGrid
               bellSchedules={filteredBellSchedules}
               specialActivities={filteredActivities}
+              allSpecialActivities={specialActivities}
               schoolId={schoolId}
               onRefresh={refreshData}
               viewFilter={viewFilter}
@@ -364,6 +365,7 @@ export default function MasterSchedulePage() {
               rotationPairs={rotationPairs}
               onCreateGroups={handleCreateGroups}
               onEditPair={handleEditPair}
+              onRefresh={fetchRotationPairs}
               loading={rotationPairsLoading}
             />
           </div>

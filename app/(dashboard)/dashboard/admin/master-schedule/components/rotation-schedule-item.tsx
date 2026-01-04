@@ -8,7 +8,7 @@ interface RotationScheduleItemProps {
   teacherName: string;
   top: number;
   height: number;
-  onClick?: () => void;
+  onClick?: (event: React.MouseEvent) => void;
   overlapIndex?: number;
   overlapTotal?: number;
 }
@@ -62,7 +62,7 @@ export function RotationScheduleItem({
       }}
       onClick={(e) => {
         e.stopPropagation();
-        onClick?.();
+        onClick?.(e);
       }}
     >
       {/* Split color background */}
