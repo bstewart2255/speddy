@@ -7,6 +7,7 @@ interface UseAdminScheduleStateReturn {
   selectedTeacherIds: Set<string>;
   selectedGrades: Set<string>;
   selectedActivityTypes: Set<string>;
+  showDailyTimes: boolean;
   toggleTeacher: (teacherId: string) => void;
   selectAllTeachers: () => void;
   deselectAllTeachers: () => void;
@@ -16,6 +17,7 @@ interface UseAdminScheduleStateReturn {
   toggleActivityType: (type: string) => void;
   selectAllActivityTypes: () => void;
   clearActivityTypes: () => void;
+  toggleDailyTimes: () => void;
 }
 
 export function useAdminScheduleState(
@@ -30,6 +32,15 @@ export function useAdminScheduleState(
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<Set<string>>(
     new Set(availableActivityTypes)
   );
+
+  // Daily times visibility toggle - initialize from localStorage
+  const [showDailyTimes, setShowDailyTimes] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('masterSchedule.showDailyTimes');
+      return stored === 'true';
+    }
+    return false;
+  });
 
   // Track previous available types to detect actual changes
   const prevAvailableTypesRef = useRef<string[]>(availableActivityTypes);
@@ -106,10 +117,21 @@ export function useAdminScheduleState(
     setSelectedActivityTypes(new Set());
   }, []);
 
+  const toggleDailyTimes = useCallback(() => {
+    setShowDailyTimes(prev => {
+      const newValue = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('masterSchedule.showDailyTimes', String(newValue));
+      }
+      return newValue;
+    });
+  }, []);
+
   return {
     selectedTeacherIds,
     selectedGrades,
     selectedActivityTypes,
+    showDailyTimes,
     toggleTeacher,
     selectAllTeachers,
     deselectAllTeachers,
@@ -118,6 +140,7 @@ export function useAdminScheduleState(
     clearGrades,
     toggleActivityType,
     selectAllActivityTypes,
-    clearActivityTypes
+    clearActivityTypes,
+    toggleDailyTimes
   };
 }
