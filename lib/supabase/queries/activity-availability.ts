@@ -384,3 +384,31 @@ export function getDayName(dayOfWeek: number): string {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   return days[dayOfWeek - 1] || '';
 }
+
+/**
+ * Get all configured activity types for a school.
+ * Returns array of activity type names that have availability configured.
+ */
+export async function getConfiguredActivityTypes(
+  schoolId: string
+): Promise<string[]> {
+  const supabase = createClient();
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { data, error } = await supabase
+    .from('activity_type_availability')
+    .select('activity_type')
+    .eq('school_id', schoolId)
+    .order('activity_type');
+
+  if (error) {
+    console.error('Error fetching configured activity types:', error);
+    throw error;
+  }
+
+  return (data || []).map(row => row.activity_type);
+}

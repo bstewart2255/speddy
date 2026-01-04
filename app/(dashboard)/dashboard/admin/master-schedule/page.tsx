@@ -8,7 +8,7 @@ import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
-import { getActivityAvailability, DayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
+import { getActivityAvailability, getConfiguredActivityTypes, DayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -18,13 +18,18 @@ export default function MasterSchedulePage() {
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [activityAvailability, setActivityAvailability] = useState<Map<string, DayAvailability>>(new Map());
+  const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
 
-  // Fetch activity availability for the school
+  // Fetch activity availability and configured types for the school
   const fetchActivityAvailability = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const availability = await getActivityAvailability(schoolId);
+      const [availability, configuredTypes] = await Promise.all([
+        getActivityAvailability(schoolId),
+        getConfiguredActivityTypes(schoolId),
+      ]);
       setActivityAvailability(availability);
+      setConfiguredActivityTypes(configuredTypes);
     } catch (err) {
       console.error('Error fetching activity availability:', err);
     }
@@ -71,16 +76,21 @@ export default function MasterSchedulePage() {
     refreshData
   } = useAdminScheduleData(schoolId);
 
-  // Derive available activity types from the data
+  // Derive available activity types from scheduled activities AND configured types
   const availableActivityTypes = useMemo(() => {
     const types = new Set<string>();
+    // Add types from scheduled activities
     specialActivities.forEach(activity => {
       if (activity.activity_name) {
         types.add(activity.activity_name);
       }
     });
+    // Add types that have availability configured (even if not scheduled yet)
+    configuredActivityTypes.forEach(type => {
+      types.add(type);
+    });
     return Array.from(types).sort();
-  }, [specialActivities]);
+  }, [specialActivities, configuredActivityTypes]);
 
   // UI state management hook
   const {
