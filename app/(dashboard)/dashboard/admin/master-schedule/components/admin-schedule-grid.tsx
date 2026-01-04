@@ -22,6 +22,7 @@ interface AdminScheduleGridProps {
   showDailyTimes?: boolean;
   allBellSchedules?: BellScheduleWithCreator[];
   activityAvailability?: Map<string, DayAvailability>;
+  availableActivityTypes?: string[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -130,7 +131,8 @@ export function AdminScheduleGrid({
   viewFilter = 'all',
   showDailyTimes = false,
   allBellSchedules = [],
-  activityAvailability = new Map()
+  activityAvailability = new Map(),
+  availableActivityTypes = []
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -384,6 +386,7 @@ export function AdminScheduleGrid({
           onSuccess={handleModalSuccess}
           defaultTab={viewFilter === 'activities' ? 'activity' : 'bell'}
           activityAvailability={activityAvailability}
+          availableActivityTypes={availableActivityTypes}
         />
       )}
 

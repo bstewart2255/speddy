@@ -16,6 +16,7 @@ interface CreateItemModalProps {
   onSuccess: () => void;
   defaultTab?: 'bell' | 'activity' | 'dailyTime';
   activityAvailability?: Map<string, DayAvailability>;
+  availableActivityTypes?: string[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -40,7 +41,8 @@ export function CreateItemModal({
   onClose,
   onSuccess,
   defaultTab = 'bell',
-  activityAvailability = new Map()
+  activityAvailability = new Map(),
+  availableActivityTypes = []
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -65,17 +67,28 @@ export function CreateItemModal({
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [teacherName, setTeacherName] = useState('');
   const [activityName, setActivityName] = useState('');
+  const [customActivityName, setCustomActivityName] = useState('');
   const [activityStartTime, setActivityStartTime] = useState(startTime);
   const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
 
+  // Merge default types with available types (configured + scheduled)
+  const allActivityTypes = useMemo(() => {
+    const types = new Set<string>(SPECIAL_ACTIVITY_TYPES);
+    availableActivityTypes.forEach(type => types.add(type));
+    return Array.from(types).sort();
+  }, [availableActivityTypes]);
+
+  // Get the effective activity name (either selected or custom)
+  const effectiveActivityName = activityName === '__other__' ? customActivityName : activityName;
+
   // Check if selected activity is available on the selected day
   const activityAvailabilityWarning = useMemo(() => {
-    if (tab !== 'activity' || !activityName) return null;
-    if (!isActivityAvailableOnDay(activityAvailability, activityName, day)) {
-      return `${activityName} is not available on ${getDayName(day)}s`;
+    if (tab !== 'activity' || !effectiveActivityName) return null;
+    if (!isActivityAvailableOnDay(activityAvailability, effectiveActivityName, day)) {
+      return `${effectiveActivityName} is not available on ${getDayName(day)}s`;
     }
     return null;
-  }, [tab, activityName, day, activityAvailability]);
+  }, [tab, effectiveActivityName, day, activityAvailability]);
 
   // Handle start time change - auto-adjust end time to maintain 30min duration
   const handleBellStartTimeChange = (newStartTime: string) => {
@@ -220,6 +233,10 @@ export function CreateItemModal({
           setError('Please select an activity type');
           return;
         }
+        if (activityName === '__other__' && !customActivityName.trim()) {
+          setError('Please enter a custom activity name');
+          return;
+        }
         // Validate time range
         if (activityEndTime <= activityStartTime) {
           setError('End time must be after start time');
@@ -230,7 +247,7 @@ export function CreateItemModal({
         await addSpecialActivityAsAdmin({
           teacher_id: teacherId,
           teacher_name: teacherName,
-          activity_name: activityName,
+          activity_name: effectiveActivityName,
           day_of_week: day,
           start_time: activityStartTime,
           end_time: activityEndTime,
@@ -445,20 +462,39 @@ export function CreateItemModal({
                 </label>
                 <select
                   value={activityName}
-                  onChange={(e) => setActivityName(e.target.value)}
+                  onChange={(e) => {
+                    setActivityName(e.target.value);
+                    if (e.target.value !== '__other__') {
+                      setCustomActivityName('');
+                    }
+                  }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select activity...</option>
-                  {SPECIAL_ACTIVITY_TYPES.map((activity) => (
+                  {allActivityTypes.map((activity) => (
                     <option key={activity} value={activity}>
                       {activity}
                     </option>
                   ))}
+                  <option value="__other__">Other...</option>
                 </select>
+
+                {/* Custom activity name input */}
+                {activityName === '__other__' && (
+                  <input
+                    type="text"
+                    value={customActivityName}
+                    onChange={(e) => setCustomActivityName(e.target.value)}
+                    placeholder="Enter activity name"
+                    className="mt-2 w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    autoFocus
+                  />
+                )}
+
                 {/* Availability warning */}
                 {activityAvailabilityWarning && (
                   <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    ⚠️ {activityAvailabilityWarning}
+                    {activityAvailabilityWarning}
                   </div>
                 )}
               </div>

@@ -287,6 +287,7 @@ export default function MasterSchedulePage() {
               showDailyTimes={showDailyTimes}
               allBellSchedules={bellSchedules}
               activityAvailability={activityAvailability}
+              availableActivityTypes={availableActivityTypes}
             />
           </div>
 

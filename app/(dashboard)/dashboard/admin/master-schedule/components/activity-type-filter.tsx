@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ActivityContextMenu } from './activity-context-menu';
 import { AvailabilityModal } from './availability-modal';
 
@@ -40,19 +40,9 @@ export function ActivityTypeFilter({
     position: { x: number; y: number };
   } | null>(null);
   const [availabilityModal, setAvailabilityModal] = useState<string | null>(null);
-  const [showAddInput, setShowAddInput] = useState(false);
-  const [newTypeName, setNewTypeName] = useState('');
-  const addInputRef = useRef<HTMLInputElement>(null);
 
   const allSelected = selectedTypes.size === availableTypes.length && availableTypes.length > 0;
   const noneSelected = selectedTypes.size === 0;
-
-  // Focus input when add mode is activated
-  useEffect(() => {
-    if (showAddInput && addInputRef.current) {
-      addInputRef.current.focus();
-    }
-  }, [showAddInput]);
 
   const handleContextMenu = (e: React.MouseEvent, activityType: string) => {
     e.preventDefault();
@@ -78,36 +68,7 @@ export function ActivityTypeFilter({
 
   const handleAvailabilitySuccess = () => {
     setAvailabilityModal(null);
-    setShowAddInput(false);
-    setNewTypeName('');
     onAvailabilityChange?.();
-  };
-
-  const handleAddClick = () => {
-    setShowAddInput(true);
-  };
-
-  const handleAddSubmit = () => {
-    const trimmedName = newTypeName.trim();
-    if (trimmedName && !availableTypes.includes(trimmedName)) {
-      // Open availability modal for the new type
-      setAvailabilityModal(trimmedName);
-    }
-    setShowAddInput(false);
-    setNewTypeName('');
-  };
-
-  const handleAddCancel = () => {
-    setShowAddInput(false);
-    setNewTypeName('');
-  };
-
-  const handleAddKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleAddSubmit();
-    } else if (e.key === 'Escape') {
-      handleAddCancel();
-    }
   };
 
   return (
@@ -136,30 +97,6 @@ export function ActivityTypeFilter({
             </button>
           );
         })}
-
-        {/* Add new activity type */}
-        {showAddInput ? (
-          <div className="flex items-center gap-1">
-            <input
-              ref={addInputRef}
-              type="text"
-              value={newTypeName}
-              onChange={(e) => setNewTypeName(e.target.value)}
-              onKeyDown={handleAddKeyDown}
-              onBlur={handleAddCancel}
-              placeholder="Activity name"
-              className="px-2 py-0.5 text-xs border border-gray-300 rounded w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        ) : (
-          <button
-            onClick={handleAddClick}
-            className="px-2 py-0.5 text-xs font-medium rounded border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-all"
-            title="Add new activity type"
-          >
-            +
-          </button>
-        )}
       </div>
       <div className="flex items-center gap-1 ml-2 border-l border-gray-200 pl-2">
         <button
