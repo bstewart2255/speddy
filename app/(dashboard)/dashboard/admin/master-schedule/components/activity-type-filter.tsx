@@ -1,6 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import { ActivityContextMenu } from './activity-context-menu';
+import { AvailabilityModal } from './availability-modal';
 
 interface ActivityTypeFilterProps {
   selectedTypes: Set<string>;
@@ -8,6 +10,8 @@ interface ActivityTypeFilterProps {
   onToggleType: (type: string) => void;
   onClearAll: () => void;
   onSelectAll: () => void;
+  schoolId: string | null;
+  onAvailabilityChange?: () => void;
 }
 
 const ACTIVITY_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
@@ -27,10 +31,45 @@ export function ActivityTypeFilter({
   availableTypes,
   onToggleType,
   onClearAll,
-  onSelectAll
+  onSelectAll,
+  schoolId,
+  onAvailabilityChange
 }: ActivityTypeFilterProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    activityType: string;
+    position: { x: number; y: number };
+  } | null>(null);
+  const [availabilityModal, setAvailabilityModal] = useState<string | null>(null);
+
   const allSelected = selectedTypes.size === availableTypes.length;
   const noneSelected = selectedTypes.size === 0;
+
+  const handleContextMenu = (e: React.MouseEvent, activityType: string) => {
+    e.preventDefault();
+    setContextMenu({
+      activityType,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  const handleOpenAvailabilityModal = () => {
+    if (contextMenu) {
+      setAvailabilityModal(contextMenu.activityType);
+    }
+  };
+
+  const handleCloseAvailabilityModal = () => {
+    setAvailabilityModal(null);
+  };
+
+  const handleAvailabilitySuccess = () => {
+    setAvailabilityModal(null);
+    onAvailabilityChange?.();
+  };
 
   // Don't render if no activity types are available
   if (availableTypes.length === 0) {
@@ -49,6 +88,7 @@ export function ActivityTypeFilter({
             <button
               key={type}
               onClick={() => onToggleType(type)}
+              onContextMenu={(e) => handleContextMenu(e, type)}
               className={`
                 px-2 py-0.5 text-xs font-medium rounded border transition-all
                 ${isSelected
@@ -56,7 +96,7 @@ export function ActivityTypeFilter({
                   : `${colors.bg} ${colors.border} text-gray-600 opacity-60 hover:opacity-100`
                 }
               `}
-              title={`${isSelected ? 'Hide' : 'Show'} ${type}`}
+              title={`${isSelected ? 'Hide' : 'Show'} ${type} (right-click for options)`}
             >
               {type}
             </button>
@@ -87,6 +127,26 @@ export function ActivityTypeFilter({
           Clear
         </button>
       </div>
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <ActivityContextMenu
+          activityType={contextMenu.activityType}
+          position={contextMenu.position}
+          onClose={handleCloseContextMenu}
+          onConfigureAvailability={handleOpenAvailabilityModal}
+        />
+      )}
+
+      {/* Availability configuration modal */}
+      {availabilityModal && schoolId && (
+        <AvailabilityModal
+          activityType={availabilityModal}
+          schoolId={schoolId}
+          onClose={handleCloseAvailabilityModal}
+          onSuccess={handleAvailabilitySuccess}
+        />
+      )}
     </div>
   );
 }

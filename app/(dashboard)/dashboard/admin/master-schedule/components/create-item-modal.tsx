@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
+import { DayAvailability, isActivityAvailableOnDay, getDayName } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface CreateItemModalProps {
   day: number;
@@ -14,6 +15,7 @@ interface CreateItemModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultTab?: 'bell' | 'activity' | 'dailyTime';
+  activityAvailability?: Map<string, DayAvailability>;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -37,7 +39,8 @@ export function CreateItemModal({
   schoolId,
   onClose,
   onSuccess,
-  defaultTab = 'bell'
+  defaultTab = 'bell',
+  activityAvailability = new Map()
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -64,6 +67,15 @@ export function CreateItemModal({
   const [activityName, setActivityName] = useState('');
   const [activityStartTime, setActivityStartTime] = useState(startTime);
   const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
+
+  // Check if selected activity is available on the selected day
+  const activityAvailabilityWarning = useMemo(() => {
+    if (tab !== 'activity' || !activityName) return null;
+    if (!isActivityAvailableOnDay(activityAvailability, activityName, day)) {
+      return `${activityName} is not available on ${getDayName(day)}s`;
+    }
+    return null;
+  }, [tab, activityName, day, activityAvailability]);
 
   // Handle start time change - auto-adjust end time to maintain 30min duration
   const handleBellStartTimeChange = (newStartTime: string) => {
@@ -443,6 +455,12 @@ export function CreateItemModal({
                     </option>
                   ))}
                 </select>
+                {/* Availability warning */}
+                {activityAvailabilityWarning && (
+                  <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    ⚠️ {activityAvailabilityWarning}
+                  </div>
+                )}
               </div>
 
               {/* Time inputs */}
@@ -570,7 +588,11 @@ export function CreateItemModal({
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={loading}>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={loading || !!activityAvailabilityWarning}
+          >
             {loading ? 'Creating...' : 'Create'}
           </Button>
         </div>

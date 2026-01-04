@@ -8,6 +8,7 @@ import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
+import type { DayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 
 // Special period names that indicate daily time markers
 const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
@@ -20,6 +21,7 @@ interface AdminScheduleGridProps {
   viewFilter?: 'all' | 'bell' | 'activities';
   showDailyTimes?: boolean;
   allBellSchedules?: BellScheduleWithCreator[];
+  activityAvailability?: Map<string, DayAvailability>;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -127,7 +129,8 @@ export function AdminScheduleGrid({
   onRefresh,
   viewFilter = 'all',
   showDailyTimes = false,
-  allBellSchedules = []
+  allBellSchedules = [],
+  activityAvailability = new Map()
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -380,6 +383,7 @@ export function AdminScheduleGrid({
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
           defaultTab={viewFilter === 'activities' ? 'activity' : 'bell'}
+          activityAvailability={activityAvailability}
         />
       )}
 

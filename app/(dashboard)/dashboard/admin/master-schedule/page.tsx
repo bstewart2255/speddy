@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -8,6 +8,7 @@ import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
+import { getActivityAvailability, DayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -16,6 +17,25 @@ export default function MasterSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [activityAvailability, setActivityAvailability] = useState<Map<string, DayAvailability>>(new Map());
+
+  // Fetch activity availability for the school
+  const fetchActivityAvailability = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const availability = await getActivityAvailability(schoolId);
+      setActivityAvailability(availability);
+    } catch (err) {
+      console.error('Error fetching activity availability:', err);
+    }
+  }, [schoolId]);
+
+  // Fetch availability when schoolId changes
+  useEffect(() => {
+    if (schoolId) {
+      fetchActivityAvailability();
+    }
+  }, [schoolId, fetchActivityAvailability]);
 
   // Fetch site admin permissions and school ID
   useEffect(() => {
@@ -237,6 +257,8 @@ export default function MasterSchedulePage() {
                 onToggleType={toggleActivityType}
                 onClearAll={clearActivityTypes}
                 onSelectAll={selectAllActivityTypes}
+                schoolId={schoolId}
+                onAvailabilityChange={fetchActivityAvailability}
               />
             )}
           </div>
@@ -254,6 +276,7 @@ export default function MasterSchedulePage() {
               viewFilter={viewFilter}
               showDailyTimes={showDailyTimes}
               allBellSchedules={bellSchedules}
+              activityAvailability={activityAvailability}
             />
           </div>
 
