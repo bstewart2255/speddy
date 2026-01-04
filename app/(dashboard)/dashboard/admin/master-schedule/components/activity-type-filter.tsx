@@ -1,6 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { ActivityContextMenu } from './activity-context-menu';
+import { AvailabilityModal } from './availability-modal';
+import { deleteActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface ActivityTypeFilterProps {
   selectedTypes: Set<string>;
@@ -8,6 +11,9 @@ interface ActivityTypeFilterProps {
   onToggleType: (type: string) => void;
   onClearAll: () => void;
   onSelectAll: () => void;
+  schoolId: string | null;
+  onAvailabilityChange?: () => void;
+  inUseActivityTypes?: Set<string>;
 }
 
 const ACTIVITY_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
@@ -27,15 +33,76 @@ export function ActivityTypeFilter({
   availableTypes,
   onToggleType,
   onClearAll,
-  onSelectAll
+  onSelectAll,
+  schoolId,
+  onAvailabilityChange,
+  inUseActivityTypes = new Set()
 }: ActivityTypeFilterProps) {
-  const allSelected = selectedTypes.size === availableTypes.length;
+  const [contextMenu, setContextMenu] = useState<{
+    activityType: string;
+    position: { x: number; y: number };
+  } | null>(null);
+  const [availabilityModal, setAvailabilityModal] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const allSelected = selectedTypes.size === availableTypes.length && availableTypes.length > 0;
   const noneSelected = selectedTypes.size === 0;
 
-  // Don't render if no activity types are available
-  if (availableTypes.length === 0) {
-    return null;
-  }
+  // Auto-dismiss delete error after 5 seconds
+  useEffect(() => {
+    if (deleteError) {
+      const timer = setTimeout(() => setDeleteError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [deleteError]);
+
+  const handleContextMenu = (e: React.MouseEvent, activityType: string) => {
+    e.preventDefault();
+    setContextMenu({
+      activityType,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  const handleOpenAvailabilityModal = () => {
+    if (contextMenu) {
+      setAvailabilityModal(contextMenu.activityType);
+    }
+  };
+
+  const handleCloseAvailabilityModal = () => {
+    setAvailabilityModal(null);
+  };
+
+  const handleAvailabilitySuccess = () => {
+    setAvailabilityModal(null);
+    onAvailabilityChange?.();
+  };
+
+  const handleDelete = async () => {
+    if (!contextMenu || !schoolId) return;
+
+    const activityType = contextMenu.activityType;
+
+    // Double-check it's not in use
+    if (inUseActivityTypes.has(activityType)) {
+      setDeleteError(`Cannot delete "${activityType}" - it is currently in use`);
+      return;
+    }
+
+    try {
+      setDeleteError(null);
+      await deleteActivityAvailability(schoolId, activityType);
+      onAvailabilityChange?.();
+    } catch (err) {
+      console.error('Error deleting activity type:', err);
+      setDeleteError('Failed to delete activity type');
+    }
+  };
 
   return (
     <div className="flex items-center gap-2">
@@ -49,6 +116,7 @@ export function ActivityTypeFilter({
             <button
               key={type}
               onClick={() => onToggleType(type)}
+              onContextMenu={(e) => handleContextMenu(e, type)}
               className={`
                 px-2 py-0.5 text-xs font-medium rounded border transition-all
                 ${isSelected
@@ -56,7 +124,7 @@ export function ActivityTypeFilter({
                   : `${colors.bg} ${colors.border} text-gray-600 opacity-60 hover:opacity-100`
                 }
               `}
-              title={`${isSelected ? 'Hide' : 'Show'} ${type}`}
+              title={`${isSelected ? 'Hide' : 'Show'} ${type} (right-click for options)`}
             >
               {type}
             </button>
@@ -87,6 +155,45 @@ export function ActivityTypeFilter({
           Clear
         </button>
       </div>
+
+      {/* Delete error message */}
+      {deleteError && (
+        <div
+          className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded"
+          role="alert"
+        >
+          <span>{deleteError}</span>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="text-red-500 hover:text-red-700"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <ActivityContextMenu
+          activityType={contextMenu.activityType}
+          position={contextMenu.position}
+          onClose={handleCloseContextMenu}
+          onConfigureAvailability={handleOpenAvailabilityModal}
+          onDelete={handleDelete}
+          canDelete={!inUseActivityTypes.has(contextMenu.activityType)}
+        />
+      )}
+
+      {/* Availability configuration modal */}
+      {availabilityModal && schoolId && (
+        <AvailabilityModal
+          activityType={availabilityModal}
+          schoolId={schoolId}
+          onClose={handleCloseAvailabilityModal}
+          onSuccess={handleAvailabilitySuccess}
+        />
+      )}
     </div>
   );
 }

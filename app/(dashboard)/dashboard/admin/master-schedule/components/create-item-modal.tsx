@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
+import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface CreateItemModalProps {
   day: number;
@@ -14,6 +15,8 @@ interface CreateItemModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultTab?: 'bell' | 'activity' | 'dailyTime';
+  activityAvailability?: Map<string, FullDayAvailability>;
+  availableActivityTypes?: string[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -37,7 +40,9 @@ export function CreateItemModal({
   schoolId,
   onClose,
   onSuccess,
-  defaultTab = 'bell'
+  defaultTab = 'bell',
+  activityAvailability = new Map(),
+  availableActivityTypes = []
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -62,8 +67,34 @@ export function CreateItemModal({
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [teacherName, setTeacherName] = useState('');
   const [activityName, setActivityName] = useState('');
+  const [customActivityName, setCustomActivityName] = useState('');
   const [activityStartTime, setActivityStartTime] = useState(startTime);
   const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
+
+  // Merge default types with available types (configured + scheduled)
+  const allActivityTypes = useMemo(() => {
+    const types = new Set<string>(SPECIAL_ACTIVITY_TYPES);
+    availableActivityTypes.forEach(type => types.add(type));
+    return Array.from(types).sort();
+  }, [availableActivityTypes]);
+
+  // Get the effective activity name (either selected or custom)
+  const effectiveActivityName = activityName === '__other__' ? customActivityName : activityName;
+
+  // Check if selected activity is available on the selected day and time
+  const activityAvailabilityWarning = useMemo(() => {
+    if (tab !== 'activity' || !effectiveActivityName) return null;
+
+    const result = checkActivityAvailability(
+      activityAvailability,
+      effectiveActivityName,
+      day,
+      activityStartTime,
+      activityEndTime
+    );
+
+    return result.available ? null : result.reason || null;
+  }, [tab, effectiveActivityName, day, activityAvailability, activityStartTime, activityEndTime]);
 
   // Handle start time change - auto-adjust end time to maintain 30min duration
   const handleBellStartTimeChange = (newStartTime: string) => {
@@ -208,6 +239,10 @@ export function CreateItemModal({
           setError('Please select an activity type');
           return;
         }
+        if (activityName === '__other__' && !customActivityName.trim()) {
+          setError('Please enter a custom activity name');
+          return;
+        }
         // Validate time range
         if (activityEndTime <= activityStartTime) {
           setError('End time must be after start time');
@@ -218,7 +253,7 @@ export function CreateItemModal({
         await addSpecialActivityAsAdmin({
           teacher_id: teacherId,
           teacher_name: teacherName,
-          activity_name: activityName,
+          activity_name: effectiveActivityName,
           day_of_week: day,
           start_time: activityStartTime,
           end_time: activityEndTime,
@@ -433,16 +468,41 @@ export function CreateItemModal({
                 </label>
                 <select
                   value={activityName}
-                  onChange={(e) => setActivityName(e.target.value)}
+                  onChange={(e) => {
+                    setActivityName(e.target.value);
+                    if (e.target.value !== '__other__') {
+                      setCustomActivityName('');
+                    }
+                  }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select activity...</option>
-                  {SPECIAL_ACTIVITY_TYPES.map((activity) => (
+                  {allActivityTypes.map((activity) => (
                     <option key={activity} value={activity}>
                       {activity}
                     </option>
                   ))}
+                  <option value="__other__">Other...</option>
                 </select>
+
+                {/* Custom activity name input */}
+                {activityName === '__other__' && (
+                  <input
+                    type="text"
+                    value={customActivityName}
+                    onChange={(e) => setCustomActivityName(e.target.value)}
+                    placeholder="Enter activity name"
+                    className="mt-2 w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    autoFocus
+                  />
+                )}
+
+                {/* Availability warning */}
+                {activityAvailabilityWarning && (
+                  <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    {activityAvailabilityWarning}
+                  </div>
+                )}
               </div>
 
               {/* Time inputs */}
@@ -570,7 +630,11 @@ export function CreateItemModal({
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={loading}>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={loading || !!activityAvailabilityWarning}
+          >
             {loading ? 'Creating...' : 'Create'}
           </Button>
         </div>

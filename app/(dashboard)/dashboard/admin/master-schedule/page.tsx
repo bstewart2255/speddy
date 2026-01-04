@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -8,6 +8,7 @@ import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
+import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -16,6 +17,30 @@ export default function MasterSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [activityAvailability, setActivityAvailability] = useState<Map<string, FullDayAvailability>>(new Map());
+  const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
+
+  // Fetch activity availability and configured types for the school
+  const fetchActivityAvailability = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const [availability, configuredTypes] = await Promise.all([
+        getActivityAvailabilityWithTimeRanges(schoolId),
+        getConfiguredActivityTypes(schoolId),
+      ]);
+      setActivityAvailability(availability);
+      setConfiguredActivityTypes(configuredTypes);
+    } catch (err) {
+      console.error('Error fetching activity availability:', err);
+    }
+  }, [schoolId]);
+
+  // Fetch availability when schoolId changes
+  useEffect(() => {
+    if (schoolId) {
+      fetchActivityAvailability();
+    }
+  }, [schoolId, fetchActivityAvailability]);
 
   // Fetch site admin permissions and school ID
   useEffect(() => {
@@ -51,15 +76,31 @@ export default function MasterSchedulePage() {
     refreshData
   } = useAdminScheduleData(schoolId);
 
-  // Derive available activity types from the data
+  // Derive available activity types from scheduled activities AND configured types
   const availableActivityTypes = useMemo(() => {
+    const types = new Set<string>();
+    // Add types from scheduled activities
+    specialActivities.forEach(activity => {
+      if (activity.activity_name) {
+        types.add(activity.activity_name);
+      }
+    });
+    // Add types that have availability configured (even if not scheduled yet)
+    configuredActivityTypes.forEach(type => {
+      types.add(type);
+    });
+    return Array.from(types).sort();
+  }, [specialActivities, configuredActivityTypes]);
+
+  // Track which activity types are currently in use (have scheduled activities)
+  const inUseActivityTypes = useMemo(() => {
     const types = new Set<string>();
     specialActivities.forEach(activity => {
       if (activity.activity_name) {
         types.add(activity.activity_name);
       }
     });
-    return Array.from(types).sort();
+    return types;
   }, [specialActivities]);
 
   // UI state management hook
@@ -237,6 +278,9 @@ export default function MasterSchedulePage() {
                 onToggleType={toggleActivityType}
                 onClearAll={clearActivityTypes}
                 onSelectAll={selectAllActivityTypes}
+                schoolId={schoolId}
+                onAvailabilityChange={fetchActivityAvailability}
+                inUseActivityTypes={inUseActivityTypes}
               />
             )}
           </div>
@@ -254,6 +298,8 @@ export default function MasterSchedulePage() {
               viewFilter={viewFilter}
               showDailyTimes={showDailyTimes}
               allBellSchedules={bellSchedules}
+              activityAvailability={activityAvailability}
+              availableActivityTypes={availableActivityTypes}
             />
           </div>
 
