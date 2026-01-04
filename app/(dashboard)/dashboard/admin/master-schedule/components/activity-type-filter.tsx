@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ActivityContextMenu } from './activity-context-menu';
 import { AvailabilityModal } from './availability-modal';
 import { deleteActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
@@ -47,6 +47,14 @@ export function ActivityTypeFilter({
 
   const allSelected = selectedTypes.size === availableTypes.length && availableTypes.length > 0;
   const noneSelected = selectedTypes.size === 0;
+
+  // Auto-dismiss delete error after 5 seconds
+  useEffect(() => {
+    if (deleteError) {
+      const timer = setTimeout(() => setDeleteError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [deleteError]);
 
   const handleContextMenu = (e: React.MouseEvent, activityType: string) => {
     e.preventDefault();
@@ -147,6 +155,23 @@ export function ActivityTypeFilter({
           Clear
         </button>
       </div>
+
+      {/* Delete error message */}
+      {deleteError && (
+        <div
+          className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded"
+          role="alert"
+        >
+          <span>{deleteError}</span>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="text-red-500 hover:text-red-700"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Right-click context menu */}
       {contextMenu && (

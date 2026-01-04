@@ -525,9 +525,11 @@ export function checkActivityAvailability(
   // Check if there's a time range restriction
   const timeRange = getTimeRangeForDay(dayAvailability, dayOfWeek);
   if (timeRange) {
-    // Check if the scheduled time falls within the available time range
-    const startInRange = isTimeInRange(startTime, timeRange);
-    const endInRange = endTime <= timeRange.end && endTime > timeRange.start;
+    // Check if the scheduled activity falls within the available time range
+    // Start time: must be >= range start AND < range end (can't start at the boundary end)
+    // End time: must be > range start AND <= range end (can end exactly at the boundary)
+    const startInRange = startTime >= timeRange.start && startTime < timeRange.end;
+    const endInRange = endTime > timeRange.start && endTime <= timeRange.end;
 
     if (!startInRange || !endInRange) {
       const formatTime = (t: string) => {
