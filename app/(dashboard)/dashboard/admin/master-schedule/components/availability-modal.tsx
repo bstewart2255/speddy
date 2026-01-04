@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import {
-  DayAvailability,
-  getActivityTypeAvailability,
-  upsertActivityAvailability,
+  DayAvailabilityWithTimes,
+  DayConfig,
+  getActivityTypeAvailabilityWithTimes,
+  upsertActivityAvailabilityWithTimes,
 } from '../../../../../../lib/supabase/queries/activity-availability';
 
 interface AvailabilityModalProps {
@@ -15,13 +16,18 @@ interface AvailabilityModalProps {
   onSuccess: () => void;
 }
 
-const DAYS = [
-  { key: 'monday' as const, label: 'Monday' },
-  { key: 'tuesday' as const, label: 'Tuesday' },
-  { key: 'wednesday' as const, label: 'Wednesday' },
-  { key: 'thursday' as const, label: 'Thursday' },
-  { key: 'friday' as const, label: 'Friday' },
+type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
+
+const DAYS: { key: DayKey; label: string }[] = [
+  { key: 'monday', label: 'Monday' },
+  { key: 'tuesday', label: 'Tuesday' },
+  { key: 'wednesday', label: 'Wednesday' },
+  { key: 'thursday', label: 'Thursday' },
+  { key: 'friday', label: 'Friday' },
 ];
+
+const DEFAULT_START_TIME = '08:00';
+const DEFAULT_END_TIME = '12:00';
 
 export function AvailabilityModal({
   activityType,
@@ -32,12 +38,13 @@ export function AvailabilityModal({
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [availability, setAvailability] = useState<DayAvailability>({
-    monday: true,
-    tuesday: true,
-    wednesday: true,
-    thursday: true,
-    friday: true,
+  const [useTimeRanges, setUseTimeRanges] = useState(false);
+  const [availability, setAvailability] = useState<Record<DayKey, DayConfig>>({
+    monday: { available: true },
+    tuesday: { available: true },
+    wednesday: { available: true },
+    thursday: { available: true },
+    friday: { available: true },
   });
   const modalRef = useRef<HTMLDivElement>(null);
   const headingId = 'availability-modal-heading';
@@ -46,9 +53,16 @@ export function AvailabilityModal({
   useEffect(() => {
     async function fetchAvailability() {
       try {
-        const data = await getActivityTypeAvailability(schoolId, activityType);
-        setAvailability(data);
-      } catch (err: any) {
+        const data = await getActivityTypeAvailabilityWithTimes(schoolId, activityType);
+        setAvailability({
+          monday: data.monday,
+          tuesday: data.tuesday,
+          wednesday: data.wednesday,
+          thursday: data.thursday,
+          friday: data.friday,
+        });
+        setUseTimeRanges(data.useTimeRanges);
+      } catch (err: unknown) {
         console.error('Error fetching availability:', err);
         setError('Failed to load availability settings');
       } finally {
@@ -74,10 +88,45 @@ export function AvailabilityModal({
     modalRef.current?.focus();
   }, []);
 
-  const handleToggleDay = (day: keyof DayAvailability) => {
+  const handleToggleDay = (day: DayKey) => {
     setAvailability((prev) => ({
       ...prev,
-      [day]: !prev[day],
+      [day]: { ...prev[day], available: !prev[day].available },
+    }));
+  };
+
+  const handleToggleTimeRanges = () => {
+    setUseTimeRanges((prev) => {
+      const newValue = !prev;
+      // When enabling time ranges, set default times for available days
+      if (newValue) {
+        setAvailability((prevAvail) => {
+          const updated = { ...prevAvail };
+          for (const day of DAYS) {
+            if (updated[day.key].available && !updated[day.key].timeRange) {
+              updated[day.key] = {
+                ...updated[day.key],
+                timeRange: { start: DEFAULT_START_TIME, end: DEFAULT_END_TIME },
+              };
+            }
+          }
+          return updated;
+        });
+      }
+      return newValue;
+    });
+  };
+
+  const handleTimeChange = (day: DayKey, field: 'start' | 'end', value: string) => {
+    setAvailability((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        timeRange: {
+          start: field === 'start' ? value : (prev[day].timeRange?.start || DEFAULT_START_TIME),
+          end: field === 'end' ? value : (prev[day].timeRange?.end || DEFAULT_END_TIME),
+        },
+      },
     }));
   };
 
@@ -86,17 +135,22 @@ export function AvailabilityModal({
     setLoading(true);
 
     try {
-      await upsertActivityAvailability(schoolId, activityType, availability);
+      const dataToSave: DayAvailabilityWithTimes = {
+        ...availability,
+        useTimeRanges,
+      };
+      await upsertActivityAvailabilityWithTimes(schoolId, activityType, dataToSave);
       onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving availability:', err);
-      setError(err.message || 'Failed to save availability');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save availability';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const selectedCount = DAYS.filter((d) => availability[d.key]).length;
+  const selectedCount = DAYS.filter((d) => availability[d.key].available).length;
 
   return (
     <div
@@ -131,34 +185,75 @@ export function AvailabilityModal({
           {fetching ? (
             <div className="py-4 text-center text-gray-500">Loading...</div>
           ) : (
-            <div className="space-y-3">
-              {DAYS.map((day) => (
-                <label
-                  key={day.key}
-                  className="flex items-center gap-3 cursor-pointer select-none"
-                >
+            <>
+              {/* Time ranges toggle */}
+              <div className="pb-3 border-b border-gray-200">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={availability[day.key]}
-                    onChange={() => handleToggleDay(day.key)}
+                    checked={useTimeRanges}
+                    onChange={handleToggleTimeRanges}
                     className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    {day.label}
+                    Set specific hours
                   </span>
                 </label>
-              ))}
-            </div>
+                {useTimeRanges && (
+                  <p className="mt-1 text-xs text-gray-500 ml-7">
+                    For teachers who split time between schools
+                  </p>
+                )}
+              </div>
+
+              {/* Days list */}
+              <div className="space-y-3">
+                {DAYS.map((day) => (
+                  <div key={day.key} className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={availability[day.key].available}
+                        onChange={() => handleToggleDay(day.key)}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        {day.label}
+                      </span>
+                    </label>
+
+                    {/* Time inputs when toggle is on and day is available */}
+                    {useTimeRanges && availability[day.key].available && (
+                      <div className="ml-7 flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={availability[day.key].timeRange?.start || DEFAULT_START_TIME}
+                          onChange={(e) => handleTimeChange(day.key, 'start', e.target.value)}
+                          className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-blue-500 focus:ring-1 focus:border-blue-500"
+                        />
+                        <span className="text-xs text-gray-500">to</span>
+                        <input
+                          type="time"
+                          value={availability[day.key].timeRange?.end || DEFAULT_END_TIME}
+                          onChange={(e) => handleTimeChange(day.key, 'end', e.target.value)}
+                          className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-blue-500 focus:ring-1 focus:border-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {/* Summary */}
           {!fetching && (
             <div className="pt-2 text-xs text-gray-500">
               {selectedCount === 5
-                ? 'Available all days'
+                ? useTimeRanges ? 'Available all days (with hours)' : 'Available all days'
                 : selectedCount === 0
                 ? 'Not available any day'
-                : `Available ${selectedCount} day${selectedCount !== 1 ? 's' : ''}`}
+                : `Available ${selectedCount} day${selectedCount !== 1 ? 's' : ''}${useTimeRanges ? ' (with hours)' : ''}`}
             </div>
           )}
         </div>
