@@ -151,7 +151,7 @@ export function RotationGroupModal({
     }
   }, [existingPair]);
 
-  // Generate week assignments when dates change
+  // Generate week assignments when dates change (not when activities change to preserve user edits)
   useEffect(() => {
     if (schoolYearStart && schoolYearEnd) {
       const weeks = generateWeekDates(schoolYearStart, schoolYearEnd);
@@ -172,7 +172,8 @@ export function RotationGroupModal({
         });
       });
     }
-  }, [schoolYearStart, schoolYearEnd, activityA, activityB]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolYearStart, schoolYearEnd]);
 
   // Handle Escape key
   useEffect(() => {
@@ -189,6 +190,49 @@ export function RotationGroupModal({
   useEffect(() => {
     modalRef.current?.focus();
   }, []);
+
+  // Initialize missing assignments when entering Step 3
+  // This ensures validation passes even if user accepts default values without interaction
+  useEffect(() => {
+    if (step === 3) {
+      setGroupA(prev => {
+        const missingTeachers = prev.teacherIds.filter(
+          id => !prev.assignments.some(a => a.teacherId === id)
+        );
+        if (missingTeachers.length === 0) return prev;
+        return {
+          ...prev,
+          assignments: [
+            ...prev.assignments,
+            ...missingTeachers.map(teacherId => ({
+              teacherId,
+              dayOfWeek: 1,
+              startTime: '09:00',
+              endTime: '10:00',
+            })),
+          ],
+        };
+      });
+      setGroupB(prev => {
+        const missingTeachers = prev.teacherIds.filter(
+          id => !prev.assignments.some(a => a.teacherId === id)
+        );
+        if (missingTeachers.length === 0) return prev;
+        return {
+          ...prev,
+          assignments: [
+            ...prev.assignments,
+            ...missingTeachers.map(teacherId => ({
+              teacherId,
+              dayOfWeek: 1,
+              startTime: '09:00',
+              endTime: '10:00',
+            })),
+          ],
+        };
+      });
+    }
+  }, [step]);
 
   // Available activity types (excluding already selected)
   const availableActivitiesA = SPECIAL_ACTIVITY_TYPES.filter(
