@@ -3,12 +3,17 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Card, CardBody } from '../../../../../components/ui/card';
 import { ScheduleItem } from './schedule-item';
+import { RotationScheduleItem } from './rotation-schedule-item';
+import { RotationContextMenu } from './rotation-context-menu';
+import { RotationQuickEditModal } from './rotation-quick-edit-modal';
 import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
+import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
 import type { SpecialActivity } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
+import type { RotationPairWithGroups, RotationGroupMemberWithTeacher } from '../../../../../../lib/supabase/queries/rotation-groups';
 
 // Special period names that indicate daily time markers
 const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
@@ -16,6 +21,7 @@ const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal']
 interface AdminScheduleGridProps {
   bellSchedules: BellScheduleWithCreator[];
   specialActivities: SpecialActivity[];
+  allSpecialActivities?: SpecialActivity[]; // All activities for conflict detection
   schoolId: string | null;
   onRefresh: () => Promise<void>;
   viewFilter?: 'all' | 'bell' | 'activities';
@@ -23,6 +29,21 @@ interface AdminScheduleGridProps {
   allBellSchedules?: BellScheduleWithCreator[];
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
+  rotationPairs?: RotationPairWithGroups[];
+  onEditRotationPair?: (pair: RotationPairWithGroups) => void;
+}
+
+// Flattened rotation item for grid rendering
+interface RotationGridItem {
+  id: string;
+  memberId: string;
+  pair: RotationPairWithGroups;
+  member: RotationGroupMemberWithTeacher;
+  teacherId: string;
+  teacherName: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -126,13 +147,16 @@ function calculateOverlaps<T extends { start_time: string | null; end_time: stri
 export function AdminScheduleGrid({
   bellSchedules,
   specialActivities,
+  allSpecialActivities = [],
   schoolId,
   onRefresh,
   viewFilter = 'all',
   showDailyTimes = false,
   allBellSchedules = [],
   activityAvailability = new Map(),
-  availableActivityTypes = []
+  availableActivityTypes = [],
+  rotationPairs = [],
+  onEditRotationPair,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -143,6 +167,15 @@ export function AdminScheduleGrid({
     type: 'bell' | 'activity';
     item: BellScheduleWithCreator | SpecialActivity;
   } | null>(null);
+
+  // Context menu state for rotation items
+  const [rotationContextMenu, setRotationContextMenu] = useState<{
+    rotation: RotationGridItem;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Quick edit modal state for individual rotation schedules
+  const [quickEditModal, setQuickEditModal] = useState<RotationGridItem | null>(null);
 
   // Extract daily time markers from bell schedules (School Start, Dismissal, etc.)
   const dailyTimeMarkers = useMemo(() => {
@@ -165,6 +198,35 @@ export function AdminScheduleGrid({
 
     return markers;
   }, [allBellSchedules, showDailyTimes]);
+
+  // Flatten rotation pairs into grid items
+  const rotationGridItems = useMemo((): RotationGridItem[] => {
+    const items: RotationGridItem[] = [];
+
+    for (const pair of rotationPairs) {
+      for (const group of pair.groups) {
+        for (const member of group.members) {
+          const teacherName = member.teacher
+            ? `${member.teacher.first_name || ''} ${member.teacher.last_name || ''}`.trim() || 'Unknown'
+            : 'Unknown';
+
+          items.push({
+            id: member.id,
+            memberId: member.id,
+            pair,
+            member,
+            teacherId: member.teacher_id,
+            teacherName,
+            dayOfWeek: member.day_of_week,
+            startTime: member.start_time.substring(0, 5), // Normalize to HH:MM
+            endTime: member.end_time.substring(0, 5),
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [rotationPairs]);
 
   // Generate time markers (every 30 minutes)
   const timeMarkers = useMemo(() => {
@@ -225,6 +287,71 @@ export function AdminScheduleGrid({
     await onRefresh();
   }, [handleModalClose, onRefresh]);
 
+  // Handle rotation item click - show context menu
+  const handleRotationClick = useCallback((rotation: RotationGridItem, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setRotationContextMenu({
+      rotation,
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }, []);
+
+  // Close rotation context menu
+  const handleRotationContextMenuClose = useCallback(() => {
+    setRotationContextMenu(null);
+  }, []);
+
+  // Handle edit schedule (quick edit modal)
+  const handleEditRotationSchedule = useCallback(() => {
+    if (rotationContextMenu) {
+      setQuickEditModal(rotationContextMenu.rotation);
+      setRotationContextMenu(null);
+    }
+  }, [rotationContextMenu]);
+
+  // Handle edit rotation group (full modal)
+  const handleEditRotationGroup = useCallback(() => {
+    if (rotationContextMenu && onEditRotationPair) {
+      onEditRotationPair(rotationContextMenu.rotation.pair);
+      setRotationContextMenu(null);
+    }
+  }, [rotationContextMenu, onEditRotationPair]);
+
+  // Handle remove from rotation
+  const handleRemoveFromRotation = useCallback(async () => {
+    if (!rotationContextMenu) return;
+
+    const confirmed = window.confirm(
+      `Remove ${rotationContextMenu.rotation.teacherName} from this rotation group?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await removeRotationGroupMember(rotationContextMenu.rotation.memberId);
+      setRotationContextMenu(null);
+      await onRefresh();
+    } catch (err) {
+      console.error('Error removing rotation member:', err);
+      alert('Failed to remove from rotation. Please try again.');
+    }
+  }, [rotationContextMenu, onRefresh]);
+
+  // Handle quick edit modal close
+  const handleQuickEditClose = useCallback(() => {
+    setQuickEditModal(null);
+  }, []);
+
+  // Handle quick edit success
+  const handleQuickEditSuccess = useCallback(async () => {
+    setQuickEditModal(null);
+    await onRefresh();
+  }, [onRefresh]);
+
+  // Get teacher's activities for conflict detection
+  const getTeacherActivities = useCallback((teacherId: string): SpecialActivity[] => {
+    return allSpecialActivities.filter(a => a.teacher_id === teacherId);
+  }, [allSpecialActivities]);
+
   // Get color for a bell schedule based on its first grade
   const getBellScheduleColor = (gradeLevel: string | null): string => {
     if (!gradeLevel) return 'bg-gray-200 border-gray-400';
@@ -267,10 +394,27 @@ export function AdminScheduleGrid({
               (!s.period_name || !DAILY_TIME_PERIOD_NAMES.includes(s.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]))
             );
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
+            const dayRotations = rotationGridItems.filter(r => r.dayOfWeek === dayNumber);
 
             // Calculate overlaps for this day
             const bellOverlaps = calculateOverlaps(dayBellSchedules);
-            const activityOverlaps = calculateOverlaps(dayActivities);
+
+            // Combine activities and rotations for overlap calculation
+            const allActivityItems = [
+              ...dayActivities.map(a => ({
+                id: a.id,
+                start_time: a.start_time,
+                end_time: a.end_time,
+                type: 'activity' as const,
+              })),
+              ...dayRotations.map(r => ({
+                id: r.id,
+                start_time: r.startTime,
+                end_time: r.endTime,
+                type: 'rotation' as const,
+              })),
+            ];
+            const combinedOverlaps = calculateOverlaps(allActivityItems);
 
             return (
               <div key={day} className="flex-1 border-r border-gray-200 last:border-r-0">
@@ -352,7 +496,7 @@ export function AdminScheduleGrid({
                     if (!activity.start_time || !activity.end_time) return null;
                     const top = timeToPixels(activity.start_time);
                     const height = calculateHeight(activity.start_time, activity.end_time);
-                    const overlap = activityOverlaps.get(activity.id);
+                    const overlap = combinedOverlaps.get(activity.id);
 
                     return (
                       <ScheduleItem
@@ -364,6 +508,27 @@ export function AdminScheduleGrid({
                         height={height}
                         colorClass={getActivityColor(activity.activity_name)}
                         onClick={() => handleItemClick('activity', activity)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
+                      />
+                    );
+                  })}
+
+                  {/* Rotation group items */}
+                  {dayRotations.map((rotation) => {
+                    const top = timeToPixels(rotation.startTime);
+                    const height = calculateHeight(rotation.startTime, rotation.endTime);
+                    const overlap = combinedOverlaps.get(rotation.id);
+
+                    return (
+                      <RotationScheduleItem
+                        key={rotation.id}
+                        activityA={rotation.pair.activity_type_a}
+                        activityB={rotation.pair.activity_type_b}
+                        teacherName={rotation.teacherName}
+                        top={top}
+                        height={height}
+                        onClick={(e) => handleRotationClick(rotation, e)}
                         overlapIndex={overlap?.index}
                         overlapTotal={overlap?.total}
                       />
@@ -398,6 +563,32 @@ export function AdminScheduleGrid({
           schoolId={schoolId}
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
+        />
+      )}
+
+      {/* Rotation Context Menu */}
+      {rotationContextMenu && (
+        <RotationContextMenu
+          teacherName={rotationContextMenu.rotation.teacherName}
+          activityA={rotationContextMenu.rotation.pair.activity_type_a}
+          activityB={rotationContextMenu.rotation.pair.activity_type_b}
+          position={rotationContextMenu.position}
+          onClose={handleRotationContextMenuClose}
+          onEditSchedule={handleEditRotationSchedule}
+          onEditGroup={handleEditRotationGroup}
+          onRemoveFromRotation={handleRemoveFromRotation}
+        />
+      )}
+
+      {/* Quick Edit Modal for individual rotation schedules */}
+      {quickEditModal && (
+        <RotationQuickEditModal
+          member={quickEditModal.member}
+          activityA={quickEditModal.pair.activity_type_a}
+          activityB={quickEditModal.pair.activity_type_b}
+          teacherActivities={getTeacherActivities(quickEditModal.teacherId)}
+          onClose={handleQuickEditClose}
+          onSuccess={handleQuickEditSuccess}
         />
       )}
     </Card>
