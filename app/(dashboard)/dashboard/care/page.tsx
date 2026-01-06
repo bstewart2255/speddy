@@ -11,7 +11,7 @@ import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/q
 import { createClient } from '@/lib/supabase/client';
 import type { CareStatus } from '@/lib/constants/care';
 
-type TabType = 'pending' | 'active' | 'closed';
+type TabType = 'pending' | 'active' | 'initial' | 'closed';
 
 export default function CareDashboardPage() {
   const router = useRouter();
@@ -181,6 +181,7 @@ export default function CareDashboardPage() {
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'pending', label: 'Pending', count: referrals.pending.length },
     { key: 'active', label: 'Active', count: referrals.active.length },
+    { key: 'initial', label: 'Initial', count: referrals.initial.length },
     { key: 'closed', label: 'Closed', count: referrals.closed.length },
   ];
 
@@ -288,6 +289,10 @@ export default function CareDashboardPage() {
               ? isTeacher
                 ? 'No active cases for your students.'
                 : 'No active cases.'
+              : activeTab === 'initial'
+              ? isTeacher
+                ? 'No cases in initial stage for your students.'
+                : 'No cases in initial stage.'
               : isTeacher
               ? 'No closed cases for your students.'
               : 'No closed cases.'

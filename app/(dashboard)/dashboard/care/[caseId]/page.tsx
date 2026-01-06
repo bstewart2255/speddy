@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { getCaseWithDetails, updateCase, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
+import { getCaseWithDetails, updateCase, moveToInitialStage, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
 import { addNote, deleteNote } from '@/lib/supabase/queries/care-meeting-notes';
 import {
   addActionItem,
@@ -13,12 +13,15 @@ import {
 } from '@/lib/supabase/queries/care-action-items';
 import { CaseDetailHeader } from '@/app/components/care/case-detail-header';
 import { DispositionSelector } from '@/app/components/care/disposition-selector';
+import { StatusHistoryLog } from '@/app/components/care/status-history-log';
+import { MoveToInitialsModal } from '@/app/components/care/move-to-initials-modal';
 import { CaseNotesSection } from '@/app/components/care/case-notes-section';
 import { CaseActionsSection } from '@/app/components/care/case-actions-section';
 import type { CareDisposition } from '@/lib/constants/care';
 
 export default function CaseDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const caseId = params.caseId as string;
 
   const [caseData, setCaseData] = useState<CareCaseWithDetails | null>(null);
@@ -27,6 +30,8 @@ export default function CaseDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
   const [isTeacher, setIsTeacher] = useState(false);
+  const [showMoveToInitialsModal, setShowMoveToInitialsModal] = useState(false);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   const fetchCase = useCallback(async () => {
     if (!caseId) return;
@@ -94,14 +99,32 @@ export default function CaseDetailPage() {
       try {
         await updateCase(caseId, { current_disposition: disposition });
         await fetchCase();
+        // Refresh status history after successful change
+        setHistoryRefresh(prev => prev + 1);
       } catch (err) {
         console.error('Error updating disposition:', err);
-        setActionError(err instanceof Error ? err.message : 'Failed to update disposition');
+        setActionError(err instanceof Error ? err.message : 'Failed to update status');
         throw err; // Re-throw so component knows it failed
       }
     },
     [caseId, fetchCase]
   );
+
+  const handleMoveToInitials = useCallback(async () => {
+    if (!caseId) return;
+    setActionError(null);
+
+    try {
+      await moveToInitialStage(caseId);
+      setShowMoveToInitialsModal(false);
+      // Navigate back to dashboard after moving to initials
+      router.push('/dashboard/care');
+    } catch (err) {
+      console.error('Error moving to initials:', err);
+      setActionError(err instanceof Error ? err.message : 'Failed to move to initial stage');
+      throw err;
+    }
+  }, [caseId, router]);
 
   const handleAddNote = useCallback(
     async (noteText: string) => {
@@ -218,14 +241,25 @@ export default function CaseDetailPage() {
       {/* Header with student info */}
       <CaseDetailHeader caseData={caseData} />
 
-      {/* Disposition selector - read-only for teachers */}
+      {/* Status selector with history - read-only for teachers */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <DispositionSelector
           value={caseData.current_disposition}
           onChange={handleDispositionChange}
+          onMoveToInitials={() => setShowMoveToInitialsModal(true)}
+          showMoveToInitials={caseData.care_referrals.status === 'active'}
           disabled={isTeacher}
         />
+        <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
       </div>
+
+      {/* Move to Initials confirmation modal */}
+      <MoveToInitialsModal
+        isOpen={showMoveToInitialsModal}
+        onClose={() => setShowMoveToInitialsModal(false)}
+        onConfirm={handleMoveToInitials}
+        studentName={caseData.care_referrals.student_name}
+      />
 
       {/* Notes section - teachers can add and view */}
       <CaseNotesSection

@@ -63,6 +63,18 @@ export interface CareActionItem {
   } | null;
 }
 
+export interface StatusHistoryEntry {
+  id: string;
+  case_id: string;
+  status: string;
+  changed_by: string;
+  created_at: string;
+  changed_by_user?: {
+    id: string;
+    full_name: string | null;
+  };
+}
+
 /**
  * Get a case by ID with all related data
  */
@@ -171,6 +183,7 @@ export async function getCaseByReferralId(referralId: string): Promise<CareCaseW
 
 /**
  * Update a case (disposition, assignment, follow-up date)
+ * Automatically logs status changes to history
  */
 export async function updateCase(
   caseId: string,
@@ -188,7 +201,7 @@ export async function updateCase(
     throw new Error('User not authenticated');
   }
 
-  const { data: updatedCase, error } = await supabase
+  const { error } = await supabase
     .from('care_cases')
     .update({
       ...updates,
@@ -206,20 +219,9 @@ export async function updateCase(
     throw error;
   }
 
-  // If disposition is closed_resolved, also close the referral
-  if (updates.current_disposition === 'closed_resolved' && updatedCase?.referral_id) {
-    const { error: referralError } = await supabase
-      .from('care_referrals')
-      .update({
-        status: 'closed',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', updatedCase.referral_id);
-
-    if (referralError) {
-      console.error('Error closing referral:', referralError);
-      throw new Error('Case updated but failed to close referral');
-    }
+  // Log status change to history if disposition was updated (and not null/cleared)
+  if (updates.current_disposition && updates.current_disposition !== 'move_to_initials') {
+    await addStatusHistory(caseId, updates.current_disposition, user.id);
   }
 }
 
@@ -288,4 +290,114 @@ export async function createCase(referralId: string): Promise<string> {
   }
 
   return data.id;
+}
+
+/**
+ * Add a status history entry
+ */
+export async function addStatusHistory(
+  caseId: string,
+  status: string,
+  userId: string
+): Promise<void> {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from('care_case_status_history')
+    .insert({
+      case_id: caseId,
+      status,
+      changed_by: userId,
+    });
+
+  if (error) {
+    console.error('Error adding status history:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get status history for a case
+ */
+export async function getStatusHistory(caseId: string): Promise<StatusHistoryEntry[]> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { data, error } = await supabase
+    .from('care_case_status_history')
+    .select(`
+      *,
+      changed_by_user:profiles!changed_by(id, full_name)
+    `)
+    .eq('case_id', caseId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching status history:', error);
+    throw error;
+  }
+
+  return data as StatusHistoryEntry[];
+}
+
+/**
+ * Move a case from 'active' to 'initial' stage
+ * Clears the current_disposition and updates referral status
+ */
+export async function moveToInitialStage(caseId: string): Promise<void> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // 1. Get the case to find the referral_id
+  const { data: caseData, error: caseError } = await supabase
+    .from('care_cases')
+    .select('referral_id')
+    .eq('id', caseId)
+    .single();
+
+  if (caseError) {
+    console.error('Error fetching case:', caseError);
+    throw caseError;
+  }
+
+  // 2. Update referral status to 'initial'
+  const { error: referralError } = await supabase
+    .from('care_referrals')
+    .update({
+      status: 'initial',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', caseData.referral_id);
+
+  if (referralError) {
+    console.error('Error updating referral status:', referralError);
+    throw referralError;
+  }
+
+  // 3. Clear the disposition on the case
+  const { error: updateError } = await supabase
+    .from('care_cases')
+    .update({
+      current_disposition: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', caseId);
+
+  if (updateError) {
+    console.error('Error clearing case disposition:', updateError);
+    throw updateError;
+  }
+
+  // 4. Log the stage transition to history
+  await addStatusHistory(caseId, 'Moved to Initial', user.id);
 }
