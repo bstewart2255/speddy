@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS public.sign_in_logs (
   provider TEXT DEFAULT 'email',
   ip_address TEXT,
   user_agent TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT sign_in_logs_unique_user_timestamp UNIQUE (user_id, created_at)
 );
 
 -- Create index for fast queries
@@ -54,9 +55,15 @@ BEGIN
       AND s.created_at <= NEW.created_at + INTERVAL '5 seconds'
     LIMIT 1;
 
-    -- Insert into our permanent log
-    INSERT INTO public.sign_in_logs (user_id, email, full_name, role, provider, ip_address, user_agent, created_at)
-    VALUES (v_user_id, v_email, v_full_name, v_role, v_provider, v_ip, v_user_agent, NEW.created_at);
+    -- Insert into our permanent log; errors here should not break authentication
+    BEGIN
+      INSERT INTO public.sign_in_logs (user_id, email, full_name, role, provider, ip_address, user_agent, created_at)
+      VALUES (v_user_id, v_email, v_full_name, v_role, v_provider, v_ip, v_user_agent, NEW.created_at)
+      ON CONFLICT (user_id, created_at) DO NOTHING;
+    EXCEPTION
+      WHEN others THEN
+        RAISE LOG 'capture_sign_in_log: failed to insert for user % (email %): %', v_user_id, v_email, SQLERRM;
+    END;
   END IF;
 
   RETURN NEW;
@@ -90,7 +97,7 @@ LEFT JOIN auth.sessions s ON s.user_id = (a.payload->>'actor_id')::UUID
   AND s.created_at <= a.created_at + INTERVAL '5 seconds'
 WHERE a.payload->>'action' = 'login'
 ORDER BY a.id, s.created_at DESC NULLS LAST
-ON CONFLICT DO NOTHING;
+ON CONFLICT (user_id, created_at) DO NOTHING;
 
 -- 5. Update get_sign_in_logs to use our new table
 DROP FUNCTION IF EXISTS public.get_sign_in_logs(integer, integer);
@@ -132,7 +139,7 @@ BEGIN
 END;
 $$;
 
--- 6. Enable RLS on sign_in_logs (only service role and speddy admins can read)
+-- 6. Enable RLS on sign_in_logs (service_role only; API route enforces speddy admin check)
 ALTER TABLE public.sign_in_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Service role can access sign_in_logs"

@@ -84,7 +84,7 @@ export function SignInLog() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [limit]);
 
   useEffect(() => {
     fetchLogs();
@@ -127,6 +127,7 @@ export function SignInLog() {
           disabled={loading}
           className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
           title="Refresh"
+          aria-label="Refresh sign-in logs"
         >
           <svg
             className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}
