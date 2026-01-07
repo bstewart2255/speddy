@@ -120,10 +120,10 @@ export function SstScheduleSection({
         </div>
       )}
 
-      {/* Form fields */}
-      <div className="space-y-4">
+      {/* Form fields - side by side layout */}
+      <div className="flex flex-wrap gap-4 items-start">
         {/* Scheduled Date */}
-        <div>
+        <div className="flex-shrink-0">
           <label htmlFor="sst-date" className="block text-sm font-medium text-gray-700 mb-1">
             Scheduled Date
           </label>
@@ -133,31 +133,31 @@ export function SstScheduleSection({
             value={scheduledDate}
             onChange={(e) => setScheduledDate(e.target.value)}
             disabled={disabled || saving}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
           />
         </div>
 
         {/* SST Notes Link */}
-        <div>
+        <div className="flex-1 min-w-[200px]">
           <label htmlFor="sst-link" className="block text-sm font-medium text-gray-700 mb-1">
             SST Notes Link
           </label>
           {/* Show clickable link if saved, otherwise show input */}
           {initialLink && !hasChanges ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 py-2">
               <a
                 href={initialLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
               >
-                <ExternalLink className="h-4 w-4" />
+                <ExternalLink className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate max-w-xs">{initialLink}</span>
               </a>
               {!disabled && (
                 <button
                   onClick={() => handleLinkChange('')}
-                  className="text-xs text-gray-500 hover:text-gray-700"
+                  className="text-xs text-gray-500 hover:text-gray-700 flex-shrink-0"
                 >
                   Edit
                 </button>
