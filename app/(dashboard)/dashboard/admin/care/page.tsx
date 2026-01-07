@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 import { getDistrictCareReferrals, type DistrictCareReferral } from '@/lib/supabase/queries/care-referrals';
@@ -15,8 +14,7 @@ interface School {
 }
 
 export default function DistrictCarePage() {
-  const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [referrals, setReferrals] = useState<DistrictCareReferral[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
