@@ -109,7 +109,7 @@ export default function Navbar() {
       ];
 
     } else if (role === 'resource') {
-      // Resource Specialists see everything including team management
+      // Resource Specialists see everything including team management and CARE
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
@@ -124,6 +124,7 @@ export default function Navbar() {
         },
         { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Tools', href: '/dashboard/tools' },
+        { name: 'CARE', href: '/dashboard/care' },
       ];
     } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
       // Speech, OT, Counseling, Psychologist providers see standard navigation WITHOUT Tools

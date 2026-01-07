@@ -8,6 +8,8 @@ export const CARE_CATEGORIES = [
   { value: 'behavioral', label: 'Behavioral' },
   { value: 'attendance', label: 'Attendance' },
   { value: 'social-emotional', label: 'Social-Emotional' },
+  { value: 'speech', label: 'Speech' },
+  { value: 'ot', label: 'OT' },
   { value: 'other', label: 'Other' },
 ] as const;
 
@@ -51,6 +53,8 @@ export const CARE_CATEGORY_COLORS: Record<CareCategory, string> = {
   behavioral: 'bg-red-100 text-red-800',
   attendance: 'bg-yellow-100 text-yellow-800',
   'social-emotional': 'bg-green-100 text-green-800',
+  speech: 'bg-teal-100 text-teal-800',
+  ot: 'bg-orange-100 text-orange-800',
   other: 'bg-gray-100 text-gray-600',
 };
 
