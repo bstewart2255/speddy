@@ -12,6 +12,9 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,6 +72,76 @@ export default function LoginForm() {
     }
   };
 
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotEmail) {
+      setForgotSubmitted(true);
+    }
+  };
+
+  const handleBackToLogin = () => {
+    setShowForgotPassword(false);
+    setForgotEmail('');
+    setForgotSubmitted(false);
+  };
+
+  // Forgot password view
+  if (showForgotPassword) {
+    return (
+      <div className="space-y-6">
+        {forgotSubmitted ? (
+          // Success message after submitting email
+          <div className="text-center space-y-4">
+            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-4 rounded-lg">
+              <p className="font-medium">Contact Your Site Admin</p>
+              <p className="mt-2 text-sm">
+                Reach out to your site admin for your temporary password. Once you receive it, return here to log in.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleBackToLogin}
+              className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            >
+              ← Back to login
+            </button>
+          </div>
+        ) : (
+          // Email input form
+          <form onSubmit={handleForgotPassword} className="space-y-6">
+            <div>
+              <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <input
+                id="forgot-email"
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                required
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your email"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Continue
+            </button>
+            <button
+              type="button"
+              onClick={handleBackToLogin}
+              className="w-full text-sm font-medium text-gray-600 hover:text-gray-500"
+            >
+              ← Back to login
+            </button>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -99,9 +172,18 @@ export default function LoginForm() {
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-          Password
-        </label>
+        <div className="flex items-center justify-between">
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowForgotPassword(true)}
+            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+          >
+            Forgot password?
+          </button>
+        </div>
         <PasswordInput
           id="password"
           name="password"
