@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import type { CareCategory, CareStatus } from '@/lib/constants/care';
+import type { CareCategory, CareStatus, CareDisposition } from '@/lib/constants/care';
 
 export interface CareReferral {
   id: string;
@@ -319,4 +319,118 @@ export async function getReferralById(referralId: string): Promise<CareReferral 
   }
 
   return data as CareReferral;
+}
+
+/**
+ * District CARE referral with school name for district admin view
+ */
+export interface DistrictCareReferral {
+  id: string;
+  student_name: string;
+  grade: string;
+  status: CareStatus;
+  category: CareCategory | null;
+  submitted_at: string;
+  school_id: string | null;
+  school_name: string | null;
+  // Case data (if exists)
+  case_id: string | null;
+  current_disposition: CareDisposition | null;
+}
+
+/**
+ * Get all CARE referrals across a district for district admin view
+ * Requires district admin RLS policy to be in place
+ */
+export async function getDistrictCareReferrals(
+  districtId: string,
+  filters?: {
+    schoolId?: string;
+    status?: CareStatus;
+  }
+): Promise<DistrictCareReferral[]> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // First get schools in this district to filter by
+  const { data: districtSchools, error: schoolsError } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('district_id', districtId);
+
+  if (schoolsError) {
+    console.error('Error fetching district schools:', schoolsError);
+    throw schoolsError;
+  }
+
+  const schoolIds = districtSchools?.map(s => s.id) || [];
+
+  if (schoolIds.length === 0) {
+    return [];
+  }
+
+  // Build query for referrals
+  let query = supabase
+    .from('care_referrals')
+    .select(`
+      id,
+      student_name,
+      grade,
+      status,
+      category,
+      submitted_at,
+      school_id,
+      schools!school_id(name),
+      care_cases(id, current_disposition)
+    `)
+    .in('school_id', schoolIds)
+    .is('deleted_at', null);
+
+  // Apply filters
+  if (filters?.schoolId) {
+    query = query.eq('school_id', filters.schoolId);
+  }
+  if (filters?.status) {
+    query = query.eq('status', filters.status);
+  }
+
+  const { data, error } = await query.order('submitted_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching district CARE referrals:', error);
+    throw error;
+  }
+
+  // Transform the data to flatten the structure
+  return (data || []).map((referral) => {
+    // Handle schools join (can be object or array)
+    const schoolData = referral.schools as { name: string } | { name: string }[] | null;
+    const schoolName = schoolData
+      ? (Array.isArray(schoolData) ? schoolData[0]?.name : schoolData.name)
+      : null;
+
+    // Handle care_cases join (can be object or array, or null)
+    const caseData = referral.care_cases as { id: string; current_disposition: string | null } | { id: string; current_disposition: string | null }[] | null;
+    const caseInfo = caseData
+      ? (Array.isArray(caseData) ? caseData[0] : caseData)
+      : null;
+
+    return {
+      id: referral.id,
+      student_name: referral.student_name,
+      grade: referral.grade,
+      status: referral.status as CareStatus,
+      category: referral.category as CareCategory | null,
+      submitted_at: referral.submitted_at,
+      school_id: referral.school_id,
+      school_name: schoolName,
+      case_id: caseInfo?.id || null,
+      current_disposition: caseInfo?.current_disposition as CareDisposition | null,
+    };
+  });
 }

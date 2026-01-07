@@ -8,6 +8,7 @@ interface CaseNotesSectionProps {
   onAddNote: (noteText: string) => Promise<void>;
   onDeleteNote?: (noteId: string) => Promise<void>;
   currentUserId?: string;
+  readOnly?: boolean;
 }
 
 export function CaseNotesSection({
@@ -15,6 +16,7 @@ export function CaseNotesSection({
   onAddNote,
   onDeleteNote,
   currentUserId,
+  readOnly = false,
 }: CaseNotesSectionProps) {
   const [newNote, setNewNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,27 +53,29 @@ export function CaseNotesSection({
     <div className="bg-white border border-gray-200 rounded-lg p-4">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
 
-      {/* Add note form */}
-      <form onSubmit={handleSubmit} className="mb-4">
-        <textarea
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Add a note..."
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-          disabled={loading}
-        />
-        {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-        <div className="mt-2 flex justify-end">
-          <button
-            type="submit"
-            disabled={loading || !newNote.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Adding...' : 'Add Note'}
-          </button>
-        </div>
-      </form>
+      {/* Add note form - hidden in read-only mode */}
+      {!readOnly && (
+        <form onSubmit={handleSubmit} className="mb-4">
+          <textarea
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            placeholder="Add a note..."
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            disabled={loading}
+          />
+          {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+          <div className="mt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={loading || !newNote.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Adding...' : 'Add Note'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Notes list */}
       {notes.length === 0 ? (
@@ -85,7 +89,7 @@ export function CaseNotesSection({
                 <span>
                   {note.created_by_user?.full_name || 'Unknown'} - {formatDate(note.created_at)}
                 </span>
-                {onDeleteNote && currentUserId === note.created_by && (
+                {!readOnly && onDeleteNote && currentUserId === note.created_by && (
                   <button
                     onClick={() => onDeleteNote(note.id)}
                     className="text-red-600 hover:text-red-800"

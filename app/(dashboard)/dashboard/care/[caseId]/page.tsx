@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getCaseWithDetails, updateCase, moveToInitialStage, closeCase, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
+import { getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 import { addNote, deleteNote } from '@/lib/supabase/queries/care-meeting-notes';
 import {
   addActionItem,
@@ -32,6 +34,7 @@ export default function CaseDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
   const [isTeacher, setIsTeacher] = useState(false);
+  const [isDistrictAdmin, setIsDistrictAdmin] = useState(false);
   const [showMoveToInitialsModal, setShowMoveToInitialsModal] = useState(false);
   const [showCloseCaseModal, setShowCloseCaseModal] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
@@ -60,7 +63,7 @@ export default function CaseDetailPage() {
   useEffect(() => {
     fetchCase();
 
-    // Get current user ID and role
+    // Get current user ID, role, and admin permissions
     async function fetchUserData() {
       try {
         const supabase = createClient();
@@ -85,6 +88,15 @@ export default function CaseDetailPage() {
           }
 
           setIsTeacher(profile?.role === 'teacher');
+
+          // Check for district admin permissions (read-only access)
+          try {
+            const permissions = await getCurrentAdminPermissions();
+            const hasDistrictAdminPerm = permissions.some(p => p.role === 'district_admin');
+            setIsDistrictAdmin(hasDistrictAdminPerm);
+          } catch {
+            // Not an admin - ignore error
+          }
         }
       } catch (err) {
         console.error('Error in fetchUserData:', err);
@@ -248,8 +260,33 @@ export default function CaseDetailPage() {
     );
   }
 
+  // Read-only mode for district admins viewing cases
+  const readOnly = isDistrictAdmin;
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
+      {/* District admin read-only notice */}
+      {isDistrictAdmin && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="h-5 w-5 text-purple-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div className="ml-3">
+              <p className="text-sm text-purple-800">
+                <span className="font-medium">Read-only view</span> - District administrators can view case details but cannot make changes.
+              </p>
+              <Link
+                href="/dashboard/admin/care"
+                className="mt-2 inline-block text-sm font-medium text-purple-600 hover:text-purple-500"
+              >
+                Back to CARE Referrals
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action error message */}
       {actionError && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
@@ -278,21 +315,21 @@ export default function CaseDetailPage() {
             ot_testing_completed: caseData.ot_testing_completed ?? false,
             ot_testing_date: caseData.ot_testing_date,
           }}
-          disabled={isTeacher}
+          disabled={isTeacher || readOnly}
           onUpdate={fetchCase}
         />
       )}
 
-      {/* Status selector with history - read-only for teachers */}
+      {/* Status selector with history - read-only for teachers and district admins */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <DispositionSelector
           value={caseData.current_disposition}
           onChange={handleDispositionChange}
           onMoveToInitials={() => setShowMoveToInitialsModal(true)}
-          showMoveToInitials={caseData.care_referrals.status === 'active'}
+          showMoveToInitials={caseData.care_referrals.status === 'active' && !readOnly}
           onCloseCase={() => setShowCloseCaseModal(true)}
-          showCloseCase={caseData.care_referrals.status === 'active' || caseData.care_referrals.status === 'initial'}
-          disabled={isTeacher}
+          showCloseCase={(caseData.care_referrals.status === 'active' || caseData.care_referrals.status === 'initial') && !readOnly}
+          disabled={isTeacher || readOnly}
         />
         <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
       </div>
@@ -313,21 +350,23 @@ export default function CaseDetailPage() {
         studentName={caseData.care_referrals.student_name}
       />
 
-      {/* Notes section - teachers can add and view */}
+      {/* Notes section - teachers can add and view, district admins view-only */}
       <CaseNotesSection
         notes={caseData.care_meeting_notes || []}
         onAddNote={handleAddNote}
         onDeleteNote={handleDeleteNote}
         currentUserId={currentUserId}
+        readOnly={readOnly}
       />
 
-      {/* Action items section - hidden for teachers */}
-      {!isTeacher && (
+      {/* Action items section - hidden for teachers, read-only for district admins */}
+      {(!isTeacher || readOnly) && (
         <CaseActionsSection
           actionItems={caseData.care_action_items || []}
           onAddItem={handleAddActionItem}
           onToggleComplete={handleToggleComplete}
           onDeleteItem={handleDeleteActionItem}
+          readOnly={readOnly}
         />
       )}
     </div>
