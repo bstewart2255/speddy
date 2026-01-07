@@ -307,6 +307,7 @@ export async function createCase(referralId: string): Promise<string> {
 
 /**
  * Add a status history entry
+ * Verifies that the userId matches the authenticated user for security
  */
 export async function addStatusHistory(
   caseId: string,
@@ -314,6 +315,15 @@ export async function addStatusHistory(
   userId: string
 ): Promise<void> {
   const supabase = createClient();
+
+  // Verify auth and that userId matches the authenticated user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+  if (user.id !== userId) {
+    throw new Error('Cannot add status history for another user');
+  }
 
   const { error } = await supabase
     .from('care_case_status_history')
@@ -361,6 +371,7 @@ export async function getStatusHistory(caseId: string): Promise<StatusHistoryEnt
 /**
  * Move a case from 'active' to 'initial' stage
  * Clears the current_disposition and updates referral status
+ * Includes rollback if any step fails to maintain data consistency
  */
 export async function moveToInitialStage(caseId: string): Promise<void> {
   const supabase = createClient();
@@ -408,11 +419,97 @@ export async function moveToInitialStage(caseId: string): Promise<void> {
 
   if (updateError) {
     console.error('Error clearing case disposition:', updateError);
+    // Rollback: revert referral status back to 'active'
+    await supabase
+      .from('care_referrals')
+      .update({
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', caseData.referral_id);
     throw updateError;
   }
 
-  // 4. Log the stage transition to history
-  await addStatusHistory(caseId, 'Moved to Initial', user.id);
+  // 4. Log the stage transition to history (non-critical, don't rollback on failure)
+  try {
+    await addStatusHistory(caseId, 'Moved to Initial', user.id);
+  } catch (historyError) {
+    console.warn('Failed to log status history (non-critical):', historyError);
+  }
+}
+
+/**
+ * Close a case - moves from 'active' or 'initial' to 'closed' stage
+ * Clears the current_disposition and updates referral status
+ * Includes rollback if any step fails to maintain data consistency
+ */
+export async function closeCase(caseId: string): Promise<void> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  // 1. Get the case to find the referral_id and current status
+  const { data: caseData, error: caseError } = await supabase
+    .from('care_cases')
+    .select('referral_id, care_referrals!inner(status)')
+    .eq('id', caseId)
+    .single();
+
+  if (caseError) {
+    console.error('Error fetching case:', caseError);
+    throw caseError;
+  }
+
+  // Handle both array and single object responses from Supabase
+  const referrals = caseData.care_referrals as { status: string } | { status: string }[];
+  const previousStatus = Array.isArray(referrals) ? referrals[0]?.status : referrals.status;
+
+  // 2. Update referral status to 'closed'
+  const { error: referralError } = await supabase
+    .from('care_referrals')
+    .update({
+      status: 'closed',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', caseData.referral_id);
+
+  if (referralError) {
+    console.error('Error updating referral status:', referralError);
+    throw referralError;
+  }
+
+  // 3. Clear the disposition on the case
+  const { error: updateError } = await supabase
+    .from('care_cases')
+    .update({
+      current_disposition: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', caseId);
+
+  if (updateError) {
+    console.error('Error clearing case disposition:', updateError);
+    // Rollback: revert referral status back to previous status
+    await supabase
+      .from('care_referrals')
+      .update({
+        status: previousStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', caseData.referral_id);
+    throw updateError;
+  }
+
+  // 4. Log the stage transition to history (non-critical, don't rollback on failure)
+  try {
+    await addStatusHistory(caseId, 'Referral Closed', user.id);
+  } catch (historyError) {
+    console.warn('Failed to log status history (non-critical):', historyError);
+  }
 }
 
 /**

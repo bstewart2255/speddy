@@ -25,6 +25,7 @@ export const CARE_DISPOSITIONS = [
   { value: 'schedule_sst', label: 'Schedule SST' },
   { value: 'send_ap', label: 'Send AP' },
   { value: 'move_to_initials', label: "Move to 'Initials'" },
+  { value: 'close_case', label: 'Close Referral' },
 ] as const;
 
 export type CareDisposition = (typeof CARE_DISPOSITIONS)[number]['value'];

@@ -9,6 +9,9 @@ ALTER TABLE care_referrals ADD CONSTRAINT care_referrals_status_check
   CHECK (status IN ('pending', 'active', 'initial', 'closed'));
 
 -- 2. Clear existing disposition values FIRST (before adding new constraint)
+-- WARNING: DATA LOSS - This clears all existing disposition values.
+-- Previous disposition options are being replaced with new status values.
+-- Users will need to re-select a status for active cases after this migration.
 UPDATE care_cases SET current_disposition = NULL WHERE current_disposition IS NOT NULL;
 
 -- 3. Update care_cases disposition constraint with new values

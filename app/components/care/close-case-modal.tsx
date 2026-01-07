@@ -3,19 +3,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
 
-interface MoveToInitialsModalProps {
+interface CloseCaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
   studentName: string;
 }
 
-export function MoveToInitialsModal({
+export function CloseCaseModal({
   isOpen,
   onClose,
   onConfirm,
   studentName,
-}: MoveToInitialsModalProps) {
+}: CloseCaseModalProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -65,39 +65,39 @@ export function MoveToInitialsModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="move-to-initials-title"
+        aria-labelledby="close-case-title"
         className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 m-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4">
-          <h2 id="move-to-initials-title" className="text-xl font-bold text-gray-900 mb-2">
-            Move to Initial Stage
+          <h2 id="close-case-title" className="text-xl font-bold text-gray-900 mb-2">
+            Close Referral
           </h2>
           <p className="text-gray-600">
-            Are you sure you want to move <strong>{studentName}</strong>&apos;s case to the Initial stage?
+            Are you sure you want to close <strong>{studentName}</strong>&apos;s referral?
           </p>
         </div>
 
-        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
+        <div className="bg-gray-50 border-l-4 border-gray-400 p-4 mb-4">
           <div className="flex">
             <div className="flex-shrink-0">
               <svg
-                className="h-5 w-5 text-amber-400"
+                className="h-5 w-5 text-gray-400"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
               >
                 <path
                   fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
                   clipRule="evenodd"
                 />
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-amber-700 font-medium">Note</p>
-              <p className="text-sm text-amber-700 mt-1">
-                This action cannot be reversed. The case will move from Active to Initial and cannot be moved back.
+              <p className="text-sm text-gray-700 font-medium">Note</p>
+              <p className="text-sm text-gray-700 mt-1">
+                The referral will be moved to the Closed tab. You can view closed referrals but cannot reopen them.
               </p>
             </div>
           </div>
@@ -116,9 +116,9 @@ export function MoveToInitialsModal({
             onClick={handleConfirm}
             variant="primary"
             disabled={isProcessing}
-            className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+            className="bg-gray-600 hover:bg-gray-700 focus:ring-gray-500"
           >
-            {isProcessing ? 'Moving...' : 'Move to Initial'}
+            {isProcessing ? 'Closing...' : 'Close Referral'}
           </Button>
         </div>
       </div>

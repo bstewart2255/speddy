@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { getCaseWithDetails, updateCase, moveToInitialStage, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
+import { getCaseWithDetails, updateCase, moveToInitialStage, closeCase, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
 import { addNote, deleteNote } from '@/lib/supabase/queries/care-meeting-notes';
 import {
   addActionItem,
@@ -15,6 +15,7 @@ import { CaseDetailHeader } from '@/app/components/care/case-detail-header';
 import { DispositionSelector } from '@/app/components/care/disposition-selector';
 import { StatusHistoryLog } from '@/app/components/care/status-history-log';
 import { MoveToInitialsModal } from '@/app/components/care/move-to-initials-modal';
+import { CloseCaseModal } from '@/app/components/care/close-case-modal';
 import { InitialAssessmentTracker } from '@/app/components/care/initial-assessment-tracker';
 import { CaseNotesSection } from '@/app/components/care/case-notes-section';
 import { CaseActionsSection } from '@/app/components/care/case-actions-section';
@@ -32,6 +33,7 @@ export default function CaseDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
   const [isTeacher, setIsTeacher] = useState(false);
   const [showMoveToInitialsModal, setShowMoveToInitialsModal] = useState(false);
+  const [showCloseCaseModal, setShowCloseCaseModal] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
   const fetchCase = useCallback(async () => {
@@ -123,6 +125,22 @@ export default function CaseDetailPage() {
     } catch (err) {
       console.error('Error moving to initials:', err);
       setActionError(err instanceof Error ? err.message : 'Failed to move to initial stage');
+      throw err;
+    }
+  }, [caseId, router]);
+
+  const handleCloseCase = useCallback(async () => {
+    if (!caseId) return;
+    setActionError(null);
+
+    try {
+      await closeCase(caseId);
+      setShowCloseCaseModal(false);
+      // Navigate back to dashboard after closing
+      router.push('/dashboard/care');
+    } catch (err) {
+      console.error('Error closing case:', err);
+      setActionError(err instanceof Error ? err.message : 'Failed to close referral');
       throw err;
     }
   }, [caseId, router]);
@@ -272,6 +290,8 @@ export default function CaseDetailPage() {
           onChange={handleDispositionChange}
           onMoveToInitials={() => setShowMoveToInitialsModal(true)}
           showMoveToInitials={caseData.care_referrals.status === 'active'}
+          onCloseCase={() => setShowCloseCaseModal(true)}
+          showCloseCase={caseData.care_referrals.status === 'active' || caseData.care_referrals.status === 'initial'}
           disabled={isTeacher}
         />
         <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
@@ -282,6 +302,14 @@ export default function CaseDetailPage() {
         isOpen={showMoveToInitialsModal}
         onClose={() => setShowMoveToInitialsModal(false)}
         onConfirm={handleMoveToInitials}
+        studentName={caseData.care_referrals.student_name}
+      />
+
+      {/* Close Case confirmation modal */}
+      <CloseCaseModal
+        isOpen={showCloseCaseModal}
+        onClose={() => setShowCloseCaseModal(false)}
+        onConfirm={handleCloseCase}
         studentName={caseData.care_referrals.student_name}
       />
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { updateInitialAssessment, InitialAssessmentData } from '@/lib/supabase/queries/care-cases';
 
 interface InitialAssessmentTrackerProps {
@@ -24,20 +24,24 @@ interface InitialAssessmentTrackerProps {
 }
 
 /**
- * Calculate IEP due date (60 days from AP received date)
+ * Calculate IEP due date (60 calendar days from AP received date)
+ * Uses local date parsing to avoid timezone off-by-one errors
  */
 function calculateIepDueDate(apDate: string): string {
-  const date = new Date(apDate);
+  const [year, month, day] = apDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + 60);
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**
- * Format date for display
+ * Format date string for display, returns empty string for null/undefined
  */
 function formatDateForDisplay(dateString: string | null): string {
-  if (!dateString) return '';
-  return dateString;
+  return dateString || '';
 }
 
 export function InitialAssessmentTracker({
@@ -49,6 +53,12 @@ export function InitialAssessmentTracker({
   const [data, setData] = useState(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Use ref to track latest initialData for error revert to avoid stale closure
+  const latestInitialDataRef = useRef(initialData);
+  useEffect(() => {
+    latestInitialDataRef.current = initialData;
+  }, [initialData]);
 
   const handleUpdate = useCallback(
     async (updates: InitialAssessmentData) => {
@@ -64,13 +74,13 @@ export function InitialAssessmentTracker({
       } catch (err) {
         console.error('Error saving assessment data:', err);
         setError('Failed to save changes');
-        // Revert local state on error
-        setData(initialData);
+        // Revert local state on error using ref to get latest initialData
+        setData(latestInitialDataRef.current);
       } finally {
         setSaving(false);
       }
     },
-    [caseId, initialData, onUpdate]
+    [caseId, onUpdate]
   );
 
   const handleApDateChange = useCallback(
@@ -147,6 +157,7 @@ export function InitialAssessmentTracker({
         {/* Academic Testing */}
         <TestingRow
           label="Academic Testing"
+          id="academic-testing"
           completed={data.academic_testing_completed}
           completedDate={data.academic_testing_date}
           disabled={disabled || saving}
@@ -162,6 +173,7 @@ export function InitialAssessmentTracker({
         {/* Psych Testing */}
         <TestingRow
           label="Psych Testing"
+          id="psych-testing"
           completed={data.psych_testing_completed}
           completedDate={data.psych_testing_date}
           disabled={disabled || saving}
@@ -177,6 +189,7 @@ export function InitialAssessmentTracker({
         {/* Speech Testing */}
         <TestingRowWithNeeded
           label="Speech Testing"
+          id="speech-testing"
           needed={data.speech_testing_needed}
           completed={data.speech_testing_completed}
           completedDate={data.speech_testing_date}
@@ -200,6 +213,7 @@ export function InitialAssessmentTracker({
         {/* OT Testing */}
         <TestingRowWithNeeded
           label="OT Testing"
+          id="ot-testing"
           needed={data.ot_testing_needed}
           completed={data.ot_testing_completed}
           completedDate={data.ot_testing_date}
@@ -233,6 +247,7 @@ export function InitialAssessmentTracker({
  */
 interface TestingRowProps {
   label: string;
+  id: string;
   completed: boolean;
   completedDate: string | null;
   disabled: boolean;
@@ -242,12 +257,16 @@ interface TestingRowProps {
 
 function TestingRow({
   label,
+  id,
   completed,
   completedDate,
   disabled,
   onCompletedChange,
   onDateChange,
 }: TestingRowProps) {
+  const checkboxId = `${id}-completed`;
+  const dateId = `${id}-date`;
+
   return (
     <div className="flex items-center gap-4 py-2">
       <div className="w-40">
@@ -255,21 +274,23 @@ function TestingRow({
       </div>
       <div className="flex items-center gap-2">
         <input
+          id={checkboxId}
           type="checkbox"
           checked={completed}
           onChange={(e) => onCompletedChange(e.target.checked)}
           disabled={disabled}
           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
         />
-        <label className="text-sm text-gray-600">Completed</label>
+        <label htmlFor={checkboxId} className="text-sm text-gray-600">Completed</label>
       </div>
       <div className="flex-1">
         <input
+          id={dateId}
           type="date"
           value={formatDateForDisplay(completedDate)}
           onChange={(e) => onDateChange(e.target.value || null)}
           disabled={disabled || !completed}
-          placeholder="Date completed"
+          aria-label={`${label} completion date`}
           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
         />
       </div>
@@ -282,6 +303,7 @@ function TestingRow({
  */
 interface TestingRowWithNeededProps {
   label: string;
+  id: string;
   needed: boolean;
   completed: boolean;
   completedDate: string | null;
@@ -293,6 +315,7 @@ interface TestingRowWithNeededProps {
 
 function TestingRowWithNeeded({
   label,
+  id,
   needed,
   completed,
   completedDate,
@@ -301,6 +324,10 @@ function TestingRowWithNeeded({
   onCompletedChange,
   onDateChange,
 }: TestingRowWithNeededProps) {
+  const neededId = `${id}-needed`;
+  const completedId = `${id}-completed`;
+  const dateId = `${id}-date`;
+
   return (
     <div className="flex items-center gap-4 py-2">
       <div className="w-40">
@@ -308,31 +335,34 @@ function TestingRowWithNeeded({
       </div>
       <div className="flex items-center gap-2">
         <input
+          id={neededId}
           type="checkbox"
           checked={needed}
           onChange={(e) => onNeededChange(e.target.checked)}
           disabled={disabled}
           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
         />
-        <label className="text-sm text-gray-600">Needed</label>
+        <label htmlFor={neededId} className="text-sm text-gray-600">Needed</label>
       </div>
       <div className="flex items-center gap-2">
         <input
+          id={completedId}
           type="checkbox"
           checked={completed}
           onChange={(e) => onCompletedChange(e.target.checked)}
           disabled={disabled || !needed}
           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
         />
-        <label className={`text-sm ${needed ? 'text-gray-600' : 'text-gray-400'}`}>Completed</label>
+        <label htmlFor={completedId} className={`text-sm ${needed ? 'text-gray-600' : 'text-gray-400'}`}>Completed</label>
       </div>
       <div className="flex-1">
         <input
+          id={dateId}
           type="date"
           value={formatDateForDisplay(completedDate)}
           onChange={(e) => onDateChange(e.target.value || null)}
           disabled={disabled || !needed || !completed}
-          placeholder="Date completed"
+          aria-label={`${label} completion date`}
           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
         />
       </div>

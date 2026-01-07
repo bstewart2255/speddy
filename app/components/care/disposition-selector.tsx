@@ -8,6 +8,8 @@ interface DispositionSelectorProps {
   onChange: (disposition: CareDisposition) => Promise<void>;
   onMoveToInitials?: () => void;
   showMoveToInitials?: boolean;
+  onCloseCase?: () => void;
+  showCloseCase?: boolean;
   disabled?: boolean;
 }
 
@@ -16,13 +18,18 @@ export function DispositionSelector({
   onChange,
   onMoveToInitials,
   showMoveToInitials = false,
+  onCloseCase,
+  showCloseCase = false,
   disabled,
 }: DispositionSelectorProps) {
   const [loading, setLoading] = useState(false);
 
-  // Filter out 'move_to_initials' from regular options - it's handled specially
-  const regularOptions = CARE_DISPOSITIONS.filter(d => d.value !== 'move_to_initials');
+  // Filter out special action options - they're handled specially
+  const regularOptions = CARE_DISPOSITIONS.filter(
+    d => d.value !== 'move_to_initials' && d.value !== 'close_case'
+  );
   const moveToInitialsOption = CARE_DISPOSITIONS.find(d => d.value === 'move_to_initials');
+  const closeCaseOption = CARE_DISPOSITIONS.find(d => d.value === 'close_case');
 
   const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = e.target.value as CareDisposition;
@@ -32,6 +39,16 @@ export function DispositionSelector({
     if (newValue === 'move_to_initials') {
       if (onMoveToInitials) {
         onMoveToInitials();
+      }
+      // Reset the select to the current value (don't actually set this disposition)
+      e.target.value = value || '';
+      return;
+    }
+
+    // Handle "Close Case" specially
+    if (newValue === 'close_case') {
+      if (onCloseCase) {
+        onCloseCase();
       }
       // Reset the select to the current value (don't actually set this disposition)
       e.target.value = value || '';
@@ -66,13 +83,18 @@ export function DispositionSelector({
             {d.label}
           </option>
         ))}
+        {(showMoveToInitials || showCloseCase) && (
+          <option disabled>───────────</option>
+        )}
         {showMoveToInitials && moveToInitialsOption && (
-          <>
-            <option disabled>───────────</option>
-            <option value={moveToInitialsOption.value} className="font-medium text-purple-700">
-              {moveToInitialsOption.label}
-            </option>
-          </>
+          <option value={moveToInitialsOption.value}>
+            {moveToInitialsOption.label}
+          </option>
+        )}
+        {showCloseCase && closeCaseOption && (
+          <option value={closeCaseOption.value}>
+            {closeCaseOption.label}
+          </option>
         )}
       </select>
       {loading && <p className="mt-1 text-xs text-gray-500">Saving...</p>}
