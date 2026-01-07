@@ -152,7 +152,7 @@ export function SstScheduleSection({
                 className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
               >
                 <ExternalLink className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate max-w-xs">{initialLink}</span>
+                <span className="truncate max-w-xs" title={initialLink}>{initialLink}</span>
               </a>
               {!disabled && (
                 <button
