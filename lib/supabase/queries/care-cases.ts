@@ -22,6 +22,9 @@ export interface CareCaseWithDetails {
   ot_testing_needed: boolean;
   ot_testing_completed: boolean;
   ot_testing_date: string | null;
+  // SST scheduling fields
+  sst_scheduled_date: string | null;
+  sst_notes_link: string | null;
   // Joined referral data
   care_referrals: {
     id: string;
@@ -204,6 +207,8 @@ export async function updateCase(
     current_disposition?: CareDisposition | null;
     assigned_to?: string | null;
     follow_up_date?: string | null;
+    sst_scheduled_date?: string | null;
+    sst_notes_link?: string | null;
   }
 ): Promise<void> {
   const supabase = createClient();
