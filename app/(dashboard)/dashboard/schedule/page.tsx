@@ -19,6 +19,7 @@ import { useTeachers } from './hooks/useTeachers';
 import { useOtherProviderSessions } from './hooks/useOtherProviderSessions';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { filterScheduleSessions } from './utils/session-filters';
+import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
 import type { ScheduleSession } from '@/src/types/database';
 
 export default function SchedulePage() {
@@ -163,29 +164,14 @@ export default function SchedulePage() {
     clearDragValidation();
 
     // Optimistic update
-    const newStartTime = `${dragPosition.time}:00`;
-    const [hours, minutes] = dragPosition.time.split(':').map(Number);
-    const endDate = new Date();
     const minutesPerSession = student.minutes_per_session || 30; // Default to 30 if null
-    endDate.setHours(hours, minutes + minutesPerSession, 0);
-    const newEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
+    const { startTime: newStartTime, endTime: newEndTime } = buildSessionTimes(
+      dragPosition.time,
+      minutesPerSession
+    );
 
     // Determine assignment updates based on selected filter
-    type AssignmentUpdate = {
-      delivered_by?: 'sea' | 'specialist';
-      assigned_to_sea_id?: string | null;
-      assigned_to_specialist_id?: string | null;
-    };
-    const assignmentUpdate: AssignmentUpdate = {};
-    if (sessionFilter === 'sea' && selectedSeaId) {
-      assignmentUpdate.delivered_by = 'sea';
-      assignmentUpdate.assigned_to_sea_id = selectedSeaId;
-      assignmentUpdate.assigned_to_specialist_id = null;
-    } else if (sessionFilter === 'specialist' && selectedSpecialistId) {
-      assignmentUpdate.delivered_by = 'specialist';
-      assignmentUpdate.assigned_to_specialist_id = selectedSpecialistId;
-      assignmentUpdate.assigned_to_sea_id = null;
-    }
+    const assignmentUpdate = buildAssignmentUpdate(sessionFilter, selectedSeaId, selectedSpecialistId);
 
     optimisticUpdateSession(sessionToMove.id, {
       day_of_week: day,
@@ -218,8 +204,7 @@ export default function SchedulePage() {
     } else {
       // If the move succeeded, also update assignment if needed
       if (Object.keys(assignmentUpdate).length > 0) {
-        const supabaseClient = createClient();
-        const { error: assignError } = await supabaseClient
+        const { error: assignError } = await supabase
           .from('schedule_sessions')
           .update(assignmentUpdate)
           .eq('id', sessionToMove.id);
@@ -244,7 +229,7 @@ export default function SchedulePage() {
         });
       }
     }
-  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId]);
+  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {
