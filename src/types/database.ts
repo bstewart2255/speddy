@@ -1296,6 +1296,8 @@ export type Database = {
           full_name: string
           id: string
           is_speddy_admin: boolean | null
+          must_change_password: boolean | null
+          password_reset_requested_at: string | null
           role: string
           school_district: string
           school_district_original: string | null
@@ -1318,6 +1320,8 @@ export type Database = {
           full_name: string
           id: string
           is_speddy_admin?: boolean | null
+          must_change_password?: boolean | null
+          password_reset_requested_at?: string | null
           role: string
           school_district: string
           school_district_original?: string | null
@@ -1340,6 +1344,8 @@ export type Database = {
           full_name?: string
           id?: string
           is_speddy_admin?: boolean | null
+          must_change_password?: boolean | null
+          password_reset_requested_at?: string | null
           role?: string
           school_district?: string
           school_district_original?: string | null
