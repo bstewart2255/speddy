@@ -1,6 +1,5 @@
 import type { ScheduleSession } from '@/src/types/database';
-
-type SessionFilter = 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
+import type { SessionFilter } from './session-filters';
 
 export type AssignmentUpdate = {
   delivered_by?: ScheduleSession['delivered_by'];
