@@ -76,10 +76,11 @@ export default function Navbar() {
     ];
 
     if (role === 'district_admin') {
-      // District admins see schools overview and dashboard
+      // District admins see schools overview, dashboard, and CARE
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Schools', href: '/dashboard/admin/schools' },
+        { name: 'CARE', href: '/dashboard/admin/care' },
       ];
     } else if (role === 'site_admin') {
       // Site admins see their dashboard, master schedule, bell schedules, teacher directory, provider directory, students, and CARE
