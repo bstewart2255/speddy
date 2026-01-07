@@ -8,26 +8,33 @@ export const CARE_CATEGORIES = [
   { value: 'behavioral', label: 'Behavioral' },
   { value: 'attendance', label: 'Attendance' },
   { value: 'social-emotional', label: 'Social-Emotional' },
+  { value: 'speech', label: 'Speech' },
+  { value: 'ot', label: 'OT' },
   { value: 'other', label: 'Other' },
 ] as const;
 
 export type CareCategory = (typeof CARE_CATEGORIES)[number]['value'];
 
-// Case disposition options
+// Case status options (shown as "Status" in UI, stored as current_disposition in DB)
 export const CARE_DISPOSITIONS = [
-  { value: 'classroom_interventions', label: 'Classroom Interventions' },
-  { value: 'tier_2_interventions', label: 'Tier 2 Interventions' },
-  { value: 'refer_for_evaluation', label: 'Refer for Evaluation' },
+  { value: 'teacher_consult', label: 'Teacher Consult' },
+  { value: 'wait_for_report_card', label: 'Wait for Report Card' },
+  { value: 'wait_for_assessment_data', label: 'Wait for Assessment Data' },
+  { value: 'intervention', label: 'Intervention' },
   { value: 'counseling_referral', label: 'Counseling Referral' },
-  { value: 'closed_resolved', label: 'Closed - Resolved' },
+  { value: 'schedule_sst', label: 'Schedule SST' },
+  { value: 'send_ap', label: 'Send AP' },
+  { value: 'move_to_initials', label: "Move to 'Initials'" },
+  { value: 'close_case', label: 'Close Referral' },
 ] as const;
 
 export type CareDisposition = (typeof CARE_DISPOSITIONS)[number]['value'];
 
-// Referral status options
+// Referral status options (stages)
 export const CARE_STATUSES = [
   { value: 'pending', label: 'Pending' },
   { value: 'active', label: 'Active' },
+  { value: 'initial', label: 'Initial' },
   { value: 'closed', label: 'Closed' },
 ] as const;
 
@@ -37,6 +44,7 @@ export type CareStatus = (typeof CARE_STATUSES)[number]['value'];
 export const CARE_STATUS_COLORS: Record<CareStatus, string> = {
   pending: 'bg-amber-100 text-amber-800',
   active: 'bg-blue-100 text-blue-800',
+  initial: 'bg-purple-100 text-purple-800',
   closed: 'bg-gray-100 text-gray-600',
 };
 
@@ -46,6 +54,8 @@ export const CARE_CATEGORY_COLORS: Record<CareCategory, string> = {
   behavioral: 'bg-red-100 text-red-800',
   attendance: 'bg-yellow-100 text-yellow-800',
   'social-emotional': 'bg-green-100 text-green-800',
+  speech: 'bg-teal-100 text-teal-800',
+  ot: 'bg-orange-100 text-orange-800',
   other: 'bg-gray-100 text-gray-600',
 };
 

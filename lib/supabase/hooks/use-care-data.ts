@@ -15,6 +15,7 @@ interface CareDataState {
   referrals: {
     pending: CareReferral[];
     active: CareReferral[];
+    initial: CareReferral[];
     closed: CareReferral[];
     all: CareReferral[];
   };
@@ -48,6 +49,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
     referrals: {
       pending: [],
       active: [],
+      initial: [],
       closed: [],
       all: [],
     },
@@ -65,7 +67,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
       setState(prev => ({
         ...prev,
         loading: false,
-        referrals: { pending: [], active: [], closed: [], all: [] },
+        referrals: { pending: [], active: [], initial: [], closed: [], all: [] },
       }));
       return;
     }
@@ -78,12 +80,14 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
       // Group by status
       const pending = allReferrals.filter(r => r.status === 'pending');
       const active = allReferrals.filter(r => r.status === 'active');
+      const initial = allReferrals.filter(r => r.status === 'initial');
       const closed = allReferrals.filter(r => r.status === 'closed');
 
       setState({
         referrals: {
           pending,
           active,
+          initial,
           closed,
           all: allReferrals,
         },
@@ -160,6 +164,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
         referrals: {
           pending: prev.referrals.pending.filter(r => r.id !== referralId),
           active: prev.referrals.active.filter(r => r.id !== referralId),
+          initial: prev.referrals.initial.filter(r => r.id !== referralId),
           closed: prev.referrals.closed.filter(r => r.id !== referralId),
           all: prev.referrals.all.filter(r => r.id !== referralId),
         },

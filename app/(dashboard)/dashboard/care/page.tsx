@@ -11,7 +11,7 @@ import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/q
 import { createClient } from '@/lib/supabase/client';
 import type { CareStatus } from '@/lib/constants/care';
 
-type TabType = 'pending' | 'active' | 'closed';
+type TabType = 'pending' | 'active' | 'initial' | 'closed' | 'assigned_to_me';
 
 export default function CareDashboardPage() {
   const router = useRouter();
@@ -19,6 +19,7 @@ export default function CareDashboardPage() {
 
   // User role and teacher record state
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [teacherRecord, setTeacherRecord] = useState<{ id: string; name: string } | null>(null);
   const [userDataLoading, setUserDataLoading] = useState(true);
 
@@ -38,6 +39,8 @@ export default function CareDashboardPage() {
         }
 
         if (user) {
+          setCurrentUserId(user.id);
+
           // Get role from profile
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
@@ -178,13 +181,24 @@ export default function CareDashboardPage() {
     [refreshData]
   );
 
+  // Filter referrals assigned to current user (from any status except closed)
+  const assignedToMeReferrals = referrals.all.filter((r) => {
+    const cases = r.care_cases;
+    if (!cases) return false;
+    const assignedTo = Array.isArray(cases) ? cases[0]?.assigned_to : cases.assigned_to;
+    return assignedTo === currentUserId && r.status !== 'closed';
+  });
+
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'pending', label: 'Pending', count: referrals.pending.length },
     { key: 'active', label: 'Active', count: referrals.active.length },
+    { key: 'initial', label: 'Initial', count: referrals.initial.length },
     { key: 'closed', label: 'Closed', count: referrals.closed.length },
   ];
 
-  const currentReferrals = referrals[activeTab];
+  const currentReferrals = activeTab === 'assigned_to_me'
+    ? assignedToMeReferrals
+    : referrals[activeTab];
 
   if (schoolLoading || userDataLoading) {
     return (
@@ -268,6 +282,30 @@ export default function CareDashboardPage() {
               </span>
             </button>
           ))}
+
+          {/* Separator */}
+          <div className="border-l border-gray-300 mx-2 self-stretch my-2" />
+
+          {/* Assigned to Me tab */}
+          <button
+            onClick={() => setActiveTab('assigned_to_me')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+              activeTab === 'assigned_to_me'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Assigned to Me
+            <span
+              className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                activeTab === 'assigned_to_me'
+                  ? 'bg-blue-100 text-blue-600'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {assignedToMeReferrals.length}
+            </span>
+          </button>
         </nav>
       </div>
 
@@ -288,6 +326,12 @@ export default function CareDashboardPage() {
               ? isTeacher
                 ? 'No active cases for your students.'
                 : 'No active cases.'
+              : activeTab === 'initial'
+              ? isTeacher
+                ? 'No cases in initial stage for your students.'
+                : 'No cases in initial stage.'
+              : activeTab === 'assigned_to_me'
+              ? 'No cases are currently assigned to you.'
               : isTeacher
               ? 'No closed cases for your students.'
               : 'No closed cases.'
