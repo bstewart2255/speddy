@@ -11,6 +11,8 @@ interface SignInEntry {
   role: string;
   provider: string;
   ipAddress: string | null;
+  userAgent: string | null;
+  sessionDurationMinutes: number | null;
   timestamp: string;
 }
 
@@ -172,6 +174,26 @@ export function SignInLog() {
                   <p className="text-sm text-slate-400 truncate mt-0.5">
                     {entry.email}
                   </p>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                    {entry.ipAddress && (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                        {entry.ipAddress}
+                      </span>
+                    )}
+                    {entry.sessionDurationMinutes !== null && (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {entry.sessionDurationMinutes < 60
+                          ? `${entry.sessionDurationMinutes}m`
+                          : `${Math.floor(entry.sessionDurationMinutes / 60)}h ${entry.sessionDurationMinutes % 60}m`}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm text-slate-300">

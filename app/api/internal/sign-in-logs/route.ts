@@ -97,6 +97,8 @@ export async function GET(request: NextRequest) {
       role: event.role || 'unknown',
       provider: event.provider || 'email',
       ipAddress: event.ip_address || null,
+      userAgent: event.user_agent || null,
+      sessionDurationMinutes: event.session_duration_minutes || null,
       timestamp: event.created_at,
     })) || [];
 
