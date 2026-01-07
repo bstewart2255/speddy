@@ -76,6 +76,15 @@ export function SstScheduleSection({
   };
 
   const handleRemove = async () => {
+    // Show confirmation if there's any data entered
+    const hasData = scheduledDate || notesLink || initialDate || initialLink;
+    if (hasData) {
+      const confirmed = confirm(
+        'Are you sure you want to remove the SST schedule? This will clear the scheduled date and notes link.'
+      );
+      if (!confirmed) return;
+    }
+
     setRemoving(true);
     setError('');
 

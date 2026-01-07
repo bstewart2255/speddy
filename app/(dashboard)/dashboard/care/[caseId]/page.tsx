@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { getCaseWithDetails, updateCase, moveToInitialStage, closeCase, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
+import { getCaseWithDetails, updateCase, moveToInitialStage, closeCase, addStatusHistory, CareCaseWithDetails } from '@/lib/supabase/queries/care-cases';
 import { getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 import { addNote, deleteNote } from '@/lib/supabase/queries/care-meeting-notes';
 import {
@@ -261,7 +261,7 @@ export default function CaseDetailPage() {
   );
 
   const handleSstRemove = useCallback(async () => {
-    if (!caseId) return;
+    if (!caseId || !currentUserId) return;
     setActionError(null);
 
     try {
@@ -271,6 +271,8 @@ export default function CaseDetailPage() {
         sst_notes_link: null,
         current_disposition: null,
       });
+      // Log removal to status history
+      await addStatusHistory(caseId, 'Removed Schedule SST', currentUserId);
       await fetchCase();
       setHistoryRefresh(prev => prev + 1);
     } catch (err) {
@@ -278,7 +280,7 @@ export default function CaseDetailPage() {
       setActionError(err instanceof Error ? err.message : 'Failed to remove SST schedule');
       throw err;
     }
-  }, [caseId, fetchCase]);
+  }, [caseId, currentUserId, fetchCase]);
 
   if (loading) {
     return (
