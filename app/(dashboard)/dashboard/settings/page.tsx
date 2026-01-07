@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
 import { PasswordResetRequest } from '../../../components/settings/password-reset-request';
+import { ApiKeysSettings } from '../../../components/settings/api-keys';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -85,6 +86,11 @@ export default function SettingsPage() {
 
           {/* Curriculums Settings */}
           <CurriculumsSettings />
+
+          {/* API Keys - For providers to use Chrome Extension */}
+          {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
+            <ApiKeysSettings />
+          )}
 
           {/* Password Reset Request - Only for providers */}
           {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
