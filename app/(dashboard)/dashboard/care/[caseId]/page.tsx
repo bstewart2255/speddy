@@ -15,6 +15,7 @@ import { CaseDetailHeader } from '@/app/components/care/case-detail-header';
 import { DispositionSelector } from '@/app/components/care/disposition-selector';
 import { StatusHistoryLog } from '@/app/components/care/status-history-log';
 import { MoveToInitialsModal } from '@/app/components/care/move-to-initials-modal';
+import { InitialAssessmentTracker } from '@/app/components/care/initial-assessment-tracker';
 import { CaseNotesSection } from '@/app/components/care/case-notes-section';
 import { CaseActionsSection } from '@/app/components/care/case-actions-section';
 import type { CareDisposition } from '@/lib/constants/care';
@@ -240,6 +241,29 @@ export default function CaseDetailPage() {
 
       {/* Header with student info */}
       <CaseDetailHeader caseData={caseData} />
+
+      {/* Initial Assessment Tracking - only show when in 'initial' stage */}
+      {caseData.care_referrals.status === 'initial' && (
+        <InitialAssessmentTracker
+          caseId={caseId}
+          initialData={{
+            ap_received_date: caseData.ap_received_date,
+            iep_due_date: caseData.iep_due_date,
+            academic_testing_completed: caseData.academic_testing_completed ?? false,
+            academic_testing_date: caseData.academic_testing_date,
+            speech_testing_needed: caseData.speech_testing_needed ?? false,
+            speech_testing_completed: caseData.speech_testing_completed ?? false,
+            speech_testing_date: caseData.speech_testing_date,
+            psych_testing_completed: caseData.psych_testing_completed ?? false,
+            psych_testing_date: caseData.psych_testing_date,
+            ot_testing_needed: caseData.ot_testing_needed ?? false,
+            ot_testing_completed: caseData.ot_testing_completed ?? false,
+            ot_testing_date: caseData.ot_testing_date,
+          }}
+          disabled={isTeacher}
+          onUpdate={fetchCase}
+        />
+      )}
 
       {/* Status selector with history - read-only for teachers */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">

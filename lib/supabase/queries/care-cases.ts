@@ -9,6 +9,19 @@ export interface CareCaseWithDetails {
   follow_up_date: string | null;
   created_at: string;
   updated_at: string;
+  // Initial assessment tracking fields
+  ap_received_date: string | null;
+  iep_due_date: string | null;
+  academic_testing_completed: boolean;
+  academic_testing_date: string | null;
+  speech_testing_needed: boolean;
+  speech_testing_completed: boolean;
+  speech_testing_date: string | null;
+  psych_testing_completed: boolean;
+  psych_testing_date: string | null;
+  ot_testing_needed: boolean;
+  ot_testing_completed: boolean;
+  ot_testing_date: string | null;
   // Joined referral data
   care_referrals: {
     id: string;
@@ -400,4 +413,51 @@ export async function moveToInitialStage(caseId: string): Promise<void> {
 
   // 4. Log the stage transition to history
   await addStatusHistory(caseId, 'Moved to Initial', user.id);
+}
+
+/**
+ * Initial assessment tracking data
+ */
+export interface InitialAssessmentData {
+  ap_received_date?: string | null;
+  iep_due_date?: string | null;
+  academic_testing_completed?: boolean;
+  academic_testing_date?: string | null;
+  speech_testing_needed?: boolean;
+  speech_testing_completed?: boolean;
+  speech_testing_date?: string | null;
+  psych_testing_completed?: boolean;
+  psych_testing_date?: string | null;
+  ot_testing_needed?: boolean;
+  ot_testing_completed?: boolean;
+  ot_testing_date?: string | null;
+}
+
+/**
+ * Update initial assessment tracking data for a case
+ */
+export async function updateInitialAssessment(
+  caseId: string,
+  data: InitialAssessmentData
+): Promise<void> {
+  const supabase = createClient();
+
+  // Verify auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { error } = await supabase
+    .from('care_cases')
+    .update({
+      ...data,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', caseId);
+
+  if (error) {
+    console.error('Error updating initial assessment:', error);
+    throw error;
+  }
 }
