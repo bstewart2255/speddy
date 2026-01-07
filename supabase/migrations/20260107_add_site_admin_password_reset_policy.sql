@@ -16,6 +16,11 @@ BEGIN
   FROM profiles
   WHERE id = target_user_id;
 
+  -- Verify target user exists (FOUND is set by SELECT INTO)
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found: no profile exists for the specified user ID';
+  END IF;
+
   -- Verify caller is site_admin for target's school
   IF NOT EXISTS (
     SELECT 1 FROM admin_permissions
