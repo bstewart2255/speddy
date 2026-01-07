@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { SignInLog } from '@/app/components/internal/sign-in-log';
 
 export default function InternalHomePage() {
   return (
@@ -118,6 +119,9 @@ export default function InternalHomePage() {
           </li>
         </ol>
       </div>
+
+      {/* Sign-in Activity Log */}
+      <SignInLog />
     </div>
   );
 }
