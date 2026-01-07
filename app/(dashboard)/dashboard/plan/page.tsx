@@ -383,6 +383,11 @@ export default function CalendarPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Plan</h1>
           <p className="text-gray-600">Create groups, plan lessons, mark holidays, and more.</p>
+          <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+            <p><span className="font-medium">Day</span> = add students into groups</p>
+            <p><span className="font-medium">Week</span> = create lesson plans for individuals and groups</p>
+            <p><span className="font-medium">Month</span> = mark holidays and add additional meetings</p>
+          </div>
         </div>
 
         {/* View Toggle Tabs */}
