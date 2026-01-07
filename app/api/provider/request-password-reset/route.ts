@@ -23,7 +23,7 @@ export async function POST() {
     }
 
     // Only providers can request password resets through this endpoint
-    const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'];
+    const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'];
     if (!providerRoles.includes(profile.role)) {
       return NextResponse.json(
         { error: 'Only providers can request password resets through this page' },

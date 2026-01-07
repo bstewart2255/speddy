@@ -87,7 +87,7 @@ export default function SettingsPage() {
           <CurriculumsSettings />
 
           {/* Password Reset Request - Only for providers */}
-          {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'].includes(userProfile?.role) && (
+          {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
             <PasswordResetRequest
               requestedAt={userProfile?.password_reset_requested_at}
               onRequestSubmitted={loadUserProfile}

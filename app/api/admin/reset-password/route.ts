@@ -124,7 +124,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Update profile to require password change on next login and clear any pending request
-    const { error: profileUpdateError } = await supabase
+    // Use adminClient (service role) to bypass RLS since admin is updating another user's profile
+    const { error: profileUpdateError } = await adminClient
       .from('profiles')
       .update({
         must_change_password: true,

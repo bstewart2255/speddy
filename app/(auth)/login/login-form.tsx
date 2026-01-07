@@ -72,9 +72,21 @@ export default function LoginForm() {
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (forgotEmail) {
+    if (!forgotEmail) return;
+
+    try {
+      // Submit the email to trigger password reset request notification
+      await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      // Always show success (API returns success regardless of email validity)
+      setForgotSubmitted(true);
+    } catch (err) {
+      // Even on error, show success to avoid revealing anything
       setForgotSubmitted(true);
     }
   };
