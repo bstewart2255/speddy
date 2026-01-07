@@ -21,6 +21,7 @@ import { CloseCaseModal } from '@/app/components/care/close-case-modal';
 import { InitialAssessmentTracker } from '@/app/components/care/initial-assessment-tracker';
 import { CaseNotesSection } from '@/app/components/care/case-notes-section';
 import { CaseActionsSection } from '@/app/components/care/case-actions-section';
+import { SstScheduleSection } from '@/app/components/care/sst-schedule-section';
 import type { CareDisposition } from '@/lib/constants/care';
 
 export default function CaseDetailPage() {
@@ -242,6 +243,43 @@ export default function CaseDetailPage() {
     [fetchCase]
   );
 
+  const handleSstUpdate = useCallback(
+    async (data: { sst_scheduled_date: string | null; sst_notes_link: string | null }) => {
+      if (!caseId) return;
+      setActionError(null);
+
+      try {
+        await updateCase(caseId, data);
+        await fetchCase();
+      } catch (err) {
+        console.error('Error updating SST schedule:', err);
+        setActionError(err instanceof Error ? err.message : 'Failed to update SST schedule');
+        throw err;
+      }
+    },
+    [caseId, fetchCase]
+  );
+
+  const handleSstRemove = useCallback(async () => {
+    if (!caseId) return;
+    setActionError(null);
+
+    try {
+      // Clear SST data and reset status
+      await updateCase(caseId, {
+        sst_scheduled_date: null,
+        sst_notes_link: null,
+        current_disposition: null,
+      });
+      await fetchCase();
+      setHistoryRefresh(prev => prev + 1);
+    } catch (err) {
+      console.error('Error removing SST schedule:', err);
+      setActionError(err instanceof Error ? err.message : 'Failed to remove SST schedule');
+      throw err;
+    }
+  }, [caseId, fetchCase]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -333,6 +371,17 @@ export default function CaseDetailPage() {
         />
         <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
       </div>
+
+      {/* SST Schedule section - only show when disposition is 'schedule_sst' */}
+      {caseData.current_disposition === 'schedule_sst' && (
+        <SstScheduleSection
+          initialDate={caseData.sst_scheduled_date}
+          initialLink={caseData.sst_notes_link}
+          onUpdate={handleSstUpdate}
+          onRemove={handleSstRemove}
+          disabled={isTeacher || readOnly}
+        />
+      )}
 
       {/* Move to Initials confirmation modal */}
       <MoveToInitialsModal
