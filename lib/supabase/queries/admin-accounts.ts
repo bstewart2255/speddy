@@ -144,6 +144,79 @@ export async function isAdminForSchool(schoolId: string): Promise<boolean> {
 }
 
 // ============================================================================
+// GET PASSWORD RESET REQUEST COUNT
+// ============================================================================
+
+/**
+ * Gets the count of providers at a school with pending password reset requests.
+ * Used for showing notification badges in admin UI.
+ *
+ * @param schoolId - UUID of the school to check
+ * @returns Count of providers with pending password reset requests
+ */
+export async function getPasswordResetRequestCount(schoolId: string): Promise<number> {
+  const supabase = createClient<Database>();
+
+  // First verify admin has permission for this school
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    return 0;
+  }
+
+  // Count primary specialists with pending requests
+  const primaryCountResult = await safeQuery(
+    async () => {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .not('password_reset_requested_at', 'is', null);
+      if (error) throw error;
+      return count || 0;
+    },
+    { operation: 'count_password_reset_requests_primary', schoolId }
+  );
+
+  // Count secondary specialists with pending requests
+  const secondaryCountResult = await safeQuery(
+    async () => {
+      // Get provider_ids from provider_schools for this school (secondary only)
+      const { data: providerSchools, error: psError } = await supabase
+        .from('provider_schools')
+        .select('provider_id, is_primary')
+        .eq('school_id', schoolId);
+
+      if (psError) throw psError;
+      if (!providerSchools || providerSchools.length === 0) return 0;
+
+      const secondaryProviderIds = providerSchools
+        .filter(ps => !ps.is_primary)
+        .map(ps => ps.provider_id)
+        .filter((id): id is string => id !== null);
+
+      if (secondaryProviderIds.length === 0) return 0;
+
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .in('id', secondaryProviderIds)
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .not('password_reset_requested_at', 'is', null);
+
+      if (error) throw error;
+      return count || 0;
+    },
+    { operation: 'count_password_reset_requests_secondary', schoolId }
+  );
+
+  const primaryCount = primaryCountResult.error ? 0 : (primaryCountResult.data || 0);
+  const secondaryCount = secondaryCountResult.error ? 0 : (secondaryCountResult.data || 0);
+
+  return primaryCount + secondaryCount;
+}
+
+// ============================================================================
 // GET ALL STAFF AT A SCHOOL
 // ============================================================================
 

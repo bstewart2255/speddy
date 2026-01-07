@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/ca
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
+import { PasswordResetRequest } from '../../../components/settings/password-reset-request';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -84,6 +85,14 @@ export default function SettingsPage() {
 
           {/* Curriculums Settings */}
           <CurriculumsSettings />
+
+          {/* Password Reset Request - Only for providers */}
+          {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'].includes(userProfile?.role) && (
+            <PasswordResetRequest
+              requestedAt={userProfile?.password_reset_requested_at}
+              onRequestSubmitted={loadUserProfile}
+            />
+          )}
         </div>
       </div>
     </div>

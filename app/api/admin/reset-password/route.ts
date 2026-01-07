@@ -123,6 +123,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Update profile to require password change on next login and clear any pending request
+    const { error: profileUpdateError } = await supabase
+      .from('profiles')
+      .update({
+        must_change_password: true,
+        password_reset_requested_at: null,
+      })
+      .eq('id', userId);
+
+    if (profileUpdateError) {
+      // Log but don't fail - password was already reset successfully
+      log.warn('Failed to update must_change_password flag', {
+        adminId: user.id,
+        targetUserId: userId,
+        error: profileUpdateError.message,
+      });
+    }
+
     // Log the successful password reset (excluding PII for GDPR/CCPA compliance)
     log.info('Password reset by admin', {
       adminId: user.id,

@@ -9,6 +9,10 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ['/login', '/signup', '/terms', '/privacy', '/ferpa']
   const isPublicRoute = publicRoutes.some(route => pathname === route)
 
+  // Routes allowed for users who must change their password
+  const passwordChangeRoutes = ['/change-password']
+  const isPasswordChangeRoute = passwordChangeRoutes.some(route => pathname === route)
+
   // If at root, redirect to login
   if (pathname === '/') {
     const redirectUrl = request.nextUrl.clone()
@@ -86,15 +90,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Fetch user profile to determine role and admin status
+  // Fetch user profile to determine role, admin status, and password change requirement
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, is_speddy_admin')
+    .select('role, is_speddy_admin, must_change_password')
     .eq('id', user.id)
     .single()
 
   const userRole = profile?.role
   const isSpeddyAdmin = profile?.is_speddy_admin === true
+  const mustChangePassword = profile?.must_change_password === true
+
+  // If user must change password, only allow access to password change route
+  if (mustChangePassword) {
+    if (isPasswordChangeRoute) {
+      return response
+    }
+    // Redirect to change-password page
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/change-password'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // If user doesn't need to change password but is on change-password page, redirect to dashboard
+  if (isPasswordChangeRoute && !mustChangePassword) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    return NextResponse.redirect(redirectUrl)
+  }
 
   // For authenticated users, pass the session info and role in headers
   response.headers.set('x-user-id', user.id)

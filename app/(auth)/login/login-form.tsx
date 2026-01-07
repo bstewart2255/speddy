@@ -54,7 +54,13 @@ export default function LoginForm() {
 
       // Use router.refresh() to ensure cookies are set before navigation
       router.refresh();
-      router.push('/dashboard');
+
+      // Check if user must change their password
+      if (data.mustChangePassword) {
+        router.push('/change-password');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       handleClientError(err, 'login-form');
       logger.error('Login error', err, { email });

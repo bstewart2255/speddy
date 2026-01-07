@@ -126,7 +126,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, must_change_password')
       .eq('id', userId)
       .single();
 
@@ -162,11 +162,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     // For native form submissions (progressive enhancement fallback), redirect instead of JSON
     if (isFormSubmission) {
+      // If must change password, redirect to change-password page
+      if (profile?.must_change_password) {
+        return NextResponse.redirect(new URL('/change-password', request.url), 303);
+      }
       return NextResponse.redirect(new URL('/dashboard', request.url), 303);
     }
 
     return NextResponse.json({
-      success: true
+      success: true,
+      mustChangePassword: profile?.must_change_password || false
     });
 
   } catch (profileCheckError) {
