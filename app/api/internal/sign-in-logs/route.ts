@@ -33,10 +33,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Parse query params
+    // Parse and validate query params
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const parsedLimit = parseInt(searchParams.get('limit') || '50', 10);
+    const parsedOffset = parseInt(searchParams.get('offset') || '0', 10);
+    const limit = Math.min(Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : parsedLimit, 200);
+    const offset = Number.isNaN(parsedOffset) || parsedOffset < 0 ? 0 : parsedOffset;
 
     // Use service client to query auth.audit_log_entries via raw SQL
     const adminClient = createServiceClient();
@@ -75,6 +77,8 @@ export async function GET(request: NextRequest) {
         role: profile.role || 'unknown',
         provider: 'email',
         ipAddress: null,
+        userAgent: null,
+        sessionDurationMinutes: null,
         timestamp: profile.updated_at,
       })) || [];
 

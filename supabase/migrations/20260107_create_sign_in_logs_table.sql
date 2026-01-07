@@ -71,8 +71,9 @@ CREATE TRIGGER on_auth_sign_in
   EXECUTE FUNCTION public.capture_sign_in_log();
 
 -- 4. Backfill existing sign-ins from audit_log_entries (only for users that still exist)
+-- Use DISTINCT ON to avoid row multiplication from session join
 INSERT INTO public.sign_in_logs (user_id, email, full_name, role, provider, ip_address, user_agent, created_at)
-SELECT
+SELECT DISTINCT ON (a.id)
   (a.payload->>'actor_id')::UUID as user_id,
   a.payload->>'actor_username' as email,
   COALESCE(a.payload->>'actor_name', p.full_name) as full_name,
@@ -88,6 +89,7 @@ LEFT JOIN auth.sessions s ON s.user_id = (a.payload->>'actor_id')::UUID
   AND s.created_at >= a.created_at - INTERVAL '5 seconds'
   AND s.created_at <= a.created_at + INTERVAL '5 seconds'
 WHERE a.payload->>'action' = 'login'
+ORDER BY a.id, s.created_at DESC NULLS LAST
 ON CONFLICT DO NOTHING;
 
 -- 5. Update get_sign_in_logs to use our new table
@@ -139,7 +141,7 @@ CREATE POLICY "Service role can access sign_in_logs"
   TO service_role
   USING (true);
 
--- Grant permissions
-GRANT SELECT ON public.sign_in_logs TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_sign_in_logs TO authenticated;
+-- Grant permissions (only service_role can execute RPC to prevent unauthorized access)
+-- The API route enforces Speddy admin check before calling RPC
+GRANT SELECT ON public.sign_in_logs TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_sign_in_logs TO service_role;
