@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createHmac, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
+
+// Cost factor for bcrypt (10 is standard, provides ~100ms hash time)
+const BCRYPT_ROUNDS = 10;
 
 // Generate a secure random API key
 function generateApiKey(): string {
@@ -8,11 +12,14 @@ function generateApiKey(): string {
   return `sk_live_${bytes.toString('base64url')}`;
 }
 
-// Hash the API key using HMAC-SHA256 with server secret
-// This is appropriate for high-entropy API keys (not user passwords)
-function hashApiKey(key: string): string {
-  const secret = process.env.API_KEY_HASH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'fallback-secret';
-  return createHmac('sha256', secret).update(key).digest('hex');
+// Hash the API key using bcrypt
+async function hashApiKey(key: string): Promise<string> {
+  return bcrypt.hash(key, BCRYPT_ROUNDS);
+}
+
+// Verify an API key against its hash
+export async function verifyApiKey(key: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(key, hash);
 }
 
 // GET - List user's API keys (prefix only, not full key)
@@ -67,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Generate the API key
     const fullKey = generateApiKey();
-    const keyHash = hashApiKey(fullKey);
+    const keyHash = await hashApiKey(fullKey);
     const keyPrefix = fullKey.substring(0, 16); // "sk_live_" + first 8 chars of random part
 
     // Store the hashed key

@@ -6,16 +6,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { createHmac } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 
 export const runtime = 'nodejs';
 
-// Hash the API key using HMAC-SHA256 with server secret (same as in api-keys route)
-// This is appropriate for high-entropy API keys (not user passwords)
-function hashApiKey(key: string): string {
-  const secret = process.env.API_KEY_HASH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'fallback-secret';
-  return createHmac('sha256', secret).update(key).digest('hex');
+// Verify an API key against its bcrypt hash
+async function verifyApiKey(key: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(key, hash);
 }
 
 // Types for incoming SEIS data
@@ -82,28 +80,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const keyHash = hashApiKey(apiKey);
+    // Extract prefix for lookup (first 16 chars: "sk_live_" + 8 random chars)
+    const keyPrefix = apiKey.substring(0, 16);
 
     // Create Supabase service client (bypasses RLS for API key lookup)
     const supabase = createServiceClient();
 
-    // Look up the API key
-    const { data: apiKeyRecord, error: keyError } = await supabase
+    // Look up candidate API keys by prefix
+    const { data: candidateKeys, error: keyError } = await supabase
       .from('api_keys')
-      .select('id, user_id, revoked_at')
-      .eq('key_hash', keyHash)
-      .single();
+      .select('id, user_id, key_hash, revoked_at')
+      .eq('key_prefix', keyPrefix)
+      .is('revoked_at', null);
 
-    if (keyError || !apiKeyRecord) {
+    if (keyError) {
+      console.error('Error looking up API key:', keyError);
       return NextResponse.json(
-        { error: 'Invalid API key' },
-        { status: 401 }
+        { error: 'Failed to validate API key' },
+        { status: 500 }
       );
     }
 
-    if (apiKeyRecord.revoked_at) {
+    // Find matching key using bcrypt compare
+    let apiKeyRecord: { id: string; user_id: string } | null = null;
+    for (const candidate of candidateKeys || []) {
+      const isMatch = await verifyApiKey(apiKey, candidate.key_hash);
+      if (isMatch) {
+        apiKeyRecord = { id: candidate.id, user_id: candidate.user_id };
+        break;
+      }
+    }
+
+    if (!apiKeyRecord) {
       return NextResponse.json(
-        { error: 'API key has been revoked' },
+        { error: 'Invalid API key' },
         { status: 401 }
       );
     }
