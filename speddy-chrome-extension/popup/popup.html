@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speddy - SEIS Data Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Speddy</h1>
+      <p class="subtitle">SEIS Data Bridge</p>
+    </header>
+
+    <!-- Setup State - No API Key -->
+    <div id="setup-state" class="state hidden">
+      <div class="info-box">
+        <p>Connect your Speddy account to import data from SEIS.</p>
+        <ol>
+          <li>Go to <strong>Settings</strong> in Speddy</li>
+          <li>Generate an <strong>API Key</strong></li>
+          <li>Paste it below</li>
+        </ol>
+      </div>
+      <div class="input-group">
+        <label for="api-key-input">API Key</label>
+        <input type="password" id="api-key-input" placeholder="sk_live_...">
+        <button id="save-key-btn" class="btn btn-primary">Save Key</button>
+      </div>
+      <div id="setup-error" class="error hidden"></div>
+    </div>
+
+    <!-- Ready State - Has API Key, On SEIS -->
+    <div id="ready-state" class="state hidden">
+      <div class="page-info">
+        <span class="badge" id="page-type-badge">Unknown Page</span>
+        <p id="page-description">Navigate to a SEIS page to extract data.</p>
+      </div>
+
+      <div id="extraction-preview" class="preview hidden">
+        <h3>Data Found</h3>
+        <ul id="preview-list"></ul>
+      </div>
+
+      <button id="extract-btn" class="btn btn-primary btn-large" disabled>
+        Extract Data
+      </button>
+
+      <div class="footer-actions">
+        <button id="disconnect-btn" class="btn btn-link">Disconnect</button>
+      </div>
+    </div>
+
+    <!-- Not on SEIS State -->
+    <div id="not-seis-state" class="state hidden">
+      <div class="info-box info-box-warning">
+        <p>You're not on a SEIS page.</p>
+        <p>Navigate to <a href="https://www.seis.org" target="_blank">seis.org</a> and log in to import data.</p>
+      </div>
+      <div class="footer-actions">
+        <button id="disconnect-btn-alt" class="btn btn-link">Disconnect Account</button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="state hidden">
+      <div class="spinner"></div>
+      <p id="loading-message">Extracting data...</p>
+    </div>
+
+    <!-- Success State -->
+    <div id="success-state" class="state hidden">
+      <div class="success-icon">✓</div>
+      <h2>Import Complete!</h2>
+      <div id="success-details"></div>
+      <button id="done-btn" class="btn btn-primary">Done</button>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-state" class="state hidden">
+      <div class="error-icon">!</div>
+      <h2>Import Failed</h2>
+      <p id="error-message"></p>
+      <button id="retry-btn" class="btn btn-primary">Try Again</button>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

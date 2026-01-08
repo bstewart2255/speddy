@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Speddy - SEIS Data Bridge",
+  "version": "1.0.0",
+  "description": "Import IEP goals, services, and accommodations from SEIS directly into your Speddy account",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://*.seis.org/*",
+    "https://www.seis.org/*",
+    "https://app.tryspeddy.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.seis.org/*",
+        "https://www.seis.org/*"
+      ],
+      "js": ["content-scripts/seis.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "Speddy - Import from SEIS"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
