@@ -57,6 +57,8 @@ interface ImportPayload {
   students: SEISStudentData[];
   source: 'seis';
   pageType: 'student-list' | 'goals' | 'services';
+  // Optional: If user confirmed the match in the extension UI, skip auto-matching
+  speddyStudentId?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -188,12 +190,22 @@ export async function POST(request: NextRequest) {
 
     for (const seisStudent of payload.students) {
       try {
-        // Try to match to existing student by name or initials
-        const matchedStudent = findMatchingStudent(
-          seisStudent,
-          dbStudents || [],
-          studentDetails || []
-        );
+        let matchedStudent: { id: string; initials: string } | null = null;
+
+        // If user confirmed the match via extension UI, use that directly
+        if (payload.speddyStudentId) {
+          const confirmedStudent = dbStudents?.find(s => s.id === payload.speddyStudentId);
+          if (confirmedStudent) {
+            matchedStudent = { id: confirmedStudent.id, initials: confirmedStudent.initials };
+          }
+        } else {
+          // Auto-match by name or initials
+          matchedStudent = findMatchingStudent(
+            seisStudent,
+            dbStudents || [],
+            studentDetails || []
+          );
+        }
 
         if (!matchedStudent) {
           results.skipped++;

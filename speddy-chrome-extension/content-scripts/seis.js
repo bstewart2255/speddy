@@ -508,3 +508,93 @@ function extractAccommodations() {
 
 // Log that content script is loaded
 console.log('Speddy SEIS content script loaded');
+
+// ==========================================
+// PASSIVE MODE: Auto-extract on page load
+// ==========================================
+
+/**
+ * Automatically extract data when the page loads
+ * Sends to service worker for background comparison
+ */
+async function runPassiveExtraction() {
+  const url = window.location.href;
+
+  // Only run on Goals or Services pages
+  if (!url.includes('/state/goals') && !url.includes('/state/services')) {
+    return;
+  }
+
+  // Wait for page to fully load (SEIS is an AngularJS app)
+  await waitForPageReady();
+
+  let extractedData = null;
+  let pageType = null;
+
+  if (url.includes('/state/goals')) {
+    pageType = 'goals';
+    extractedData = extractGoalsPage();
+  } else if (url.includes('/state/services')) {
+    pageType = 'services';
+    extractedData = extractServicesPage();
+  }
+
+  if (extractedData && extractedData.student) {
+    // Send to service worker for background comparison
+    chrome.runtime.sendMessage({
+      action: 'passiveExtraction',
+      pageType,
+      student: extractedData.student,
+      url,
+    });
+  }
+}
+
+/**
+ * Wait for the page to be ready (SEIS uses AngularJS)
+ * Returns when content is likely loaded
+ */
+function waitForPageReady() {
+  return new Promise((resolve) => {
+    // Check if page already has content
+    const hasContent = document.body.innerText.length > 1000;
+
+    if (hasContent) {
+      // Give a bit more time for Angular to finish rendering
+      setTimeout(resolve, 500);
+      return;
+    }
+
+    // Wait for content to load
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const checkInterval = setInterval(() => {
+      attempts++;
+      const contentLength = document.body.innerText.length;
+
+      if (contentLength > 1000 || attempts >= maxAttempts) {
+        clearInterval(checkInterval);
+        setTimeout(resolve, 500); // Give Angular time to finish
+      }
+    }, 250);
+  });
+}
+
+// Run passive extraction when page loads
+if (document.readyState === 'complete') {
+  runPassiveExtraction();
+} else {
+  window.addEventListener('load', runPassiveExtraction);
+}
+
+// Also handle SPA navigation (AngularJS route changes)
+let lastUrl = location.href;
+new MutationObserver(() => {
+  const currentUrl = location.href;
+  if (currentUrl !== lastUrl) {
+    lastUrl = currentUrl;
+    // Wait a moment for the new content to load
+    setTimeout(runPassiveExtraction, 1000);
+  }
+}).observe(document.body, { childList: true, subtree: true });
