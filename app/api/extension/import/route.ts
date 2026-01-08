@@ -207,6 +207,25 @@ export async function POST(request: NextRequest) {
           d => d.student_id === matchedStudent.id
         );
 
+        // Parse and validate student names for PII scrubbing
+        // Use existing details if available, otherwise parse from SEIS data
+        let validatedFirstName = existingDetails?.first_name || seisStudent.firstName || '';
+        let validatedLastName = existingDetails?.last_name || seisStudent.lastName || '';
+
+        // If still empty, try to parse from full name
+        if (!validatedFirstName && !validatedLastName && seisStudent.name) {
+          const nameParts = seisStudent.name.split(/[,\s]+/).filter(Boolean);
+          if (nameParts.length >= 2) {
+            if (seisStudent.name.includes(',')) {
+              validatedLastName = nameParts[0] || '';
+              validatedFirstName = nameParts[1] || '';
+            } else {
+              validatedFirstName = nameParts[0] || '';
+              validatedLastName = nameParts[nameParts.length - 1] || '';
+            }
+          }
+        }
+
         // Prepare update data
         const updateData: Record<string, unknown> = {};
 
@@ -214,11 +233,11 @@ export async function POST(request: NextRequest) {
         if (seisStudent.goals && seisStudent.goals.length > 0) {
           const goalTexts = seisStudent.goals.map(g => g.goalText);
 
-          // Scrub PII from goals
+          // Scrub PII from goals using validated names
           const scrubResult = await scrubPIIFromGoals(
             goalTexts,
-            seisStudent.firstName,
-            seisStudent.lastName
+            validatedFirstName,
+            validatedLastName
           );
 
           // Merge with existing goals (avoid duplicates)
@@ -233,11 +252,11 @@ export async function POST(request: NextRequest) {
         if (seisStudent.accommodations && seisStudent.accommodations.length > 0) {
           const accommodationTexts = seisStudent.accommodations.map(a => a.description);
 
-          // Scrub PII from accommodations (they may contain student names)
+          // Scrub PII from accommodations using validated names
           const scrubResult = await scrubPIIFromGoals(
             accommodationTexts,
-            seisStudent.firstName,
-            seisStudent.lastName
+            validatedFirstName,
+            validatedLastName
           );
           const newAccommodations = scrubResult.goals.map(g => g.scrubbed);
 
@@ -404,6 +423,10 @@ function normalizeGrade(grade: string): string {
   if (g.includes('sixth') || g === '6th') return '6';
   if (g.includes('seventh') || g === '7th') return '7';
   if (g.includes('eighth') || g === '8th') return '8';
+  if (g.includes('ninth') || g === '9th') return '9';
+  if (g.includes('tenth') || g === '10th') return '10';
+  if (g.includes('eleventh') || g === '11th') return '11';
+  if (g.includes('twelfth') || g === '12th') return '12';
 
   // Try to extract number
   const num = g.match(/\d+/);
