@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createHash, randomBytes } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
 
 // Generate a secure random API key
 function generateApiKey(): string {
@@ -8,9 +8,11 @@ function generateApiKey(): string {
   return `sk_live_${bytes.toString('base64url')}`;
 }
 
-// Hash the API key using SHA-256
+// Hash the API key using HMAC-SHA256 with server secret
+// This is appropriate for high-entropy API keys (not user passwords)
 function hashApiKey(key: string): string {
-  return createHash('sha256').update(key).digest('hex');
+  const secret = process.env.API_KEY_HASH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'fallback-secret';
+  return createHmac('sha256', secret).update(key).digest('hex');
 }
 
 // GET - List user's API keys (prefix only, not full key)

@@ -6,14 +6,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { createHash } from 'crypto';
+import { createHmac } from 'crypto';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 
 export const runtime = 'nodejs';
 
-// Hash the API key using SHA-256 (same as in api-keys route)
+// Hash the API key using HMAC-SHA256 with server secret (same as in api-keys route)
+// This is appropriate for high-entropy API keys (not user passwords)
 function hashApiKey(key: string): string {
-  return createHash('sha256').update(key).digest('hex');
+  const secret = process.env.API_KEY_HASH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'fallback-secret';
+  return createHmac('sha256', secret).update(key).digest('hex');
 }
 
 // Types for incoming SEIS data
