@@ -4,7 +4,7 @@
  */
 
 // API endpoint (change for production)
-const API_BASE_URL = 'https://app.tryspeddy.com';
+const API_BASE_URL = 'https://speddy.xyz';
 
 // State elements
 const states = {

@@ -10,7 +10,7 @@
   "host_permissions": [
     "https://*.seis.org/*",
     "https://www.seis.org/*",
-    "https://app.tryspeddy.com/*"
+    "https://speddy.xyz/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
