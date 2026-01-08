@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import { createHash } from 'crypto';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 
@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
 
     const keyHash = hashApiKey(apiKey);
 
-    // Create Supabase admin client (bypasses RLS for API key lookup)
-    const supabase = await createClient();
+    // Create Supabase service client (bypasses RLS for API key lookup)
+    const supabase = createServiceClient();
 
     // Look up the API key
     const { data: apiKeyRecord, error: keyError } = await supabase
@@ -115,7 +115,15 @@ export async function POST(request: NextRequest) {
       .eq('id', apiKeyRecord.id);
 
     // Parse the request body
-    const payload: ImportPayload = await request.json();
+    let payload: ImportPayload;
+    try {
+      payload = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
 
     if (!payload.students || !Array.isArray(payload.students)) {
       return NextResponse.json(

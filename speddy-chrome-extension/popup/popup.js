@@ -32,7 +32,15 @@ async function getCurrentTab() {
 }
 
 function isSEISUrl(url) {
-  return url && (url.includes('seis.org'));
+  if (!url) return false;
+  try {
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname.toLowerCase();
+    // Only match exact seis.org or subdomains (*.seis.org)
+    return hostname === 'seis.org' || hostname.endsWith('.seis.org');
+  } catch {
+    return false;
+  }
 }
 
 // Detect SEIS page type from URL
