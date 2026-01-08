@@ -20,8 +20,16 @@ export async function sendToSpeddy(apiKey, data) {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Import failed');
+    // Handle non-JSON error responses gracefully
+    let errorMessage = `Import failed (HTTP ${response.status})`;
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch {
+      // Response wasn't JSON, use status text
+      errorMessage = response.statusText || errorMessage;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();

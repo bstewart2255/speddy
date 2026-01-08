@@ -160,10 +160,23 @@ export async function POST(request: NextRequest) {
 
     // Get student details for name matching
     const studentIds = dbStudents?.map(s => s.id) || [];
-    const { data: studentDetails } = await supabase
-      .from('student_details')
-      .select('student_id, first_name, last_name, iep_goals, accommodations')
-      .in('student_id', studentIds);
+
+    // Guard against empty array in .in() query
+    let studentDetails: Array<{
+      student_id: string;
+      first_name: string | null;
+      last_name: string | null;
+      iep_goals: string[] | null;
+      accommodations: string[] | null;
+    }> | null = null;
+
+    if (studentIds.length > 0) {
+      const { data } = await supabase
+        .from('student_details')
+        .select('student_id, first_name, last_name, iep_goals, accommodations')
+        .in('student_id', studentIds);
+      studentDetails = data;
+    }
 
     // Process each student from the payload
     const results = {
@@ -218,7 +231,15 @@ export async function POST(request: NextRequest) {
 
         // Process accommodations if provided
         if (seisStudent.accommodations && seisStudent.accommodations.length > 0) {
-          const newAccommodations = seisStudent.accommodations.map(a => a.description);
+          const accommodationTexts = seisStudent.accommodations.map(a => a.description);
+
+          // Scrub PII from accommodations (they may contain student names)
+          const scrubResult = await scrubPIIFromGoals(
+            accommodationTexts,
+            seisStudent.firstName,
+            seisStudent.lastName
+          );
+          const newAccommodations = scrubResult.goals.map(g => g.scrubbed);
 
           // Merge with existing accommodations
           const existingAccommodations = existingDetails?.accommodations || [];
