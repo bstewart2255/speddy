@@ -589,12 +589,22 @@ if (document.readyState === 'complete') {
 }
 
 // Also handle SPA navigation (AngularJS route changes)
+// Use debouncing to prevent excessive calls during rapid DOM changes
 let lastUrl = location.href;
+let navigationDebounceTimer = null;
+
 new MutationObserver(() => {
   const currentUrl = location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    // Wait a moment for the new content to load
-    setTimeout(runPassiveExtraction, 1000);
+
+    // Debounce: clear any pending timer and set a new one
+    if (navigationDebounceTimer) {
+      clearTimeout(navigationDebounceTimer);
+    }
+    navigationDebounceTimer = setTimeout(() => {
+      navigationDebounceTimer = null;
+      runPassiveExtraction();
+    }, 1000);
   }
 }).observe(document.body, { childList: true, subtree: true });

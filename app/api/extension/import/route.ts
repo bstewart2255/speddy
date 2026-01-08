@@ -146,6 +146,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate that speddyStudentId is only used with a single student
+    if (payload.speddyStudentId && payload.students.length !== 1) {
+      return NextResponse.json(
+        { error: 'speddyStudentId can only be used when importing a single student' },
+        { status: 400 }
+      );
+    }
+
     // Get user's existing students for matching
     const { data: dbStudents, error: studentsError } = await supabase
       .from('students')

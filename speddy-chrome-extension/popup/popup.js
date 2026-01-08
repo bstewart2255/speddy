@@ -25,6 +25,22 @@ let extractedData = null;
 let compareResult = null;
 let confirmedSpeddyStudentId = null;
 
+// AbortController for cleaning up event listeners between state transitions
+let currentAbortController = null;
+
+/**
+ * Get an AbortSignal for the current state.
+ * Call this at the start of any function that adds event listeners.
+ * Previous listeners will be automatically removed when state changes.
+ */
+function getStateSignal() {
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
+  currentAbortController = new AbortController();
+  return currentAbortController.signal;
+}
+
 // Show a specific state, hide others
 function showState(stateName) {
   Object.entries(states).forEach(([name, element]) => {
@@ -105,20 +121,21 @@ async function init() {
 
   if (!isSEISUrl(currentTab?.url)) {
     showState('notSeis');
-    await checkAndShowDiscrepancies('alt');
-    setupDisconnectListeners();
+    const signal = getStateSignal();
+    await checkAndShowDiscrepancies('alt', signal);
+    setupDisconnectListeners(signal);
     return;
   }
 
   // On SEIS with API key - show ready state
   showState('ready');
-  await setupReadyState(currentTab);
-  await checkAndShowDiscrepancies('');
-  setupDisconnectListeners();
+  const signal = await setupReadyState(currentTab);
+  await checkAndShowDiscrepancies('', signal);
+  setupDisconnectListeners(signal);
 }
 
 // Check for and show discrepancies from passive mode
-async function checkAndShowDiscrepancies(suffix) {
+async function checkAndShowDiscrepancies(suffix, signal) {
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getDiscrepancies' });
     const discrepancies = response?.discrepancies || {};
@@ -133,14 +150,14 @@ async function checkAndShowDiscrepancies(suffix) {
 
       // Setup view button
       const viewBtn = document.getElementById(`view-discrepancies-btn${suffix ? '-' + suffix : ''}`);
-      viewBtn?.addEventListener('click', () => showDiscrepanciesState(discrepancies));
+      viewBtn?.addEventListener('click', () => showDiscrepanciesState(discrepancies), { signal });
 
       // Setup dismiss button (only in main view)
       const dismissBtn = document.getElementById('dismiss-discrepancies-btn');
       dismissBtn?.addEventListener('click', async () => {
         await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
         alertEl.classList.add('hidden');
-      });
+      }, { signal });
     }
   } catch (err) {
     console.error('Error checking discrepancies:', err);
@@ -162,36 +179,59 @@ function showDiscrepanciesState(discrepancies) {
     if (data.discrepancies?.iepDate?.hasDifferences) discrepancyLabels.push('IEP Date');
     if (data.discrepancies?.accommodations?.hasDifferences) discrepancyLabels.push('Accommodations');
 
-    item.innerHTML = `
-      <div class="discrepancy-header">
-        <strong>${data.student.name || key}</strong>
-        <span class="discrepancy-grade">${data.student.grade || ''}</span>
-      </div>
-      <div class="discrepancy-details">
-        <span class="discrepancy-label">Outdated:</span> ${discrepancyLabels.join(', ')}
-      </div>
-      <a href="${data.url}" target="_blank" class="discrepancy-link">Open in SEIS</a>
-    `;
+    // Create elements safely using textContent to prevent XSS
+    const headerEl = document.createElement('div');
+    headerEl.className = 'discrepancy-header';
+
+    const nameEl = document.createElement('strong');
+    nameEl.textContent = data.student.name || key;
+    headerEl.appendChild(nameEl);
+
+    const gradeEl = document.createElement('span');
+    gradeEl.className = 'discrepancy-grade';
+    gradeEl.textContent = data.student.grade || '';
+    headerEl.appendChild(gradeEl);
+
+    const detailsEl = document.createElement('div');
+    detailsEl.className = 'discrepancy-details';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'discrepancy-label';
+    labelEl.textContent = 'Outdated: ';
+    detailsEl.appendChild(labelEl);
+    detailsEl.appendChild(document.createTextNode(discrepancyLabels.join(', ')));
+
+    const linkEl = document.createElement('a');
+    linkEl.href = data.url;
+    linkEl.target = '_blank';
+    linkEl.className = 'discrepancy-link';
+    linkEl.textContent = 'Open in SEIS';
+
+    item.appendChild(headerEl);
+    item.appendChild(detailsEl);
+    item.appendChild(linkEl);
 
     listEl.appendChild(item);
   });
 
   // Setup back button
+  const signal = getStateSignal();
   document.getElementById('back-from-discrepancies-btn')?.addEventListener('click', () => {
     init(); // Re-initialize to go back to appropriate state
-  });
+  }, { signal });
 
   // Setup clear all button
   document.getElementById('clear-all-discrepancies-btn')?.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
     init();
-  });
+  }, { signal });
 
   showState('discrepancies');
 }
 
 // Setup state listeners
 function setupSetupListeners() {
+  const signal = getStateSignal();
   const saveBtn = document.getElementById('save-key-btn');
   const input = document.getElementById('api-key-input');
   const errorEl = document.getElementById('setup-error');
@@ -220,11 +260,12 @@ function setupSetupListeners() {
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save Key';
     }
-  });
+  }, { signal });
 }
 
-// Setup ready state
+// Setup ready state - returns the signal for use by callers
 async function setupReadyState(tab) {
+  const signal = getStateSignal();
   const pageInfo = detectPageType(tab?.url);
 
   // Update badge
@@ -248,7 +289,7 @@ async function setupReadyState(tab) {
     extractBtn.textContent = canExtract ? 'Extract & Import to Speddy' : 'Navigate to Goals or Services';
 
     if (canExtract) {
-      extractBtn.addEventListener('click', () => handleExtract(tab, pageInfo.type));
+      extractBtn.addEventListener('click', () => handleExtract(tab, pageInfo.type), { signal });
     }
   }
 
@@ -263,6 +304,8 @@ async function setupReadyState(tab) {
       console.log('Could not get preview:', err);
     }
   }
+
+  return signal;
 }
 
 // Show preview data
@@ -274,17 +317,27 @@ function showPreview(preview) {
 
   listEl.innerHTML = '';
 
+  // Helper to create a list item safely
+  function createListItem(label, value) {
+    const li = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = label + ': ';
+    li.appendChild(strong);
+    li.appendChild(document.createTextNode(value));
+    return li;
+  }
+
   if (preview.studentName) {
-    listEl.innerHTML += `<li><strong>Student:</strong> ${preview.studentName}</li>`;
+    listEl.appendChild(createListItem('Student', preview.studentName));
   }
   if (preview.goalsCount !== undefined) {
-    listEl.innerHTML += `<li><strong>Goals:</strong> ${preview.goalsCount} found</li>`;
+    listEl.appendChild(createListItem('Goals', preview.goalsCount + ' found'));
   }
   if (preview.servicesCount !== undefined) {
-    listEl.innerHTML += `<li><strong>Services:</strong> ${preview.servicesCount} found</li>`;
+    listEl.appendChild(createListItem('Services', preview.servicesCount + ' found'));
   }
   if (preview.accommodationsCount !== undefined) {
-    listEl.innerHTML += `<li><strong>Accommodations:</strong> ${preview.accommodationsCount} found</li>`;
+    listEl.appendChild(createListItem('Accommodations', preview.accommodationsCount + ' found'));
   }
 
   previewEl.classList.remove('hidden');
@@ -322,9 +375,10 @@ async function handleExtract(tab, pageType) {
     showState('error');
     document.getElementById('error-message').textContent = err.message;
 
+    const signal = getStateSignal();
     document.getElementById('retry-btn')?.addEventListener('click', () => {
       window.location.reload();
-    });
+    }, { signal });
   }
 }
 
@@ -356,6 +410,7 @@ function showMatchConfirmState() {
   }
 
   // Setup confirm checkbox
+  const signal = getStateSignal();
   const confirmCheckbox = document.getElementById('confirm-match-checkbox');
   const proceedBtn = document.getElementById('proceed-match-btn');
 
@@ -364,17 +419,17 @@ function showMatchConfirmState() {
 
   confirmCheckbox?.addEventListener('change', () => {
     proceedBtn.disabled = !confirmCheckbox.checked || !speddyStudent;
-  });
+  }, { signal });
 
   // Setup cancel button
   document.getElementById('cancel-match-btn')?.addEventListener('click', () => {
     init();
-  });
+  }, { signal });
 
   // Setup proceed button
   proceedBtn?.addEventListener('click', () => {
     showDataSelectState();
-  });
+  }, { signal });
 
   showState('matchConfirm');
 }
@@ -425,21 +480,22 @@ function showDataSelectState() {
   }
 
   // Setup toggle goals preview button
+  const signal = getStateSignal();
   const toggleBtn = document.getElementById('toggle-goals-preview');
   const goalsPreview = document.getElementById('goals-preview');
 
   toggleBtn?.addEventListener('click', () => {
     const isHidden = goalsPreview.classList.toggle('hidden');
     toggleBtn.textContent = isHidden ? 'Show preview' : 'Hide preview';
-  });
+  }, { signal });
 
   // Setup back button
   document.getElementById('back-to-match-btn')?.addEventListener('click', () => {
     showMatchConfirmState();
-  });
+  }, { signal });
 
   // Setup sync button
-  document.getElementById('sync-btn')?.addEventListener('click', handleSync);
+  document.getElementById('sync-btn')?.addEventListener('click', handleSync, { signal });
 
   showState('dataSelect');
 }
@@ -456,10 +512,20 @@ function populateGoalsPreview(goals) {
   goals.forEach((goal, index) => {
     const goalEl = document.createElement('div');
     goalEl.className = 'goal-preview-item';
-    goalEl.innerHTML = `
-      <div class="goal-header">Goal ${index + 1}: ${goal.areaOfNeed || 'Unknown Area'}</div>
-      <div class="goal-text">${goal.goalText.substring(0, 200)}${goal.goalText.length > 200 ? '...' : ''}</div>
-    `;
+
+    // Create header element safely using textContent
+    const headerEl = document.createElement('div');
+    headerEl.className = 'goal-header';
+    headerEl.textContent = `Goal ${index + 1}: ${goal.areaOfNeed || 'Unknown Area'}`;
+
+    // Create goal text element safely using textContent
+    const textEl = document.createElement('div');
+    textEl.className = 'goal-text';
+    const goalText = goal.goalText || '';
+    textEl.textContent = goalText.length > 200 ? goalText.substring(0, 200) + '...' : goalText;
+
+    goalEl.appendChild(headerEl);
+    goalEl.appendChild(textEl);
     scrollEl.appendChild(goalEl);
   });
 }
@@ -511,43 +577,50 @@ async function handleSync() {
 
     const result = await response.json();
 
-    // Clear any discrepancy for this student (it's now synced)
-    await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
+    // Clear the discrepancy for this specific student (it's now synced)
+    const studentKey = extractedData?.student?.seisId || extractedData?.student?.name || 'unknown';
+    await chrome.runtime.sendMessage({ action: 'clearDiscrepancies', studentKey });
 
     // Show success
     showState('success');
     const details = document.getElementById('success-details');
     if (details) {
-      details.innerHTML = `
-        <p>Matched: ${result.results.matched} student(s)</p>
-        <p>Updated: ${result.results.updated} record(s)</p>
-      `;
+      // Create elements safely using textContent
+      details.innerHTML = '';
+      const matchedP = document.createElement('p');
+      matchedP.textContent = `Matched: ${result.results.matched} student(s)`;
+      const updatedP = document.createElement('p');
+      updatedP.textContent = `Updated: ${result.results.updated} record(s)`;
+      details.appendChild(matchedP);
+      details.appendChild(updatedP);
     }
 
+    const signal = getStateSignal();
     document.getElementById('done-btn')?.addEventListener('click', () => {
       window.close();
-    });
+    }, { signal });
 
   } catch (err) {
     console.error('Sync error:', err);
     showState('error');
     document.getElementById('error-message').textContent = err.message;
 
+    const signal = getStateSignal();
     document.getElementById('retry-btn')?.addEventListener('click', () => {
       showDataSelectState();
-    });
+    }, { signal });
   }
 }
 
 // Setup disconnect listeners
-function setupDisconnectListeners() {
+function setupDisconnectListeners(signal) {
   const disconnectBtns = document.querySelectorAll('#disconnect-btn, #disconnect-btn-alt');
   disconnectBtns.forEach(btn => {
     btn?.addEventListener('click', async () => {
       await chrome.storage.local.remove('apiKey');
       await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
       window.location.reload();
-    });
+    }, { signal });
   });
 }
 

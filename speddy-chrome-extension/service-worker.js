@@ -60,9 +60,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // Clear discrepancies
+  // Clear discrepancies (optionally for a specific student)
   if (request.action === 'clearDiscrepancies') {
-    clearDiscrepancies()
+    clearDiscrepancies(request.studentKey)
       .then(sendResponse)
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -228,10 +228,20 @@ async function getStoredDiscrepancies() {
 }
 
 /**
- * Clear all stored discrepancies
+ * Clear stored discrepancies
+ * @param {string} [studentKey] - Optional key to clear only one student's discrepancy
+ *                                If not provided, clears all discrepancies
  */
-async function clearDiscrepancies() {
-  await chrome.storage.local.set({ discrepancies: {} });
+async function clearDiscrepancies(studentKey) {
+  if (studentKey) {
+    // Clear only the specified student's discrepancy
+    const { discrepancies = {} } = await chrome.storage.local.get('discrepancies');
+    delete discrepancies[studentKey];
+    await chrome.storage.local.set({ discrepancies });
+  } else {
+    // Clear all discrepancies
+    await chrome.storage.local.set({ discrepancies: {} });
+  }
   await updateBadge();
   return { success: true };
 }
