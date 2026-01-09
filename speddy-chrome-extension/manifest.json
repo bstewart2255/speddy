@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Speddy - SEIS Data Bridge",
-  "version": "2.0.0",
-  "description": "Import IEP goals, services, and accommodations from SEIS directly into your Speddy account",
+  "name": "Speddy - SEIS Discrepancy Detector",
+  "version": "3.0.0",
+  "description": "Automatically detect discrepancies between SEIS and Speddy IEP data",
   "permissions": [
     "storage",
     "activeTab"
@@ -33,7 +33,7 @@
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     },
-    "default_title": "Speddy - Import from SEIS"
+    "default_title": "Speddy - SEIS Discrepancy Detector"
   },
   "icons": {
     "16": "icons/icon-16.png",

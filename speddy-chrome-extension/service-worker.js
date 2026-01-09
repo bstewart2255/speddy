@@ -1,9 +1,9 @@
 /**
  * Speddy Chrome Extension - Service Worker
- * Handles background tasks, API communication, and passive discrepancy checking
+ * Handles background tasks and passive discrepancy detection
  */
 
-// API endpoint (change for production)
+// API endpoint
 const API_BASE_URL = 'https://speddy.xyz';
 
 // Listen for installation
@@ -19,13 +19,6 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'sendToSpeddy') {
-    handleSendToSpeddy(request.data)
-      .then(sendResponse)
-      .catch(err => sendResponse({ error: err.message }));
-    return true; // Keep channel open for async response
-  }
-
   if (request.action === 'validateApiKey') {
     validateApiKey(request.apiKey)
       .then(sendResponse)
@@ -44,14 +37,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // Handle compare request from popup
-  if (request.action === 'compareStudent') {
-    handleCompareStudent(request.student)
-      .then(sendResponse)
-      .catch(err => sendResponse({ error: err.message }));
-    return true;
-  }
-
   // Get stored discrepancies
   if (request.action === 'getDiscrepancies') {
     getStoredDiscrepancies()
@@ -67,42 +52,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(err => sendResponse({ error: err.message }));
     return true;
   }
-
-  // Get user's students list (for student picker)
-  if (request.action === 'getSpeddyStudents') {
-    getSpeddyStudents()
-      .then(sendResponse)
-      .catch(err => sendResponse({ error: err.message }));
-    return true;
-  }
 });
-
-/**
- * Send extracted data to Speddy API
- */
-async function handleSendToSpeddy(data) {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-
-  if (!apiKey) {
-    throw new Error('No API key configured');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/extension/import`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Import failed');
-  }
-
-  return response.json();
-}
 
 /**
  * Validate an API key by making a test request
@@ -118,7 +68,7 @@ async function validateApiKey(apiKey) {
 }
 
 // ==========================================
-// PASSIVE MODE: Background Discrepancy Checking
+// PASSIVE MODE: Background Discrepancy Detection
 // ==========================================
 
 /**
@@ -162,33 +112,6 @@ async function handlePassiveExtraction(student, pageType, url) {
     console.error('Passive extraction error:', err);
     return { error: err.message };
   }
-}
-
-/**
- * Handle compare request from popup (for active mode preview)
- */
-async function handleCompareStudent(student) {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-
-  if (!apiKey) {
-    throw new Error('No API key configured');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/extension/compare`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ student }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Compare failed');
-  }
-
-  return response.json();
 }
 
 /**
@@ -261,27 +184,6 @@ async function updateBadge() {
     // Clear badge
     await chrome.action.setBadgeText({ text: '' });
   }
-}
-
-/**
- * Get user's students from Speddy (for student picker in popup)
- * This uses the compare endpoint with a dummy student to get back matched students
- */
-async function getSpeddyStudents() {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-
-  if (!apiKey) {
-    throw new Error('No API key configured');
-  }
-
-  // We need a new endpoint for this, or we can use a hack:
-  // For now, we'll just return an indication that the endpoint isn't available
-  // TODO: Add a /api/extension/students endpoint to list user's students
-
-  return {
-    error: 'Students list endpoint not yet implemented',
-    hint: 'Use the matched student from compare result instead',
-  };
 }
 
 // Initialize badge on startup

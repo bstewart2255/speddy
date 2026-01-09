@@ -1,97 +1,11 @@
 /**
  * Speddy Chrome Extension - SEIS Content Script
- * Extracts IEP data from SEIS pages
+ * Passively extracts IEP data from SEIS pages for discrepancy detection
  */
-
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getPreview') {
-    const preview = getPagePreview();
-    sendResponse({ preview });
-    return true;
-  }
-
-  if (request.action === 'extractData') {
-    const data = extractPageData(request.pageType);
-    sendResponse(data);
-    return true;
-  }
-});
-
-/**
- * Get a quick preview of what's on the page
- */
-function getPagePreview() {
-  const url = window.location.href;
-
-  if (url.includes('/state/goals')) {
-    return getGoalsPreview();
-  }
-
-  if (url.includes('/state/services')) {
-    return getServicesPreview();
-  }
-
-  return null;
-}
-
-/**
- * Extract full data from the page
- */
-function extractPageData(pageType) {
-  try {
-    if (pageType === 'goals') {
-      return extractGoalsPage();
-    }
-
-    if (pageType === 'services') {
-      return extractServicesPage();
-    }
-
-    return { error: 'Unknown page type' };
-  } catch (err) {
-    console.error('Extraction error:', err);
-    return { error: err.message };
-  }
-}
 
 // ==========================================
 // GOALS PAGE EXTRACTION
 // ==========================================
-
-function getGoalsPreview() {
-  const studentInfo = extractStudentSidebar();
-  const goals = document.querySelectorAll('[class*="goal"], .goal-container, [id*="goal"]');
-
-  // Try to count goals from the page structure
-  let goalsCount = goals.length;
-
-  // If no goals found with those selectors, try looking for goal headers
-  if (goalsCount === 0) {
-    const goalHeaders = document.querySelectorAll('h3, h4, .panel-title');
-    goalHeaders.forEach(header => {
-      if (header.textContent?.toLowerCase().includes('goal')) {
-        goalsCount++;
-      }
-    });
-  }
-
-  // Alternative: Count sections that look like goals
-  if (goalsCount === 0) {
-    const sections = document.querySelectorAll('.panel, .card, section');
-    sections.forEach(section => {
-      if (section.textContent?.includes('Area of Need') ||
-          section.textContent?.includes('Measurable Annual Goal')) {
-        goalsCount++;
-      }
-    });
-  }
-
-  return {
-    studentName: studentInfo?.name || 'Unknown',
-    goalsCount,
-  };
-}
 
 function extractGoalsPage() {
   const studentInfo = extractStudentSidebar();
@@ -320,35 +234,6 @@ function findGoalTextBlocks() {
 // ==========================================
 // SERVICES PAGE EXTRACTION
 // ==========================================
-
-function getServicesPreview() {
-  const studentInfo = extractStudentSidebar();
-  const services = document.querySelectorAll('[class*="service"], .service-row, tr[ng-repeat]');
-  const accommodations = document.querySelectorAll('[class*="accommodation"], .accommodation-row');
-
-  // Count services by looking for service patterns
-  let servicesCount = 0;
-  let accommodationsCount = 0;
-
-  // Try to count from table rows or sections
-  const allText = document.body.innerText;
-  const serviceMatches = allText.match(/\d+\s+\w+.*min\s*x\s*\d+\s*sessions/gi);
-  if (serviceMatches) {
-    servicesCount = serviceMatches.length;
-  }
-
-  // Count accommodation sections
-  const accText = allText.match(/Program Accommodations/gi);
-  if (accText) {
-    accommodationsCount = 1; // At least one accommodation section
-  }
-
-  return {
-    studentName: studentInfo?.name || 'Unknown',
-    servicesCount: servicesCount || services.length,
-    accommodationsCount: accommodationsCount || accommodations.length,
-  };
-}
 
 function extractServicesPage() {
   const studentInfo = extractStudentSidebar();

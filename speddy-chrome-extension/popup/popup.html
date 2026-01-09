@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Speddy - SEIS Data Bridge</title>
+  <title>Speddy - SEIS Discrepancy Detector</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header>
       <h1>Speddy</h1>
-      <p class="subtitle">SEIS Data Bridge</p>
+      <p class="subtitle">SEIS Discrepancy Detector</p>
     </header>
 
     <!-- Setup State - No API Key -->
     <div id="setup-state" class="state hidden">
       <div class="info-box">
-        <p>Connect your Speddy account to import data from SEIS.</p>
+        <p>Connect your Speddy account to detect data discrepancies.</p>
         <ol>
           <li>Go to <strong>Settings</strong> in Speddy</li>
           <li>Generate an <strong>API Key</strong></li>
@@ -31,207 +31,32 @@
       <div id="setup-error" class="error hidden"></div>
     </div>
 
-    <!-- Ready State - Has API Key, On SEIS -->
-    <div id="ready-state" class="state hidden">
-      <div class="page-info">
-        <span class="badge" id="page-type-badge">Unknown Page</span>
-        <p id="page-description">Navigate to a SEIS page to extract data.</p>
+    <!-- Main State - Has API Key -->
+    <div id="main-state" class="state hidden">
+      <!-- Empty state when no discrepancies -->
+      <div id="no-discrepancies" class="info-box hidden">
+        <p>No discrepancies detected.</p>
+        <p class="hint">Browse SEIS student pages to detect differences between SEIS and Speddy data.</p>
       </div>
 
-      <!-- Discrepancies Alert (from passive mode) -->
-      <div id="discrepancies-alert" class="discrepancies-alert hidden">
-        <div class="alert-header">
-          <span class="alert-icon">!</span>
-          <span id="discrepancies-count">0 students</span> have outdated data
+      <!-- Discrepancies list -->
+      <div id="discrepancies-section" class="hidden">
+        <p class="state-description">
+          These students have different data in SEIS vs Speddy.
+        </p>
+        <div id="discrepancies-list" class="discrepancies-list">
+          <!-- Discrepancy items will be inserted here -->
         </div>
-        <button id="view-discrepancies-btn" class="btn btn-secondary btn-small">
-          View Details
-        </button>
-        <button id="dismiss-discrepancies-btn" class="btn btn-link btn-small">
-          Dismiss
-        </button>
-      </div>
-
-      <div id="extraction-preview" class="preview hidden">
-        <h3>Data Found</h3>
-        <ul id="preview-list"></ul>
-      </div>
-
-      <button id="extract-btn" class="btn btn-primary btn-large" disabled>
-        Extract Data
-      </button>
-
-      <div class="footer-actions">
-        <button id="disconnect-btn" class="btn btn-link">Disconnect</button>
-      </div>
-    </div>
-
-    <!-- Student Match Confirmation State -->
-    <div id="match-confirm-state" class="state hidden">
-      <h2>Confirm Student Match</h2>
-
-      <div class="match-comparison">
-        <div class="match-column">
-          <h4>From SEIS</h4>
-          <div class="student-info">
-            <p><strong>Name:</strong> <span id="seis-student-name">-</span></p>
-            <p><strong>Grade:</strong> <span id="seis-student-grade">-</span></p>
-            <p><strong>School:</strong> <span id="seis-student-school">-</span></p>
-          </div>
-        </div>
-
-        <div class="match-arrow">→</div>
-
-        <div class="match-column">
-          <h4>Matched in Speddy</h4>
-          <div class="student-info" id="speddy-student-info">
-            <p><strong>Initials:</strong> <span id="speddy-student-initials">-</span></p>
-            <p><strong>Grade:</strong> <span id="speddy-student-grade">-</span></p>
-            <p><strong>School:</strong> <span id="speddy-student-school">-</span></p>
-          </div>
-          <div id="no-match-warning" class="warning hidden">
-            No matching student found
-          </div>
-        </div>
-      </div>
-
-      <div class="match-confirmation">
-        <label class="checkbox-label">
-          <input type="checkbox" id="confirm-match-checkbox">
-          <span>This is the correct match</span>
-        </label>
-      </div>
-
-      <div class="button-group">
-        <button id="cancel-match-btn" class="btn btn-secondary">Cancel</button>
-        <button id="proceed-match-btn" class="btn btn-primary" disabled>
-          Continue
-        </button>
-      </div>
-    </div>
-
-    <!-- Data Selection State -->
-    <div id="data-select-state" class="state hidden">
-      <h2>Select Data to Import</h2>
-
-      <div id="data-selection-list" class="data-selection">
-        <!-- Goals Section -->
-        <div class="data-section" id="goals-section">
-          <label class="checkbox-label section-header">
-            <input type="checkbox" id="import-goals" checked>
-            <span>IEP Goals (<span id="goals-count">0</span> found)</span>
-          </label>
-          <div id="goals-preview" class="data-preview hidden">
-            <div class="preview-scroll">
-              <!-- Goal items will be inserted here -->
-            </div>
-          </div>
-          <button id="toggle-goals-preview" class="btn btn-link btn-small">
-            Show preview
-          </button>
-        </div>
-
-        <!-- Services Section -->
-        <div class="data-section" id="services-section">
-          <label class="checkbox-label section-header">
-            <input type="checkbox" id="import-services" checked>
-            <span>Service Minutes</span>
-          </label>
-          <div id="services-preview" class="data-preview-inline">
-            <p id="services-details">-</p>
-          </div>
-        </div>
-
-        <!-- IEP Dates Section -->
-        <div class="data-section" id="dates-section">
-          <label class="checkbox-label section-header">
-            <input type="checkbox" id="import-dates" checked>
-            <span>IEP Dates</span>
-          </label>
-          <div id="dates-preview" class="data-preview-inline">
-            <p id="dates-details">-</p>
-          </div>
-        </div>
-
-        <!-- Accommodations Section -->
-        <div class="data-section" id="accommodations-section">
-          <label class="checkbox-label section-header">
-            <input type="checkbox" id="import-accommodations">
-            <span>Accommodations (<span id="accommodations-count">0</span> found)</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="button-group">
-        <button id="back-to-match-btn" class="btn btn-secondary">Back</button>
-        <button id="sync-btn" class="btn btn-primary">
-          Sync to Speddy
-        </button>
-      </div>
-    </div>
-
-    <!-- Discrepancies List State -->
-    <div id="discrepancies-state" class="state hidden">
-      <h2>Outdated Students</h2>
-      <p class="state-description">
-        These students have different data in SEIS vs Speddy.
-      </p>
-
-      <div id="discrepancies-list" class="discrepancies-list">
-        <!-- Discrepancy items will be inserted here -->
-      </div>
-
-      <div class="button-group">
-        <button id="back-from-discrepancies-btn" class="btn btn-secondary">Back</button>
-        <button id="clear-all-discrepancies-btn" class="btn btn-link">
+        <button id="clear-all-btn" class="btn btn-link btn-small">
           Clear All
         </button>
       </div>
-    </div>
 
-    <!-- Not on SEIS State -->
-    <div id="not-seis-state" class="state hidden">
-      <div class="info-box info-box-warning">
-        <p>You're not on a SEIS page.</p>
-        <p>Navigate to <a href="https://www.seis.org" target="_blank">seis.org</a> and log in to import data.</p>
-      </div>
-
-      <!-- Show discrepancies alert even when not on SEIS -->
-      <div id="discrepancies-alert-alt" class="discrepancies-alert hidden">
-        <div class="alert-header">
-          <span class="alert-icon">!</span>
-          <span id="discrepancies-count-alt">0 students</span> have outdated data
-        </div>
-        <button id="view-discrepancies-btn-alt" class="btn btn-secondary btn-small">
-          View Details
-        </button>
-      </div>
-
+      <!-- Footer with disconnect -->
       <div class="footer-actions">
-        <button id="disconnect-btn-alt" class="btn btn-link">Disconnect Account</button>
+        <p class="connected-status">Connected to Speddy</p>
+        <button id="disconnect-btn" class="btn btn-link">Disconnect</button>
       </div>
-    </div>
-
-    <!-- Loading State -->
-    <div id="loading-state" class="state hidden">
-      <div class="spinner"></div>
-      <p id="loading-message">Extracting data...</p>
-    </div>
-
-    <!-- Success State -->
-    <div id="success-state" class="state hidden">
-      <div class="success-icon">✓</div>
-      <h2>Import Complete!</h2>
-      <div id="success-details"></div>
-      <button id="done-btn" class="btn btn-primary">Done</button>
-    </div>
-
-    <!-- Error State -->
-    <div id="error-state" class="state hidden">
-      <div class="error-icon">!</div>
-      <h2>Import Failed</h2>
-      <p id="error-message"></p>
-      <button id="retry-btn" class="btn btn-primary">Try Again</button>
     </div>
   </div>
 
