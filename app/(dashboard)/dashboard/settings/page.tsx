@@ -87,10 +87,14 @@ export default function SettingsPage() {
           {/* Curriculums Settings */}
           <CurriculumsSettings />
 
-          {/* API Keys - For providers to use Chrome Extension */}
-          {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
+          {/* API Keys - For providers to use Chrome Extension
+              TEMPORARILY HIDDEN: Chrome extension feature is not ready for release yet.
+              To restore: uncomment the ApiKeysSettings component below.
+              See PR #552 for extension implementation details.
+          */}
+          {/* {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
             <ApiKeysSettings />
-          )}
+          )} */}
 
           {/* Password Reset Request - Only for providers */}
           {['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'].includes(userProfile?.role) && (
