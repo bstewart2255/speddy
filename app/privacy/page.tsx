@@ -6,14 +6,14 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: August 4, 2025</p>
+            <p className="text-gray-600">Last Updated: January 19, 2026</p>
           </div>
 
           {/* Content */}
           <div className="prose prose-gray max-w-none">
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Introduction</h2>
             <p className="text-gray-700 mb-4">
-              This Privacy Policy describes how B. Stewart ("we," "us," or "our") collects, uses, and protects information when you use Speddy ("Service"). This policy is designed for individual education professionals who use Speddy in their work with students in school settings.
+              This Privacy Policy describes how Orchestrate LLC ("we," "us," or "our") collects, uses, and protects information when you use Speddy ("Service"). This policy is designed for individual education professionals who use Speddy in their work with students in school settings.
             </p>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">2. Information We Collect</h2>
@@ -204,8 +204,8 @@ export default function PrivacyPage() {
             <div className="bg-gray-100 p-4 rounded-lg mb-4">
               <p className="text-gray-700">
                 <strong>Data Controller:</strong><br />
-                B. Stewart<br />
-                bstew510@gmail.com<br />
+                Orchestrate LLC<br />
+                help@speddy.xyz<br />
               </p>
             </div>
             <p className="text-gray-700 mb-4">

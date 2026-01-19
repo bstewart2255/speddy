@@ -6,14 +6,14 @@ export default function TermsPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms and Conditions</h1>
-            <p className="text-gray-600">Last Updated: August 4, 2025</p>
+            <p className="text-gray-600">Last Updated: January 19, 2026</p>
           </div>
 
           {/* Content */}
           <div className="prose prose-gray max-w-none">
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Agreement to Terms</h2>
             <p className="text-gray-700 mb-4">
-              By accessing or using Speddy ("Service"), operated by B. Stewart ("we," "us," or "our"), you agree to be bound by these Terms and Conditions ("Terms"). If you disagree with any part of these terms, you do not have permission to access the Service.
+              By accessing or using Speddy ("Service"), operated by Orchestrate LLC ("we," "us," or "our"), you agree to be bound by these Terms and Conditions ("Terms"). If you disagree with any part of these terms, you do not have permission to access the Service.
             </p>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">2. Eligibility</h2>
@@ -72,7 +72,7 @@ export default function TermsPage() {
 
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.1 Our Property</h3>
             <p className="text-gray-700 mb-4">
-              The Service and its original content, features, and functionality are owned by B. Stewart and are protected by international copyright, trademark, and other intellectual property laws.
+              The Service and its original content, features, and functionality are owned by Orchestrate LLC and are protected by international copyright, trademark, and other intellectual property laws.
             </p>
 
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.2 Your Content</h3>
@@ -125,12 +125,12 @@ export default function TermsPage() {
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Limitation of Liability</h2>
             <p className="text-gray-700 mb-4">
-              To the maximum extent permitted by law, B. Stewart shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or use, arising from your use of Speddy. This includes any professional liability or educational outcomes.
+              To the maximum extent permitted by law, Orchestrate LLC shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or use, arising from your use of Speddy. This includes any professional liability or educational outcomes.
             </p>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Indemnification</h2>
             <p className="text-gray-700 mb-4">
-              You agree to indemnify and hold harmless B. Stewart from any claims, damages, or expenses arising from:
+              You agree to indemnify and hold harmless Orchestrate LLC from any claims, damages, or expenses arising from:
             </p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Your violation of these Terms</li>
@@ -173,8 +173,8 @@ export default function TermsPage() {
             </p>
             <div className="bg-gray-100 p-4 rounded-lg">
               <p className="text-gray-700">
-                <strong>B. Stewart</strong><br />
-                bstew510@gmail.com<br />
+                <strong>Orchestrate LLC</strong><br />
+                help@speddy.xyz<br />
               </p>
             </div>
           </div>

@@ -6,7 +6,7 @@ export default function FERPAPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">FERPA Compliance Notice</h1>
-            <p className="text-gray-600">Last Updated: August 4, 2025</p>
+            <p className="text-gray-600">Last Updated: January 19, 2026</p>
           </div>
 
           {/* Content */}
@@ -260,9 +260,9 @@ export default function FERPAPage() {
               </p>
               <div className="bg-gray-100 p-4 rounded-lg">
                 <p className="text-gray-700">
-                  <strong>B. Stewart</strong><br />
+                  <strong>Orchestrate LLC</strong><br />
                   Privacy Officer<br />
-                  bstew510@gmail.com<br />
+                  help@speddy.xyz<br />
                 </p>
               </div>
             </section>
