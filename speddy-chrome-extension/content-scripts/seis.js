@@ -1,97 +1,20 @@
 /**
  * Speddy Chrome Extension - SEIS Content Script
- * Extracts IEP data from SEIS pages
+ * Passively extracts IEP data from SEIS pages for discrepancy detection
  */
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getPreview') {
-    const preview = getPagePreview();
-    sendResponse({ preview });
-    return true;
-  }
-
-  if (request.action === 'extractData') {
-    const data = extractPageData(request.pageType);
-    sendResponse(data);
-    return true;
-  }
-});
-
-/**
- * Get a quick preview of what's on the page
- */
-function getPagePreview() {
-  const url = window.location.href;
-
-  if (url.includes('/state/goals')) {
-    return getGoalsPreview();
-  }
-
-  if (url.includes('/state/services')) {
-    return getServicesPreview();
-  }
-
-  return null;
-}
-
-/**
- * Extract full data from the page
- */
-function extractPageData(pageType) {
-  try {
-    if (pageType === 'goals') {
-      return extractGoalsPage();
-    }
-
-    if (pageType === 'services') {
-      return extractServicesPage();
-    }
-
-    return { error: 'Unknown page type' };
-  } catch (err) {
-    console.error('Extraction error:', err);
-    return { error: err.message };
-  }
-}
+// ==========================================
+// PAGE READY DETECTION CONSTANTS
+// ==========================================
+const MIN_CONTENT_LENGTH = 1000;
+const ANGULAR_RENDER_DELAY_MS = 500;
+const MAX_CONTENT_WAIT_ATTEMPTS = 20;
+const CONTENT_CHECK_INTERVAL_MS = 250;
+const NAVIGATION_DEBOUNCE_MS = 1000;
 
 // ==========================================
 // GOALS PAGE EXTRACTION
 // ==========================================
-
-function getGoalsPreview() {
-  const studentInfo = extractStudentSidebar();
-  const goals = document.querySelectorAll('[class*="goal"], .goal-container, [id*="goal"]');
-
-  // Try to count goals from the page structure
-  let goalsCount = goals.length;
-
-  // If no goals found with those selectors, try looking for goal headers
-  if (goalsCount === 0) {
-    const goalHeaders = document.querySelectorAll('h3, h4, .panel-title');
-    goalHeaders.forEach(header => {
-      if (header.textContent?.toLowerCase().includes('goal')) {
-        goalsCount++;
-      }
-    });
-  }
-
-  // Alternative: Count sections that look like goals
-  if (goalsCount === 0) {
-    const sections = document.querySelectorAll('.panel, .card, section');
-    sections.forEach(section => {
-      if (section.textContent?.includes('Area of Need') ||
-          section.textContent?.includes('Measurable Annual Goal')) {
-        goalsCount++;
-      }
-    });
-  }
-
-  return {
-    studentName: studentInfo?.name || 'Unknown',
-    goalsCount,
-  };
-}
 
 function extractGoalsPage() {
   const studentInfo = extractStudentSidebar();
@@ -321,35 +244,6 @@ function findGoalTextBlocks() {
 // SERVICES PAGE EXTRACTION
 // ==========================================
 
-function getServicesPreview() {
-  const studentInfo = extractStudentSidebar();
-  const services = document.querySelectorAll('[class*="service"], .service-row, tr[ng-repeat]');
-  const accommodations = document.querySelectorAll('[class*="accommodation"], .accommodation-row');
-
-  // Count services by looking for service patterns
-  let servicesCount = 0;
-  let accommodationsCount = 0;
-
-  // Try to count from table rows or sections
-  const allText = document.body.innerText;
-  const serviceMatches = allText.match(/\d+\s+\w+.*min\s*x\s*\d+\s*sessions/gi);
-  if (serviceMatches) {
-    servicesCount = serviceMatches.length;
-  }
-
-  // Count accommodation sections
-  const accText = allText.match(/Program Accommodations/gi);
-  if (accText) {
-    accommodationsCount = 1; // At least one accommodation section
-  }
-
-  return {
-    studentName: studentInfo?.name || 'Unknown',
-    servicesCount: servicesCount || services.length,
-    accommodationsCount: accommodationsCount || accommodations.length,
-  };
-}
-
 function extractServicesPage() {
   const studentInfo = extractStudentSidebar();
   const services = extractServices();
@@ -541,12 +435,21 @@ async function runPassiveExtraction() {
 
   if (extractedData && extractedData.student) {
     // Send to service worker for background comparison
-    chrome.runtime.sendMessage({
-      action: 'passiveExtraction',
-      pageType,
-      student: extractedData.student,
-      url,
-    });
+    try {
+      chrome.runtime.sendMessage({
+        action: 'passiveExtraction',
+        pageType,
+        student: extractedData.student,
+        url,
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Failed to send passive extraction:', chrome.runtime.lastError);
+        }
+      });
+    } catch (err) {
+      // Extension context may be invalidated (e.g., extension updated/reloaded)
+      console.error('Failed to send passive extraction:', err);
+    }
   }
 }
 
@@ -557,27 +460,26 @@ async function runPassiveExtraction() {
 function waitForPageReady() {
   return new Promise((resolve) => {
     // Check if page already has content
-    const hasContent = document.body.innerText.length > 1000;
+    const hasContent = document.body.innerText.length > MIN_CONTENT_LENGTH;
 
     if (hasContent) {
       // Give a bit more time for Angular to finish rendering
-      setTimeout(resolve, 500);
+      setTimeout(resolve, ANGULAR_RENDER_DELAY_MS);
       return;
     }
 
     // Wait for content to load
     let attempts = 0;
-    const maxAttempts = 20;
 
     const checkInterval = setInterval(() => {
       attempts++;
       const contentLength = document.body.innerText.length;
 
-      if (contentLength > 1000 || attempts >= maxAttempts) {
+      if (contentLength > MIN_CONTENT_LENGTH || attempts >= MAX_CONTENT_WAIT_ATTEMPTS) {
         clearInterval(checkInterval);
-        setTimeout(resolve, 500); // Give Angular time to finish
+        setTimeout(resolve, ANGULAR_RENDER_DELAY_MS); // Give Angular time to finish
       }
-    }, 250);
+    }, CONTENT_CHECK_INTERVAL_MS);
   });
 }
 
@@ -592,19 +494,47 @@ if (document.readyState === 'complete') {
 // Use debouncing to prevent excessive calls during rapid DOM changes
 let lastUrl = location.href;
 let navigationDebounceTimer = null;
+let navigationObserver = null;
 
-new MutationObserver(() => {
-  const currentUrl = location.href;
-  if (currentUrl !== lastUrl) {
-    lastUrl = currentUrl;
-
-    // Debounce: clear any pending timer and set a new one
-    if (navigationDebounceTimer) {
-      clearTimeout(navigationDebounceTimer);
-    }
-    navigationDebounceTimer = setTimeout(() => {
-      navigationDebounceTimer = null;
-      runPassiveExtraction();
-    }, 1000);
+/**
+ * Setup the navigation observer for SPA route changes
+ */
+function setupNavigationObserver() {
+  // Disconnect existing observer if any
+  if (navigationObserver) {
+    navigationObserver.disconnect();
   }
-}).observe(document.body, { childList: true, subtree: true });
+
+  navigationObserver = new MutationObserver(() => {
+    const currentUrl = location.href;
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+
+      // Debounce: clear any pending timer and set a new one
+      if (navigationDebounceTimer) {
+        clearTimeout(navigationDebounceTimer);
+      }
+      navigationDebounceTimer = setTimeout(() => {
+        navigationDebounceTimer = null;
+        runPassiveExtraction();
+      }, NAVIGATION_DEBOUNCE_MS);
+    }
+  });
+
+  navigationObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// Setup the observer
+setupNavigationObserver();
+
+// Cleanup on page unload to prevent memory leaks
+window.addEventListener('unload', () => {
+  if (navigationObserver) {
+    navigationObserver.disconnect();
+    navigationObserver = null;
+  }
+  if (navigationDebounceTimer) {
+    clearTimeout(navigationDebounceTimer);
+    navigationDebounceTimer = null;
+  }
+});
