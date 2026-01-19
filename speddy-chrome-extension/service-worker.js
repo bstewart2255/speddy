@@ -95,9 +95,15 @@ async function handlePassiveExtraction(student, pageType, url) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      console.error('Compare API error:', error);
-      return { error: error.error };
+      let errorMessage = 'Compare API error';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+      } catch {
+        errorMessage = `HTTP ${response.status}`;
+      }
+      console.error('Compare API error:', errorMessage);
+      return { error: errorMessage };
     }
 
     const result = await response.json();
@@ -120,8 +126,12 @@ async function handlePassiveExtraction(student, pageType, url) {
 async function storeDiscrepancy(student, compareResult, url) {
   const { discrepancies = {} } = await chrome.storage.local.get('discrepancies');
 
-  // Key by student name or SEIS ID
-  const studentKey = student.seisId || student.name || 'unknown';
+  // Key by student name or SEIS ID - skip if neither available
+  const studentKey = student.seisId || student.name;
+  if (!studentKey) {
+    console.warn('Cannot store discrepancy: student has no seisId or name');
+    return;
+  }
 
   discrepancies[studentKey] = {
     student: {

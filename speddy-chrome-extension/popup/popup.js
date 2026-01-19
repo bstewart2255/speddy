@@ -54,14 +54,14 @@ async function init() {
 
 // Load and display discrepancies
 async function loadDiscrepancies(signal) {
+  const noDiscrepanciesEl = document.getElementById('no-discrepancies');
+  const discrepanciesSectionEl = document.getElementById('discrepancies-section');
+  const listEl = document.getElementById('discrepancies-list');
+
   try {
     const response = await chrome.runtime.sendMessage({ action: 'getDiscrepancies' });
     const discrepancies = response?.discrepancies || {};
     const count = Object.keys(discrepancies).length;
-
-    const noDiscrepanciesEl = document.getElementById('no-discrepancies');
-    const discrepanciesSectionEl = document.getElementById('discrepancies-section');
-    const listEl = document.getElementById('discrepancies-list');
 
     if (count === 0) {
       noDiscrepanciesEl.classList.remove('hidden');
@@ -74,6 +74,14 @@ async function loadDiscrepancies(signal) {
     }
   } catch (err) {
     console.error('Error loading discrepancies:', err);
+    // Show fallback UI on error
+    discrepanciesSectionEl.classList.add('hidden');
+    noDiscrepanciesEl.classList.remove('hidden');
+    // Update the message to indicate an error occurred
+    const hintEl = noDiscrepanciesEl.querySelector('.hint');
+    if (hintEl) {
+      hintEl.textContent = 'Failed to load discrepancies. Please try again later.';
+    }
   }
 }
 
@@ -127,8 +135,12 @@ function renderDiscrepancyItems(discrepancies, container, signal) {
     clearBtn.className = 'btn btn-link btn-small';
     clearBtn.textContent = 'Clear';
     clearBtn.addEventListener('click', async () => {
-      await chrome.runtime.sendMessage({ action: 'clearDiscrepancies', studentKey: key });
-      init(); // Refresh the view
+      try {
+        await chrome.runtime.sendMessage({ action: 'clearDiscrepancies', studentKey: key });
+        init(); // Refresh the view
+      } catch (err) {
+        console.error('Failed to clear discrepancy:', err);
+      }
     }, { signal });
     actionsEl.appendChild(clearBtn);
 
@@ -143,8 +155,12 @@ function renderDiscrepancyItems(discrepancies, container, signal) {
 // Setup clear all button listener
 function setupClearAllListener(signal) {
   document.getElementById('clear-all-btn')?.addEventListener('click', async () => {
-    await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
-    init(); // Refresh the view
+    try {
+      await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
+      init(); // Refresh the view
+    } catch (err) {
+      console.error('Failed to clear all discrepancies:', err);
+    }
   }, { signal });
 }
 
@@ -185,8 +201,12 @@ function setupSetupListeners() {
 // Setup disconnect listener
 function setupDisconnectListener(signal) {
   document.getElementById('disconnect-btn')?.addEventListener('click', async () => {
-    await chrome.storage.local.remove('apiKey');
-    await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
+    try {
+      await chrome.storage.local.remove('apiKey');
+      await chrome.runtime.sendMessage({ action: 'clearDiscrepancies' });
+    } catch (err) {
+      console.error('Error during disconnect:', err);
+    }
     window.location.reload();
   }, { signal });
 }
