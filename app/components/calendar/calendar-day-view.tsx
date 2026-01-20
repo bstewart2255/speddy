@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Database } from '../../../src/types/database';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '@/lib/services/session-update-service';
@@ -47,6 +47,8 @@ export function CalendarDayView({
   const [userProfile, setUserProfile] = useState<any>(null);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
+  // Track previous session states to only validate changed sessions (prevents excessive API calls)
+  const prevSessionsRef = useRef<Map<string, string>>(new Map());
 
   // State for students fetched from assigned sessions
   const [additionalStudents, setAdditionalStudents] = useState<Map<string, { initials: string; grade_level?: string }>>(new Map());
@@ -219,11 +221,59 @@ export function CalendarDayView({
     fetchMissingStudents();
   }, [sessionsState, students, supabase]); // Remove additionalStudents from deps to avoid infinite loop
 
-  // Check for conflicts after sessions are loaded
+  // Check for conflicts after sessions are loaded - OPTIMIZED to only validate changed sessions
   const checkSessionConflicts = useCallback(async () => {
-    const conflicts: Record<string, boolean> = {};
+    // Create fingerprint for each session based on schedule-related fields
+    const getSessionFingerprint = (s: ScheduleSession) =>
+      `${s.day_of_week}|${s.start_time}|${s.end_time}|${s.student_id}`;
 
-    for (const session of sessionsState) {
+    // Build current fingerprints map
+    const currentFingerprints = new Map<string, string>();
+    sessionsState.forEach(s => {
+      currentFingerprints.set(s.id, getSessionFingerprint(s));
+    });
+
+    // Find sessions that changed (new, modified, or removed)
+    const changedSessionIds = new Set<string>();
+
+    // Check for new or modified sessions
+    currentFingerprints.forEach((fingerprint, id) => {
+      const prevFingerprint = prevSessionsRef.current.get(id);
+      if (prevFingerprint !== fingerprint) {
+        changedSessionIds.add(id);
+      }
+    });
+
+    // Check for removed sessions
+    prevSessionsRef.current.forEach((_, id) => {
+      if (!currentFingerprints.has(id)) {
+        changedSessionIds.add(id);
+      }
+    });
+
+    // Update the ref for next comparison
+    prevSessionsRef.current = currentFingerprints;
+
+    // If nothing changed, skip validation
+    if (changedSessionIds.size === 0) {
+      return;
+    }
+
+    // Start with existing conflicts (preserve unchanged session states)
+    const conflicts: Record<string, boolean> = { ...sessionConflicts };
+
+    // Remove conflicts for sessions that no longer exist
+    Object.keys(conflicts).forEach(id => {
+      if (!currentFingerprints.has(id)) {
+        delete conflicts[id];
+      }
+    });
+
+    // Only validate sessions that changed (limit to avoid overwhelming browser)
+    const sessionsToValidate = sessionsState.filter(s => changedSessionIds.has(s.id));
+
+    // Process validations sequentially to avoid browser throttling
+    for (const session of sessionsToValidate) {
       // Skip validation for unscheduled sessions (with null times)
       if (!session.day_of_week || !session.start_time || !session.end_time) {
         conflicts[session.id] = false;
@@ -242,14 +292,14 @@ export function CalendarDayView({
     }
 
     setSessionConflicts(conflicts);
-  }, [sessionsState]);
-  
+  }, [sessionsState, sessionConflicts]);
+
   // Check conflicts when sessions change
   useEffect(() => {
     const timer = setTimeout(() => {
       checkSessionConflicts();
     }, 500); // Small delay to batch updates
-    
+
     return () => clearTimeout(timer);
   }, [sessionsState, checkSessionConflicts]);
 
