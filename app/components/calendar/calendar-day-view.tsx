@@ -259,18 +259,33 @@ export function CalendarDayView({
       return;
     }
 
-    // Start with existing conflicts (preserve unchanged session states)
-    const conflicts: Record<string, boolean> = { ...sessionConflicts };
-
-    // Remove conflicts for sessions that no longer exist
-    Object.keys(conflicts).forEach(id => {
-      if (!currentFingerprints.has(id)) {
-        delete conflicts[id];
+    // Find sessions that might have interdependent conflicts with changed sessions
+    // (same student + same day, since most conflicts are student-specific per day)
+    const changedSessions = sessionsState.filter(s => changedSessionIds.has(s.id));
+    const impactedKeys = new Set<string>();
+    changedSessions.forEach(s => {
+      if (s.student_id && s.day_of_week) {
+        impactedKeys.add(`${s.student_id}|${s.day_of_week}`);
       }
     });
 
-    // Only validate sessions that changed (limit to avoid overwhelming browser)
-    const sessionsToValidate = sessionsState.filter(s => changedSessionIds.has(s.id));
+    // Expand validation to include potentially affected sessions (same student + day)
+    const sessionsToValidate = sessionsState.filter(s => {
+      if (changedSessionIds.has(s.id)) return true;
+      if (s.student_id && s.day_of_week && impactedKeys.has(`${s.student_id}|${s.day_of_week}`)) return true;
+      return false;
+    });
+
+    // Start fresh for all sessions being validated
+    const conflicts: Record<string, boolean> = {};
+
+    // Preserve conflicts for sessions NOT being validated
+    sessionsState.forEach(s => {
+      if (!sessionsToValidate.some(v => v.id === s.id)) {
+        // Keep existing conflict state (read from ref to avoid dependency cycle)
+        conflicts[s.id] = false; // Default to no conflict if not tracked
+      }
+    });
 
     // Process validations sequentially to avoid browser throttling
     for (const session of sessionsToValidate) {
@@ -292,7 +307,7 @@ export function CalendarDayView({
     }
 
     setSessionConflicts(conflicts);
-  }, [sessionsState, sessionConflicts]);
+  }, [sessionsState]); // Removed sessionConflicts to avoid dependency cycle
 
   // Check conflicts when sessions change
   useEffect(() => {
