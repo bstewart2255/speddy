@@ -293,6 +293,27 @@ export class SessionGenerator {
 
     // If this is a temporary instance, create it in the database
     if (session.id.startsWith('temp-')) {
+      // First check if this session already exists (idempotent operation)
+      // This handles race conditions where multiple operations trigger persistence
+      const { data: existing, error: existingError } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('student_id', session.student_id)
+        .eq('session_date', session.session_date)
+        .eq('start_time', session.start_time)
+        .maybeSingle();
+
+      // If we found an existing session, return it (idempotent)
+      if (existing) {
+        console.log('Session instance already exists, returning existing:', existing.id);
+        return existing;
+      }
+
+      // Log SELECT errors but continue to INSERT attempt (might be transient)
+      if (existingError && existingError.code !== 'PGRST116') {
+        console.warn('Error checking for existing session:', existingError);
+      }
+
       const insertData: ScheduleSessionInsert = {
         student_id: session.student_id,
         provider_id: session.provider_id,
@@ -320,6 +341,21 @@ export class SessionGenerator {
         .single();
 
       if (error) {
+        // Handle race condition: if another request created it between pre-check and insert,
+        // fetch and return the existing session instead of failing
+        if (error.code === '23505') {
+          console.log('Duplicate key on insert, fetching existing session');
+          const { data: raceExisting } = await this.supabase
+            .from('schedule_sessions')
+            .select('*')
+            .eq('student_id', session.student_id)
+            .eq('session_date', session.session_date)
+            .eq('start_time', session.start_time)
+            .maybeSingle();
+          if (raceExisting) {
+            return raceExisting;
+          }
+        }
         console.error('Error creating session instance:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
         return null;

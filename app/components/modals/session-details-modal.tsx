@@ -776,6 +776,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       const data = await response.json();
       setDocuments(prev => [data.document, ...prev]);
       showToast('Document uploaded', 'success');
+      // Refresh parent data so session IDs are updated (temp → real)
+      onUpdate?.();
     } catch (error) {
       console.error('Error uploading document:', error);
       showToast(error instanceof Error ? error.message : 'Failed to upload', 'error');
