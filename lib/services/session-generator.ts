@@ -293,6 +293,21 @@ export class SessionGenerator {
 
     // If this is a temporary instance, create it in the database
     if (session.id.startsWith('temp-')) {
+      // First check if this session already exists (idempotent operation)
+      // This handles race conditions where multiple operations trigger persistence
+      const { data: existing } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('student_id', session.student_id)
+        .eq('session_date', session.session_date)
+        .eq('start_time', session.start_time)
+        .single();
+
+      if (existing) {
+        console.log('Session instance already exists, returning existing:', existing.id);
+        return existing;
+      }
+
       const insertData: ScheduleSessionInsert = {
         student_id: session.student_id,
         provider_id: session.provider_id,
