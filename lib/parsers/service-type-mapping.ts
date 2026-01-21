@@ -65,3 +65,110 @@ export function getServiceTypeNameForRole(role: string): string {
   if (!code) return 'academic';
   return getServiceTypeName(code) || 'academic';
 }
+
+/**
+ * Provider keyword patterns for text-based goal filtering
+ * Used when SEIS reports contain provider names instead of numeric service codes
+ * (e.g., SEIS Student Goals Report)
+ */
+export const PROVIDER_KEYWORDS: Record<string, string[]> = {
+  speech: [
+    'speech',
+    'language',
+    'slp',
+    'speech/language',
+    'speech-language',
+  ],
+  resource: [
+    'academic',
+    'reading',
+    'math',
+    'written',
+    'writing',
+    'rsp',
+    'resource',
+    'special ed',
+    'special education',
+    'specialized academic',
+  ],
+  ot: [
+    'motor',
+    'fine motor',
+    'gross motor',
+    'occupational',
+    'ot',
+  ],
+  counseling: [
+    'social',
+    'emotional',
+    'social/emotional',
+    'social-emotional',
+    'behavior',
+    'behavioral',
+    'counselor',
+    'counseling',
+  ],
+};
+
+/**
+ * Check if goal text matches a provider's keywords
+ * Used for filtering SEIS Student Goals Report by provider type
+ *
+ * @param text - Text from Area of Need, Annual Goal #, or Person Responsible columns
+ * @param providerRole - The provider's role (resource, speech, ot, counseling)
+ * @returns true if the text contains keywords matching the provider's role
+ */
+export function doesTextMatchProvider(text: string, providerRole: string): boolean {
+  if (!text) return false;
+
+  const normalizedRole = providerRole.toLowerCase().trim();
+  const keywords = PROVIDER_KEYWORDS[normalizedRole];
+
+  // If no keywords defined for this role (e.g., psychologist), don't filter
+  if (!keywords) return true;
+
+  const lowerText = text.toLowerCase();
+
+  // Check if any keyword is found in the text
+  return keywords.some(keyword => lowerText.includes(keyword));
+}
+
+/**
+ * Check if a goal belongs to a provider based on multiple column values
+ * Checks Area of Need, Annual Goal #, and Person Responsible columns
+ *
+ * @param areaOfNeed - Column L: Area of Need (e.g., "Speech/Language", "Academic")
+ * @param goalNumber - Column M: Annual Goal # (e.g., "Speech (1 of 1)", "Academic (2 of 3)")
+ * @param personResponsible - Column R: Person Responsible (e.g., "SLP, Teacher", "Resource Specialist")
+ * @param providerRole - The provider's role
+ * @returns true if any column indicates the goal belongs to this provider
+ */
+export function isGoalForProviderByKeywords(
+  areaOfNeed: string | undefined,
+  goalNumber: string | undefined,
+  personResponsible: string | undefined,
+  providerRole: string
+): boolean {
+  const normalizedRole = providerRole.toLowerCase().trim();
+
+  // Roles without specific keywords import all goals
+  if (!PROVIDER_KEYWORDS[normalizedRole]) {
+    return true;
+  }
+
+  // Check each column - if ANY matches, include the goal
+  if (areaOfNeed && doesTextMatchProvider(areaOfNeed, providerRole)) {
+    return true;
+  }
+
+  if (goalNumber && doesTextMatchProvider(goalNumber, providerRole)) {
+    return true;
+  }
+
+  if (personResponsible && doesTextMatchProvider(personResponsible, providerRole)) {
+    return true;
+  }
+
+  // No match found in any column
+  return false;
+}
