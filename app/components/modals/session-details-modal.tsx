@@ -263,33 +263,57 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   }, [isOpen, onClose]);
 
   const fetchLesson = useCallback(async (signal?: AbortSignal) => {
-    // Session mode doesn't fetch lesson - it's created on save
-    if (props.mode === 'session') {
-      setLoadingLesson(false);
-      return;
-    }
-
     // Only show loading on initial fetch, not refreshes
     if (!lesson) setLoadingLesson(true);
+
     try {
-      // Get lesson_date from the first session in the group
-      const firstSession = groupSessions?.find(s => s.session_date);
-      const lessonDate = firstSession?.session_date;
+      if (props.mode === 'session') {
+        // Session mode: fetch existing lesson by provider_id, lesson_date, and time_slot
+        const sessionDateValue = props.session.session_date;
+        const timeSlot = `${props.session.start_time}-${props.session.end_time}`;
 
-      // Build URL with lesson_date query param for date-specific fetch
-      let url = `/api/groups/${groupId}/lesson`;
-      if (lessonDate) {
-        url += `?lesson_date=${encodeURIComponent(lessonDate)}`;
-      }
+        if (!sessionDateValue) {
+          setLoadingLesson(false);
+          return;
+        }
 
-      const response = await fetch(url, { signal });
-      if (!response.ok) throw new Error('Failed to fetch lesson');
+        // Use the save-lesson GET endpoint with query params
+        const params = new URLSearchParams({
+          lesson_date: sessionDateValue,
+          time_slot: timeSlot
+        });
 
-      const data = await response.json();
-      setLesson(data.lesson);
+        const response = await fetch(`/api/save-lesson/by-session?${params}`, { signal });
 
-      if (data.lesson) {
-        setNotes(data.lesson.notes || '');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.lesson) {
+            setLesson(data.lesson);
+            setNotes(data.lesson.notes || '');
+          }
+        }
+        // 404 is fine - just means no lesson exists yet
+      } else {
+        // Group mode: fetch lesson for the group
+        // Get lesson_date from the first session in the group
+        const firstSession = groupSessions?.find(s => s.session_date);
+        const lessonDate = firstSession?.session_date;
+
+        // Build URL with lesson_date query param for date-specific fetch
+        let url = `/api/groups/${groupId}/lesson`;
+        if (lessonDate) {
+          url += `?lesson_date=${encodeURIComponent(lessonDate)}`;
+        }
+
+        const response = await fetch(url, { signal });
+        if (!response.ok) throw new Error('Failed to fetch lesson');
+
+        const data = await response.json();
+        setLesson(data.lesson);
+
+        if (data.lesson) {
+          setNotes(data.lesson.notes || '');
+        }
       }
     } catch (error) {
       // Ignore abort errors - expected during cleanup
@@ -297,11 +321,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         return;
       }
       console.error('Error fetching lesson:', error);
-      showToast('Failed to load lesson', 'error');
+      // Only show toast for group mode failures
+      if (props.mode === 'group') {
+        showToast('Failed to load lesson', 'error');
+      }
     } finally {
       setLoadingLesson(false);
     }
-  }, [props.mode, groupId, groupSessions, showToast, lesson]);
+  }, [props.mode, groupId, groupSessions, showToast, lesson, sessionDate, props.mode === 'session' ? props.session.start_time : null, props.mode === 'session' ? props.session.end_time : null]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
