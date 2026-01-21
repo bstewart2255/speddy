@@ -4,7 +4,7 @@
  */
 
 import * as ExcelJS from 'exceljs';
-import { getServiceTypeCode } from './service-type-mapping';
+import { getServiceTypeCode, isGoalForProviderByKeywords } from './service-type-mapping';
 
 // ExcelJS cell value types for rich text and formula results
 interface ExcelRichTextValue {
@@ -44,7 +44,9 @@ interface ColumnMapping {
   lastName?: number;
   grade?: number;
   schoolOfAttendance?: number; // Column G in SEIS reports
+  areaOfNeed?: number; // Column L in SEIS Student Goals Report
   goalType?: number; // Annual Goal # / Service type column (Column M in SEIS)
+  personResponsible?: number; // Column R in SEIS Student Goals Report
   goalColumns: number[];
 }
 
@@ -112,15 +114,39 @@ export async function parseSEISReport(
           // Skip rows without student data
           if (!firstName || !lastName || !grade) return;
 
-          // Extract goals from all goal columns, filtering by service type if applicable
+          // Get provider-related columns for filtering
+          const areaOfNeed = columnMapping.areaOfNeed
+            ? getCellValue(row, columnMapping.areaOfNeed)
+            : undefined;
+          const goalType = columnMapping.goalType
+            ? getCellValue(row, columnMapping.goalType)
+            : undefined;
+          const personResponsible = columnMapping.personResponsible
+            ? getCellValue(row, columnMapping.personResponsible)
+            : undefined;
+
+          // Extract goals from all goal columns, filtering by provider type
           const goals: string[] = [];
           for (const goalColIndex of columnMapping.goalColumns) {
-            // Check goal type column for service type filtering
-            if (serviceTypeCode && columnMapping.goalType) {
-              const goalType = getCellValue(row, columnMapping.goalType);
-              if (goalType && !goalType.includes(serviceTypeCode)) {
-                goalsFiltered++;
-                continue; // Skip goals that don't match provider's service type
+            // Check if this goal belongs to the current provider using keyword matching
+            // First try numeric service code (for Delivery reports), then fall back to keyword matching
+            if (serviceTypeCode) {
+              // Check if goalType contains numeric service code (e.g., "330", "415")
+              const hasNumericCode = goalType && goalType.includes(serviceTypeCode);
+
+              if (!hasNumericCode) {
+                // Fall back to keyword-based matching for Student Goals Report
+                const matchesProvider = isGoalForProviderByKeywords(
+                  areaOfNeed,
+                  goalType,
+                  personResponsible,
+                  providerRole
+                );
+
+                if (!matchesProvider) {
+                  goalsFiltered++;
+                  continue; // Skip goals that don't match provider's type
+                }
               }
             }
 
@@ -205,7 +231,9 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
   const schoolPatterns = /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i;
+  const areaOfNeedPatterns = /area\s*of\s*need|area\s*need|need\s*area/i;
   const goalTypePatterns = /annual\s*goal\s*#|goal\s*type|service\s*type|service\s*area/i;
+  const personResponsiblePatterns = /person\s*responsible|responsible\s*person|responsible\s*party|assigned\s*to/i;
   const goalPatterns = /goal|iep\s*goal|objective|target|present\s*level/i;
 
   // Check first 5 rows for headers
@@ -238,9 +266,19 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
         mapping.schoolOfAttendance = colNumber;
       }
 
-      // Check for goal type / service type column
+      // Check for area of need (Column L in SEIS Student Goals Report)
+      if (!mapping.areaOfNeed && areaOfNeedPatterns.test(headerText)) {
+        mapping.areaOfNeed = colNumber;
+      }
+
+      // Check for goal type / service type column (Column M - Annual Goal #)
       if (!mapping.goalType && goalTypePatterns.test(headerText)) {
         mapping.goalType = colNumber;
+      }
+
+      // Check for person responsible (Column R in SEIS Student Goals Report)
+      if (!mapping.personResponsible && personResponsiblePatterns.test(headerText)) {
+        mapping.personResponsible = colNumber;
       }
 
       // Check for goal columns

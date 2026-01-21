@@ -5,7 +5,7 @@
 
 import { parse } from 'csv-parse/sync';
 import { normalizeSchoolName } from '../school-helpers';
-import { getServiceTypeCode, getServiceTypeNameForRole } from './service-type-mapping';
+import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords } from './service-type-mapping';
 
 export interface ParsedStudent {
   firstName: string;
@@ -35,7 +35,9 @@ interface ColumnMapping {
   lastName?: number;
   grade?: number;
   schoolOfAttendance?: number; // School of Attendance (SEIS Column G)
+  areaOfNeed?: number; // Area of Need (SEIS Column L) - used for filtering
   goalType?: number; // Annual Goal # (SEIS Column M) - used for filtering
+  personResponsible?: number; // Person Responsible (SEIS Column R) - used for filtering
   goalColumns: number[];
 }
 
@@ -228,16 +230,19 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         // Extract goals from goal columns
         const goals: string[] = [];
 
+        // Get provider-related columns for filtering (SEIS Student Goals Report)
+        const areaOfNeed = columnMapping.areaOfNeed !== undefined ? row[columnMapping.areaOfNeed] || '' : '';
+        const goalType = columnMapping.goalType !== undefined ? row[columnMapping.goalType] || '' : '';
+        const personResponsible = columnMapping.personResponsible !== undefined ? row[columnMapping.personResponsible] || '' : '';
+
         for (const goalColIndex of columnMapping.goalColumns) {
           const goalText = row[goalColIndex] || '';
 
-          // For SEIS format, filter by goal type (Column M) based on provider role
-          if (isSEISFormat && columnMapping.goalType !== undefined) {
-            const goalType = row[columnMapping.goalType] || '';
-
-            if (!isGoalForProvider(goalType, options.providerRole)) {
+          // For SEIS format, filter by provider role using multiple columns
+          if (isSEISFormat && options.providerRole) {
+            if (!isGoalForProvider(areaOfNeed, goalType, personResponsible, options.providerRole)) {
               goalsFiltered++;
-              continue; // Skip goals that don't match provider's service type
+              continue; // Skip goals that don't match provider's type
             }
           }
 
@@ -334,13 +339,17 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
     // Column D (index 3): First Name
     // Column F (index 5): Grade
     // Column G (index 6): School of Attendance
+    // Column L (index 11): Area of Need (for filtering)
     // Column M (index 12): Annual Goal # (for filtering)
     // Column O (index 14): Goal
+    // Column R (index 17): Person Responsible (for filtering)
     mapping.lastName = 2;
     mapping.firstName = 3;
     mapping.grade = 5;
     mapping.schoolOfAttendance = 6;
+    mapping.areaOfNeed = 11;
     mapping.goalType = 12;
+    mapping.personResponsible = 17;
     mapping.goalColumns = [14];
     return mapping;
   }
@@ -472,33 +481,42 @@ function detectSEISStudentGoalsFormat(records: string[][]): boolean {
 }
 
 /**
- * Check if a goal type matches the provider's service type
- * Uses SEIS service type codes for filtering:
- * - 330: Specialized Academic Instruction (Resource Specialist)
- * - 415: Language and Speech (Speech Therapist)
- * - 450: Occupational Therapy (OT)
- * - 510: Individual Counseling (Counselor)
+ * Check if a goal matches the provider's service type
+ * Uses keyword-based matching for SEIS Student Goals Report:
+ * - Checks Area of Need (Column L), Annual Goal # (Column M), and Person Responsible (Column R)
+ * - Falls back to numeric service codes for Delivery reports
  *
- * @param goalType - The Annual Goal # column value (Column M in SEIS)
+ * @param areaOfNeed - Column L: Area of Need (e.g., "Speech/Language", "Academic")
+ * @param goalType - Column M: Annual Goal # (e.g., "Speech (1 of 1)", "Academic (2 of 3)")
+ * @param personResponsible - Column R: Person Responsible (e.g., "SLP, Teacher", "Resource Specialist")
  * @param providerRole - The provider's role (resource, speech, ot, counseling)
  * @returns true if the goal should be included for this provider
  */
-function isGoalForProvider(goalType: string, providerRole?: string): boolean {
-  // If no goal type specified, include it (conservative approach)
-  if (!goalType) {
+function isGoalForProvider(
+  areaOfNeed: string,
+  goalType: string,
+  personResponsible: string,
+  providerRole?: string
+): boolean {
+  // If no provider role specified, include all goals
+  if (!providerRole) {
     return true;
   }
 
   // Get the service type code for the provider's role
-  const serviceTypeCode = getServiceTypeCode(providerRole || 'resource');
+  const serviceTypeCode = getServiceTypeCode(providerRole);
 
   // If no specific code for this role (e.g., psychologist), include all goals
   if (!serviceTypeCode) {
     return true;
   }
 
-  // Check if the goal type contains the service code
-  // SEIS format typically includes the code in the goal type (e.g., "330 - Specialized Academic Instruction")
-  return goalType.includes(serviceTypeCode);
+  // First, check if goalType contains numeric service code (for Delivery reports)
+  if (goalType && goalType.includes(serviceTypeCode)) {
+    return true;
+  }
+
+  // Fall back to keyword-based matching for Student Goals Report
+  return isGoalForProviderByKeywords(areaOfNeed, goalType, personResponsible, providerRole);
 }
 
