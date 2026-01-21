@@ -330,7 +330,7 @@ export function SeisUploadWizardModal({
               <p className="font-medium text-blue-800 mb-1">How it works:</p>
               <ul className="list-disc list-inside space-y-0.5 text-blue-700">
                 <li>Student Goals file provides names, grades, and IEP goals</li>
-                <li>Deliveries file auto-fills session requirements from 330 services</li>
+                <li>Deliveries file auto-fills session requirements</li>
                 <li>Class List file auto-assigns teachers by matching names</li>
                 <li>Unmatched students from optional files will be shown for review</li>
               </ul>
