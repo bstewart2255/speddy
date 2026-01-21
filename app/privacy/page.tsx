@@ -26,7 +26,6 @@ export default function PrivacyPage() {
               <li>Professional role and credentials</li>
               <li>School district and work location</li>
               <li>Login credentials (encrypted)</li>
-              <li>Payment information (processed by Stripe)</li>
             </ul>
 
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">2.2 Student Educational Data</h3>
@@ -58,7 +57,6 @@ export default function PrivacyPage() {
             <p className="text-gray-700 mb-4">We use your professional information to:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Provide and maintain your Speddy account</li>
-              <li>Process subscription payments</li>
               <li>Verify your authorization to access the Service</li>
               <li>Provide customer support</li>
               <li>Send important service updates and notifications</li>
@@ -102,7 +100,6 @@ export default function PrivacyPage() {
             <p className="text-gray-700 mb-4">We work with trusted service providers:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li><strong>Supabase:</strong> Secure database hosting (FERPA-compliant infrastructure)</li>
-              <li><strong>Stripe:</strong> Payment processing (does not access educational data)</li>
               <li><strong>Anthropic:</strong> AI assistance (receives only anonymized, non-identifiable prompts)</li>
             </ul>
 
@@ -131,7 +128,7 @@ export default function PrivacyPage() {
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.2 Provider Data</h3>
             <p className="text-gray-700 mb-4">Your professional account data is retained:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li>While your subscription is active</li>
+              <li>While your account is active</li>
               <li>For up to 90 days after account cancellation for reactivation purposes</li>
               <li>As required by applicable laws and professional regulations</li>
             </ul>
