@@ -101,6 +101,7 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li><strong>Supabase:</strong> Secure database hosting (FERPA-compliant infrastructure)</li>
               <li><strong>Anthropic:</strong> AI assistance (receives only anonymized, non-identifiable prompts)</li>
+              <li><strong>Crisp:</strong> Help chat support (may collect user information such as IP address, location, and browser type; users should avoid sharing student data in chat messages)</li>
             </ul>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Data Security</h2>
