@@ -68,7 +68,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       time_slot: timeSlot,
       student_ids: studentIds,
       student_details: studentDetails,
-      content: content,
+      content: content || {},  // Default to empty object to satisfy NOT NULL constraint
       lesson_date: normalizedLessonDate,
       school_site: schoolSite,
       notes: notes
