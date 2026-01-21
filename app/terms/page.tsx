@@ -47,45 +47,24 @@ export default function TermsPage() {
               <li>Input false or misleading student information</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Subscription and Payment</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Intellectual Property</h2>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.1 Free Trial</h3>
-            <p className="text-gray-700 mb-4">
-              New users receive a 30-day free trial. After the trial period, continued use requires a paid subscription.
-            </p>
-
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.2 Subscription Terms</h3>
-            <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li>Subscriptions are billed monthly to the individual provider</li>
-              <li>Payment is processed through Stripe</li>
-              <li>Prices are subject to change with 30 days' notice</li>
-              <li>You authorize us to charge your payment method on a recurring basis</li>
-              <li>You are personally responsible for subscription payments</li>
-            </ul>
-
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.3 Cancellation</h3>
-            <p className="text-gray-700 mb-4">
-              You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period. Upon cancellation, your access to student data will be terminated.
-            </p>
-
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Intellectual Property</h2>
-
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.1 Our Property</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.1 Our Property</h3>
             <p className="text-gray-700 mb-4">
               The Service and its original content, features, and functionality are owned by Orchestrate LLC and are protected by international copyright, trademark, and other intellectual property laws.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.2 Your Content</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.2 Your Content</h3>
             <p className="text-gray-700 mb-4">
               You retain professional responsibility for content you create. By using Speddy, you grant us a limited license to use, store, and display your content solely for providing the Service. You acknowledge that any student data remains the property of the respective school district.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Privacy and Data Protection</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Privacy and Data Protection</h2>
             <p className="text-gray-700 mb-4">
               Your use of Speddy is also governed by our Privacy Policy. By using the Service, you consent to our collection and use of data as described in the Privacy Policy.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.1 Student Data Responsibilities</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.1 Student Data Responsibilities</h3>
             <p className="text-gray-700 mb-4">As an individual provider, you acknowledge that:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>You are authorized by your employing school district to access the student data you enter</li>
@@ -96,39 +75,39 @@ export default function TermsPage() {
               <li>You understand your role as a "school official" under FERPA</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Disclaimers</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Disclaimers</h2>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.1 Professional Responsibility</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.1 Professional Responsibility</h3>
             <p className="text-gray-700 mb-4">
               Speddy is a tool to assist with your professional scheduling and data management. You remain solely responsible for all professional decisions, student services, and compliance with applicable laws and district policies.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.2 Educational Outcomes</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.2 Educational Outcomes</h3>
             <p className="text-gray-700 mb-4">
               We do not guarantee any specific educational outcomes from using Speddy. The Service is a tool to assist with scheduling and management, not a guarantee of educational or therapeutic success.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.3 Legal and Professional Advice</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.3 Legal and Professional Advice</h3>
             <p className="text-gray-700 mb-4">
               Speddy does not provide legal advice regarding IEPs, special education law, professional standards, or compliance requirements. Consult appropriate legal counsel and professional supervisors for guidance on professional and legal questions.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.4 Data Accuracy</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.4 Data Accuracy</h3>
             <p className="text-gray-700 mb-4">
               You are solely responsible for the accuracy of data entered into Speddy. We are not liable for errors resulting from inaccurate data input or professional decisions based on such data.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.5 Service Availability</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.5 Service Availability</h3>
             <p className="text-gray-700 mb-4">
               We strive for high availability but do not guarantee uninterrupted access. The Service is provided "AS IS" without warranties of any kind.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Limitation of Liability</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Limitation of Liability</h2>
             <p className="text-gray-700 mb-4">
               To the maximum extent permitted by law, Orchestrate LLC shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or use, arising from your use of Speddy. This includes any professional liability or educational outcomes.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Indemnification</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Indemnification</h2>
             <p className="text-gray-700 mb-4">
               You agree to indemnify and hold harmless Orchestrate LLC from any claims, damages, or expenses arising from:
             </p>
@@ -140,12 +119,12 @@ export default function TermsPage() {
               <li>Your violation of school district policies or professional standards</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Termination</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Termination</h2>
             <p className="text-gray-700 mb-4">
               We may terminate or suspend your account immediately, without prior notice or liability, for any reason whatsoever, including without limitation if you breach the Terms. Upon termination, your right to use the Service will cease immediately, and any student data associated with your account will be handled according to our data retention policies and applicable law.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">12. Professional Standards</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Professional Standards</h2>
             <p className="text-gray-700 mb-4">
               You agree to use Speddy in accordance with:
             </p>
@@ -157,17 +136,17 @@ export default function TermsPage() {
               <li>FERPA and other privacy regulations</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">13. Changes to Terms</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">12. Changes to Terms</h2>
             <p className="text-gray-700 mb-4">
               We reserve the right to modify or replace these Terms at any time. If a revision is material, we will try to provide at least 30 days' notice prior to any new terms taking effect. What constitutes a material change will be determined at our sole discretion.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">14. Governing Law</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">13. Governing Law</h2>
             <p className="text-gray-700 mb-4">
               These Terms shall be interpreted and governed by the laws of the State of California, without regard to its conflict of law provisions. Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">15. Contact Information</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">14. Contact Information</h2>
             <p className="text-gray-700 mb-4">
               If you have any questions about these Terms and Conditions, please contact us at:
             </p>
