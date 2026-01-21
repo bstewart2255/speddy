@@ -97,9 +97,13 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const groupSessions = props.mode === 'group' ? props.sessions : undefined;
   const sessionDate = props.mode === 'session' ? props.session.session_date : undefined;
   const sessionGroupId = props.mode === 'session' ? props.session.group_id : undefined;
+  const sessionStartTime = props.mode === 'session' ? props.session.start_time : undefined;
+  const sessionEndTime = props.mode === 'session' ? props.session.end_time : undefined;
 
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Ref to track if we've done the initial lesson fetch (prevents loading flash on refetch)
+  const hasFetchedLessonRef = useRef(false);
 
   // Track persisted session ID for session mode (may differ from prop if we auto-save a temp session)
   const [currentSessionId, setCurrentSessionId] = useState<string>(
@@ -263,23 +267,71 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   }, [isOpen, onClose]);
 
   const fetchLesson = useCallback(async (signal?: AbortSignal) => {
-    // Session mode doesn't fetch lesson - it's created on save
-    if (props.mode === 'session') {
-      setLoadingLesson(false);
-      return;
-    }
-
     // Only show loading on initial fetch, not refreshes
-    if (!lesson) setLoadingLesson(true);
+    if (!hasFetchedLessonRef.current) setLoadingLesson(true);
+
     try {
-      const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
-      if (!response.ok) throw new Error('Failed to fetch lesson');
+      if (props.mode === 'session') {
+        // Session mode: fetch existing lesson by provider_id, lesson_date, and time_slot
+        const timeSlot = sessionStartTime && sessionEndTime
+          ? `${sessionStartTime}-${sessionEndTime}`
+          : null;
 
-      const data = await response.json();
-      setLesson(data.lesson);
+        if (!sessionDate || !timeSlot) {
+          // Clear stale state when session date is missing
+          setLesson(null);
+          setNotes('');
+          setLoadingLesson(false);
+          return;
+        }
 
-      if (data.lesson) {
-        setNotes(data.lesson.notes || '');
+        // Use the save-lesson GET endpoint with query params
+        const params = new URLSearchParams({
+          lesson_date: sessionDate,
+          time_slot: timeSlot
+        });
+
+        const response = await fetch(`/api/save-lesson/by-session?${params}`, { signal });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.lesson) {
+            setLesson(data.lesson);
+            setNotes(data.lesson.notes || '');
+          } else {
+            // Clear stale state when no lesson exists
+            setLesson(null);
+            setNotes('');
+          }
+        } else {
+          // Clear stale state on error/404
+          setLesson(null);
+          setNotes('');
+        }
+      } else {
+        // Group mode: fetch lesson for the group
+        // Get lesson_date from the first session in the group
+        const firstSession = groupSessions?.find(s => s.session_date);
+        const lessonDate = firstSession?.session_date;
+
+        // Build URL with lesson_date query param for date-specific fetch
+        let url = `/api/groups/${groupId}/lesson`;
+        if (lessonDate) {
+          url += `?lesson_date=${encodeURIComponent(lessonDate)}`;
+        }
+
+        const response = await fetch(url, { signal });
+        if (!response.ok) throw new Error('Failed to fetch lesson');
+
+        const data = await response.json();
+        if (data.lesson) {
+          setLesson(data.lesson);
+          setNotes(data.lesson.notes || '');
+        } else {
+          // Clear stale state when no lesson exists
+          setLesson(null);
+          setNotes('');
+        }
       }
     } catch (error) {
       // Ignore abort errors - expected during cleanup
@@ -287,11 +339,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         return;
       }
       console.error('Error fetching lesson:', error);
-      showToast('Failed to load lesson', 'error');
+      // Only show toast for group mode failures
+      if (props.mode === 'group') {
+        showToast('Failed to load lesson', 'error');
+      }
     } finally {
+      hasFetchedLessonRef.current = true;
       setLoadingLesson(false);
     }
-  }, [props.mode, groupId, showToast, lesson]);
+  }, [props.mode, groupId, groupSessions, showToast, sessionStartTime, sessionEndTime, sessionDate]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
@@ -461,6 +517,13 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionDate, sessionGroupId, curriculumInitialized]);
 
+  // Reset fetch ref when modal opens or session identity changes
+  useEffect(() => {
+    if (isOpen) {
+      hasFetchedLessonRef.current = false;
+    }
+  }, [isOpen, props.mode, groupId, sessionId, sessionDate]);
+
   // Fetch lesson, documents, and curriculum tracking when modal opens
   useEffect(() => {
     if (!isOpen) return;
@@ -609,12 +672,22 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         if (props.mode === 'group') {
           // Group mode: POST to /api/groups/{groupId}/lesson
+          // Get lesson_date from the first session in the group
+          const firstSession = props.sessions.find(s => s.session_date);
+          const groupLessonDate = firstSession?.session_date;
+
+          if (!groupLessonDate) {
+            showToast('Unable to save: no session date found', 'error');
+            return;
+          }
+
           const body = {
             title: null,
             content: null,
             lesson_source: 'manual',
             subject: null,
-            notes: hasNotes ? notes.trim() : null
+            notes: hasNotes ? notes.trim() : null,
+            lesson_date: groupLessonDate  // Include lesson_date for date-specific storage
           };
 
           response = await fetch(`/api/groups/${props.groupId}/lesson`, {
@@ -708,7 +781,18 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       let response: Response;
 
       if (props.mode === 'group') {
-        response = await fetch(`/api/groups/${props.groupId}/lesson`, {
+        // Get lesson_date from the first session to delete the correct lesson
+        const firstSession = props.sessions.find(s => s.session_date);
+        const groupLessonDate = firstSession?.session_date;
+
+        if (!groupLessonDate) {
+          showToast('Unable to delete: no session date found', 'error');
+          return;
+        }
+
+        const deleteUrl = `/api/groups/${props.groupId}/lesson?lesson_date=${encodeURIComponent(groupLessonDate)}`;
+
+        response = await fetch(deleteUrl, {
           method: 'DELETE'
         });
       } else {
