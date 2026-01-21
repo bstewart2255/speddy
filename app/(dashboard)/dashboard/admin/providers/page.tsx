@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
 import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
+import { ProviderScheduleModal } from '@/app/components/admin/provider-schedule-modal';
 
 type Provider = {
   id: string;
@@ -42,6 +43,8 @@ export default function ProviderDirectoryPage() {
     temporaryPassword: string;
     userName: string;
   } | null>(null);
+  const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [scheduleModalProvider, setScheduleModalProvider] = useState<Provider | null>(null);
 
   const fetchProviders = async () => {
     try {
@@ -55,14 +58,16 @@ export default function ProviderDirectoryPage() {
         return;
       }
 
-      const schoolId = permissions[0]?.school_id;
-      if (!schoolId) {
+      const permissionSchoolId = permissions[0]?.school_id;
+      if (!permissionSchoolId) {
         setError('No school assigned to your account');
         return;
       }
 
+      setSchoolId(permissionSchoolId);
+
       // Fetch staff data
-      const staff = await getSchoolStaff(schoolId);
+      const staff = await getSchoolStaff(permissionSchoolId);
       setProviders(staff.specialists || []);
     } catch (err) {
       console.error('Error loading providers:', err);
@@ -224,6 +229,9 @@ export default function ProviderDirectoryPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Assignment
                 </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Schedule
+                </th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -266,6 +274,14 @@ export default function ProviderDirectoryPage() {
                         Secondary
                       </span>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <button
+                      onClick={() => setScheduleModalProvider(provider)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      View
+                    </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <LongHoverTooltip content="Reset the password of a provider. You can share the new password with them after it's been generated.">
@@ -310,6 +326,17 @@ export default function ProviderDirectoryPage() {
         userName={resetCredentials?.userName}
         mode="reset"
       />
+
+      {/* Provider Schedule Modal */}
+      {schoolId && scheduleModalProvider && (
+        <ProviderScheduleModal
+          isOpen={!!scheduleModalProvider}
+          onClose={() => setScheduleModalProvider(null)}
+          providerName={scheduleModalProvider.full_name || 'Unknown Provider'}
+          providerId={scheduleModalProvider.id}
+          schoolId={schoolId}
+        />
+      )}
     </div>
   );
 }

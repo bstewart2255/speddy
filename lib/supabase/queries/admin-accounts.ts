@@ -1358,3 +1358,243 @@ export async function deleteStudentAsAdmin(studentId: string, schoolId: string) 
   if (deleteResult.error) throw deleteResult.error;
   return true;
 }
+
+// ============================================================================
+// SCHEDULE SESSION FUNCTIONS (ADMIN VIEW)
+// ============================================================================
+
+export interface ScheduleSession {
+  id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  service_type: string;
+  student_id: string;
+  student_initials: string | null;
+  student_grade: string | null;
+  provider_id: string;
+  provider_name: string | null;
+}
+
+/**
+ * Get schedule sessions for students at a school (admin view).
+ * Only returns template sessions (session_date IS NULL) with scheduled times.
+ * @param studentIds - Array of student IDs to fetch sessions for
+ * @param schoolId - The school ID (for permission check)
+ * @returns Array of schedule sessions with student and provider details
+ */
+export async function getStudentScheduleSessions(
+  studentIds: string[],
+  schoolId: string
+): Promise<ScheduleSession[]> {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to view schedules at this school');
+  }
+
+  if (studentIds.length === 0) {
+    return [];
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_student_schedule_sessions', 'database');
+
+  // Fetch sessions (no FK constraints exist, so we can't use join syntax)
+  const sessionsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schedule_sessions')
+        .select('id, day_of_week, start_time, end_time, service_type, student_id, provider_id')
+        .in('student_id', studentIds)
+        .is('session_date', null)
+        .not('day_of_week', 'is', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null)
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_student_schedule_sessions', studentIds }
+  );
+
+  if (sessionsResult.error) {
+    fetchPerf.end();
+    throw sessionsResult.error;
+  }
+
+  const sessions = sessionsResult.data || [];
+
+  if (sessions.length === 0) {
+    fetchPerf.end();
+    return [];
+  }
+
+  // Get unique provider IDs to fetch their names
+  const providerIds = [...new Set(sessions.map(s => s.provider_id).filter((id): id is string => id !== null))];
+
+  // Fetch provider names
+  const providersResult = await safeQuery(
+    async () => {
+      if (providerIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', providerIds);
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_session_providers', providerIds }
+  );
+
+  // Fetch student info
+  const studentsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, initials, grade_level')
+        .in('id', studentIds);
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_session_students', studentIds }
+  );
+
+  fetchPerf.end();
+
+  // Build lookup maps
+  const providerMap = new Map((providersResult.data || []).map(p => [p.id, p.full_name]));
+  const studentMap = new Map((studentsResult.data || []).map(s => [s.id, { initials: s.initials, grade: s.grade_level }]));
+
+  return sessions.map(session => ({
+    id: session.id,
+    day_of_week: session.day_of_week!,
+    start_time: session.start_time!,
+    end_time: session.end_time!,
+    service_type: session.service_type,
+    student_id: session.student_id!,
+    student_initials: studentMap.get(session.student_id!)?.initials || null,
+    student_grade: studentMap.get(session.student_id!)?.grade || null,
+    provider_id: session.provider_id!,
+    provider_name: providerMap.get(session.provider_id!) || null,
+  }));
+}
+
+/**
+ * Get schedule sessions for a provider at a school (admin view).
+ * Only returns template sessions (session_date IS NULL) with scheduled times.
+ * @param providerId - The provider ID to fetch sessions for
+ * @param schoolId - The school ID (for permission check)
+ * @returns Array of schedule sessions with student details
+ */
+export async function getProviderScheduleSessions(
+  providerId: string,
+  schoolId: string
+): Promise<ScheduleSession[]> {
+  const supabase = createClient<Database>();
+
+  // Verify admin has permission
+  const hasPermission = await isAdminForSchool(schoolId);
+  if (!hasPermission) {
+    throw new Error('You do not have permission to view schedules at this school');
+  }
+
+  const fetchPerf = measurePerformanceWithAlerts('fetch_provider_schedule_sessions', 'database');
+
+  // Fetch sessions (no FK constraints exist, so we can't use join syntax)
+  const sessionsResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('schedule_sessions')
+        .select('id, day_of_week, start_time, end_time, service_type, student_id, provider_id')
+        .eq('provider_id', providerId)
+        .is('session_date', null)
+        .not('day_of_week', 'is', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null)
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_provider_schedule_sessions', providerId }
+  );
+
+  if (sessionsResult.error) {
+    fetchPerf.end();
+    throw sessionsResult.error;
+  }
+
+  const sessions = sessionsResult.data || [];
+
+  if (sessions.length === 0) {
+    fetchPerf.end();
+    return [];
+  }
+
+  // Get unique student IDs to fetch their info
+  const studentIds = [...new Set(sessions.map(s => s.student_id).filter((id): id is string => id !== null))];
+
+  // Fetch student info including school_id for filtering
+  const studentsResult = await safeQuery(
+    async () => {
+      if (studentIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, initials, grade_level, school_id')
+        .in('id', studentIds);
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_session_students_for_provider', studentIds }
+  );
+
+  // Fetch provider name
+  const providerResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('id', providerId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_provider_name', providerId }
+  );
+
+  fetchPerf.end();
+
+  // Build student lookup map
+  const studentMap = new Map((studentsResult.data || []).map(s => [s.id, {
+    initials: s.initials,
+    grade: s.grade_level,
+    school_id: s.school_id
+  }]));
+
+  const providerName = providerResult.data?.full_name || null;
+
+  // Filter to only sessions for students at this school and map to response format
+  return sessions
+    .filter(session => {
+      const student = studentMap.get(session.student_id!);
+      return student?.school_id === schoolId;
+    })
+    .map(session => {
+      const student = studentMap.get(session.student_id!);
+      return {
+        id: session.id,
+        day_of_week: session.day_of_week!,
+        start_time: session.start_time!,
+        end_time: session.end_time!,
+        service_type: session.service_type,
+        student_id: session.student_id!,
+        student_initials: student?.initials || null,
+        student_grade: student?.grade || null,
+        provider_id: session.provider_id!,
+        provider_name: providerName,
+      };
+    });
+}
