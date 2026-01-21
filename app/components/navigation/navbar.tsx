@@ -122,7 +122,6 @@ export default function Navbar() {
         { name: 'Dashboard', href: '/dashboard/sea' },
         { name: 'Students', href: '/dashboard/students' },
         { name: 'Plan', href: '/dashboard/plan' },
-        { name: 'Tools', href: '/dashboard/tools' },
       ];
 
     } else if (role === 'resource') {
@@ -140,7 +139,6 @@ export default function Navbar() {
           ]
         },
         { name: 'Plan', href: '/dashboard/plan' },
-        { name: 'Tools', href: '/dashboard/tools' },
         { name: 'CARE', href: '/dashboard/care' },
       ];
     } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
@@ -160,7 +158,7 @@ export default function Navbar() {
         { name: 'Plan', href: '/dashboard/plan' },
       ];
     } else {
-      // Other roles (specialist) see standard navigation with Tools
+      // Other roles (specialist) see standard navigation
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
@@ -174,7 +172,6 @@ export default function Navbar() {
           ]
         },
         { name: 'Plan', href: '/dashboard/plan' },
-        { name: 'Tools', href: '/dashboard/tools' },
       ];
     }
   };
