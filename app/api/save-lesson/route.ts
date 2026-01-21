@@ -63,33 +63,42 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     let data;
     let error;
 
-    const lessonPayload = {
+    // Base payload for new lessons
+    const basePayload = {
       provider_id: userId,
       time_slot: timeSlot,
       student_ids: studentIds,
       student_details: studentDetails,
-      content: content || {},  // Default to empty object to satisfy NOT NULL constraint
       lesson_date: normalizedLessonDate,
       school_site: schoolSite,
       notes: notes
     };
 
     if (existingLesson) {
-      // UPDATE existing lesson
+      // UPDATE existing lesson - only include content if explicitly provided
+      // This prevents overwriting existing AI-generated content when just saving notes
+      const updatePayload: Record<string, unknown> = {
+        ...basePayload,
+        updated_at: new Date().toISOString()
+      };
+
+      // Only update content if it was explicitly provided (not null/undefined)
+      if (content !== null && content !== undefined) {
+        updatePayload.content = content;
+      }
+
       log.info('Updating existing lesson', {
         userId,
         lessonId: existingLesson.id,
         lessonDate: normalizedLessonDate,
-        timeSlot
+        timeSlot,
+        updatingContent: content !== null && content !== undefined
       });
 
       const updatePerf = measurePerformanceWithAlerts('update_lesson_db', 'database');
       const result = await supabase
         .from('lessons')
-        .update({
-          ...lessonPayload,
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', existingLesson.id)
         .select('*')
         .single();
@@ -97,11 +106,16 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       data = result.data;
       error = result.error;
     } else {
-      // INSERT new lesson
+      // INSERT new lesson - content defaults to empty object to satisfy NOT NULL constraint
+      const insertPayload = {
+        ...basePayload,
+        content: content || {}
+      };
+
       const insertPerf = measurePerformanceWithAlerts('insert_lesson_db', 'database');
       const result = await supabase
         .from('lessons')
-        .insert(lessonPayload)
+        .insert(insertPayload)
         .select('*')
         .single();
       insertPerf.end({ success: !result.error });
@@ -124,12 +138,18 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           .single();
 
         if (concurrentLesson) {
+          // Use same update logic - only include content if explicitly provided
+          const raceUpdatePayload: Record<string, unknown> = {
+            ...basePayload,
+            updated_at: new Date().toISOString()
+          };
+          if (content !== null && content !== undefined) {
+            raceUpdatePayload.content = content;
+          }
+
           const updateResult = await supabase
             .from('lessons')
-            .update({
-              ...lessonPayload,
-              updated_at: new Date().toISOString()
-            })
+            .update(raceUpdatePayload)
             .eq('id', concurrentLesson.id)
             .select('*')
             .single();
