@@ -12,6 +12,7 @@ import { SessionDetailsModal } from '@/app/components/modals/session-details-mod
 import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';
 import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
+import { FileText, Paperclip } from 'lucide-react';
 
 interface Holiday {
   date: string;
@@ -95,6 +96,65 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
+
+  // Session indicators state (has notes, has documents)
+  interface IndicatorResult {
+    hasNotes: boolean;
+    hasDocuments: boolean;
+  }
+  const [sessionIndicators, setSessionIndicators] = useState<Record<string, IndicatorResult>>({});
+  const [groupIndicators, setGroupIndicators] = useState<Record<string, IndicatorResult>>({});
+
+  // Fetch session/group indicators when sessions change
+  useEffect(() => {
+    const fetchIndicators = async () => {
+      if (!currentUser || sessions.length === 0) return;
+
+      // Collect sessions with time slots, dates, and group IDs
+      const sessionInfos: { id: string; timeSlot: string; sessionDate: string }[] = [];
+      const groupIds = new Set<string>();
+
+      for (const session of sessions) {
+        if (session.group_id) {
+          groupIds.add(session.group_id);
+        } else if (session.start_time && session.end_time && session.session_date) {
+          sessionInfos.push({
+            id: session.id,
+            timeSlot: `${session.start_time}-${session.end_time}`,
+            sessionDate: session.session_date
+          });
+        }
+      }
+
+      // Get all week dates for filtering (Mon-Fri)
+      const weekDateStrings: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        weekDateStrings.push(format(addDays(weekStart, i), 'yyyy-MM-dd'));
+      }
+
+      try {
+        const response = await fetch('/api/sessions/indicators', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessions: sessionInfos,
+            groupIds: Array.from(groupIds),
+            weekDates: weekDateStrings
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setSessionIndicators(data.sessionIndicators || {});
+          setGroupIndicators(data.groupIndicators || {});
+        }
+      } catch (error) {
+        console.error('Error fetching session indicators:', error);
+      }
+    };
+
+    fetchIndicators();
+  }, [sessions, weekStart, currentUser]);
 
   // Modal state for groups and sessions
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -766,7 +826,15 @@ return (
                           >
                             <div className="flex items-center justify-between mb-1">
                               <div className="font-semibold text-blue-900">📚 {groupName}</div>
-                              <div className="text-xs text-blue-700">{groupSessions.length} sessions</div>
+                              {/* Notes and documents indicators */}
+                              <div className="flex items-center gap-1">
+                                {groupIndicators[groupId]?.hasNotes && (
+                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                                {groupIndicators[groupId]?.hasDocuments && (
+                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                              </div>
                             </div>
                             <div className="font-medium text-gray-900">
                               {formatTime(earliestStart)} - {formatTime(latestEnd)}
@@ -809,8 +877,19 @@ return (
                             )}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
-                            <div className="font-medium text-gray-900">
-                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            <div className="flex items-center justify-between">
+                              <div className="font-medium text-gray-900">
+                                {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                              </div>
+                              {/* Notes and documents indicators */}
+                              <div className="flex items-center gap-1">
+                                {sessionIndicators[session.id]?.hasNotes && (
+                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                                {sessionIndicators[session.id]?.hasDocuments && (
+                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                              </div>
                             </div>
                             <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
                               {studentData.initials}
@@ -916,7 +995,15 @@ return (
                           >
                             <div className="flex items-center justify-between mb-1">
                               <div className="font-semibold text-blue-900">📚 {groupName}</div>
-                              <div className="text-xs text-blue-700">{groupSessions.length} sessions</div>
+                              {/* Notes and documents indicators */}
+                              <div className="flex items-center gap-1">
+                                {groupIndicators[groupId]?.hasNotes && (
+                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                                {groupIndicators[groupId]?.hasDocuments && (
+                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                              </div>
                             </div>
                             <div className="font-medium text-gray-900">
                               {formatTime(earliestStart)} - {formatTime(latestEnd)}
@@ -958,8 +1045,19 @@ return (
                             )}
                             aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
                           >
-                            <div className="font-medium text-gray-900">
-                              {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            <div className="flex items-center justify-between">
+                              <div className="font-medium text-gray-900">
+                                {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                              </div>
+                              {/* Notes and documents indicators */}
+                              <div className="flex items-center gap-1">
+                                {sessionIndicators[session.id]?.hasNotes && (
+                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                                {sessionIndicators[session.id]?.hasDocuments && (
+                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                                )}
+                              </div>
                             </div>
                             <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
                               {studentData.initials}
