@@ -272,7 +272,17 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     // Only show loading on initial fetch, not refreshes
     if (!lesson) setLoadingLesson(true);
     try {
-      const response = await fetch(`/api/groups/${groupId}/lesson`, { signal });
+      // Get lesson_date from the first session in the group
+      const firstSession = groupSessions?.find(s => s.session_date);
+      const lessonDate = firstSession?.session_date;
+
+      // Build URL with lesson_date query param for date-specific fetch
+      let url = `/api/groups/${groupId}/lesson`;
+      if (lessonDate) {
+        url += `?lesson_date=${encodeURIComponent(lessonDate)}`;
+      }
+
+      const response = await fetch(url, { signal });
       if (!response.ok) throw new Error('Failed to fetch lesson');
 
       const data = await response.json();
@@ -291,7 +301,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     } finally {
       setLoadingLesson(false);
     }
-  }, [props.mode, groupId, showToast, lesson]);
+  }, [props.mode, groupId, groupSessions, showToast, lesson]);
 
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
@@ -609,12 +619,17 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         if (props.mode === 'group') {
           // Group mode: POST to /api/groups/{groupId}/lesson
+          // Get lesson_date from the first session in the group
+          const firstSession = props.sessions.find(s => s.session_date);
+          const groupLessonDate = firstSession?.session_date || new Date().toISOString().split('T')[0];
+
           const body = {
             title: null,
             content: null,
             lesson_source: 'manual',
             subject: null,
-            notes: hasNotes ? notes.trim() : null
+            notes: hasNotes ? notes.trim() : null,
+            lesson_date: groupLessonDate  // Include lesson_date for date-specific storage
           };
 
           response = await fetch(`/api/groups/${props.groupId}/lesson`, {
@@ -708,7 +723,16 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       let response: Response;
 
       if (props.mode === 'group') {
-        response = await fetch(`/api/groups/${props.groupId}/lesson`, {
+        // Get lesson_date from the first session to delete the correct lesson
+        const firstSession = props.sessions.find(s => s.session_date);
+        const groupLessonDate = firstSession?.session_date;
+
+        let deleteUrl = `/api/groups/${props.groupId}/lesson`;
+        if (groupLessonDate) {
+          deleteUrl += `?lesson_date=${encodeURIComponent(groupLessonDate)}`;
+        }
+
+        response = await fetch(deleteUrl, {
           method: 'DELETE'
         });
       } else {

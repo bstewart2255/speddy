@@ -38,36 +38,127 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       teacher_name: s.teacher_name
     }));
 
-    // Save the lesson
-    const savePerf = measurePerformanceWithAlerts('save_lesson_db', 'database');
-    const { data, error } = await supabase
+    // Normalize lesson date
+    const normalizedLessonDate = lessonDate || new Date().toISOString().split('T')[0];
+
+    // Check for existing lesson first (upsert pattern)
+    const checkPerf = measurePerformanceWithAlerts('check_existing_lesson_db', 'database');
+    const { data: existingLesson, error: checkError } = await supabase
       .from('lessons')
-      .insert({
-        provider_id: userId,
-        time_slot: timeSlot,
-        student_ids: studentIds,
-        student_details: studentDetails,
-        content: content,
-        lesson_date: lessonDate || new Date().toISOString().split('T')[0],
-        school_site: schoolSite,
-        notes: notes
-      })
-      .select('*')
-      .single();
-    savePerf.end({ success: !error });
+      .select('id')
+      .eq('provider_id', userId)
+      .eq('lesson_date', normalizedLessonDate)
+      .eq('time_slot', timeSlot)
+      .maybeSingle();
+    checkPerf.end({ success: !checkError });
+
+    if (checkError) {
+      log.error('Error checking for existing lesson', checkError, {
+        userId,
+        lessonDate: normalizedLessonDate,
+        timeSlot
+      });
+    }
+
+    let data;
+    let error;
+
+    const lessonPayload = {
+      provider_id: userId,
+      time_slot: timeSlot,
+      student_ids: studentIds,
+      student_details: studentDetails,
+      content: content,
+      lesson_date: normalizedLessonDate,
+      school_site: schoolSite,
+      notes: notes
+    };
+
+    if (existingLesson) {
+      // UPDATE existing lesson
+      log.info('Updating existing lesson', {
+        userId,
+        lessonId: existingLesson.id,
+        lessonDate: normalizedLessonDate,
+        timeSlot
+      });
+
+      const updatePerf = measurePerformanceWithAlerts('update_lesson_db', 'database');
+      const result = await supabase
+        .from('lessons')
+        .update({
+          ...lessonPayload,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingLesson.id)
+        .select('*')
+        .single();
+      updatePerf.end({ success: !result.error });
+      data = result.data;
+      error = result.error;
+    } else {
+      // INSERT new lesson
+      const insertPerf = measurePerformanceWithAlerts('insert_lesson_db', 'database');
+      const result = await supabase
+        .from('lessons')
+        .insert(lessonPayload)
+        .select('*')
+        .single();
+      insertPerf.end({ success: !result.error });
+
+      // Handle race condition - if another request created the lesson between our check and insert
+      if (result.error?.code === '23505') {
+        log.info('Duplicate key error - lesson was created concurrently, attempting update', {
+          userId,
+          lessonDate: normalizedLessonDate,
+          timeSlot
+        });
+
+        // Fetch the concurrently created lesson and update it
+        const { data: concurrentLesson } = await supabase
+          .from('lessons')
+          .select('id')
+          .eq('provider_id', userId)
+          .eq('lesson_date', normalizedLessonDate)
+          .eq('time_slot', timeSlot)
+          .single();
+
+        if (concurrentLesson) {
+          const updateResult = await supabase
+            .from('lessons')
+            .update({
+              ...lessonPayload,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', concurrentLesson.id)
+            .select('*')
+            .single();
+          data = updateResult.data;
+          error = updateResult.error;
+        } else {
+          data = result.data;
+          error = result.error;
+        }
+      } else {
+        data = result.data;
+        error = result.error;
+      }
+    }
 
     if (error) {
       log.error('Error saving lesson', error, {
         userId,
-        studentIds
+        studentIds,
+        isUpdate: !!existingLesson
       });
-      
+
       track.event('lesson_save_failed', {
         userId,
         error: error.message,
-        errorCode: error.code
+        errorCode: error.code,
+        isUpdate: !!existingLesson
       });
-      
+
       perf.end({ success: false });
       return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
     }
