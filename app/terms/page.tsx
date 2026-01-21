@@ -6,7 +6,7 @@ export default function TermsPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms and Conditions</h1>
-            <p className="text-gray-600">Last Updated: January 19, 2026</p>
+            <p className="text-gray-600">Last Updated: January 21, 2026</p>
           </div>
 
           {/* Content */}
