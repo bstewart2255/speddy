@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import { CheckCircle, XCircle, Users, Calendar, Clock, Loader2 } from 'lucide-react';
+import { useSchool } from '../providers/school-context';
 
 interface UnmarkedSession {
   sessionId: string;
@@ -33,8 +34,11 @@ export function AttendanceWidget() {
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [markingSession, setMarkingSession] = useState<string | null>(null);
+  const { currentSchool, loading: schoolLoading } = useSchool();
 
   const fetchAttendanceSummary = useCallback(async () => {
+    if (schoolLoading) return;
+    
     try {
       setLoading(true);
       const today = new Date();
@@ -44,9 +48,16 @@ export function AttendanceWidget() {
       const startDate = format(weekStart, 'yyyy-MM-dd');
       const endDate = format(weekEnd, 'yyyy-MM-dd');
 
-      const response = await fetch(
-        `/api/attendance/summary?start_date=${startDate}&end_date=${endDate}`
-      );
+      const params = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate
+      });
+      
+      if (currentSchool?.school_id) {
+        params.append('school_id', currentSchool.school_id);
+      }
+
+      const response = await fetch(`/api/attendance/summary?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error('Failed to fetch attendance summary');
@@ -60,11 +71,13 @@ export function AttendanceWidget() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [schoolLoading, currentSchool?.school_id]);
 
   useEffect(() => {
-    fetchAttendanceSummary();
-  }, [fetchAttendanceSummary]);
+    if (!schoolLoading) {
+      fetchAttendanceSummary();
+    }
+  }, [fetchAttendanceSummary, schoolLoading, currentSchool?.school_id]);
 
   const handleQuickMark = async (session: UnmarkedSession, present: boolean) => {
     const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;

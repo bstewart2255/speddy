@@ -21,25 +21,33 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get('start_date');
   const endDate = searchParams.get('end_date');
+  const schoolId = searchParams.get('school_id');
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
   try {
-    const { data: sessions, error: sessionsError } = await supabase
+    let query = supabase
       .from('schedule_sessions')
       .select(`
         id,
         session_date,
         start_time,
         end_time,
-        student_id
+        student_id,
+        school_id
       `)
       .or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id},assigned_to_sea_id.eq.${user.id}`)
       .eq('is_template', false)
       .gte('session_date', startDate)
       .lte('session_date', endDate);
+
+    if (schoolId) {
+      query = query.eq('school_id', schoolId);
+    }
+
+    const { data: sessions, error: sessionsError } = await query;
 
     if (sessionsError) {
       console.error('Error fetching sessions:', sessionsError);
