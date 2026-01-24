@@ -12,6 +12,7 @@ interface UnmarkedSession {
   studentName: string;
   studentInitials: string;
   date: string;
+  startTime?: string;
   sessionTime: string;
 }
 
