@@ -15,6 +15,10 @@ export async function GET(
   const { groupId } = params;
   let userId: string | undefined;
 
+  // Get session_date from query params (optional - if provided, filter documents for specific date)
+  const searchParams = request.nextUrl.searchParams;
+  const sessionDate = searchParams.get('session_date');
+
   try {
     const supabase = await createClient();
 
@@ -28,7 +32,8 @@ export async function GET(
 
     log.info('Fetching group documents', {
       userId,
-      groupId
+      groupId,
+      sessionDate: sessionDate || 'all dates'
     });
 
     // Verify user has access to this group
@@ -52,13 +57,20 @@ export async function GET(
     }
 
     // Fetch documents for the group from unified documents table
+    // If session_date is provided, only return documents for that specific date
     const fetchPerf = measurePerformanceWithAlerts('fetch_group_documents_db', 'database');
-    const { data: documents, error } = await supabase
+    let query = supabase
       .from('documents')
       .select('*')
       .eq('documentable_type', 'group')
-      .eq('documentable_id', groupId)
-      .order('created_at', { ascending: false});
+      .eq('documentable_id', groupId);
+
+    // Filter by session_date if provided
+    if (sessionDate) {
+      query = query.eq('session_date', sessionDate);
+    }
+
+    const { data: documents, error } = await query.order('created_at', { ascending: false });
     fetchPerf.end({ success: !error, count: documents?.length || 0 });
 
     if (error) {
@@ -142,7 +154,7 @@ export async function POST(
     const contentType = request.headers.get('content-type') || '';
     const isFormData = contentType.includes('multipart/form-data');
 
-    let title, document_type, content, url, file_path, mime_type, file_size, original_filename;
+    let title, document_type, content, url, file_path, mime_type, file_size, original_filename, session_date;
 
     if (isFormData) {
       // Handle file upload
@@ -150,6 +162,7 @@ export async function POST(
       const file = formData.get('file') as File | null;
       title = formData.get('title') as string | null;
       document_type = formData.get('document_type') as string | null;
+      session_date = formData.get('session_date') as string | null;
 
       if (!file) {
         perf.end({ success: false });
@@ -233,6 +246,7 @@ export async function POST(
       content = body.content;
       url = body.url;
       file_path = body.file_path;
+      session_date = body.session_date;
 
       // Validate required fields
       if (!title || !document_type) {
@@ -279,7 +293,8 @@ export async function POST(
       userId,
       groupId,
       title,
-      document_type
+      document_type,
+      sessionDate: session_date || 'no date (shared)'
     });
 
     // Create the document in unified table
@@ -297,7 +312,8 @@ export async function POST(
         mime_type: mime_type || null,
         file_size: file_size || null,
         original_filename: original_filename || null,
-        created_by: userId
+        created_by: userId,
+        session_date: session_date || null
       })
       .select('*')
       .single();
