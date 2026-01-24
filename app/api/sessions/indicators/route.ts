@@ -6,6 +6,8 @@ import { withAuth } from '@/lib/api/with-auth';
 interface IndicatorResult {
   hasNotes: boolean;
   hasDocuments: boolean;
+  hasAttendance?: boolean;
+  allPresent?: boolean;
 }
 
 interface SessionInfo {
@@ -153,14 +155,39 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         sessionDocs?.map(d => `${d.documentable_id}|${d.session_date || ''}`) || []
       );
 
+      // Fetch attendance records for sessions
+      const { data: sessionAttendance } = await supabase
+        .from('attendance')
+        .select('session_id, session_date, present')
+        .in('session_id', sessionIds)
+        .in('session_date', uniqueDates);
+
+      // Build a map of "sessionId|sessionDate" -> { hasAttendance, allPresent }
+      const attendanceBySessionDate = new Map<string, { hasAttendance: boolean; allPresent: boolean }>();
+      if (sessionAttendance) {
+        for (const record of sessionAttendance) {
+          const key = `${record.session_id}|${record.session_date}`;
+          const existing = attendanceBySessionDate.get(key);
+          if (existing) {
+            existing.allPresent = existing.allPresent && record.present;
+          } else {
+            attendanceBySessionDate.set(key, { hasAttendance: true, allPresent: record.present });
+          }
+        }
+      }
+
       // Build indicator map for sessions
+      // Key by sessionId|sessionDate to properly isolate recurring instances
       for (const session of sessions) {
-        const key = `${session.sessionDate}|${session.timeSlot}`;
-        // Check for documents that match both the session ID and the specific date
+        const notesKey = `${session.sessionDate}|${session.timeSlot}`;
         const docKey = `${session.id}|${session.sessionDate}`;
-        sessionIndicators[session.id] = {
-          hasNotes: dateTimeSlotWithNotes.has(key),
-          hasDocuments: sessionDocsWithDate.has(docKey)
+        const attendanceInfo = attendanceBySessionDate.get(docKey);
+        const indicatorKey = `${session.id}|${session.sessionDate}`;
+        sessionIndicators[indicatorKey] = {
+          hasNotes: dateTimeSlotWithNotes.has(notesKey),
+          hasDocuments: sessionDocsWithDate.has(docKey),
+          hasAttendance: attendanceInfo?.hasAttendance || false,
+          allPresent: attendanceInfo?.allPresent
         };
       }
     }
@@ -193,13 +220,53 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         groupDocs?.map(d => `${d.documentable_id}|${d.session_date || ''}`) || []
       );
 
+      // Fetch sessions for these groups to get their IDs for attendance lookup
+      const { data: groupSessions } = await supabase
+        .from('schedule_sessions')
+        .select('id, group_id, session_date')
+        .in('group_id', groupIds)
+        .in('session_date', weekDates);
+
+      // Get session IDs for attendance lookup
+      const groupSessionIds = groupSessions?.map(s => s.id) || [];
+
+      // Fetch attendance for group sessions
+      const { data: groupAttendance } = groupSessionIds.length > 0 ? await supabase
+        .from('attendance')
+        .select('session_id, session_date, present')
+        .in('session_id', groupSessionIds)
+        .in('session_date', weekDates) : { data: null };
+
+      // Build a map of "groupId|sessionDate" -> { hasAttendance, allPresent }
+      const groupAttendanceByDate = new Map<string, { hasAttendance: boolean; allPresent: boolean }>();
+      if (groupAttendance && groupSessions) {
+        // Create a map from session_id to group_id
+        const sessionToGroup = new Map(groupSessions.map(s => [s.id, s.group_id]));
+
+        for (const record of groupAttendance) {
+          const groupId = sessionToGroup.get(record.session_id);
+          if (groupId) {
+            const key = `${groupId}|${record.session_date}`;
+            const existing = groupAttendanceByDate.get(key);
+            if (existing) {
+              existing.allPresent = existing.allPresent && record.present;
+            } else {
+              groupAttendanceByDate.set(key, { hasAttendance: true, allPresent: record.present });
+            }
+          }
+        }
+      }
+
       // Build indicator map for groups - keyed by "groupId|date" for per-instance checking
       for (const groupId of groupIds) {
         for (const date of weekDates) {
           const key = `${groupId}|${date}`;
+          const attendanceInfo = groupAttendanceByDate.get(key);
           groupIndicators[key] = {
             hasNotes: groupNotesWithDate.has(key),
-            hasDocuments: groupDocsWithDate.has(key)
+            hasDocuments: groupDocsWithDate.has(key),
+            hasAttendance: attendanceInfo?.hasAttendance || false,
+            allPresent: attendanceInfo?.allPresent
           };
         }
       }

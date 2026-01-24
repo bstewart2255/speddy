@@ -247,6 +247,18 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const [uploading, setUploading] = useState(false);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
+  // Attendance state
+  interface AttendanceRecord {
+    student_id: string;
+    present: boolean;
+    absence_reason?: string | null;
+  }
+  const [attendance, setAttendance] = useState<Map<string, AttendanceRecord>>(new Map());
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [attendanceExpanded, setAttendanceExpanded] = useState(false);
+  const [attendanceChanged, setAttendanceChanged] = useState(false);
+
   // Add escape key handler and body scroll prevention
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -531,6 +543,238 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   }, [getPersistedSessionId, props.mode, groupId, groupSessions, sessionDate, sessionGroupId, curriculumInitialized]);
 
+  // Fetch attendance for the session(s)
+  const fetchAttendance = useCallback(async (signal?: AbortSignal) => {
+    setLoadingAttendance(true);
+    try {
+      const dateParam = props.mode === 'group'
+        ? groupSessions?.find(s => s.session_date)?.session_date
+        : sessionDate;
+
+      if (!dateParam) {
+        setLoadingAttendance(false);
+        return;
+      }
+
+      const attendanceMap = new Map<string, AttendanceRecord>();
+
+      if (props.mode === 'group') {
+        // For group mode, fetch from all persisted sessions using each session's own date
+        const persistedSessions = groupSessions?.filter(s => !s.id.startsWith('temp-')) || [];
+
+        const fetchPromises = persistedSessions.map(async (session) => {
+          try {
+            // Use this session's own session_date (fallback to shared dateParam if null)
+            const sessionDateForFetch = session.session_date || dateParam;
+            if (!sessionDateForFetch) return;
+
+            const response = await fetch(
+              `/api/sessions/${session.id}/attendance?session_date=${encodeURIComponent(sessionDateForFetch)}`,
+              { signal }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              for (const record of data.attendance || []) {
+                attendanceMap.set(record.student_id, {
+                  student_id: record.student_id,
+                  present: record.present,
+                  absence_reason: record.absence_reason
+                });
+              }
+            }
+          } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') throw err;
+          }
+        });
+
+        await Promise.all(fetchPromises);
+      } else {
+        // For individual session mode
+        const sessionId = getPersistedSessionId();
+        if (!sessionId) {
+          setLoadingAttendance(false);
+          return;
+        }
+
+        const response = await fetch(
+          `/api/sessions/${sessionId}/attendance?session_date=${encodeURIComponent(dateParam)}`,
+          { signal }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          for (const record of data.attendance || []) {
+            attendanceMap.set(record.student_id, {
+              student_id: record.student_id,
+              present: record.present,
+              absence_reason: record.absence_reason
+            });
+          }
+        }
+      }
+
+      setAttendance(attendanceMap);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      console.error('Error fetching attendance:', error);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  }, [getPersistedSessionId, props.mode, groupSessions, sessionDate]);
+
+  // Save attendance for all students
+  // Optional parameter to pass attendance directly (for All Present quick action)
+  const saveAttendance = async (directAttendance?: Map<string, AttendanceRecord>) => {
+    setSavingAttendance(true);
+    try {
+      const dateParam = props.mode === 'group'
+        ? groupSessions?.find(s => s.session_date)?.session_date
+        : sessionDate;
+
+      if (!dateParam) {
+        showToast('Unable to save attendance: no session date', 'error');
+        return;
+      }
+
+      const attendanceToSave = directAttendance || attendance;
+
+      if (props.mode === 'group') {
+        // For group mode, save attendance per student's session using each session's own date
+        const persistedSessions = await ensureSessionsPersisted(props.sessions.filter(s => s.id.startsWith('temp-')));
+        const allSessions = [...props.sessions.filter(s => !s.id.startsWith('temp-')), ...persistedSessions];
+
+        // Save attendance for each student's actual session with their specific session_date
+        const savePromises = allSessions.map(async (session) => {
+          const studentId = session.student_id;
+          if (!studentId) return;
+
+          // Use this session's own session_date (fallback to shared dateParam if null)
+          const sessionDateForRecord = session.session_date || dateParam;
+          if (!sessionDateForRecord) return;
+
+          const record = attendanceToSave.get(studentId);
+          if (!record) return;
+
+          const response = await fetch(`/api/sessions/${session.id}/attendance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_date: sessionDateForRecord,
+              attendance: [record]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to save attendance for student ${studentId}`);
+          }
+        });
+
+        await Promise.all(savePromises);
+      } else {
+        // For individual session mode
+        const persistedSessionId = await ensureSessionsPersistence();
+        if (!persistedSessionId) {
+          showToast('Unable to save attendance: no session available', 'error');
+          return;
+        }
+
+        const attendanceRecords = Array.from(attendanceToSave.values());
+
+        const response = await fetch(`/api/sessions/${persistedSessionId}/attendance`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_date: dateParam,
+            attendance: attendanceRecords
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save attendance');
+        }
+      }
+
+      setAttendanceChanged(false);
+      showToast('Attendance saved', 'success');
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      showToast('Failed to save attendance', 'error');
+    } finally {
+      setSavingAttendance(false);
+    }
+  };
+
+  // Mark all students present and save immediately
+  const markAllPresentAndSave = async () => {
+    const students = props.mode === 'group'
+      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
+      : props.session.student_id ? [props.session.student_id] : [];
+
+    const newAttendance = new Map<string, AttendanceRecord>();
+    for (const studentId of students) {
+      newAttendance.set(studentId, { student_id: studentId, present: true });
+    }
+    setAttendance(newAttendance);
+    setAttendanceChanged(false);
+
+    // Pass the new attendance directly to avoid race condition
+    await saveAttendance(newAttendance);
+  };
+
+  // Mark all students present (state only, for manual save)
+  const markAllPresent = () => {
+    const students = props.mode === 'group'
+      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
+      : props.session.student_id ? [props.session.student_id] : [];
+
+    const newAttendance = new Map<string, AttendanceRecord>();
+    for (const studentId of students) {
+      newAttendance.set(studentId, { student_id: studentId, present: true });
+    }
+    setAttendance(newAttendance);
+    setAttendanceChanged(true);
+  };
+
+  // Toggle individual student attendance
+  const toggleStudentAttendance = (studentId: string, present: boolean) => {
+    setAttendance(prev => {
+      const newMap = new Map(prev);
+      newMap.set(studentId, {
+        student_id: studentId,
+        present,
+        absence_reason: present ? null : (prev.get(studentId)?.absence_reason || null)
+      });
+      return newMap;
+    });
+    setAttendanceChanged(true);
+  };
+
+  // Update absence reason
+  const updateAbsenceReason = (studentId: string, reason: string) => {
+    setAttendance(prev => {
+      const newMap = new Map(prev);
+      const existing = prev.get(studentId);
+      newMap.set(studentId, {
+        student_id: studentId,
+        present: existing?.present ?? false,
+        absence_reason: reason || null
+      });
+      return newMap;
+    });
+    setAttendanceChanged(true);
+  };
+
+  // Check if all students are marked present
+  const allPresent = useCallback(() => {
+    const students = props.mode === 'group'
+      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
+      : props.session.student_id ? [props.session.student_id] : [];
+
+    if (students.length === 0) return false;
+    return students.every(id => attendance.get(id)?.present === true);
+  }, [props, attendance]);
+
   // Reset fetch ref when modal opens or session identity changes
   useEffect(() => {
     if (isOpen) {
@@ -538,7 +782,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   }, [isOpen, props.mode, groupId, sessionId, sessionDate]);
 
-  // Fetch lesson, documents, and curriculum tracking when modal opens
+  // Fetch lesson, documents, curriculum tracking, and attendance when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -547,9 +791,10 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     fetchDocuments(controller.signal);
     fetchCurriculumTracking(controller.signal);
     fetchPreviousCurriculum(controller.signal);
+    fetchAttendance(controller.signal);
 
     return () => controller.abort();
-  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking, fetchPreviousCurriculum]);
+  }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking, fetchPreviousCurriculum, fetchAttendance]);
 
   /**
    * Saves curriculum tracking for the session(s).
@@ -1031,6 +1276,153 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
               </span>
             </div>
           )}
+
+          {/* Attendance Section */}
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-700">Attendance:</span>
+              {loadingAttendance ? (
+                <span className="text-xs text-gray-400">Loading...</span>
+              ) : (
+                <>
+                  <button
+                    onClick={markAllPresentAndSave}
+                    disabled={savingAttendance}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      allPresent()
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-green-100 hover:text-green-700'
+                    } disabled:opacity-50`}
+                  >
+                    {savingAttendance ? '...' : allPresent() ? 'All Present ✓' : 'All Present'}
+                  </button>
+                  <button
+                    onClick={() => setAttendanceExpanded(!attendanceExpanded)}
+                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition-colors flex items-center gap-1"
+                  >
+                    Mark Absences
+                    <svg
+                      className={`w-3 h-3 transition-transform ${attendanceExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Expanded attendance view */}
+            {attendanceExpanded && !loadingAttendance && (
+              <div className="mt-3 space-y-2 bg-gray-50 rounded-lg p-3">
+                {props.mode === 'group' ? (
+                  props.sessions.map((session) => {
+                    const studentId = session.student_id;
+                    if (!studentId) return null;
+                    const student = props.students.get(studentId);
+                    const record = attendance.get(studentId);
+                    const isPresent = record?.present ?? true;
+
+                    return (
+                      <div key={session.id} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
+                        <span className="font-medium text-sm text-gray-900 w-16">{student?.initials || '?'}</span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`attendance-${studentId}`}
+                              checked={isPresent}
+                              onChange={() => toggleStudentAttendance(studentId, true)}
+                              className="text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-xs text-gray-700">Present</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`attendance-${studentId}`}
+                              checked={!isPresent}
+                              onChange={() => toggleStudentAttendance(studentId, false)}
+                              className="text-red-600 focus:ring-red-500"
+                            />
+                            <span className="text-xs text-gray-700">Absent</span>
+                          </label>
+                        </div>
+                        {!isPresent && (
+                          <input
+                            type="text"
+                            value={record?.absence_reason || ''}
+                            onChange={(e) => updateAbsenceReason(studentId, e.target.value)}
+                            placeholder="Reason (optional)"
+                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Individual session mode
+                  (() => {
+                    const studentId = props.session.student_id;
+                    if (!studentId) return null;
+                    const record = attendance.get(studentId);
+                    const isPresent = record?.present ?? true;
+
+                    return (
+                      <div className="flex items-start gap-3 py-2">
+                        <span className="font-medium text-sm text-gray-900 w-16">{props.student?.initials || '?'}</span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="attendance-single"
+                              checked={isPresent}
+                              onChange={() => toggleStudentAttendance(studentId, true)}
+                              className="text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-xs text-gray-700">Present</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="attendance-single"
+                              checked={!isPresent}
+                              onChange={() => toggleStudentAttendance(studentId, false)}
+                              className="text-red-600 focus:ring-red-500"
+                            />
+                            <span className="text-xs text-gray-700">Absent</span>
+                          </label>
+                        </div>
+                        {!isPresent && (
+                          <input
+                            type="text"
+                            value={record?.absence_reason || ''}
+                            onChange={(e) => updateAbsenceReason(studentId, e.target.value)}
+                            placeholder="Reason (optional)"
+                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
+
+                {attendanceChanged && (
+                  <div className="pt-2 border-t border-gray-200 mt-2">
+                    <button
+                      onClick={() => saveAttendance()}
+                      disabled={savingAttendance}
+                      className="w-full py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {savingAttendance ? 'Saving...' : 'Save Attendance'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Content - Fixed sections + Scrollable form */}

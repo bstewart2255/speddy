@@ -883,10 +883,10 @@ return (
                               </div>
                               {/* Notes and documents indicators */}
                               <div className="flex items-center gap-1">
-                                {sessionIndicators[session.id]?.hasNotes && (
+                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasNotes && (
                                   <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
                                 )}
-                                {sessionIndicators[session.id]?.hasDocuments && (
+                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasDocuments && (
                                   <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
                                 )}
                               </div>
@@ -1051,10 +1051,10 @@ return (
                               </div>
                               {/* Notes and documents indicators */}
                               <div className="flex items-center gap-1">
-                                {sessionIndicators[session.id]?.hasNotes && (
+                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasNotes && (
                                   <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
                                 )}
-                                {sessionIndicators[session.id]?.hasDocuments && (
+                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasDocuments && (
                                   <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
                                 )}
                               </div>
