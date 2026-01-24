@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+interface AttendanceRecord {
+  id: string;
+  session_id: string;
+  student_id: string;
+  session_date: string;
+  present: boolean | null;
+  absence_reason: string | null;
+}
+
 function formatTime12hr(time: string | null): string {
   if (!time) return '';
   const [hours, minutes] = time.split(':');
@@ -22,6 +31,8 @@ export async function GET(request: NextRequest) {
   const startDate = searchParams.get('start_date');
   const endDate = searchParams.get('end_date');
   const schoolId = searchParams.get('school_id');
+  const limitParam = searchParams.get('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : null;
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
@@ -66,23 +77,21 @@ export async function GET(request: NextRequest) {
 
     const sessionIds = filteredSessions.map(s => s.id);
 
-    let attendanceRecords: any[] = [];
+    let attendanceRecords: AttendanceRecord[] = [];
     if (sessionIds.length > 0) {
       const { data: attendance, error: attendanceError } = await supabase
         .from('attendance')
-        .select('*')
-        .in('session_id', sessionIds)
-        .gte('session_date', startDate)
-        .lte('session_date', endDate);
+        .select('id, session_id, student_id, session_date, present, absence_reason')
+        .in('session_id', sessionIds);
 
       if (attendanceError) {
         console.error('Error fetching attendance:', attendanceError);
       } else {
-        attendanceRecords = attendance || [];
+        attendanceRecords = (attendance || []) as AttendanceRecord[];
       }
     }
 
-    const attendanceMap = new Map<string, typeof attendanceRecords[0]>();
+    const attendanceMap = new Map<string, AttendanceRecord>();
     for (const record of attendanceRecords) {
       const key = `${record.session_id}|${record.session_date}|${record.student_id}`;
       attendanceMap.set(key, record);
@@ -178,13 +187,19 @@ export async function GET(request: NextRequest) {
     absences.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     unmarkedSessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+    // Apply limit if provided (for pagination)
+    const limitedAbsences = limit ? absences.slice(0, limit) : absences;
+    const limitedUnmarkedSessions = limit ? unmarkedSessions.slice(0, limit) : unmarkedSessions;
+
     return NextResponse.json({
       totalSessions: filteredSessions.length,
       presentCount,
       absentCount,
       unmarkedCount,
-      absences,
-      unmarkedSessions
+      absences: limitedAbsences,
+      unmarkedSessions: limitedUnmarkedSessions,
+      hasMoreAbsences: limit ? absences.length > limit : false,
+      hasMoreUnmarked: limit ? unmarkedSessions.length > limit : false
     });
   } catch (error) {
     console.error('Error fetching attendance summary:', error);

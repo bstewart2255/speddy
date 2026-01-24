@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import { CheckCircle, XCircle, Users, Calendar, Clock, Loader2 } from 'lucide-react';
 import { useSchool } from '../providers/school-context';
+import { useToast } from '@/app/contexts/toast-context';
 
 interface UnmarkedSession {
   sessionId: string;
@@ -35,6 +36,7 @@ export function AttendanceWidget() {
   const [error, setError] = useState<string | null>(null);
   const [markingSession, setMarkingSession] = useState<string | null>(null);
   const { currentSchool, loading: schoolLoading } = useSchool();
+  const { showToast } = useToast();
 
   const fetchAttendanceSummary = useCallback(async () => {
     if (schoolLoading) return;
@@ -77,7 +79,7 @@ export function AttendanceWidget() {
     if (!schoolLoading) {
       fetchAttendanceSummary();
     }
-  }, [fetchAttendanceSummary, schoolLoading, currentSchool?.school_id]);
+  }, [fetchAttendanceSummary, schoolLoading]);
 
   const handleQuickMark = async (session: UnmarkedSession, present: boolean) => {
     const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
@@ -97,9 +99,11 @@ export function AttendanceWidget() {
         throw new Error('Failed to mark attendance');
       }
 
+      showToast(`Marked ${session.studentInitials} as ${present ? 'present' : 'absent'}`, 'success');
       fetchAttendanceSummary();
     } catch (err) {
       console.error('Error marking attendance:', err);
+      showToast('Failed to mark attendance. Please try again.', 'error');
     } finally {
       setMarkingSession(null);
     }
