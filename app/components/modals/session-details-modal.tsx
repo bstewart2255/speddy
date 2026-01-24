@@ -765,33 +765,45 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   // Toggle individual attendance (key is session.id for group mode, student_id for individual)
-  const toggleStudentAttendance = (key: string, present: boolean, studentId?: string) => {
-    setAttendance(prev => {
-      const newMap = new Map(prev);
-      const existing = prev.get(key);
-      newMap.set(key, {
+  // Clicking the same value again resets to undefined (no selection)
+  const toggleStudentAttendance = async (key: string, present: boolean, studentId?: string) => {
+    const existing = attendance.get(key);
+    
+    // If clicking the same value, reset to undefined
+    const newPresent = existing?.present === present ? undefined : present;
+    
+    const newAttendance = new Map(attendance);
+    if (newPresent === undefined) {
+      // Remove the record (reset to no selection)
+      newAttendance.delete(key);
+    } else {
+      newAttendance.set(key, {
         student_id: studentId || existing?.student_id || key,
-        present,
-        absence_reason: present ? null : (existing?.absence_reason || null)
+        present: newPresent,
+        absence_reason: newPresent ? null : (existing?.absence_reason || null)
       });
-      return newMap;
-    });
-    setAttendanceChanged(true);
+    }
+    
+    setAttendance(newAttendance);
+    
+    // Autosave
+    await saveAttendance(newAttendance);
   };
 
-  // Update absence reason
-  const updateAbsenceReason = (key: string, reason: string, studentId?: string) => {
-    setAttendance(prev => {
-      const newMap = new Map(prev);
-      const existing = prev.get(key);
-      newMap.set(key, {
-        student_id: studentId || existing?.student_id || key,
-        present: existing?.present ?? false,
-        absence_reason: reason || null
-      });
-      return newMap;
+  // Update absence reason (autosaves)
+  const updateAbsenceReason = async (key: string, reason: string, studentId?: string) => {
+    const existing = attendance.get(key);
+    const newAttendance = new Map(attendance);
+    newAttendance.set(key, {
+      student_id: studentId || existing?.student_id || key,
+      present: existing?.present ?? false,
+      absence_reason: reason || null
     });
-    setAttendanceChanged(true);
+    
+    setAttendance(newAttendance);
+    
+    // Autosave after a brief debounce would be ideal, but for now just save
+    await saveAttendance(newAttendance);
   };
 
   // Check if all sessions are marked present
@@ -1355,7 +1367,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     if (!studentId) return null;
                     const student = props.students.get(studentId);
                     const record = attendance.get(session.id);
-                    const isPresent = record?.present ?? true;
+                    const isPresent = record?.present === true;
+                    const isAbsent = record?.present === false;
 
                     return (
                       <div key={session.id} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
@@ -1366,7 +1379,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                               type="radio"
                               name={`attendance-${session.id}`}
                               checked={isPresent}
-                              onChange={() => toggleStudentAttendance(session.id, true, studentId)}
+                              onClick={() => toggleStudentAttendance(session.id, true, studentId)}
+                              onChange={() => {}}
                               className="text-green-600 focus:ring-green-500"
                             />
                             <span className="text-xs text-gray-700">Present</span>
@@ -1375,14 +1389,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                             <input
                               type="radio"
                               name={`attendance-${session.id}`}
-                              checked={!isPresent}
-                              onChange={() => toggleStudentAttendance(session.id, false, studentId)}
+                              checked={isAbsent}
+                              onClick={() => toggleStudentAttendance(session.id, false, studentId)}
+                              onChange={() => {}}
                               className="text-red-600 focus:ring-red-500"
                             />
                             <span className="text-xs text-gray-700">Absent</span>
                           </label>
                         </div>
-                        {!isPresent && (
+                        {isAbsent && (
                           <input
                             type="text"
                             value={record?.absence_reason || ''}
@@ -1400,7 +1415,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     const studentId = props.session.student_id;
                     if (!studentId) return null;
                     const record = attendance.get(studentId);
-                    const isPresent = record?.present ?? true;
+                    const isPresent = record?.present === true;
+                    const isAbsent = record?.present === false;
 
                     return (
                       <div className="flex items-start gap-3 py-2">
@@ -1411,7 +1427,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                               type="radio"
                               name="attendance-single"
                               checked={isPresent}
-                              onChange={() => toggleStudentAttendance(studentId, true)}
+                              onClick={() => toggleStudentAttendance(studentId, true)}
+                              onChange={() => {}}
                               className="text-green-600 focus:ring-green-500"
                             />
                             <span className="text-xs text-gray-700">Present</span>
@@ -1420,14 +1437,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                             <input
                               type="radio"
                               name="attendance-single"
-                              checked={!isPresent}
-                              onChange={() => toggleStudentAttendance(studentId, false)}
+                              checked={isAbsent}
+                              onClick={() => toggleStudentAttendance(studentId, false)}
+                              onChange={() => {}}
                               className="text-red-600 focus:ring-red-500"
                             />
                             <span className="text-xs text-gray-700">Absent</span>
                           </label>
                         </div>
-                        {!isPresent && (
+                        {isAbsent && (
                           <input
                             type="text"
                             value={record?.absence_reason || ''}
@@ -1439,18 +1457,6 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                       </div>
                     );
                   })()
-                )}
-
-                {attendanceChanged && (
-                  <div className="pt-2 border-t border-gray-200 mt-2">
-                    <button
-                      onClick={() => saveAttendance()}
-                      disabled={savingAttendance}
-                      className="w-full py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                    >
-                      {savingAttendance ? 'Saving...' : 'Save Attendance'}
-                    </button>
-                  </div>
                 )}
               </div>
             )}
