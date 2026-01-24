@@ -181,8 +181,8 @@ export async function PUT(
     const body = await request.json();
     const { student_id, session_date, present, absence_reason } = body;
 
-    if (!student_id || !session_date || present === undefined) {
-      return NextResponse.json({ error: 'student_id, session_date, and present are required' }, { status: 400 });
+    if (!student_id || !session_date || typeof present !== 'boolean') {
+      return NextResponse.json({ error: 'student_id, session_date, and present (boolean) are required' }, { status: 400 });
     }
 
     const serviceClient = createServiceClient();
@@ -212,7 +212,7 @@ export async function PUT(
         student_id,
         session_date,
         present,
-        absence_reason: present ? null : (absence_reason || null),
+        absence_reason: present ? null : (absence_reason?.trim() || null),
         marked_by: user.id
       }, {
         onConflict: 'session_id,student_id,session_date'

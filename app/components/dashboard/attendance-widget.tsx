@@ -94,7 +94,7 @@ export function AttendanceWidget() {
           student_id: session.studentId,
           session_date: session.date,
           present,
-          absence_reason: present ? null : (reason || null)
+          absence_reason: present ? null : (reason?.trim() || null)
         })
       });
 

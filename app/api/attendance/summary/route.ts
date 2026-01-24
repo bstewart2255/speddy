@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
   }
 
   // Get today's date for filtering unmarked sessions (don't show future sessions as unmarked)
-  const today = new Date().toISOString().split('T')[0];
+  // Use local date format to match session_date storage format
+  const today = new Intl.DateTimeFormat('en-CA').format(new Date());
 
   try {
     const { data: sessions, error: sessionsError } = await supabase
