@@ -52,14 +52,7 @@ export async function GET(request: NextRequest) {
     if (sessionIds.length > 0) {
       const { data: attendance, error: attendanceError } = await supabase
         .from('attendance')
-        .select(`
-          *,
-          students (
-            id,
-            first_name,
-            last_name
-          )
-        `)
+        .select('*')
         .in('session_id', sessionIds)
         .gte('session_date', startDate)
         .lte('session_date', endDate);
@@ -100,6 +93,11 @@ export async function GET(request: NextRequest) {
     for (const session of sessions || []) {
       if (session.student_id) {
         sessionStudentIds.add(session.student_id);
+      }
+    }
+    for (const record of attendanceRecords) {
+      if (record.student_id) {
+        sessionStudentIds.add(record.student_id);
       }
     }
 
