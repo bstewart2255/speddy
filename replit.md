@@ -63,6 +63,71 @@ Features a sophisticated scheduling optimization system:
 - **Drag-and-Drop Interface**: Real-time conflict detection with visual feedback
 - **Grade-Level Grouping**: Intelligent grouping of students by grade level
 
+## Session Architecture (Critical)
+
+The scheduling system uses a **template→instance** pattern for recurring sessions:
+
+### Session Types
+
+| Type | `session_date` | `is_template` | Where Displayed |
+|------|----------------|---------------|-----------------|
+| **Template** | `NULL` | `true` | Main Schedule page |
+| **Instance** | Actual date (YYYY-MM-DD) | `false` | Plan page, Dashboard |
+
+### Session Lifecycle
+
+1. **Template Creation**: When a student is assigned sessions via scheduling, template sessions are created with `session_date = NULL`. These define the weekly recurring pattern.
+
+2. **Instance Generation**: When loading Plan/Dashboard:
+   - `SessionGenerator.getSessionsForDateRange()` fetches templates for the date range
+   - For dates without existing instances, **virtual instances** are created in-memory with `temp-{timestamp}` IDs
+   - Virtual instances inherit all template properties plus the specific `session_date`
+
+3. **Instance Persistence**: Virtual instances become permanent when user takes action:
+   - Saves a document
+   - Adds notes
+   - Sets curriculum
+   - The `ensureSessionPersisted()` function saves the instance and returns a real UUID
+
+4. **Pre-Generated Instances**: `session-instance-generator.ts` can batch-create real instances ahead of time (used in migrations/batch ops)
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `lib/services/session-generator.ts` | Fetches sessions, generates virtual instances on-demand |
+| `lib/services/session-instance-generator.ts` | Batch pre-generates real instances from templates |
+| `lib/services/session-persistence.ts` | `ensureSessionPersisted()` - persists temp sessions |
+| `lib/services/session-update-service.ts` | Updates sessions, triggers instance generation |
+
+### Important Fields
+
+- `template_id`: Links instances back to their source template (enables cleanup, deduplication)
+- `is_template`: Boolean flag (`true` = template, `false` = instance)
+- `session_date`: `NULL` for templates, actual date for instances
+
+### Temporary ID Pattern
+
+Virtual instances use IDs like: `temp-1706123456789-0.123456789`
+
+Code must check `id.startsWith('temp-')` before database operations. The persistence gateway handles this automatically.
+
+### Data Isolation
+
+Documents and notes are stored per-instance using:
+- `session_id`: Links to the specific session instance
+- `session_date`: Additional filter to ensure correct instance (especially for recurring sessions)
+
+### Orphan Cleanup
+
+`SessionGenerator` automatically detects and removes orphaned instances (instances whose templates no longer exist) during session fetching.
+
+### Future Improvements (Planned)
+
+1. **Single Persistence Gateway**: Centralize all temp-ID handling
+2. **Unique Constraint**: Add `(template_id, session_date)` to prevent duplicates
+3. **Consistent Instance Mode**: Choose between virtual-on-demand vs pre-generated
+
 ## Performance & Monitoring
 
 Implements comprehensive performance monitoring:

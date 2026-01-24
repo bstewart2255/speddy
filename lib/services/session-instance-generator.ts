@@ -45,6 +45,14 @@ export async function createInstancesFromTemplate(
       };
     }
 
+    if (!templateSession.student_id || !templateSession.provider_id) {
+      return {
+        success: false,
+        instancesCreated: 0,
+        error: 'Template session must have student_id and provider_id'
+      };
+    }
+
     // Generate dates for the next N weeks
     const datesToCreate: string[] = [];
     const today = new Date();
@@ -123,7 +131,9 @@ export async function createInstancesFromTemplate(
       status: templateSession.status,
       student_absent: false,
       outside_schedule_conflict: false,
-      is_completed: false
+      is_completed: false,
+      template_id: templateSession.id,
+      is_template: false
     }));
 
     // Insert instances

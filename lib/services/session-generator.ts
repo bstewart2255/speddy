@@ -197,7 +197,9 @@ export class SessionGenerator {
             ...template,
             id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
             session_date: dateStr,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            template_id: template.id,
+            is_template: false
           };
           sessions.push(instance);
         }
@@ -314,7 +316,7 @@ export class SessionGenerator {
         console.warn('Error checking for existing session:', existingError);
       }
 
-      const insertData: ScheduleSessionInsert = {
+      const insertData = {
         student_id: session.student_id,
         provider_id: session.provider_id,
         day_of_week: session.day_of_week,
@@ -329,8 +331,10 @@ export class SessionGenerator {
         completed_by: session.completed_by,
         session_notes: session.session_notes,
         group_id: session.group_id || null,
-        group_name: session.group_name || null
-      };
+        group_name: session.group_name || null,
+        template_id: (session as ScheduleSession & { template_id?: string }).template_id || null,
+        is_template: false
+      } as ScheduleSessionInsert;
 
       console.log('Inserting session instance:', insertData);
 
