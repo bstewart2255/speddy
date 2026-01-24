@@ -12,6 +12,7 @@ import {
 import { Card } from '@/app/components/ui/card';
 import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
+import { StudentScheduleModal } from '@/app/components/admin/student-schedule-modal';
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<AdminStudentView[]>([]);
@@ -20,6 +21,7 @@ export default function AdminStudentsPage() {
   const [deletingGroupKey, setDeletingGroupKey] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [scheduleModalStudent, setScheduleModalStudent] = useState<GroupedStudent | null>(null);
 
   const fetchStudents = async () => {
     try {
@@ -222,6 +224,9 @@ export default function AdminStudentsPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Specialists
                 </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Schedule
+                </th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -270,6 +275,14 @@ export default function AdminStudentsPage() {
                       ))}
                     </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <button
+                      onClick={() => setScheduleModalStudent(student)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      View
+                    </button>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <LongHoverTooltip
                       content={
@@ -300,6 +313,7 @@ export default function AdminStudentsPage() {
                   {totalSessionsPerWeek} sessions/wk ({totalMinutesPerWeek} min/wk)
                 </td>
                 <td></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -312,6 +326,17 @@ export default function AdminStudentsPage() {
           Showing {filteredGroupedStudents.length} unique students ({totalProviderRecords} provider records)
         </div>
       </div>
+
+      {/* Student Schedule Modal */}
+      {schoolId && scheduleModalStudent && (
+        <StudentScheduleModal
+          isOpen={!!scheduleModalStudent}
+          onClose={() => setScheduleModalStudent(null)}
+          studentInitials={scheduleModalStudent.initials}
+          studentIds={scheduleModalStudent.providerRecords.map(r => r.id)}
+          schoolId={schoolId}
+        />
+      )}
     </div>
   );
 }

@@ -360,9 +360,23 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     // Only show loading on initial fetch, not refreshes
     if (documents.length === 0) setLoadingDocuments(true);
     try {
-      const endpoint = props.mode === 'group'
+      // Get session_date for filtering documents to this specific instance
+      let instanceDate: string | null = null;
+      if (props.mode === 'group') {
+        const firstSession = groupSessions?.find(s => s.session_date);
+        instanceDate = firstSession?.session_date || null;
+      } else {
+        instanceDate = sessionDate || null;
+      }
+
+      // Build endpoint with session_date filter if available
+      let endpoint = props.mode === 'group'
         ? `/api/groups/${groupId}/documents`
         : `/api/sessions/${currentSessionId}/documents`;
+
+      if (instanceDate) {
+        endpoint += `?session_date=${encodeURIComponent(instanceDate)}`;
+      }
 
       const response = await fetch(endpoint, { signal });
       if (!response.ok) throw new Error('Failed to fetch documents');
@@ -379,7 +393,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     } finally {
       setLoadingDocuments(false);
     }
-  }, [props.mode, groupId, currentSessionId, showToast, documents.length]);
+  }, [props.mode, groupId, groupSessions, sessionDate, currentSessionId, showToast, documents.length]);
 
   // Get first persisted session ID for curriculum tracking
   const getPersistedSessionId = useCallback(() => {
@@ -838,10 +852,22 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         return;
       }
 
+      // Get session_date for scoping document to this specific instance
+      let instanceDate: string | null = null;
+      if (props.mode === 'group') {
+        const firstSession = groupSessions?.find(s => s.session_date);
+        instanceDate = firstSession?.session_date || null;
+      } else {
+        instanceDate = sessionDate || null;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
       formData.append('title', file.name.replace(/\.[^/.]+$/, '')); // Use filename without extension
       formData.append('document_type', 'file');
+      if (instanceDate) {
+        formData.append('session_date', instanceDate);
+      }
 
       const endpoint = props.mode === 'group'
         ? `/api/groups/${props.groupId}/documents`
