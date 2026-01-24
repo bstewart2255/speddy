@@ -790,8 +790,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     await saveAttendance(newAttendance);
   };
 
-  // Update absence reason (autosaves)
-  const updateAbsenceReason = async (key: string, reason: string, studentId?: string) => {
+  // Debounce ref for absence reason autosave
+  const absenceReasonTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update absence reason (debounced autosave - saves 500ms after user stops typing)
+  const updateAbsenceReason = (key: string, reason: string, studentId?: string) => {
     const existing = attendance.get(key);
     const newAttendance = new Map(attendance);
     newAttendance.set(key, {
@@ -802,8 +805,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     
     setAttendance(newAttendance);
     
-    // Autosave after a brief debounce would be ideal, but for now just save
-    await saveAttendance(newAttendance);
+    // Clear existing timeout
+    if (absenceReasonTimeoutRef.current) {
+      clearTimeout(absenceReasonTimeoutRef.current);
+    }
+    
+    // Debounce save by 500ms
+    absenceReasonTimeoutRef.current = setTimeout(() => {
+      saveAttendance(newAttendance);
+    }, 500);
   };
 
   // Check if all sessions are marked present
