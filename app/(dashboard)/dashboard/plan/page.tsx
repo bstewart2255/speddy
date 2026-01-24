@@ -26,7 +26,7 @@ interface Student {
 }
 
 export default function CalendarPage() {
-  const [currentView, setCurrentView] = useState<ViewType>('day');
+  const [currentView, setCurrentView] = useState<ViewType>('week');
   const [sessions, setSessions] = useState<SessionWithCurriculum[]>([]);
   const [students, setStudents] = useState<Map<string, Student>>(new Map());
   const [holidays, setHolidays] = useState<Holiday[]>([]);
