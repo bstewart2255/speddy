@@ -2297,10 +2297,10 @@ export function CalendarWeekView({
                                   <div className="font-semibold text-blue-900">📚 {groupName}</div>
                                   {/* Notes and documents indicators */}
                                   <div className="flex items-center gap-1">
-                                    {groupIndicators[groupId]?.hasNotes && (
+                                    {groupIndicators[`${groupId}|${dateStr}`]?.hasNotes && (
                                       <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
                                     )}
-                                    {groupIndicators[groupId]?.hasDocuments && (
+                                    {groupIndicators[`${groupId}|${dateStr}`]?.hasDocuments && (
                                       <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
                                     )}
                                   </div>

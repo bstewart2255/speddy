@@ -828,10 +828,10 @@ return (
                               <div className="font-semibold text-blue-900">📚 {groupName}</div>
                               {/* Notes and documents indicators */}
                               <div className="flex items-center gap-1">
-                                {groupIndicators[groupId]?.hasNotes && (
+                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasNotes && (
                                   <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
                                 )}
-                                {groupIndicators[groupId]?.hasDocuments && (
+                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasDocuments && (
                                   <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
                                 )}
                               </div>
@@ -997,10 +997,10 @@ return (
                               <div className="font-semibold text-blue-900">📚 {groupName}</div>
                               {/* Notes and documents indicators */}
                               <div className="flex items-center gap-1">
-                                {groupIndicators[groupId]?.hasNotes && (
+                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasNotes && (
                                   <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
                                 )}
-                                {groupIndicators[groupId]?.hasDocuments && (
+                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasDocuments && (
                                   <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
                                 )}
                               </div>

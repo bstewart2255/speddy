@@ -141,21 +141,26 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       // Get session IDs for document lookup
       const sessionIds = sessions.map(s => s.id);
 
-      // Fetch documents for individual sessions
+      // Fetch documents for individual sessions, including session_date for filtering
       const { data: sessionDocs } = await supabase
         .from('documents')
-        .select('documentable_id')
+        .select('documentable_id, session_date')
         .eq('documentable_type', 'session')
         .in('documentable_id', sessionIds);
 
-      const sessionIdsWithDocs = new Set(sessionDocs?.map(d => d.documentable_id) || []);
+      // Build a set of "sessionId|sessionDate" keys that have documents
+      const sessionDocsWithDate = new Set(
+        sessionDocs?.map(d => `${d.documentable_id}|${d.session_date || ''}`) || []
+      );
 
       // Build indicator map for sessions
       for (const session of sessions) {
         const key = `${session.sessionDate}|${session.timeSlot}`;
+        // Check for documents that match both the session ID and the specific date
+        const docKey = `${session.id}|${session.sessionDate}`;
         sessionIndicators[session.id] = {
           hasNotes: dateTimeSlotWithNotes.has(key),
-          hasDocuments: sessionIdsWithDocs.has(session.id)
+          hasDocuments: sessionDocsWithDate.has(docKey)
         };
       }
     }
@@ -164,29 +169,39 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       // Fetch lessons with notes for these groups within the week dates
       const { data: groupsWithNotes } = await supabase
         .from('lessons')
-        .select('group_id')
+        .select('group_id, lesson_date')
         .in('group_id', groupIds)
         .in('lesson_date', weekDates)
         .not('notes', 'is', null)
         .neq('notes', '');
 
-      const groupIdsWithNotes = new Set(groupsWithNotes?.map(l => l.group_id) || []);
+      // Build a set of "groupId|lessonDate" keys that have notes
+      const groupNotesWithDate = new Set(
+        groupsWithNotes?.map(l => `${l.group_id}|${l.lesson_date}`) || []
+      );
 
-      // Fetch documents for groups
+      // Fetch documents for groups, including session_date for filtering
       const { data: groupDocs } = await supabase
         .from('documents')
-        .select('documentable_id')
+        .select('documentable_id, session_date')
         .eq('documentable_type', 'group')
-        .in('documentable_id', groupIds);
+        .in('documentable_id', groupIds)
+        .in('session_date', weekDates);
 
-      const groupIdsWithDocs = new Set(groupDocs?.map(d => d.documentable_id) || []);
+      // Build a set of "groupId|sessionDate" keys that have documents
+      const groupDocsWithDate = new Set(
+        groupDocs?.map(d => `${d.documentable_id}|${d.session_date || ''}`) || []
+      );
 
-      // Build indicator map for groups
+      // Build indicator map for groups - keyed by "groupId|date" for per-instance checking
       for (const groupId of groupIds) {
-        groupIndicators[groupId] = {
-          hasNotes: groupIdsWithNotes.has(groupId),
-          hasDocuments: groupIdsWithDocs.has(groupId)
-        };
+        for (const date of weekDates) {
+          const key = `${groupId}|${date}`;
+          groupIndicators[key] = {
+            hasNotes: groupNotesWithDate.has(key),
+            hasDocuments: groupDocsWithDate.has(key)
+          };
+        }
       }
     }
 
