@@ -28,33 +28,43 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let query = supabase
+    const { data: sessions, error: sessionsError } = await supabase
       .from('schedule_sessions')
       .select(`
         id,
         session_date,
         start_time,
         end_time,
-        student_id,
-        school_id
+        student_id
       `)
       .or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id},assigned_to_sea_id.eq.${user.id}`)
       .eq('is_template', false)
       .gte('session_date', startDate)
       .lte('session_date', endDate);
 
-    if (schoolId) {
-      query = query.eq('school_id', schoolId);
-    }
-
-    const { data: sessions, error: sessionsError } = await query;
-
     if (sessionsError) {
       console.error('Error fetching sessions:', sessionsError);
       return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 });
     }
 
-    const sessionIds = sessions?.map(s => s.id) || [];
+    let filteredSessions = sessions || [];
+
+    if (schoolId && filteredSessions.length > 0) {
+      const studentIdsToFilter = [...new Set(filteredSessions.map(s => s.student_id).filter(Boolean))];
+      
+      if (studentIdsToFilter.length > 0) {
+        const { data: schoolStudents } = await supabase
+          .from('students')
+          .select('id')
+          .eq('school_id', schoolId)
+          .in('id', studentIdsToFilter);
+
+        const schoolStudentIds = new Set(schoolStudents?.map(s => s.id) || []);
+        filteredSessions = filteredSessions.filter(s => s.student_id && schoolStudentIds.has(s.student_id));
+      }
+    }
+
+    const sessionIds = filteredSessions.map(s => s.id);
 
     let attendanceRecords: any[] = [];
     if (sessionIds.length > 0) {
@@ -98,7 +108,7 @@ export async function GET(request: NextRequest) {
     }[] = [];
 
     const sessionStudentIds = new Set<string>();
-    for (const session of sessions || []) {
+    for (const session of filteredSessions) {
       if (session.student_id) {
         sessionStudentIds.add(session.student_id);
       }
@@ -111,17 +121,21 @@ export async function GET(request: NextRequest) {
 
     let studentMap = new Map<string, { first_name: string; last_name: string }>();
     if (sessionStudentIds.size > 0) {
-      const { data: students } = await supabase
+      const { data: students, error: studentsError } = await supabase
         .from('students')
         .select('id, first_name, last_name')
         .in('id', Array.from(sessionStudentIds));
+
+      if (studentsError) {
+        console.error('Error fetching students:', studentsError);
+      }
 
       for (const student of students || []) {
         studentMap.set(student.id, student);
       }
     }
 
-    for (const session of sessions || []) {
+    for (const session of filteredSessions) {
       if (!session.session_date || !session.student_id) continue;
 
       const key = `${session.id}|${session.session_date}|${session.student_id}`;
@@ -165,7 +179,7 @@ export async function GET(request: NextRequest) {
     unmarkedSessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     return NextResponse.json({
-      totalSessions: sessions?.length || 0,
+      totalSessions: filteredSessions.length,
       presentCount,
       absentCount,
       unmarkedCount,
