@@ -9,6 +9,7 @@ import { IEPGoalsUploader } from './iep-goals-uploader';
 import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
+import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
 
 interface StudentDetailsModalProps {
@@ -57,7 +58,7 @@ export function StudentDetailsModal({
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'accommodations'>('current');
+  const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'attendance' | 'accommodations'>('current');
   const [matchingRoles, setMatchingRoles] = useState<string[]>([]);
 
   const [studentInfo, setStudentInfo] = useState({
@@ -192,7 +193,7 @@ export function StudentDetailsModal({
         />
 
         {/* Modal */}
-        <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b">
             <div className="flex items-center gap-3">
@@ -251,6 +252,16 @@ export function StudentDetailsModal({
                 }`}
               >
                 Progress
+              </button>
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'attendance'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Attendance
               </button>
               <button
                 onClick={() => setActiveTab('accommodations')}
@@ -557,6 +568,11 @@ export function StudentDetailsModal({
                 studentId={student.id}
                 iepGoals={details.iep_goals}
               />
+            )}
+
+            {/* Attendance Tab */}
+            {activeTab === 'attendance' && (
+              <StudentAttendanceTab studentId={student.id} />
             )}
 
             {/* Accommodations Tab */}
