@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+function formatTime12hr(time: string | null): string {
+  if (!time) return '';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
 
@@ -125,7 +134,7 @@ export async function GET(request: NextRequest) {
           studentName: `${firstName} ${lastName}`.trim() || 'Unknown',
           studentInitials: initials || '?',
           date: session.session_date,
-          sessionTime: `${session.start_time || ''} - ${session.end_time || ''}`
+          sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
         });
       } else if (attendance.present === true) {
         presentCount++;
@@ -141,7 +150,7 @@ export async function GET(request: NextRequest) {
           studentInitials: initials || '?',
           date: session.session_date,
           reason: attendance.absence_reason,
-          sessionTime: `${session.start_time || ''} - ${session.end_time || ''}`
+          sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
         });
       }
     }
