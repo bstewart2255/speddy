@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
-import { CheckCircle, XCircle, Users, Calendar } from 'lucide-react';
+import { CheckCircle, XCircle, Users, Calendar, Clock, Loader2 } from 'lucide-react';
+
+interface UnmarkedSession {
+  sessionId: string;
+  studentId: string;
+  studentName: string;
+  studentInitials: string;
+  date: string;
+  sessionTime: string;
+}
 
 interface AttendanceSummary {
   totalSessions: number;
@@ -16,12 +25,14 @@ interface AttendanceSummary {
     reason: string | null;
     sessionTime: string;
   }[];
+  unmarkedSessions: UnmarkedSession[];
 }
 
 export function AttendanceWidget() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [markingSession, setMarkingSession] = useState<string | null>(null);
 
   const fetchAttendanceSummary = useCallback(async () => {
     try {
@@ -54,6 +65,32 @@ export function AttendanceWidget() {
   useEffect(() => {
     fetchAttendanceSummary();
   }, [fetchAttendanceSummary]);
+
+  const handleQuickMark = async (session: UnmarkedSession, present: boolean) => {
+    const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
+    setMarkingSession(sessionKey);
+    try {
+      const response = await fetch(`/api/sessions/${session.sessionId}/attendance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: session.studentId,
+          session_date: session.date,
+          present
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to mark attendance');
+      }
+
+      fetchAttendanceSummary();
+    } catch (err) {
+      console.error('Error marking attendance:', err);
+    } finally {
+      setMarkingSession(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -172,10 +209,66 @@ export function AttendanceWidget() {
         </div>
       )}
 
-      {summary.absences.length === 0 && markedCount > 0 && (
+      {summary.absences.length === 0 && markedCount > 0 && summary.unmarkedSessions.length === 0 && (
         <div className="border-t border-gray-200 pt-4 mt-4 text-center">
           <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
           <p className="text-sm text-gray-600">No absences this week</p>
+        </div>
+      )}
+
+      {summary.unmarkedSessions.length > 0 && (
+        <div className="border-t border-gray-200 pt-4 mt-4">
+          <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-gray-500" />
+            Unmarked Sessions
+          </h3>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {summary.unmarkedSessions.slice(0, 10).map((session) => {
+              const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
+              const isMarking = markingSession === sessionKey;
+              
+              return (
+                <div key={sessionKey} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-medium text-gray-600">{session.studentInitials}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{session.studentName}</div>
+                    <div className="text-xs text-gray-500">
+                      {format(parseISO(session.date), 'EEE, MMM d')} · {session.sessionTime}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex gap-1">
+                    {isMarking ? (
+                      <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleQuickMark(session, true)}
+                          className="p-1.5 rounded-full hover:bg-green-100 text-green-600 transition-colors"
+                          title="Mark Present"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleQuickMark(session, false)}
+                          className="p-1.5 rounded-full hover:bg-red-100 text-red-600 transition-colors"
+                          title="Mark Absent"
+                        >
+                          <XCircle className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {summary.unmarkedSessions.length > 10 && (
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              +{summary.unmarkedSessions.length - 10} more unmarked sessions
+            </p>
+          )}
         </div>
       )}
     </div>

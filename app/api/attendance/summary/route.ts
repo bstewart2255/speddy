@@ -78,6 +78,14 @@ export async function GET(request: NextRequest) {
       reason: string | null;
       sessionTime: string;
     }[] = [];
+    const unmarkedSessions: {
+      sessionId: string;
+      studentId: string;
+      studentName: string;
+      studentInitials: string;
+      date: string;
+      sessionTime: string;
+    }[] = [];
 
     const sessionStudentIds = new Set<string>();
     for (const session of sessions || []) {
@@ -107,6 +115,18 @@ export async function GET(request: NextRequest) {
 
       if (!attendance) {
         unmarkedCount++;
+        const firstName = student?.first_name || '';
+        const lastName = student?.last_name || '';
+        const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+
+        unmarkedSessions.push({
+          sessionId: session.id,
+          studentId: session.student_id,
+          studentName: `${firstName} ${lastName}`.trim() || 'Unknown',
+          studentInitials: initials || '?',
+          date: session.session_date,
+          sessionTime: `${session.start_time || ''} - ${session.end_time || ''}`
+        });
       } else if (attendance.present === true) {
         presentCount++;
       } else if (attendance.present === false) {
@@ -127,13 +147,15 @@ export async function GET(request: NextRequest) {
     }
 
     absences.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    unmarkedSessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     return NextResponse.json({
       totalSessions: sessions?.length || 0,
       presentCount,
       absentCount,
       unmarkedCount,
-      absences
+      absences,
+      unmarkedSessions
     });
   } catch (error) {
     console.error('Error fetching attendance summary:', error);
