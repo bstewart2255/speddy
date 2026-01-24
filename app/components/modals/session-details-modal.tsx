@@ -560,11 +560,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
       if (props.mode === 'group') {
         // For group mode, fetch from all persisted sessions using each session's own date
+        // Key by session.id so each session has its own attendance record
         const persistedSessions = groupSessions?.filter(s => !s.id.startsWith('temp-')) || [];
 
         const fetchPromises = persistedSessions.map(async (session) => {
           try {
-            // Use this session's own session_date (fallback to shared dateParam if null)
             const sessionDateForFetch = session.session_date || dateParam;
             if (!sessionDateForFetch) return;
 
@@ -574,8 +574,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             );
             if (response.ok) {
               const data = await response.json();
+              // Use session.id as the key, not student_id
               for (const record of data.attendance || []) {
-                attendanceMap.set(record.student_id, {
+                attendanceMap.set(session.id, {
                   student_id: record.student_id,
                   present: record.present,
                   absence_reason: record.absence_reason
@@ -639,23 +640,38 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       const attendanceToSave = directAttendance || attendance;
 
       if (props.mode === 'group') {
-        // For group mode, save attendance per student's session using each session's own date
-        const persistedSessions = await ensureSessionsPersisted(props.sessions.filter(s => s.id.startsWith('temp-')));
-        const allSessions = [...props.sessions.filter(s => !s.id.startsWith('temp-')), ...persistedSessions];
+        // For group mode, save attendance per session using session.id as key
+        const tempSessions = props.sessions.filter(s => s.id.startsWith('temp-'));
+        const persistedSessions = await ensureSessionsPersisted(tempSessions);
+        
+        // Build a map from original temp id to persisted session
+        const tempToPersistedMap = new Map<string, typeof persistedSessions[0]>();
+        tempSessions.forEach((tempSession, index) => {
+          if (persistedSessions[index]) {
+            tempToPersistedMap.set(tempSession.id, persistedSessions[index]);
+          }
+        });
 
-        // Save attendance for each student's actual session with their specific session_date
-        const savePromises = allSessions.map(async (session) => {
-          const studentId = session.student_id;
+        // Save attendance for each session
+        const savePromises = props.sessions.map(async (originalSession) => {
+          const studentId = originalSession.student_id;
           if (!studentId) return;
 
-          // Use this session's own session_date (fallback to shared dateParam if null)
-          const sessionDateForRecord = session.session_date || dateParam;
-          if (!sessionDateForRecord) return;
-
-          const record = attendanceToSave.get(studentId);
+          // Get the record using the original session.id (which is how UI keys it)
+          const record = attendanceToSave.get(originalSession.id);
           if (!record) return;
 
-          const response = await fetch(`/api/sessions/${session.id}/attendance`, {
+          // Get the persisted session (either original if already persisted, or from map)
+          const persistedSession = originalSession.id.startsWith('temp-')
+            ? tempToPersistedMap.get(originalSession.id)
+            : originalSession;
+          
+          if (!persistedSession) return;
+
+          const sessionDateForRecord = persistedSession.session_date || dateParam;
+          if (!sessionDateForRecord) return;
+
+          const response = await fetch(`/api/sessions/${persistedSession.id}/attendance`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -665,7 +681,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
           });
 
           if (!response.ok) {
-            throw new Error(`Failed to save attendance for student ${studentId}`);
+            throw new Error(`Failed to save attendance for session ${persistedSession.id}`);
           }
         });
 
@@ -705,49 +721,58 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   };
 
-  // Toggle all students present/absent and save immediately
+  // Toggle all sessions present/absent and save immediately
+  // In group mode, keys are session.id; in individual mode, key is student_id
   const toggleAllPresentAndSave = async () => {
-    const students = props.mode === 'group'
-      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
-      : props.session.student_id ? [props.session.student_id] : [];
-
     const newAttendance = new Map<string, AttendanceRecord>();
-    
-    // If all are currently present, clear them; otherwise mark all present
     const shouldMarkPresent = !allPresent();
-    
-    for (const studentId of students) {
-      newAttendance.set(studentId, { student_id: studentId, present: shouldMarkPresent });
+
+    if (props.mode === 'group') {
+      for (const session of props.sessions) {
+        if (!session.student_id) continue;
+        newAttendance.set(session.id, { student_id: session.student_id, present: shouldMarkPresent });
+      }
+    } else {
+      const studentId = props.session.student_id;
+      if (studentId) {
+        newAttendance.set(studentId, { student_id: studentId, present: shouldMarkPresent });
+      }
     }
+
     setAttendance(newAttendance);
     setAttendanceChanged(false);
-
-    // Pass the new attendance directly to avoid race condition
     await saveAttendance(newAttendance);
   };
 
-  // Mark all students present (state only, for manual save)
+  // Mark all present (state only, for manual save)
   const markAllPresent = () => {
-    const students = props.mode === 'group'
-      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
-      : props.session.student_id ? [props.session.student_id] : [];
-
     const newAttendance = new Map<string, AttendanceRecord>();
-    for (const studentId of students) {
-      newAttendance.set(studentId, { student_id: studentId, present: true });
+
+    if (props.mode === 'group') {
+      for (const session of props.sessions) {
+        if (!session.student_id) continue;
+        newAttendance.set(session.id, { student_id: session.student_id, present: true });
+      }
+    } else {
+      const studentId = props.session.student_id;
+      if (studentId) {
+        newAttendance.set(studentId, { student_id: studentId, present: true });
+      }
     }
+
     setAttendance(newAttendance);
     setAttendanceChanged(true);
   };
 
-  // Toggle individual student attendance
-  const toggleStudentAttendance = (studentId: string, present: boolean) => {
+  // Toggle individual attendance (key is session.id for group mode, student_id for individual)
+  const toggleStudentAttendance = (key: string, present: boolean, studentId?: string) => {
     setAttendance(prev => {
       const newMap = new Map(prev);
-      newMap.set(studentId, {
-        student_id: studentId,
+      const existing = prev.get(key);
+      newMap.set(key, {
+        student_id: studentId || existing?.student_id || key,
         present,
-        absence_reason: present ? null : (prev.get(studentId)?.absence_reason || null)
+        absence_reason: present ? null : (existing?.absence_reason || null)
       });
       return newMap;
     });
@@ -755,12 +780,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   // Update absence reason
-  const updateAbsenceReason = (studentId: string, reason: string) => {
+  const updateAbsenceReason = (key: string, reason: string, studentId?: string) => {
     setAttendance(prev => {
       const newMap = new Map(prev);
-      const existing = prev.get(studentId);
-      newMap.set(studentId, {
-        student_id: studentId,
+      const existing = prev.get(key);
+      newMap.set(key, {
+        student_id: studentId || existing?.student_id || key,
         present: existing?.present ?? false,
         absence_reason: reason || null
       });
@@ -769,14 +794,17 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     setAttendanceChanged(true);
   };
 
-  // Check if all students are marked present
+  // Check if all sessions are marked present
   const allPresent = useCallback(() => {
-    const students = props.mode === 'group'
-      ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
-      : props.session.student_id ? [props.session.student_id] : [];
-
-    if (students.length === 0) return false;
-    return students.every(id => attendance.get(id)?.present === true);
+    if (props.mode === 'group') {
+      const sessionIds = props.sessions.map(s => s.id);
+      if (sessionIds.length === 0) return false;
+      return sessionIds.every(id => attendance.get(id)?.present === true);
+    } else {
+      const studentId = props.session.student_id;
+      if (!studentId) return false;
+      return attendance.get(studentId)?.present === true;
+    }
   }, [props, attendance]);
 
   // Reset fetch ref when modal opens or session identity changes
@@ -1326,7 +1354,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     const studentId = session.student_id;
                     if (!studentId) return null;
                     const student = props.students.get(studentId);
-                    const record = attendance.get(studentId);
+                    const record = attendance.get(session.id);
                     const isPresent = record?.present ?? true;
 
                     return (
@@ -1336,9 +1364,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                           <label className="flex items-center gap-1 cursor-pointer">
                             <input
                               type="radio"
-                              name={`attendance-${studentId}`}
+                              name={`attendance-${session.id}`}
                               checked={isPresent}
-                              onChange={() => toggleStudentAttendance(studentId, true)}
+                              onChange={() => toggleStudentAttendance(session.id, true, studentId)}
                               className="text-green-600 focus:ring-green-500"
                             />
                             <span className="text-xs text-gray-700">Present</span>
@@ -1346,9 +1374,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                           <label className="flex items-center gap-1 cursor-pointer">
                             <input
                               type="radio"
-                              name={`attendance-${studentId}`}
+                              name={`attendance-${session.id}`}
                               checked={!isPresent}
-                              onChange={() => toggleStudentAttendance(studentId, false)}
+                              onChange={() => toggleStudentAttendance(session.id, false, studentId)}
                               className="text-red-600 focus:ring-red-500"
                             />
                             <span className="text-xs text-gray-700">Absent</span>
@@ -1358,7 +1386,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                           <input
                             type="text"
                             value={record?.absence_reason || ''}
-                            onChange={(e) => updateAbsenceReason(studentId, e.target.value)}
+                            onChange={(e) => updateAbsenceReason(session.id, e.target.value, studentId)}
                             placeholder="Reason (optional)"
                             className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
