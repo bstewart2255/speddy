@@ -235,8 +235,8 @@ export function AttendanceWidget() {
             <Clock className="w-4 h-4 text-gray-500" />
             Unmarked Sessions
           </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {summary.unmarkedSessions.slice(0, 10).map((session) => {
+          <div className="space-y-2">
+            {summary.unmarkedSessions.map((session) => {
               const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
               const isMarking = markingSession === sessionKey;
               
@@ -277,11 +277,6 @@ export function AttendanceWidget() {
               );
             })}
           </div>
-          {summary.unmarkedSessions.length > 10 && (
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              +{summary.unmarkedSessions.length - 10} more unmarked sessions
-            </p>
-          )}
         </div>
       )}
     </div>
