@@ -705,15 +705,19 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   };
 
-  // Mark all students present and save immediately
-  const markAllPresentAndSave = async () => {
+  // Toggle all students present/absent and save immediately
+  const toggleAllPresentAndSave = async () => {
     const students = props.mode === 'group'
       ? props.sessions.map(s => s.student_id).filter((id): id is string => !!id)
       : props.session.student_id ? [props.session.student_id] : [];
 
     const newAttendance = new Map<string, AttendanceRecord>();
+    
+    // If all are currently present, clear them; otherwise mark all present
+    const shouldMarkPresent = !allPresent();
+    
     for (const studentId of students) {
-      newAttendance.set(studentId, { student_id: studentId, present: true });
+      newAttendance.set(studentId, { student_id: studentId, present: shouldMarkPresent });
     }
     setAttendance(newAttendance);
     setAttendanceChanged(false);
@@ -1286,7 +1290,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
               ) : (
                 <>
                   <button
-                    onClick={markAllPresentAndSave}
+                    onClick={toggleAllPresentAndSave}
                     disabled={savingAttendance}
                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                       allPresent()
