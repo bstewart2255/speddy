@@ -119,11 +119,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let studentMap = new Map<string, { first_name: string; last_name: string }>();
+    let studentMap = new Map<string, { initials: string; grade_level?: string }>();
     if (sessionStudentIds.size > 0) {
       const { data: students, error: studentsError } = await supabase
         .from('students')
-        .select('id, first_name, last_name')
+        .select('id, initials, grade_level')
         .in('id', Array.from(sessionStudentIds));
 
       if (studentsError) {
@@ -144,15 +144,15 @@ export async function GET(request: NextRequest) {
 
       if (!attendance) {
         unmarkedCount++;
-        const firstName = student?.first_name || '';
-        const lastName = student?.last_name || '';
-        const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+        const studentInitials = student?.initials || '?';
+        const gradeLevel = student?.grade_level || '';
+        const displayName = gradeLevel ? `${studentInitials} (${gradeLevel})` : studentInitials;
 
         unmarkedSessions.push({
           sessionId: session.id,
           studentId: session.student_id,
-          studentName: `${firstName} ${lastName}`.trim() || 'Unknown',
-          studentInitials: initials || '?',
+          studentName: displayName,
+          studentInitials: studentInitials,
           date: session.session_date,
           sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
         });
@@ -161,13 +161,13 @@ export async function GET(request: NextRequest) {
       } else if (attendance.present === false) {
         absentCount++;
 
-        const firstName = student?.first_name || '';
-        const lastName = student?.last_name || '';
-        const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+        const studentInitials = student?.initials || '?';
+        const gradeLevel = student?.grade_level || '';
+        const displayName = gradeLevel ? `${studentInitials} (${gradeLevel})` : studentInitials;
 
         absences.push({
-          studentName: `${firstName} ${lastName}`.trim() || 'Unknown',
-          studentInitials: initials || '?',
+          studentName: displayName,
+          studentInitials: studentInitials,
           date: session.session_date,
           reason: attendance.absence_reason,
           sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
