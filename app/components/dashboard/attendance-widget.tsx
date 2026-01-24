@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns';
-import { CheckCircle, XCircle, Users, Calendar, Clock, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Users, Calendar, Clock, Loader2, ArrowLeft } from 'lucide-react';
 import { useSchool } from '../providers/school-context';
 import { useToast } from '@/app/contexts/toast-context';
 
@@ -35,6 +35,8 @@ export function AttendanceWidget() {
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [markingSession, setMarkingSession] = useState<string | null>(null);
+  const [reasonEntrySession, setReasonEntrySession] = useState<string | null>(null);
+  const [absenceReason, setAbsenceReason] = useState('');
   const { currentSchool, loading: schoolLoading } = useSchool();
   const { showToast } = useToast();
 
@@ -81,7 +83,7 @@ export function AttendanceWidget() {
     }
   }, [fetchAttendanceSummary, schoolLoading]);
 
-  const handleQuickMark = async (session: UnmarkedSession, present: boolean) => {
+  const handleQuickMark = async (session: UnmarkedSession, present: boolean, reason?: string) => {
     const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
     setMarkingSession(sessionKey);
     try {
@@ -91,7 +93,8 @@ export function AttendanceWidget() {
         body: JSON.stringify({
           student_id: session.studentId,
           session_date: session.date,
-          present
+          present,
+          absence_reason: present ? null : (reason?.trim() || null)
         })
       });
 
@@ -100,6 +103,8 @@ export function AttendanceWidget() {
       }
 
       showToast(`Marked ${session.studentInitials} as ${present ? 'present' : 'absent'}`, 'success');
+      setReasonEntrySession(null);
+      setAbsenceReason('');
       fetchAttendanceSummary();
     } catch (err) {
       console.error('Error marking attendance:', err);
@@ -107,6 +112,16 @@ export function AttendanceWidget() {
     } finally {
       setMarkingSession(null);
     }
+  };
+
+  const handleStartReasonEntry = (sessionKey: string) => {
+    setReasonEntrySession(sessionKey);
+    setAbsenceReason('');
+  };
+
+  const handleCancelReasonEntry = () => {
+    setReasonEntrySession(null);
+    setAbsenceReason('');
   };
 
   if (loading) {
@@ -140,10 +155,6 @@ export function AttendanceWidget() {
     return null;
   }
 
-  const markedCount = summary.presentCount + summary.absentCount;
-  const attendanceRate = markedCount > 0 
-    ? Math.round((summary.presentCount / markedCount) * 100) 
-    : 0;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -181,57 +192,6 @@ export function AttendanceWidget() {
         </div>
       </div>
 
-      {markedCount > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between text-sm mb-1">
-            <span className="text-gray-600">Attendance Rate</span>
-            <span className="font-medium text-gray-900">{attendanceRate}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-green-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${attendanceRate}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {summary.absences.length > 0 && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Recent Absences</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {summary.absences.slice(0, 5).map((absence, index) => (
-              <div key={index} className="flex items-start gap-3 p-2 bg-red-50 rounded-lg">
-                <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-medium text-red-700">{absence.studentInitials}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900">{absence.studentName}</span>
-                    <span className="text-xs text-gray-500">{format(parseISO(absence.date), 'EEE, MMM d')}</span>
-                  </div>
-                  <div className="text-xs text-gray-500">{absence.sessionTime}</div>
-                  {absence.reason && (
-                    <div className="text-xs text-red-600 mt-1">Reason: {absence.reason}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          {summary.absences.length > 5 && (
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              +{summary.absences.length - 5} more absences
-            </p>
-          )}
-        </div>
-      )}
-
-      {summary.absences.length === 0 && markedCount > 0 && summary.unmarkedSessions.length === 0 && (
-        <div className="border-t border-gray-200 pt-4 mt-4 text-center">
-          <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
-          <p className="text-sm text-gray-600">No absences this week</p>
-        </div>
-      )}
 
       {summary.unmarkedSessions.length > 0 && (
         <div className="border-t border-gray-200 pt-4 mt-4">
@@ -243,7 +203,8 @@ export function AttendanceWidget() {
             {summary.unmarkedSessions.map((session) => {
               const sessionKey = `${session.sessionId}|${session.date}|${session.studentId}`;
               const isMarking = markingSession === sessionKey;
-              
+              const isEnteringReason = reasonEntrySession === sessionKey;
+
               return (
                 <div key={sessionKey} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
                   <div className="flex-shrink-0 w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
@@ -255,9 +216,41 @@ export function AttendanceWidget() {
                       {format(parseISO(session.date), 'EEE, MMM d')} · {session.sessionTime}
                     </div>
                   </div>
-                  <div className="flex-shrink-0 flex gap-1">
+                  <div className="flex-shrink-0 flex items-center gap-1">
                     {isMarking ? (
                       <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                    ) : isEnteringReason ? (
+                      <>
+                        <button
+                          onClick={handleCancelReasonEntry}
+                          className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
+                          title="Back"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                        </button>
+                        <input
+                          type="text"
+                          value={absenceReason}
+                          onChange={(e) => setAbsenceReason(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleQuickMark(session, false, absenceReason);
+                            } else if (e.key === 'Escape') {
+                              handleCancelReasonEntry();
+                            }
+                          }}
+                          placeholder="Reason (optional)"
+                          className="w-24 sm:w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleQuickMark(session, false, absenceReason)}
+                          className="p-1.5 rounded-full hover:bg-blue-100 text-blue-600 transition-colors"
+                          title="Confirm Absent"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button
@@ -268,7 +261,7 @@ export function AttendanceWidget() {
                           <CheckCircle className="w-5 h-5" />
                         </button>
                         <button
-                          onClick={() => handleQuickMark(session, false)}
+                          onClick={() => handleStartReasonEntry(sessionKey)}
                           className="p-1.5 rounded-full hover:bg-red-100 text-red-600 transition-colors"
                           title="Mark Absent"
                         >

@@ -147,13 +147,91 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save attendance' }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       attendance: savedAttendance,
       message: 'Attendance saved successfully'
     });
   } catch (error) {
     console.error('Error in attendance POST:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// PUT handler for quick-marking a single student's attendance
+export async function PUT(
+  request: NextRequest,
+  props: { params: Promise<{ sessionId: string }> }
+) {
+  const params = await props.params;
+  const { sessionId } = params;
+
+  try {
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (sessionId.startsWith('temp-')) {
+      return NextResponse.json({ error: 'Cannot save attendance for temporary sessions' }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const { student_id, session_date, present, absence_reason } = body;
+
+    if (!student_id || !session_date || typeof present !== 'boolean') {
+      return NextResponse.json({ error: 'student_id, session_date, and present (boolean) are required' }, { status: 400 });
+    }
+
+    const serviceClient = createServiceClient();
+
+    const { data: session, error: sessionError } = await serviceClient
+      .from('schedule_sessions')
+      .select('id, provider_id, assigned_to_specialist_id, assigned_to_sea_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError || !session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    const hasAccess = session.provider_id === user.id ||
+      session.assigned_to_specialist_id === user.id ||
+      session.assigned_to_sea_id === user.id;
+
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const { data: savedAttendance, error: upsertError } = await serviceClient
+      .from('attendance')
+      .upsert({
+        session_id: sessionId,
+        student_id,
+        session_date,
+        present,
+        absence_reason: present ? null : (absence_reason?.trim() || null),
+        marked_by: user.id
+      }, {
+        onConflict: 'session_id,student_id,session_date'
+      })
+      .select()
+      .single();
+
+    if (upsertError) {
+      console.error('Error saving attendance:', upsertError);
+      return NextResponse.json({ error: 'Failed to save attendance' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      attendance: savedAttendance,
+      message: `Marked as ${present ? 'present' : 'absent'}`
+    });
+  } catch (error) {
+    console.error('Error in attendance PUT:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

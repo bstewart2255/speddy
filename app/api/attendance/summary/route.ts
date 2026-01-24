@@ -38,6 +38,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
+  // Get today's date for filtering unmarked sessions (don't show future sessions as unmarked)
+  // Use local date format to match session_date storage format
+  const today = new Intl.DateTimeFormat('en-CA').format(new Date());
+
   try {
     const { data: sessions, error: sessionsError } = await supabase
       .from('schedule_sessions')
@@ -152,19 +156,22 @@ export async function GET(request: NextRequest) {
       const student = studentMap.get(session.student_id);
 
       if (!attendance) {
-        unmarkedCount++;
-        const studentInitials = student?.initials || '?';
-        const gradeLevel = student?.grade_level || '';
-        const displayName = gradeLevel ? `${studentInitials} (${gradeLevel})` : studentInitials;
+        // Only count as unmarked if session date is today or in the past
+        if (session.session_date <= today) {
+          unmarkedCount++;
+          const studentInitials = student?.initials || '?';
+          const gradeLevel = student?.grade_level || '';
+          const displayName = gradeLevel ? `${studentInitials} (${gradeLevel})` : studentInitials;
 
-        unmarkedSessions.push({
-          sessionId: session.id,
-          studentId: session.student_id,
-          studentName: displayName,
-          studentInitials: studentInitials,
-          date: session.session_date,
-          sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
-        });
+          unmarkedSessions.push({
+            sessionId: session.id,
+            studentId: session.student_id,
+            studentName: displayName,
+            studentInitials: studentInitials,
+            date: session.session_date,
+            sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
+          });
+        }
       } else if (attendance.present === true) {
         presentCount++;
       } else if (attendance.present === false) {
