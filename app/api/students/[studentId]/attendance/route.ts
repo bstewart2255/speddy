@@ -26,10 +26,33 @@ export async function GET(
 
   const { searchParams } = new URL(request.url);
   const limitParam = searchParams.get('limit');
-  const limit = limitParam ? parseInt(limitParam, 10) : 50;
+  const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
 
   try {
-    // Fetch attendance records for this student with session details
+    // First, get summary counts from ALL records (not limited)
+    const { data: allRecords, error: countError } = await supabase
+      .from('attendance')
+      .select('present')
+      .eq('student_id', studentId);
+
+    if (countError) {
+      console.error('Error fetching attendance counts:', countError);
+      return NextResponse.json({ error: 'Failed to fetch attendance' }, { status: 500 });
+    }
+
+    // Calculate summary stats from full dataset
+    let presentCount = 0;
+    let absentCount = 0;
+    for (const record of allRecords || []) {
+      if (record.present === true) {
+        presentCount++;
+      } else if (record.present === false) {
+        absentCount++;
+      }
+    }
+
+    // Now fetch limited records for display
     const { data: attendanceRecords, error: attendanceError } = await supabase
       .from('attendance')
       .select(`
@@ -69,17 +92,7 @@ export async function GET(
       }
     }
 
-    // Calculate summary stats
-    let presentCount = 0;
-    let absentCount = 0;
-
     const records = (attendanceRecords || []).map(record => {
-      if (record.present === true) {
-        presentCount++;
-      } else if (record.present === false) {
-        absentCount++;
-      }
-
       const session = sessionMap.get(record.session_id);
       return {
         id: record.id,

@@ -87,11 +87,18 @@ export async function GET(request: NextRequest) {
       .lte('date', endDate);
 
     // If school_id is provided, filter holidays by that school (or district-wide)
+    // If no school_id, only use district-wide holidays to avoid filtering out valid sessions
     if (schoolId) {
       holidayQuery.or(`school_id.eq.${schoolId},school_id.is.null`);
+    } else {
+      holidayQuery.is('school_id', null);
     }
 
-    const { data: holidays } = await holidayQuery;
+    const { data: holidays, error: holidaysError } = await holidayQuery;
+    if (holidaysError) {
+      console.error('Error fetching holidays:', holidaysError);
+      // Continue without holiday filtering rather than failing the request
+    }
     const holidayDates = new Set(holidays?.map(h => h.date) || []);
 
     // Filter out sessions that fall on holidays
