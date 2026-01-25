@@ -6,6 +6,41 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 export type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 
+/**
+ * Gets the school year end date (June 30 of the current school year)
+ * If we're past June 30, returns June 30 of next year
+ */
+export function getSchoolYearEndDate(): Date {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth(); // 0-indexed (June = 5)
+
+  // If we're past June (July onwards), use next year's June 30
+  const targetYear = currentMonth > 5 ? currentYear + 1 : currentYear;
+
+  // June 30 at end of day
+  const endDate = new Date(targetYear, 5, 30, 23, 59, 59, 999);
+  return endDate;
+}
+
+/**
+ * Calculates the number of weeks from today until school year end (June 30)
+ */
+export function calculateWeeksUntilSchoolYearEnd(): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const endDate = getSchoolYearEndDate();
+  endDate.setHours(0, 0, 0, 0);
+
+  const diffMs = endDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.ceil(diffDays / 7);
+
+  // Ensure at least 1 week
+  return Math.max(1, diffWeeks);
+}
+
 export interface InstanceGenerationResult {
   success: boolean;
   instancesCreated: number;
@@ -13,16 +48,25 @@ export interface InstanceGenerationResult {
   error?: string;
 }
 
+export interface InstanceGenerationOptions {
+  /** Number of weeks forward to generate instances (default: calculate until school year end) */
+  weeksAhead?: number;
+  /** Generate until this specific date (takes precedence over weeksAhead) */
+  untilDate?: Date;
+  /** Use school year end date (June 30) - default behavior */
+  useSchoolYearEnd?: boolean;
+}
+
 /**
  * Generates dated session instances from a template session
  * @param templateSession - The template session (with session_date = NULL)
- * @param weeksAhead - Number of weeks forward to generate instances
+ * @param optionsOrWeeksAhead - Options object or number of weeks (for backward compatibility)
  * @param supabaseClient - Optional Supabase client (creates one if not provided)
  * @returns Result with created instances
  */
 export async function createInstancesFromTemplate(
   templateSession: ScheduleSession,
-  weeksAhead: number = 8,
+  optionsOrWeeksAhead: InstanceGenerationOptions | number = { useSchoolYearEnd: true },
   supabaseClient?: SupabaseClient<Database>
 ): Promise<InstanceGenerationResult> {
   try {
@@ -53,7 +97,26 @@ export async function createInstancesFromTemplate(
       };
     }
 
-    // Generate dates for the next N weeks
+    // Parse options (backward compatibility: support number for weeksAhead)
+    const options: InstanceGenerationOptions = typeof optionsOrWeeksAhead === 'number'
+      ? { weeksAhead: optionsOrWeeksAhead }
+      : optionsOrWeeksAhead;
+
+    // Determine the end date for instance generation
+    let endDate: Date;
+    if (options.untilDate) {
+      endDate = new Date(options.untilDate);
+    } else if (options.weeksAhead !== undefined) {
+      // Use explicit weeks ahead
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + (options.weeksAhead * 7));
+    } else {
+      // Default: use school year end (June 30)
+      endDate = getSchoolYearEndDate();
+    }
+    endDate.setHours(23, 59, 59, 999);
+
+    // Generate dates until end date
     const datesToCreate: string[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -68,14 +131,21 @@ export async function createInstancesFromTemplate(
       daysUntilTarget += 7; // Move to next week
     }
 
-    // Generate dates for the next N weeks
-    for (let week = 0; week < weeksAhead; week++) {
+    // Generate dates until end date
+    let week = 0;
+    while (true) {
       const instanceDate = new Date(today);
       instanceDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
+
+      // Stop if we've gone past the end date
+      if (instanceDate > endDate) {
+        break;
+      }
 
       // Format as YYYY-MM-DD in local timezone
       const dateStr = formatDateLocal(instanceDate);
       datesToCreate.push(dateStr);
+      week++;
     }
 
     // Check which instances already exist
@@ -167,12 +237,30 @@ export async function createInstancesFromTemplate(
 /**
  * Generates instances for all scheduled templates
  * Used for migration and batch operations
+ * @param optionsOrWeeksAhead - Options object or number of weeks (for backward compatibility)
  */
 export async function generateInstancesForAllTemplates(
-  weeksAhead: number = 8
-): Promise<{ total: number; created: number; errors: string[] }> {
+  optionsOrWeeksAhead: InstanceGenerationOptions | number = { useSchoolYearEnd: true }
+): Promise<{ total: number; created: number; errors: string[]; endDate: string }> {
   try {
     const supabase = await createClient();
+
+    // Parse options (backward compatibility: support number for weeksAhead)
+    const options: InstanceGenerationOptions = typeof optionsOrWeeksAhead === 'number'
+      ? { weeksAhead: optionsOrWeeksAhead }
+      : optionsOrWeeksAhead;
+
+    // Calculate end date for logging
+    let endDate: Date;
+    if (options.untilDate) {
+      endDate = new Date(options.untilDate);
+    } else if (options.weeksAhead !== undefined) {
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + (options.weeksAhead * 7));
+    } else {
+      endDate = getSchoolYearEndDate();
+    }
+    const endDateStr = formatDateLocal(endDate);
 
     // Fetch all template sessions that are scheduled with pagination
     const allTemplates: ScheduleSession[] = [];
@@ -193,7 +281,8 @@ export async function generateInstancesForAllTemplates(
         return {
           total: 0,
           created: 0,
-          errors: [`Failed to fetch templates: ${error.message}`]
+          errors: [`Failed to fetch templates: ${error.message}`],
+          endDate: endDateStr
         };
       }
 
@@ -215,7 +304,7 @@ export async function generateInstancesForAllTemplates(
     for (let i = 0; i < allTemplates.length; i += BATCH_SIZE) {
       const batch = allTemplates.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(
-        batch.map(template => createInstancesFromTemplate(template, weeksAhead))
+        batch.map(template => createInstancesFromTemplate(template, options))
       );
 
       results.forEach((result, idx) => {
@@ -231,13 +320,15 @@ export async function generateInstancesForAllTemplates(
     return {
       total: allTemplates.length,
       created: totalCreated,
-      errors
+      errors,
+      endDate: endDateStr
     };
   } catch (error) {
     return {
       total: 0,
       created: 0,
-      errors: [error instanceof Error ? error.message : 'Unknown error']
+      errors: [error instanceof Error ? error.message : 'Unknown error'],
+      endDate: ''
     };
   }
 }
