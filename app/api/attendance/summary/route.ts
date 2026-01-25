@@ -79,6 +79,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Fetch holidays for the date range and filter out sessions on holidays
+    const holidayQuery = supabase
+      .from('holidays')
+      .select('date')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    // If school_id is provided, filter holidays by that school (or district-wide)
+    // If no school_id, only use district-wide holidays to avoid filtering out valid sessions
+    if (schoolId) {
+      holidayQuery.or(`school_id.eq.${schoolId},school_id.is.null`);
+    } else {
+      holidayQuery.is('school_id', null);
+    }
+
+    const { data: holidays, error: holidaysError } = await holidayQuery;
+    if (holidaysError) {
+      console.error('Error fetching holidays:', holidaysError);
+      // Continue without holiday filtering rather than failing the request
+    }
+    const holidayDates = new Set(holidays?.map(h => h.date) || []);
+
+    // Filter out sessions that fall on holidays
+    if (holidayDates.size > 0) {
+      filteredSessions = filteredSessions.filter(s => !holidayDates.has(s.session_date));
+    }
+
     const sessionIds = filteredSessions.map(s => s.id);
 
     let attendanceRecords: AttendanceRecord[] = [];
@@ -117,6 +144,7 @@ export async function GET(request: NextRequest) {
       studentName: string;
       studentInitials: string;
       date: string;
+      startTime: string | null;
       sessionTime: string;
     }[] = [];
 
@@ -169,6 +197,7 @@ export async function GET(request: NextRequest) {
             studentName: displayName,
             studentInitials: studentInitials,
             date: session.session_date,
+            startTime: session.start_time,
             sessionTime: `${formatTime12hr(session.start_time)} - ${formatTime12hr(session.end_time)}`
           });
         }
@@ -192,7 +221,12 @@ export async function GET(request: NextRequest) {
     }
 
     absences.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    unmarkedSessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // Sort by date (chronological), then by start time within each day
+    unmarkedSessions.sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.startTime || '').localeCompare(b.startTime || '');
+    });
 
     // Apply limit if provided (for pagination)
     const limitedAbsences = limit ? absences.slice(0, limit) : absences;
