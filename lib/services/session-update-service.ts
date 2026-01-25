@@ -250,18 +250,20 @@ export class SessionUpdateService {
 
         if (wasUnscheduled) {
           // This is a newly scheduled session - create instances via API
-          console.log('Creating instances for newly scheduled template:', sessionId);
+          // Instances are generated through school year end (June 30) by default
+          console.log('Creating instances for newly scheduled template through school year end:', sessionId);
 
           // Create instances asynchronously (don't block the response)
+          // Pass useSchoolYearEnd: true to generate through June 30
           fetch('/api/sessions/generate-instances', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, weeksAhead: 8 })
+            body: JSON.stringify({ sessionId, useSchoolYearEnd: true })
           })
             .then(async (response) => {
               if (response.ok) {
                 const data = await response.json();
-                console.log(`Created ${data.instancesCreated} instances for session ${sessionId}`);
+                console.log(`Created ${data.instancesCreated} instances for session ${sessionId} through ${data.endDate || 'school year end'}`);
               } else {
                 const error = await response.json();
                 console.error(`Failed to create instances for session ${sessionId}:`, error.error);

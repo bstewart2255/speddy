@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { generateInstancesForAllTemplates } from '@/lib/services/session-instance-generator';
+import { generateInstancesForAllTemplates, getSchoolYearEndDate, InstanceGenerationOptions } from '@/lib/services/session-instance-generator';
 import { log } from '@/lib/monitoring/logger';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 /**
  * Migration endpoint to generate instances from existing template sessions
- * This should be called once to migrate from template-only to instance-based architecture
+ * This should be called to backfill instances for all templates through school year end
  *
  * Usage: POST /api/migrations/generate-instances
- * Optional body: { weeksAhead: number } (defaults to 8)
+ * Optional body: {
+ *   weeksAhead?: number,           // Deprecated: use useSchoolYearEnd instead
+ *   useSchoolYearEnd?: boolean,    // Default: true - generate through June 30
+ *   untilDate?: string             // Optional: specific end date (YYYY-MM-DD)
+ * }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -32,30 +37,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Get weeks ahead from request body (optional)
+    // Get options from request body
     const body = await request.json().catch(() => ({}));
-    const weeksAhead = body.weeksAhead || 8;
+
+    // Build options from request body
+    const options: InstanceGenerationOptions = {};
+    if (body.untilDate) {
+      options.untilDate = new Date(body.untilDate);
+    } else if (body.weeksAhead !== undefined) {
+      options.weeksAhead = body.weeksAhead;
+    } else {
+      // Default: use school year end (June 30)
+      options.useSchoolYearEnd = body.useSchoolYearEnd !== false;
+    }
+
+    // Calculate end date for logging
+    let endDate: Date;
+    if (options.untilDate) {
+      endDate = options.untilDate;
+    } else if (options.weeksAhead !== undefined) {
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + (options.weeksAhead * 7));
+    } else {
+      endDate = getSchoolYearEndDate();
+    }
+    const endDateStr = formatDateLocal(endDate);
 
     log.info('[Migration] Starting instance generation for all templates', {
       userId: user.id,
-      weeksAhead
+      endDate: endDateStr,
+      options
     });
 
     // Generate instances for all templates
-    const result = await generateInstancesForAllTemplates(weeksAhead);
+    const result = await generateInstancesForAllTemplates(options);
 
     log.info('[Migration] Instance generation completed', {
       userId: user.id,
       total: result.total,
       created: result.created,
+      endDate: result.endDate,
       errorCount: result.errors.length
     });
 
     return NextResponse.json({
       success: true,
-      message: `Generated instances for ${result.total} templates`,
+      message: `Generated instances for ${result.total} templates through ${result.endDate}`,
       total: result.total,
       created: result.created,
+      endDate: result.endDate,
       errors: result.errors
     });
   } catch (error) {
@@ -72,7 +102,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET endpoint to check migration status
- * Returns count of templates and instances
+ * Returns count of templates and instances, plus school year end info
  */
 export async function GET() {
   try {
@@ -109,10 +139,35 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to count instances' }, { status: 500 });
     }
 
+    // Count future instances (from today onwards)
+    const today = formatDateLocal(new Date());
+    const { count: futureInstanceCount, error: futureError } = await supabase
+      .from('schedule_sessions')
+      .select('*', { count: 'exact', head: true })
+      .not('session_date', 'is', null)
+      .gte('session_date', today);
+
+    if (futureError) {
+      log.error('[Migration] Error counting future instances', futureError);
+    }
+
+    // Calculate school year end info
+    const schoolYearEndDate = getSchoolYearEndDate();
+    const schoolYearEndStr = formatDateLocal(schoolYearEndDate);
+
+    // Calculate weeks until school year end
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const diffMs = schoolYearEndDate.getTime() - todayDate.getTime();
+    const weeksUntilEnd = Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 7));
+
     return NextResponse.json({
       templates: templateCount || 0,
       instances: instanceCount || 0,
-      migrationNeeded: (templateCount || 0) > 0 && (instanceCount || 0) === 0
+      futureInstances: futureInstanceCount || 0,
+      migrationNeeded: (templateCount || 0) > 0 && (instanceCount || 0) === 0,
+      schoolYearEnd: schoolYearEndStr,
+      weeksUntilSchoolYearEnd: weeksUntilEnd
     });
   } catch (error) {
     log.error('[Migration] Error checking migration status', error);
