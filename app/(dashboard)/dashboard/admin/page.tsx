@@ -111,7 +111,7 @@ function TodaySessionsWidget({
       {/* Weekend state */}
       {isWeekend && (
         <div className="text-center py-8 text-gray-500">
-          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
           </svg>
           <p className="text-base">No school today - it's the weekend!</p>
@@ -122,7 +122,7 @@ function TodaySessionsWidget({
       {!isWeekend && holiday && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center">
-            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span className="text-red-700 font-medium">{holiday.name}</span>
@@ -134,7 +134,7 @@ function TodaySessionsWidget({
       {/* No sessions state */}
       {!isWeekend && !holiday && sessions.length === 0 && (
         <div className="text-center py-8 text-gray-500">
-          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <p className="text-base">No sessions scheduled today</p>
@@ -174,10 +174,14 @@ function TodaySessionsWidget({
                           <span className="text-gray-700 flex items-center">
                             {session.provider.full_name}
                             {session.isAssigned && (
-                              <span
-                                className="ml-1.5 w-2 h-2 rounded-full bg-purple-500"
-                                title="Assigned session"
-                              />
+                              <>
+                                <span
+                                  className="ml-1.5 w-2 h-2 rounded-full bg-purple-500"
+                                  aria-hidden="true"
+                                  title="Session delegated to another specialist"
+                                />
+                                <span className="sr-only">Session delegated to another specialist</span>
+                              </>
                             )}
                           </span>
                           <span className={`text-sm ${roleColors.text}`}>

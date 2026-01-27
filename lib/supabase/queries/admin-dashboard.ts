@@ -38,24 +38,26 @@ export interface TodaySessionsResult {
  */
 export async function getTodaySchoolSessions(schoolId: string): Promise<TodaySessionsResult> {
   const today = new Date();
-  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const jsDay = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
 
-  // Check for weekend
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  // Convert JS day (0-6, Sun-Sat) to database day_of_week (1-5, Mon-Fri)
+  // Database constraint: day_of_week BETWEEN 1 AND 5 (Mon=1, Tue=2, ..., Fri=5)
+  // Sunday (0) and Saturday (6) are weekends and not stored in database
+  const isWeekend = jsDay === 0 || jsDay === 6;
+  if (isWeekend) {
     return {
       sessions: [],
       isWeekend: true,
       holiday: null
     };
   }
+  // jsDay 1-5 maps directly to database day_of_week 1-5 (Mon-Fri)
+  const dayOfWeek = jsDay;
 
   const supabase = createClient<Database>();
 
-  // Get today's date string in YYYY-MM-DD format (local time)
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
+  // Get today's date string in YYYY-MM-DD format using UTC to avoid timezone issues
+  const dateStr = today.toISOString().split('T')[0];
 
   // Check for holidays at this school
   const holidayPerf = measurePerformanceWithAlerts('fetch_today_school_holiday', 'database');
@@ -205,15 +207,16 @@ export async function getTodaySchoolSessions(schoolId: string): Promise<TodaySes
 
   // Map sessions to the result format
   // Logic for determining which provider to show:
-  // - If assigned_to_specialist_id is set → show that specialist (they're delivering the service)
-  // - If assigned_to_sea_id is set → still show original provider (SEAs don't appear on dashboard)
-  // - Otherwise → show the original provider_id
+  // - If assigned_to_specialist_id is set AND differs from provider_id → show assigned specialist (they're delivering)
+  // - If assigned_to_specialist_id is not set (including SEA assignments) → show the original provider_id
   const sessionsWithDetails: SessionWithDetails[] = sessions
     .filter(session => session.provider_id && session.student_id)
     .map(session => {
       // Determine the delivering provider
-      // If assigned to a specialist, show that specialist; otherwise show original provider
-      const isAssignedToSpecialist = !!session.assigned_to_specialist_id;
+      // Only show as "assigned" if delegated to a DIFFERENT specialist (not when assigned_to_specialist_id === provider_id)
+      const isAssignedToSpecialist =
+        !!session.assigned_to_specialist_id &&
+        session.assigned_to_specialist_id !== session.provider_id;
       const deliveringProviderId = isAssignedToSpecialist
         ? session.assigned_to_specialist_id!
         : session.provider_id!;
