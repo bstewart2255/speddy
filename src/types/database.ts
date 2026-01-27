@@ -14,6 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_type_availability: {
+        Row: {
+          activity_type: string
+          created_at: string | null
+          friday: boolean
+          friday_end_time: string | null
+          friday_start_time: string | null
+          id: string
+          monday: boolean
+          monday_end_time: string | null
+          monday_start_time: string | null
+          school_id: string
+          thursday: boolean
+          thursday_end_time: string | null
+          thursday_start_time: string | null
+          tuesday: boolean
+          tuesday_end_time: string | null
+          tuesday_start_time: string | null
+          updated_at: string | null
+          wednesday: boolean
+          wednesday_end_time: string | null
+          wednesday_start_time: string | null
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string | null
+          friday?: boolean
+          friday_end_time?: string | null
+          friday_start_time?: string | null
+          id?: string
+          monday?: boolean
+          monday_end_time?: string | null
+          monday_start_time?: string | null
+          school_id: string
+          thursday?: boolean
+          thursday_end_time?: string | null
+          thursday_start_time?: string | null
+          tuesday?: boolean
+          tuesday_end_time?: string | null
+          tuesday_start_time?: string | null
+          updated_at?: string | null
+          wednesday?: boolean
+          wednesday_end_time?: string | null
+          wednesday_start_time?: string | null
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string | null
+          friday?: boolean
+          friday_end_time?: string | null
+          friday_start_time?: string | null
+          id?: string
+          monday?: boolean
+          monday_end_time?: string | null
+          monday_start_time?: string | null
+          school_id?: string
+          thursday?: boolean
+          thursday_end_time?: string | null
+          thursday_start_time?: string | null
+          tuesday?: boolean
+          tuesday_end_time?: string | null
+          tuesday_start_time?: string | null
+          updated_at?: string | null
+          wednesday?: boolean
+          wednesday_end_time?: string | null
+          wednesday_start_time?: string | null
+        }
+        Relationships: []
+      }
       admin_permissions: {
         Row: {
           admin_id: string
@@ -116,6 +185,39 @@ export type Database = {
         }
         Relationships: []
       }
+      api_keys: {
+        Row: {
+          created_at: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       assessment_types: {
         Row: {
           category: string
@@ -151,6 +253,85 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      attendance: {
+        Row: {
+          absence_reason: string | null
+          created_at: string
+          id: string
+          marked_by: string | null
+          present: boolean
+          session_date: string
+          session_id: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          absence_reason?: string | null
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          present?: boolean
+          session_date: string
+          session_id: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          absence_reason?: string | null
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          present?: boolean
+          session_date?: string
+          session_id?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_marked_by_fkey"
+            columns: ["marked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "cross_provider_visibility"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "attendance_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "shared_students"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "attendance_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
       }
       audit_logs: {
         Row: {
@@ -408,32 +589,113 @@ export type Database = {
           },
         ]
       }
+      care_case_status_history: {
+        Row: {
+          case_id: string
+          changed_by: string
+          created_at: string
+          id: string
+          status: string
+        }
+        Insert: {
+          case_id: string
+          changed_by: string
+          created_at?: string
+          id?: string
+          status: string
+        }
+        Update: {
+          case_id?: string
+          changed_by?: string
+          created_at?: string
+          id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_case_status_history_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "care_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_case_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       care_cases: {
         Row: {
+          academic_testing_completed: boolean | null
+          academic_testing_date: string | null
+          ap_received_date: string | null
           assigned_to: string | null
           created_at: string | null
           current_disposition: string | null
           follow_up_date: string | null
           id: string
+          iep_due_date: string | null
+          ot_testing_completed: boolean | null
+          ot_testing_date: string | null
+          ot_testing_needed: boolean | null
+          psych_testing_completed: boolean | null
+          psych_testing_date: string | null
           referral_id: string
+          speech_testing_completed: boolean | null
+          speech_testing_date: string | null
+          speech_testing_needed: boolean | null
+          sst_notes_link: string | null
+          sst_scheduled_date: string | null
           updated_at: string | null
         }
         Insert: {
+          academic_testing_completed?: boolean | null
+          academic_testing_date?: string | null
+          ap_received_date?: string | null
           assigned_to?: string | null
           created_at?: string | null
           current_disposition?: string | null
           follow_up_date?: string | null
           id?: string
+          iep_due_date?: string | null
+          ot_testing_completed?: boolean | null
+          ot_testing_date?: string | null
+          ot_testing_needed?: boolean | null
+          psych_testing_completed?: boolean | null
+          psych_testing_date?: string | null
           referral_id: string
+          speech_testing_completed?: boolean | null
+          speech_testing_date?: string | null
+          speech_testing_needed?: boolean | null
+          sst_notes_link?: string | null
+          sst_scheduled_date?: string | null
           updated_at?: string | null
         }
         Update: {
+          academic_testing_completed?: boolean | null
+          academic_testing_date?: string | null
+          ap_received_date?: string | null
           assigned_to?: string | null
           created_at?: string | null
           current_disposition?: string | null
           follow_up_date?: string | null
           id?: string
+          iep_due_date?: string | null
+          ot_testing_completed?: boolean | null
+          ot_testing_date?: string | null
+          ot_testing_needed?: boolean | null
+          psych_testing_completed?: boolean | null
+          psych_testing_date?: string | null
           referral_id?: string
+          speech_testing_completed?: boolean | null
+          speech_testing_date?: string | null
+          speech_testing_needed?: boolean | null
+          sst_notes_link?: string | null
+          sst_scheduled_date?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -447,7 +709,7 @@ export type Database = {
           {
             foreignKeyName: "care_cases_referral_id_fkey"
             columns: ["referral_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "care_referrals"
             referencedColumns: ["id"]
           },
@@ -507,6 +769,8 @@ export type Database = {
           status: string
           student_name: string
           submitted_at: string
+          teacher_id: string | null
+          teacher_name: string | null
           updated_at: string | null
         }
         Insert: {
@@ -523,6 +787,8 @@ export type Database = {
           status?: string
           student_name: string
           submitted_at?: string
+          teacher_id?: string | null
+          teacher_name?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -539,6 +805,8 @@ export type Database = {
           status?: string
           student_name?: string
           submitted_at?: string
+          teacher_id?: string | null
+          teacher_name?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -568,6 +836,13 @@ export type Database = {
             columns: ["state_id"]
             isOneToOne: false
             referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_referrals_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
             referencedColumns: ["id"]
           },
         ]
@@ -723,6 +998,7 @@ export type Database = {
           id: string
           mime_type: string | null
           original_filename: string | null
+          session_date: string | null
           title: string
           updated_at: string
           url: string | null
@@ -739,6 +1015,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           original_filename?: string | null
+          session_date?: string | null
           title: string
           updated_at?: string
           url?: string | null
@@ -755,6 +1032,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           original_filename?: string | null
+          session_date?: string | null
           title?: string
           updated_at?: string
           url?: string | null
@@ -1260,6 +1538,97 @@ export type Database = {
           },
         ]
       }
+      manual_goal_progress: {
+        Row: {
+          created_at: string | null
+          district_id: string | null
+          id: string
+          iep_goal_index: number
+          notes: string | null
+          observation_date: string
+          provider_id: string
+          school_id: string | null
+          score: number
+          source: string | null
+          state_id: string | null
+          student_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          district_id?: string | null
+          id?: string
+          iep_goal_index: number
+          notes?: string | null
+          observation_date: string
+          provider_id: string
+          school_id?: string | null
+          score: number
+          source?: string | null
+          state_id?: string | null
+          student_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          district_id?: string | null
+          id?: string
+          iep_goal_index?: number
+          notes?: string | null
+          observation_date?: string
+          provider_id?: string
+          school_id?: string | null
+          score?: number
+          source?: string | null
+          state_id?: string | null
+          student_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_goal_progress_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_goal_progress_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_goal_progress_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_goal_progress_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_goal_progress_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_goal_progress_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
       material_constraints: {
         Row: {
           active: boolean | null
@@ -1702,6 +2071,157 @@ export type Database = {
           },
         ]
       }
+      rotation_activity_pairs: {
+        Row: {
+          activity_type_a: string
+          activity_type_b: string
+          created_at: string | null
+          id: string
+          school_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activity_type_a: string
+          activity_type_b: string
+          created_at?: string | null
+          id?: string
+          school_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activity_type_a?: string
+          activity_type_b?: string
+          created_at?: string | null
+          id?: string
+          school_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rotation_activity_pairs_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rotation_group_members: {
+        Row: {
+          created_at: string | null
+          day_of_week: number
+          end_time: string
+          group_id: string
+          id: string
+          start_time: string
+          teacher_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: number
+          end_time: string
+          group_id: string
+          id?: string
+          start_time: string
+          teacher_id: string
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number
+          end_time?: string
+          group_id?: string
+          id?: string
+          start_time?: string
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rotation_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rotation_group_members_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rotation_groups: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          pair_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          pair_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          pair_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rotation_groups_pair_id_fkey"
+            columns: ["pair_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_activity_pairs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rotation_week_assignments: {
+        Row: {
+          activity_type: string
+          created_at: string | null
+          group_id: string
+          id: string
+          pair_id: string
+          week_start_date: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string | null
+          group_id: string
+          id?: string
+          pair_id: string
+          week_start_date: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string | null
+          group_id?: string
+          id?: string
+          pair_id?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rotation_week_assignments_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rotation_week_assignments_pair_id_fkey"
+            columns: ["pair_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_activity_pairs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_worksheets: {
         Row: {
           created_at: string
@@ -1760,6 +2280,7 @@ export type Database = {
           has_conflict: boolean | null
           id: string
           is_completed: boolean
+          is_template: boolean | null
           manually_placed: boolean | null
           outside_schedule_conflict: boolean
           provider_id: string | null
@@ -1770,6 +2291,7 @@ export type Database = {
           status: Database["public"]["Enums"]["session_status"]
           student_absent: boolean
           student_id: string | null
+          template_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1788,6 +2310,7 @@ export type Database = {
           has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
+          is_template?: boolean | null
           manually_placed?: boolean | null
           outside_schedule_conflict?: boolean
           provider_id?: string | null
@@ -1798,6 +2321,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["session_status"]
           student_absent?: boolean
           student_id?: string | null
+          template_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1816,6 +2340,7 @@ export type Database = {
           has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
+          is_template?: boolean | null
           manually_placed?: boolean | null
           outside_schedule_conflict?: boolean
           provider_id?: string | null
@@ -1826,6 +2351,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["session_status"]
           student_absent?: boolean
           student_id?: string | null
+          template_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -1871,6 +2397,27 @@ export type Database = {
             referencedRelation: "unmatched_student_teachers"
             referencedColumns: ["student_id"]
           },
+          {
+            foreignKeyName: "schedule_sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "cross_provider_visibility"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "schedule_sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "shared_students"
+            referencedColumns: ["session_id"]
+          },
         ]
       }
       school_hours: {
@@ -1911,6 +2458,41 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      school_year_config: {
+        Row: {
+          created_at: string | null
+          end_date: string
+          id: string
+          school_id: string
+          start_date: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          end_date: string
+          id?: string
+          school_id: string
+          start_date: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          end_date?: string
+          id?: string
+          school_id?: string
+          start_date?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "school_year_config_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: true
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       schools: {
         Row: {
@@ -1979,6 +2561,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sign_in_logs: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          ip_address: string | null
+          provider: string | null
+          role: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id?: string
+          ip_address?: string | null
+          provider?: string | null
+          role?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          ip_address?: string | null
+          provider?: string | null
+          role?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       special_activities: {
         Row: {
@@ -2871,6 +3489,19 @@ export type Database = {
           subject: string
         }[]
       }
+      find_matching_provider_roles: {
+        Args: { p_student_id: string }
+        Returns: string[]
+      }
+      find_matching_provider_sessions: {
+        Args: { p_student_id: string }
+        Returns: {
+          day_of_week: number
+          end_time: string
+          provider_role: string
+          start_time: string
+        }[]
+      }
       find_school_ids_by_names: {
         Args: {
           p_school_district_name: string
@@ -2946,6 +3577,21 @@ export type Database = {
               role: string
             }[]
           }
+      get_care_assignable_users: {
+        Args: { p_school_id: string }
+        Returns: {
+          full_name: string
+          id: string
+          role: string
+          user_type: string
+        }[]
+      }
+      get_my_school_ids: {
+        Args: never
+        Returns: {
+          school_id: string
+        }[]
+      }
       get_pending_adjustments: {
         Args: { p_student_id: string }
         Returns: {
@@ -2953,6 +3599,12 @@ export type Database = {
           adjustment_type: string
           priority: number
           subject: string
+        }[]
+      }
+      get_providers_at_my_schools: {
+        Args: never
+        Returns: {
+          provider_id: string
         }[]
       }
       get_scheduling_data_batch: {
@@ -3024,10 +3676,30 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_sign_in_logs: {
+        Args: { p_limit?: number; p_offset?: number }
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          ip_address: string
+          provider: string
+          role: string
+          session_duration_minutes: number
+          user_agent: string
+          user_id: string
+        }[]
+      }
       get_special_activity_teacher_name: {
         Args: { activity_teacher_id: string; activity_teacher_name: string }
         Returns: string
       }
+      get_student_district_id: {
+        Args: { p_student_id: string }
+        Returns: string
+      }
+      get_student_school_id: { Args: { p_student_id: string }; Returns: string }
       get_teacher_student_ids: { Args: { user_id: string }; Returns: string[] }
       get_user_schools: {
         Args: { user_id: string }
@@ -3072,6 +3744,10 @@ export type Database = {
       }
       is_teacher_of_student: {
         Args: { student_uuid: string }
+        Returns: boolean
+      }
+      mark_password_reset: {
+        Args: { target_user_id: string }
         Returns: boolean
       }
       normalize_district_name: {
@@ -3307,6 +3983,7 @@ export const Constants = {
     },
   },
 } as const
+
 
 // Convenience type aliases
 export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
