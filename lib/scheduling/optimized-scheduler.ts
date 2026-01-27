@@ -740,7 +740,9 @@ export class OptimizedScheduler {
         group_color: null,
         status: 'active' as const,
         has_conflict: false,
-        conflict_reason: null
+        conflict_reason: null,
+        template_id: null,
+        is_template: true
       });
     }
 
@@ -1235,7 +1237,9 @@ export class OptimizedScheduler {
         group_color: session.group_color || null,
         status: session.status || 'active',
         has_conflict: session.has_conflict || false,
-        conflict_reason: session.conflict_reason || null
+        conflict_reason: session.conflict_reason || null,
+        template_id: session.template_id || null,
+        is_template: session.is_template ?? true
       });
     }
   }

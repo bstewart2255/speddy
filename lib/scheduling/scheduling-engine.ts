@@ -513,7 +513,9 @@ export class SchedulingEngine {
       group_color: null,
       status: 'active' as const,
       has_conflict: false,
-      conflict_reason: null
+      conflict_reason: null,
+      template_id: null,
+      is_template: true
     }));
   }
 
