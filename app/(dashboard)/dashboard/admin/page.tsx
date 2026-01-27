@@ -9,8 +9,194 @@ import {
   getDistrictStaffCounts,
   getSchoolStudentCount
 } from '@/lib/supabase/queries/admin-accounts';
+import {
+  getTodaySchoolSessions,
+  type SessionWithDetails
+} from '@/lib/supabase/queries/admin-dashboard';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+
+// Helper functions for Today's Sessions widget
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function formatTime(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+}
+
+function getDuration(start: string, end: string): number {
+  const [startH, startM] = start.split(':').map(Number);
+  const [endH, endM] = end.split(':').map(Number);
+  return (endH * 60 + endM) - (startH * 60 + startM);
+}
+
+function getRoleColor(role: string): { bg: string; text: string } {
+  switch (role.toLowerCase()) {
+    case 'resource':
+      return { bg: 'bg-blue-50', text: 'text-blue-700' };
+    case 'speech':
+      return { bg: 'bg-purple-50', text: 'text-purple-700' };
+    case 'ot':
+      return { bg: 'bg-green-50', text: 'text-green-700' };
+    case 'counseling':
+      return { bg: 'bg-amber-50', text: 'text-amber-700' };
+    default:
+      return { bg: 'bg-gray-50', text: 'text-gray-700' };
+  }
+}
+
+function formatRoleDisplay(role: string): string {
+  switch (role.toLowerCase()) {
+    case 'resource':
+      return 'Resource';
+    case 'speech':
+      return 'Speech';
+    case 'ot':
+      return 'OT';
+    case 'counseling':
+      return 'Counseling';
+    case 'sea':
+      return 'SEA';
+    case 'psychologist':
+      return 'Psych';
+    default:
+      return role.charAt(0).toUpperCase() + role.slice(1);
+  }
+}
+
+// Today's Sessions Widget Component
+function TodaySessionsWidget({
+  sessions,
+  isWeekend,
+  holiday
+}: {
+  sessions: SessionWithDetails[];
+  isWeekend: boolean;
+  holiday: { name: string } | null;
+}) {
+  const today = new Date();
+  const dayName = DAYS_OF_WEEK[today.getDay()];
+  const dateStr = today.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  // Group sessions by time slot
+  const sessionsByTime = sessions.reduce((acc, session) => {
+    const timeKey = `${session.start_time}-${session.end_time}`;
+    if (!acc[timeKey]) {
+      acc[timeKey] = [];
+    }
+    acc[timeKey].push(session);
+    return acc;
+  }, {} as Record<string, SessionWithDetails[]>);
+
+  // Sort time slots chronologically
+  const sortedTimeSlots = Object.keys(sessionsByTime).sort((a, b) => {
+    const aStart = a.split('-')[0];
+    const bStart = b.split('-')[0];
+    return aStart.localeCompare(bStart);
+  });
+
+  return (
+    <Card className="p-6 mb-8">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Today's Sessions</h2>
+        <p className="text-sm text-gray-600">{dayName}, {dateStr}</p>
+      </div>
+
+      {/* Weekend state */}
+      {isWeekend && (
+        <div className="text-center py-8 text-gray-500">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+          <p className="text-base">No school today - it's the weekend!</p>
+        </div>
+      )}
+
+      {/* Holiday state */}
+      {!isWeekend && holiday && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-red-700 font-medium">{holiday.name}</span>
+          </div>
+          <p className="mt-1 text-sm text-red-600">No sessions scheduled today</p>
+        </div>
+      )}
+
+      {/* No sessions state */}
+      {!isWeekend && !holiday && sessions.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <p className="text-base">No sessions scheduled today</p>
+        </div>
+      )}
+
+      {/* Sessions list grouped by time */}
+      {!isWeekend && !holiday && sessions.length > 0 && (
+        <div className="space-y-4">
+          {sortedTimeSlots.map((timeSlot) => {
+            const [startTime, endTime] = timeSlot.split('-');
+            const slotSessions = sessionsByTime[timeSlot];
+
+            return (
+              <div key={timeSlot}>
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  {formatTime(startTime)} - {formatTime(endTime)}
+                </div>
+                <div className="space-y-2">
+                  {slotSessions.map((session) => {
+                    const roleColors = getRoleColor(session.provider.role);
+                    const duration = getDuration(session.start_time, session.end_time);
+
+                    return (
+                      <div
+                        key={session.id}
+                        className={`${roleColors.bg} rounded-lg px-4 py-3 flex items-center justify-between`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span className="font-medium text-gray-900">
+                            {session.student.initials}
+                          </span>
+                          <span className="text-gray-500 text-sm">
+                            ({session.student.grade_level})
+                          </span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-700 flex items-center">
+                            {session.provider.full_name}
+                            {session.isAssigned && (
+                              <span
+                                className="ml-1.5 w-2 h-2 rounded-full bg-purple-500"
+                                title="Assigned session"
+                              />
+                            )}
+                          </span>
+                          <span className={`text-sm ${roleColors.text}`}>
+                            ({formatRoleDisplay(session.provider.role)})
+                          </span>
+                        </div>
+                        <span className="text-sm text-gray-500">{duration} min</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function AdminDashboardPage() {
   const [permissions, setPermissions] = useState<any>(null);
@@ -19,6 +205,10 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  // Today's Sessions state (site admin only)
+  const [todaySessions, setTodaySessions] = useState<SessionWithDetails[]>([]);
+  const [isWeekend, setIsWeekend] = useState(false);
+  const [todayHoliday, setTodayHoliday] = useState<{ name: string } | null>(null);
   const supabase = createClient();
 
   const isDistrictAdmin = permissions?.role === 'district_admin';
@@ -70,9 +260,10 @@ export default function AdminDashboardPage() {
           });
         } else if (perms[0]?.school_id) {
           // Site admin - fetch school-level data
-          const [staff, studentCount] = await Promise.all([
+          const [staff, studentCount, scheduleData] = await Promise.all([
             getSchoolStaff(perms[0].school_id),
-            getSchoolStudentCount(perms[0].school_id)
+            getSchoolStudentCount(perms[0].school_id),
+            getTodaySchoolSessions(perms[0].school_id)
           ]);
           setStaffCounts({
             teachers: staff.teachers.length,
@@ -80,6 +271,10 @@ export default function AdminDashboardPage() {
             schools: 1,
             students: studentCount
           });
+          // Set today's sessions data
+          setTodaySessions(scheduleData.sessions);
+          setIsWeekend(scheduleData.isWeekend);
+          setTodayHoliday(scheduleData.holiday);
         }
       } catch (err) {
         console.error('Error loading dashboard:', err);
@@ -286,99 +481,66 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
-        <div className={`grid grid-cols-1 ${isDistrictAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
-          {isDistrictAdmin && (
-            <>
-              <Link
-                href="/dashboard/admin/schools"
-                className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all"
-              >
-                <div className="flex-shrink-0 p-3 bg-indigo-100 rounded-lg">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-semibold text-gray-900">View Schools</h3>
-                  <p className="text-sm text-gray-600">Browse all schools in your district</p>
-                </div>
-              </Link>
+      {/* Today's Sessions Widget - only for site admins */}
+      {!isDistrictAdmin && (
+        <TodaySessionsWidget
+          sessions={todaySessions}
+          isWeekend={isWeekend}
+          holiday={todayHoliday}
+        />
+      )}
 
-              <Link
-                href="/dashboard/admin/care"
-                className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-500 hover:shadow-md transition-all"
-              >
-                <div className="flex-shrink-0 p-3 bg-purple-100 rounded-lg">
-                  <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-semibold text-gray-900">CARE Referrals</h3>
-                  <p className="text-sm text-gray-600">View student support referrals</p>
-                </div>
-              </Link>
-            </>
-          )}
-
-          <Link
-            href="/dashboard/admin/create-account"
-            className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
-          >
-            <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
-              <p className="text-sm text-gray-600">Add a teacher or provider account</p>
-            </div>
-          </Link>
-
-          {!isDistrictAdmin && (
+      {/* Quick Actions - only for district admins */}
+      {isDistrictAdmin && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
-              href="/dashboard/admin/teachers"
-              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all"
+              href="/dashboard/admin/schools"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all"
             >
-              <div className="flex-shrink-0 p-3 bg-green-100 rounded-lg">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              <div className="flex-shrink-0 p-3 bg-indigo-100 rounded-lg">
+                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
               </div>
               <div className="ml-4">
-                <h3 className="text-sm font-semibold text-gray-900">Teacher Directory</h3>
-                <p className="text-sm text-gray-600">View and manage teacher accounts</p>
+                <h3 className="text-sm font-semibold text-gray-900">View Schools</h3>
+                <p className="text-sm text-gray-600">Browse all schools in your district</p>
               </div>
             </Link>
-          )}
-        </div>
-      </div>
 
-      {/* Info Card - only show for site admins since district info is in header */}
-      {!isDistrictAdmin && (
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">School Information</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">School ID:</span>
-              <span className="text-sm text-gray-900">{permissions.school_id}</span>
-            </div>
-            {permissions.state_id && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">State:</span>
-                <span className="text-sm text-gray-900">{permissions.state_id.toUpperCase()}</span>
+            <Link
+              href="/dashboard/admin/care"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-500 hover:shadow-md transition-all"
+            >
+              <div className="flex-shrink-0 p-3 bg-purple-100 rounded-lg">
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
               </div>
-            )}
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">Admin Role:</span>
-              <span className="text-sm text-gray-900 capitalize">{roleDisplay}</span>
-            </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-semibold text-gray-900">CARE Referrals</h3>
+                <p className="text-sm text-gray-600">View student support referrals</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/dashboard/admin/create-account"
+              className="flex items-center p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
+            >
+              <div className="flex-shrink-0 p-3 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-semibold text-gray-900">Create New Account</h3>
+                <p className="text-sm text-gray-600">Add a teacher or provider account</p>
+              </div>
+            </Link>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   );
