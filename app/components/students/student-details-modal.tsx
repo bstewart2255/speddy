@@ -568,6 +568,7 @@ export function StudentDetailsModal({
                 studentId={student.id}
                 iepGoals={details.iep_goals}
                 schoolId={student.school_id || undefined}
+                readOnly={readOnly}
               />
             )}
 

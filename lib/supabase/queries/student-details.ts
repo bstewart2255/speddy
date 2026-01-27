@@ -535,8 +535,9 @@ export async function getStudentProgressData(
   }
 
   // Add manual progress timeline items (last 30 days)
+  // Parse DATE as local date by appending T00:00:00 to avoid timezone issues
   for (const result of manualProgressResults) {
-    const observationDate = new Date(result.observation_date);
+    const observationDate = new Date(`${result.observation_date}T00:00:00`);
     if (observationDate >= thirtyDaysAgo) {
       const goalIndex = result.iep_goal_index;
       const goalText = goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`;

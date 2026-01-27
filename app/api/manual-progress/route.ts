@@ -29,6 +29,20 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      // Verify user has access to this student
+      const { data: student, error: studentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('id', studentId)
+        .single();
+
+      if (studentError || !student) {
+        return NextResponse.json(
+          { error: 'Student not found or access denied' },
+          { status: 403 }
+        );
+      }
+
       const { data, error } = await supabase
         .from('manual_goal_progress')
         .select('*')
@@ -93,14 +107,29 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate date is not in the future
-      const observationDate = new Date(body.observation_date);
+      // Validate date is not in the future (parse as local date)
+      const [year, month, day] = body.observation_date.split('-').map(Number);
+      const observationDate = new Date(year, month - 1, day);
       const today = new Date();
       today.setHours(23, 59, 59, 999);
       if (observationDate > today) {
         return NextResponse.json(
           { error: 'observation_date cannot be in the future' },
           { status: 400 }
+        );
+      }
+
+      // Verify user has access to this student
+      const { data: student, error: studentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('id', body.student_id)
+        .single();
+
+      if (studentError || !student) {
+        return NextResponse.json(
+          { error: 'Student not found or access denied' },
+          { status: 403 }
         );
       }
 
@@ -179,9 +208,10 @@ export async function PUT(request: NextRequest) {
         }
       }
 
-      // Validate date if provided
+      // Validate date if provided (parse as local date)
       if (updateData.observation_date) {
-        const observationDate = new Date(updateData.observation_date);
+        const [year, month, day] = updateData.observation_date.split('-').map(Number);
+        const observationDate = new Date(year, month - 1, day);
         const today = new Date();
         today.setHours(23, 59, 59, 999);
         if (observationDate > today) {
