@@ -241,15 +241,11 @@ export interface StudentProgressData {
   timeline: TimelineItem[];
 }
 
-// Type for manual goal progress (table created in migration 20260127_create_manual_goal_progress.sql)
-interface ManualGoalProgressRecord {
-  id: string;
-  iep_goal_index: number;
-  score: number;
-  observation_date: string;
-  source: string | null;
-  notes: string | null;
-}
+// Type for manual goal progress query result
+type ManualGoalProgressRecord = Pick<
+  Database['public']['Tables']['manual_goal_progress']['Row'],
+  'id' | 'iep_goal_index' | 'score' | 'observation_date' | 'source' | 'notes'
+>;
 
 /**
  * Retrieves progress data for a student including Progress Check and Exit Ticket results.
@@ -297,8 +293,7 @@ export async function getStudentProgressData(
     ),
     safeQuery(
       async () => {
-        // Use type assertion since manual_goal_progress table may not be in generated types yet
-        const { data, error } = await (supabase as any)
+        const { data, error } = await supabase
           .from('manual_goal_progress')
           .select('id, iep_goal_index, score, observation_date, source, notes')
           .eq('student_id', studentId);
