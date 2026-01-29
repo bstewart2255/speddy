@@ -650,6 +650,9 @@ export class MaterialsValidator {
               
               if (Array.isArray(section?.items)) {
                 section.items.forEach((item: WorksheetContent | WorksheetItem) => {
+                  // Guard against null/undefined/non-object items before using 'in' operator
+                  if (!item || typeof item !== 'object') return;
+
                   if ('sectionTitle' in item && item.sectionTitle) texts.push(item.sectionTitle);
                   if ('instructions' in item && item.instructions) texts.push(item.instructions);
 

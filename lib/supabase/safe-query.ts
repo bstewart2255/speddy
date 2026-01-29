@@ -27,7 +27,20 @@ export async function safeQuery<T>(
     } else if (typeof error === 'string') {
       errorObj = new Error(error);
     } else if (error && typeof error === 'object' && 'message' in error) {
-      errorObj = new Error(String((error as { message: unknown }).message));
+      const rawMessage = (error as { message?: unknown }).message;
+      let message: string;
+      if (typeof rawMessage === 'string') {
+        message = rawMessage;
+      } else if (rawMessage != null) {
+        try {
+          message = JSON.stringify(rawMessage);
+        } catch {
+          message = 'Unknown database error';
+        }
+      } else {
+        message = 'Unknown database error';
+      }
+      errorObj = new Error(message);
       // Preserve any additional properties
       Object.assign(errorObj, error);
     } else {
