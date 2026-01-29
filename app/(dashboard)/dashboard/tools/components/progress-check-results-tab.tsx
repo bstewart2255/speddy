@@ -490,7 +490,7 @@ export default function ProgressCheckResultsTab() {
                     {check.content.iepGoals.map((goal, goalIndex) => {
                       // For fluency goals, generate assessment items dynamically
                       const isFluencyGoal = isReadingFluencyGoal(goal.goal) && goal.assessmentItems.length === 0;
-                      const itemsToRender = isFluencyGoal
+                      const itemsToRender: AssessmentItem[] = isFluencyGoal
                         ? generateFluencyAssessmentItems(goal.goal).map(item => ({
                             type: 'multiple_choice' as const,
                             prompt: item.prompt,

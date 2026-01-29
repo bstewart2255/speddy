@@ -1,6 +1,8 @@
 // Materials validator for zero-prep compliance
 import {
   LessonResponse,
+  WorksheetContent,
+  WorksheetItem,
   ALLOWED_MATERIALS,
   FORBIDDEN_MATERIALS
 } from './schema';
@@ -647,13 +649,13 @@ export class MaterialsValidator {
               if (section?.instructions) texts.push(section.instructions);
               
               if (Array.isArray(section?.items)) {
-                section.items.forEach(item => {
-                  if (item?.sectionTitle) texts.push(item.sectionTitle);
-                  if (item?.instructions) texts.push(item.instructions);
-                  
+                section.items.forEach((item: WorksheetContent | WorksheetItem) => {
+                  if ('sectionTitle' in item && item.sectionTitle) texts.push(item.sectionTitle);
+                  if ('instructions' in item && item.instructions) texts.push(item.instructions);
+
                   // Check nested items
-                  if (Array.isArray(item?.items)) {
-                    item.items.forEach(nestedItem => {
+                  if ('items' in item && Array.isArray(item.items)) {
+                    item.items.forEach((nestedItem: WorksheetItem) => {
                       if (nestedItem?.content) texts.push(nestedItem.content);
                       if (nestedItem?.visualSupport) texts.push(nestedItem.visualSupport);
                     });

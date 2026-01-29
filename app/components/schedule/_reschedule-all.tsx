@@ -90,7 +90,7 @@ Continue?`;
       }
     } catch (error) {
       console.error('Error in rescheduling:', error);
-      alert('Failed to reschedule: ' + error.message);
+      alert('Failed to reschedule: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsProcessing(false);
     }

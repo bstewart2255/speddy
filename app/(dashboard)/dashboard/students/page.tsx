@@ -232,7 +232,7 @@ export default function StudentsPage() {
       checkUnscheduledSessions();
     } catch (error) {
       console.error('Error creating student:', error);
-      alert(error.message || 'Failed to add student');
+      alert(error instanceof Error ? error.message : 'Failed to add student');
     }
   };
 

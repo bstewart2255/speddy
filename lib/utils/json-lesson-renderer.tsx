@@ -134,7 +134,7 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
                 )}
                 {section.items && section.items.map((item, iIdx) => (
                   <div key={iIdx} className="mb-3">
-                    {renderWorksheetContent(item, iIdx)}
+                    {renderWorksheetContent(item as WorksheetContent, iIdx)}
                   </div>
                 ))}
               </div>

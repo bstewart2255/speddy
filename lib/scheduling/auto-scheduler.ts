@@ -240,9 +240,10 @@ export class AutoScheduler {
     // If provider has defined any schedules, they must have one for this day/site
     if (anySchedules && anySchedules.length > 0) {
       // Check if provider is scheduled at this specific school on this day
-      return siteSchedules?.some(schedule => 
-        schedule.provider_schools.school_site === schoolSite
-      ) || false;
+      return siteSchedules?.some(schedule => {
+        const providerSchools = schedule.provider_schools as unknown as { school_site: string; school_district: string };
+        return providerSchools.school_site === schoolSite;
+      }) || false;
     }
 
     // Only allow backwards compatibility if no schedules are defined at all

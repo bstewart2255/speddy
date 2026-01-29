@@ -27,7 +27,7 @@ export async function safeQuery<T>(
     } else if (typeof error === 'string') {
       errorObj = new Error(error);
     } else if (error && typeof error === 'object' && 'message' in error) {
-      errorObj = new Error(error.message);
+      errorObj = new Error(String((error as { message: unknown }).message));
       // Preserve any additional properties
       Object.assign(errorObj, error);
     } else {
