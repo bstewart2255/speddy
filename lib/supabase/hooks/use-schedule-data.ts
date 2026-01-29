@@ -183,8 +183,8 @@ export function useScheduleData() {
         // Filter assigned sessions to only include those for students at the current school
         if (sessionsResult.data) {
           const assignedSessionStudentIds = sessionsResult.data
-            .filter(session => session.assigned_to_specialist_id === user.id && !studentIds.includes(session.student_id))
-            .map(session => session.student_id);
+            .filter(session => session.assigned_to_specialist_id === user.id && session.student_id && !studentIds.includes(session.student_id))
+            .map(session => session.student_id!);
 
           if (assignedSessionStudentIds.length > 0) {
             // Fetch students from assigned sessions to check their school
@@ -198,8 +198,8 @@ export function useScheduleData() {
 
             // Filter sessions to only include valid assigned sessions
             sessionsResult.data = sessionsResult.data.filter(session =>
-              studentIds.includes(session.student_id) || // My students
-              (session.assigned_to_specialist_id === user.id && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
+              (session.student_id && studentIds.includes(session.student_id)) || // My students
+              (session.assigned_to_specialist_id === user.id && session.student_id && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
             );
           }
         }
@@ -219,8 +219,8 @@ export function useScheduleData() {
       if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role) && sessionsResult.data) {
         // Get student IDs from assigned sessions that aren't already in our student list
         const assignedSessionStudentIds = sessionsResult.data
-          .filter(session => session.assigned_to_specialist_id === user.id)
-          .map(session => session.student_id)
+          .filter(session => session.assigned_to_specialist_id === user.id && session.student_id)
+          .map(session => session.student_id!)
           .filter(studentId => !studentIds.includes(studentId));
 
         // Fetch those students if any

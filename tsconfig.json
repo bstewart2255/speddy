@@ -22,9 +22,6 @@
       }
     ],
     "strictNullChecks": true,
-    // Temporarily disable some strict checks to allow gradual migration
-    "noImplicitAny": false,
-    "useUnknownInCatchVariables": false,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]

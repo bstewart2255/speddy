@@ -6,8 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-import { parseSEISReport } from '@/lib/parsers/seis-parser';
-import { parseCSVReport } from '@/lib/parsers/csv-parser';
+import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
+import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
@@ -223,7 +223,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
     const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
 
-    let parseResult;
+    let parseResult: SEISParseResult | CSVParseResult;
     try {
       // Use appropriate parser based on file type
       if (isCSV) {
@@ -244,8 +244,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         userId,
         studentsFound: parseResult.students.length,
         errors: parseResult.errors.length,
-        warnings: parseResult.warnings?.length || 0,
-        formatDetected: parseResult.metadata.formatDetected,
+        warnings: 'warnings' in parseResult ? parseResult.warnings?.length || 0 : 0,
+        formatDetected: 'formatDetected' in parseResult.metadata ? parseResult.metadata.formatDetected : undefined,
         goalsFiltered: parseResult.metadata.goalsFiltered
       });
     } catch (error: any) {
@@ -268,7 +268,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       if (targetStudent) {
         // Specific error for target student not found
         errorMessage = `Could not find student ${targetStudent.initials} (Grade ${targetStudent.gradeLevel}, ${targetStudent.schoolName}) in the uploaded file. Please verify the student's information matches the CSV file.`;
-      } else if (parseResult.metadata.formatDetected === 'seis-student-goals') {
+      } else if ('formatDetected' in parseResult.metadata && parseResult.metadata.formatDetected === 'seis-student-goals') {
         errorMessage = 'No resource/academic students found in the SEIS Student Goals Report. This may be because all goals were filtered out (Speech, OT, Counseling, etc.) or no students matched your school(s).';
       } else {
         errorMessage = 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.';
@@ -278,7 +278,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         {
           error: errorMessage,
           parseErrors: parseResult.errors,
-          parseWarnings: parseResult.warnings || [],
+          parseWarnings: 'warnings' in parseResult ? parseResult.warnings || [] : [],
           metadata: parseResult.metadata
         },
         { status: 400 }
@@ -444,11 +444,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
           highConfidence: matchResult.summary.highConfidence,
           mediumConfidence: matchResult.summary.mediumConfidence,
           lowConfidence: matchResult.summary.lowConfidence,
-          formatDetected: parseResult.metadata.formatDetected,
+          formatDetected: 'formatDetected' in parseResult.metadata ? parseResult.metadata.formatDetected : undefined,
           goalsFiltered: parseResult.metadata.goalsFiltered
         },
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [], // Limit errors
-        parseWarnings: parseResult.warnings && parseResult.warnings.length > 0 ? parseResult.warnings.slice(0, 10) : [], // Limit warnings
+        parseWarnings: 'warnings' in parseResult && parseResult.warnings && parseResult.warnings.length > 0 ? parseResult.warnings.slice(0, 10) : [], // Limit warnings
         scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : [], // Limit errors
         unmatchedStudents: matchResult.matches
           .filter(m => m.confidence === 'none')

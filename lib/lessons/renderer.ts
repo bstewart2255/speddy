@@ -470,7 +470,7 @@ export class WorksheetRenderer {
             const result = this.renderWorksheetContentSection(worksheetContent, 0, questionNumber);
             // Update questionNumber based on how many questions were in the section
             // Note: renderWorksheetContentSection doesn't update questionNumber, so we need to count manually
-            const itemCount = worksheetContent.items.filter(item =>
+            const itemCount = worksheetContent.items.filter((item: { type?: string }) =>
               item.type !== 'passage' && item.type !== 'text' && item.type !== 'example'
             ).length;
             questionNumber += itemCount;

@@ -2270,16 +2270,16 @@ export function CalendarWeekView({
                           const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
 
                           // Get unique students with their session assignment info
-                          const uniqueStudentSessions = groupSessions.reduce((acc, session) => {
+                          const uniqueStudentSessions = groupSessions.reduce((acc: SessionWithCurriculum[], session: SessionWithCurriculum) => {
                             const studentId = session.student_id;
-                            if (!acc.some(s => s.student_id === studentId)) {
+                            if (!acc.some((s: SessionWithCurriculum) => s.student_id === studentId)) {
                               acc.push(session);
                             }
                             return acc;
                           }, [] as SessionWithCurriculum[]);
 
                           // Check if any session in the group has curriculum tracking (get first from array)
-                          const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+                          const groupCurriculumSession = groupSessions.find((s: SessionWithCurriculum) => s.curriculum_tracking && s.curriculum_tracking.length > 0);
                           const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
 
                           return (
@@ -2309,8 +2309,8 @@ export function CalendarWeekView({
                                   {formatTime(earliestStart)} - {formatTime(latestEnd)}
                                 </div>
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                  {uniqueStudentSessions.map((session, sidx) => {
-                                    const student = allStudents.get(session.student_id);
+                                  {uniqueStudentSessions.map((session: SessionWithCurriculum, sidx: number) => {
+                                    const student = session.student_id ? allStudents.get(session.student_id) : undefined;
                                     const colors = getSessionIndicatorColor(session);
                                     return (
                                       <span

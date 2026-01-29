@@ -149,12 +149,14 @@ export function StudentDetailsModal({
       onClose();
     } catch (error) {
       console.error('Error saving:', error);
-      console.error('Full error details:', {
-        message: error.message,
-        stack: error.stack,
-        details: error.details,
-        hint: error.hint
-      });
+      if (error instanceof Error) {
+        console.error('Full error details:', {
+          message: error.message,
+          stack: error.stack,
+          details: (error as unknown as Record<string, unknown>).details,
+          hint: (error as unknown as Record<string, unknown>).hint
+        });
+      }
       alert('Failed to save. Please try again.');
     } finally {
       setLoading(false);

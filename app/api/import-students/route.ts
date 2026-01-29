@@ -10,8 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-import { parseSEISReport } from '@/lib/parsers/seis-parser';
-import { parseCSVReport } from '@/lib/parsers/csv-parser';
+import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
+import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { parseDeliveriesCSV, DeliveryRecord } from '@/lib/parsers/deliveries-parser';
 import { parseClassListTXT, ClassListStudent, matchTeacher } from '@/lib/parsers/class-list-parser';
 import { createNormalizedKey } from '@/lib/parsers/name-utils';
@@ -581,7 +581,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     log.info(`Parsing ${fileType} file`, { userId, fileName: file.name });
     const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
 
-    let parseResult;
+    let parseResult: SEISParseResult | CSVParseResult;
     try {
       if (isCSV) {
         parseResult = await parseCSVReport(buffer, {
@@ -600,7 +600,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         userId,
         studentsFound: parseResult.students.length,
         errors: parseResult.errors.length,
-        warnings: parseResult.warnings?.length || 0
+        warnings: 'warnings' in parseResult ? parseResult.warnings?.length || 0 : 0
       });
     } catch (error: unknown) {
       parsePerf.end({ success: false });
@@ -622,7 +622,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         {
           error: 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.',
           parseErrors: parseResult.errors,
-          parseWarnings: parseResult.warnings || []
+          parseWarnings: 'warnings' in parseResult ? parseResult.warnings || [] : []
         },
         { status: 400 }
       );
@@ -1036,7 +1036,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
 
     // Combine all warnings
     const allWarnings = [
-      ...(parseResult.warnings || []),
+      ...('warnings' in parseResult ? parseResult.warnings || [] : []),
       ...deliveriesWarnings.map(w => ({ ...w, source: 'deliveries' as const })),
       ...classListWarnings.map(w => ({ ...w, source: 'classList' as const }))
     ];

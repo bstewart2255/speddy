@@ -240,9 +240,18 @@ export class AutoScheduler {
     // If provider has defined any schedules, they must have one for this day/site
     if (anySchedules && anySchedules.length > 0) {
       // Check if provider is scheduled at this specific school on this day
-      return siteSchedules?.some(schedule => 
-        schedule.provider_schools.school_site === schoolSite
-      ) || false;
+      return siteSchedules?.some(schedule => {
+        const providerSchools = schedule.provider_schools;
+        // Handle both array (one-to-many) and object (single) shapes from Supabase join
+        if (Array.isArray(providerSchools)) {
+          return providerSchools.some(ps => ps.school_site === schoolSite);
+        }
+        // Single object case
+        if (providerSchools && typeof providerSchools === 'object' && 'school_site' in providerSchools) {
+          return (providerSchools as { school_site: string }).school_site === schoolSite;
+        }
+        return false;
+      }) || false;
     }
 
     // Only allow backwards compatibility if no schedules are defined at all

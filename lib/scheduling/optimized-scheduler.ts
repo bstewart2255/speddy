@@ -144,7 +144,7 @@ export class OptimizedScheduler {
     // For now, we'll leave this empty as we'd need to know all teacher names
     
     // Get school hours from existing context or use defaults
-    const schoolHours = [];
+    const schoolHours: Array<{ day_of_week: number; grade_level: string; start_time: string; end_time: string }> = [];
     
     const elapsed = Date.now() - startTime;
     this.log(`[PERFORMANCE] DataManager data retrieval completed in ${elapsed}ms`);

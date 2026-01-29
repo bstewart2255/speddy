@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         if (DEBUG) {
           console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups`);
           // Log only non-sensitive summary data
-          console.log(`[DEBUG] Batch request summary:`, body.batch.map((group, i) => ({
+          console.log(`[DEBUG] Batch request summary:`, body.batch.map((group: { lessonDate?: string; timeSlot?: string; subject?: string; students?: unknown[]; teacherRole?: string }, i: number) => ({
             index: i,
             lessonDate: group.lessonDate || 'not-provided',
             timeSlot: group.timeSlot || 'not-provided',
@@ -442,7 +442,7 @@ async function enrichStudentDataFromMap(
     // First try to get from student request object
     if (student.iepGoals) {
       if (Array.isArray(student.iepGoals)) {
-        iepGoals = student.iepGoals.filter(g => typeof g === 'string' && g.trim());
+        iepGoals = student.iepGoals.filter((g: unknown) => typeof g === 'string' && g.trim());
       } else if (typeof student.iepGoals === 'string' && student.iepGoals.trim()) {
         iepGoals = [student.iepGoals];
       }
@@ -461,11 +461,11 @@ async function enrichStudentDataFromMap(
         if (detail?.iep_goals) {
           if (Array.isArray(detail.iep_goals)) {
             // It's already an array
-            allGoals.push(...detail.iep_goals.filter(g => typeof g === 'string' && g.trim()));
+            allGoals.push(...detail.iep_goals.filter((g: unknown) => typeof g === 'string' && g.trim()));
           } else if (typeof detail.iep_goals === 'string' && detail.iep_goals.trim()) {
             // It's a single string - check if it needs splitting (e.g., semicolon-separated)
             if (detail.iep_goals.includes(';')) {
-              allGoals.push(...detail.iep_goals.split(';').map(g => g.trim()).filter(Boolean));
+              allGoals.push(...detail.iep_goals.split(';').map((g: string) => g.trim()).filter(Boolean));
             } else {
               allGoals.push(detail.iep_goals);
             }

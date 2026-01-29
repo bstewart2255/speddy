@@ -149,7 +149,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       console.log(`[DataManager] Data loaded in ${elapsed.toFixed(2)}ms`);
     } catch (error) {
       console.error('[DataManager] Failed to load data:', error);
-      this.cacheMetadata.fetchErrors.push(error.message);
+      this.cacheMetadata.fetchErrors.push(error instanceof Error ? error.message : 'Unknown error');
       throw error;
     }
   }
@@ -337,8 +337,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // Filter assigned sessions to only include those for students at the current school
       if (!sessionsResult.error && sessionsResult.data) {
         const assignedSessionStudentIds = sessionsResult.data
-          .filter(session => session.assigned_to_specialist_id === this.providerId && !studentIds.includes(session.student_id))
-          .map(session => session.student_id);
+          .filter(session => session.assigned_to_specialist_id === this.providerId && session.student_id && !studentIds.includes(session.student_id))
+          .map(session => session.student_id!);
 
         if (assignedSessionStudentIds.length > 0) {
           // Fetch students from assigned sessions to check their school
@@ -362,8 +362,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
           // Filter sessions to only include valid assigned sessions
           sessionsResult.data = sessionsResult.data.filter(session =>
-            studentIds.includes(session.student_id) || // My students
-            (session.assigned_to_specialist_id === this.providerId && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
+            (session.student_id && studentIds.includes(session.student_id)) || // My students
+            (session.assigned_to_specialist_id === this.providerId && session.student_id && validAssignedStudentIds.includes(session.student_id)) // Assigned sessions from current school only
           );
         }
       }
