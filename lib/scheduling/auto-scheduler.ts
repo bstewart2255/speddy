@@ -241,8 +241,16 @@ export class AutoScheduler {
     if (anySchedules && anySchedules.length > 0) {
       // Check if provider is scheduled at this specific school on this day
       return siteSchedules?.some(schedule => {
-        const providerSchools = schedule.provider_schools as unknown as { school_site: string; school_district: string };
-        return providerSchools.school_site === schoolSite;
+        const providerSchools = schedule.provider_schools;
+        // Handle both array (one-to-many) and object (single) shapes from Supabase join
+        if (Array.isArray(providerSchools)) {
+          return providerSchools.some(ps => ps.school_site === schoolSite);
+        }
+        // Single object case
+        if (providerSchools && typeof providerSchools === 'object' && 'school_site' in providerSchools) {
+          return (providerSchools as { school_site: string }).school_site === schoolSite;
+        }
+        return false;
       }) || false;
     }
 

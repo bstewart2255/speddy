@@ -3,7 +3,12 @@
  */
 
 import React from 'react';
-import { LessonResponse, StudentMaterial, WorksheetContent } from '../lessons/schema';
+import { LessonResponse, StudentMaterial, WorksheetContent, WorksheetItem } from '../lessons/schema';
+
+// Type guard to check if an item is WorksheetContent (has sectionType/sectionTitle) vs WorksheetItem
+function isWorksheetContent(item: WorksheetContent | WorksheetItem): item is WorksheetContent {
+  return 'sectionType' in item && 'sectionTitle' in item;
+}
 
 interface JsonLessonRendererProps {
   lessonData: string | LessonResponse;
@@ -105,6 +110,32 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
     );
   };
 
+  // Render a single WorksheetItem (for when section.items contains flat WorksheetItem[] instead of WorksheetContent[])
+  const renderWorksheetItem = (item: WorksheetItem, index: number) => {
+    return (
+      <div key={index} className="pl-4 border-l-2 border-gray-300 mb-2">
+        <p className="text-sm font-medium">{item.content}</p>
+        {item.visualSupport && (
+          <p className="text-xs text-gray-500 italic mt-1">{item.visualSupport}</p>
+        )}
+        {item.choices && (
+          <ul className="list-disc list-inside text-sm mt-1">
+            {item.choices.map((choice, cIdx) => (
+              <li key={cIdx}>{choice}</li>
+            ))}
+          </ul>
+        )}
+        {item.blankLines && (
+          <div className="mt-2">
+            {Array.from({ length: item.blankLines }).map((_, lineIdx) => (
+              <div key={lineIdx} className="border-b border-gray-300 h-6 mb-2"></div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderStudentMaterial = (material: StudentMaterial, index: number) => {
     const student = material?.studentId ? studentsById[material.studentId] : undefined;
 
@@ -134,7 +165,10 @@ export function JsonLessonRenderer({ lessonData, students = [] }: JsonLessonRend
                 )}
                 {section.items && section.items.map((item, iIdx) => (
                   <div key={iIdx} className="mb-3">
-                    {renderWorksheetContent(item as WorksheetContent, iIdx)}
+                    {isWorksheetContent(item)
+                      ? renderWorksheetContent(item, iIdx)
+                      : renderWorksheetItem(item, iIdx)
+                    }
                   </div>
                 ))}
               </div>
