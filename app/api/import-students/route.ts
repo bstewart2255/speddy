@@ -411,13 +411,7 @@ async function handleDeliveriesOrClassListOnly(
 
         // Match teacher to database
         const teacherMatch = matchTeacher(student.teacher, dbTeachers);
-        let teacherName: string | null = null;
-        if (teacherMatch.teacherId) {
-          const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
-          if (dbTeacher) {
-            teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
-          }
-        }
+        const teacherName = teacherMatch.teacherName;
 
         update.teacher = {
           teacherId: teacherMatch.teacherId,
@@ -892,13 +886,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         if (classListStudent) {
           matchedClassListNames.add(normalizedKey);
           const teacherMatch = matchTeacher(classListStudent.teacher, dbTeachers);
-          let teacherName: string | null = null;
-          if (teacherMatch.teacherId) {
-            const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
-            if (dbTeacher) {
-              teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
-            }
-          }
+          const teacherName = teacherMatch.teacherName;
           teacherMatchResult = {
             teacherId: teacherMatch.teacherId,
             teacherName: teacherName || classListStudent.teacher.rawName,

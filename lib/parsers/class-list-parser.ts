@@ -79,17 +79,38 @@ export function parseTeacherName(rawName: string): { lastName: string; firstInit
 
 /**
  * Check if a line is a teacher header
- * Format: "Teacher#,<number>,Teacher: <Name>"
+ * Handles multiple formats:
+ * - Teacher#,<number>,Teacher: <Name>
+ * - Teacher#,<number>,"Teacher: <Name>" (quoted, used when name contains comma)
  */
 function isTeacherHeader(line: string): boolean {
-  return /^Teacher#,\s*\d+,\s*Teacher:/i.test(line);
+  // Match with optional quote before "Teacher:"
+  return /^Teacher#,\s*\d+,\s*"?Teacher:/i.test(line);
 }
 
 /**
  * Parse teacher header line
- * Format: "Teacher#,<number>,Teacher: <Name>"
+ * Handles multiple formats:
+ * - Teacher#,<number>,Teacher: <Name>
+ * - Teacher#,<number>,"Teacher: <Name>" (quoted, used when name contains comma)
  */
 function parseTeacherHeader(line: string): TeacherInfo | null {
+  // Try quoted format first: Teacher#,9,"Teacher: Massey,C"
+  const quotedMatch = line.match(/^Teacher#,\s*(\d+),\s*"Teacher:\s*([^"]+)"?$/i);
+  if (quotedMatch) {
+    const teacherNumber = quotedMatch[1];
+    const rawName = quotedMatch[2].trim();
+    const { lastName, firstInitial } = parseTeacherName(rawName);
+
+    return {
+      rawName,
+      lastName,
+      firstInitial,
+      teacherNumber
+    };
+  }
+
+  // Try unquoted format: Teacher#,11,Teacher: Malibran
   const match = line.match(/^Teacher#,\s*(\d+),\s*Teacher:\s*(.+)$/i);
   if (!match) return null;
 
@@ -203,87 +224,188 @@ export async function parseClassListTXT(buffer: Buffer): Promise<ClassListParseR
 }
 
 /**
+ * Normalize a name for comparison by removing special characters and extra whitespace
+ */
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, '') // Remove non-alpha characters except spaces
+    .replace(/\s+/g, ' ')     // Normalize whitespace
+    .trim();
+}
+
+/**
+ * Check if two names are a partial match
+ * Returns true if one name contains the other, or if they share significant overlap
+ */
+function isPartialMatch(name1: string, name2: string): boolean {
+  const n1 = normalizeName(name1);
+  const n2 = normalizeName(name2);
+
+  // One contains the other
+  if (n1.includes(n2) || n2.includes(n1)) {
+    return true;
+  }
+
+  // Check if they start with the same characters (at least 3)
+  if (n1.length >= 3 && n2.length >= 3 && n1.substring(0, 3) === n2.substring(0, 3)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Match a teacher from the class list to existing teachers in the database
+ * Uses a multi-step matching strategy:
+ * 1. Exact last name match (high confidence)
+ * 2. Partial/fuzzy last name match (low confidence)
+ * 3. First initial validation when available
  *
  * @param classListTeacher - Teacher info from class list
  * @param dbTeachers - Array of teachers from database with id, first_name, last_name
- * @returns Matched teacher ID or null
+ * @returns Matched teacher ID or null with confidence level
  */
 export function matchTeacher(
   classListTeacher: TeacherInfo,
   dbTeachers: Array<{ id: string; first_name: string | null; last_name: string | null }>
-): { teacherId: string | null; confidence: 'high' | 'medium' | 'low' | 'none'; reason: string } {
+): { teacherId: string | null; teacherName: string | null; confidence: 'high' | 'medium' | 'low' | 'none'; reason: string } {
   if (!classListTeacher.lastName) {
-    return { teacherId: null, confidence: 'none', reason: 'No teacher name provided' };
+    return { teacherId: null, teacherName: null, confidence: 'none', reason: 'No teacher name provided' };
   }
 
-  const targetLastName = classListTeacher.lastName.toLowerCase();
+  if (!dbTeachers || dbTeachers.length === 0) {
+    return { teacherId: null, teacherName: null, confidence: 'none', reason: 'No teachers in database to match against' };
+  }
+
+  const targetLastName = normalizeName(classListTeacher.lastName);
   const targetFirstInitial = classListTeacher.firstInitial?.toUpperCase() || null;
 
-  // Find teachers with matching last name
-  const lastNameMatches = dbTeachers.filter(
-    (t) => t.last_name && t.last_name.toLowerCase() === targetLastName
+  // Helper to get full name
+  const getFullName = (t: { first_name: string | null; last_name: string | null }) =>
+    [t.first_name, t.last_name].filter(Boolean).join(' ');
+
+  // Step 1: Find teachers with exact last name match
+  const exactMatches = dbTeachers.filter(
+    (t) => t.last_name && normalizeName(t.last_name) === targetLastName
   );
 
-  if (lastNameMatches.length === 0) {
-    return { teacherId: null, confidence: 'none', reason: `No teacher with last name "${classListTeacher.lastName}"` };
-  }
+  if (exactMatches.length === 1) {
+    const match = exactMatches[0];
+    const fullName = getFullName(match);
 
-  if (lastNameMatches.length === 1) {
-    // Only one teacher with this last name
-    const match = lastNameMatches[0];
-
-    // Check if first initial matches (if provided)
+    // Validate with first initial if available
     if (targetFirstInitial && match.first_name) {
       const dbFirstInitial = match.first_name.charAt(0).toUpperCase();
       if (dbFirstInitial === targetFirstInitial) {
         return {
           teacherId: match.id,
+          teacherName: fullName,
           confidence: 'high',
           reason: `Matched by last name and first initial`
         };
       } else {
         return {
           teacherId: match.id,
+          teacherName: fullName,
           confidence: 'medium',
-          reason: `Only teacher with last name "${classListTeacher.lastName}" (first initial mismatch: expected ${targetFirstInitial}, got ${dbFirstInitial})`
+          reason: `Only teacher with last name "${classListTeacher.lastName}" (initial mismatch)`
         };
       }
     }
 
     return {
       teacherId: match.id,
+      teacherName: fullName,
       confidence: 'medium',
       reason: `Only teacher with last name "${classListTeacher.lastName}"`
     };
   }
 
-  // Multiple teachers with same last name - need to match by first initial
-  if (targetFirstInitial) {
-    const firstInitialMatches = lastNameMatches.filter(
+  if (exactMatches.length > 1) {
+    // Multiple exact matches - try to disambiguate with first initial
+    if (targetFirstInitial) {
+      const initialMatches = exactMatches.filter(
+        (t) => t.first_name && t.first_name.charAt(0).toUpperCase() === targetFirstInitial
+      );
+
+      if (initialMatches.length === 1) {
+        return {
+          teacherId: initialMatches[0].id,
+          teacherName: getFullName(initialMatches[0]),
+          confidence: 'high',
+          reason: `Matched by last name and first initial`
+        };
+      }
+
+      if (initialMatches.length > 1) {
+        return {
+          teacherId: null,
+          teacherName: null,
+          confidence: 'none',
+          reason: `Multiple teachers match "${classListTeacher.lastName} ${targetFirstInitial}"`
+        };
+      }
+    }
+
+    return {
+      teacherId: null,
+      teacherName: null,
+      confidence: 'none',
+      reason: `Multiple teachers with last name "${classListTeacher.lastName}"`
+    };
+  }
+
+  // Step 2: No exact match - try partial/fuzzy matching
+  const partialMatches = dbTeachers.filter(
+    (t) => t.last_name && isPartialMatch(t.last_name, classListTeacher.lastName)
+  );
+
+  if (partialMatches.length === 1) {
+    const match = partialMatches[0];
+    const fullName = getFullName(match);
+
+    // Validate with first initial if available
+    if (targetFirstInitial && match.first_name) {
+      const dbFirstInitial = match.first_name.charAt(0).toUpperCase();
+      if (dbFirstInitial === targetFirstInitial) {
+        return {
+          teacherId: match.id,
+          teacherName: fullName,
+          confidence: 'low',
+          reason: `Partial match: "${classListTeacher.lastName}" → "${match.last_name}" (initial confirmed)`
+        };
+      }
+    }
+
+    return {
+      teacherId: match.id,
+      teacherName: fullName,
+      confidence: 'low',
+      reason: `Partial match: "${classListTeacher.lastName}" → "${match.last_name}"`
+    };
+  }
+
+  if (partialMatches.length > 1 && targetFirstInitial) {
+    // Multiple partial matches - try first initial
+    const initialMatches = partialMatches.filter(
       (t) => t.first_name && t.first_name.charAt(0).toUpperCase() === targetFirstInitial
     );
 
-    if (firstInitialMatches.length === 1) {
+    if (initialMatches.length === 1) {
       return {
-        teacherId: firstInitialMatches[0].id,
-        confidence: 'high',
-        reason: `Matched by last name and first initial`
-      };
-    }
-
-    if (firstInitialMatches.length > 1) {
-      return {
-        teacherId: null,
-        confidence: 'none',
-        reason: `Multiple teachers with last name "${classListTeacher.lastName}" and initial "${targetFirstInitial}"`
+        teacherId: initialMatches[0].id,
+        teacherName: getFullName(initialMatches[0]),
+        confidence: 'low',
+        reason: `Partial match with initial: "${classListTeacher.lastName} ${targetFirstInitial}" → "${getFullName(initialMatches[0])}"`
       };
     }
   }
 
   return {
     teacherId: null,
+    teacherName: null,
     confidence: 'none',
-    reason: `Multiple teachers with last name "${classListTeacher.lastName}", cannot determine which one`
+    reason: `No match found for "${classListTeacher.lastName}${targetFirstInitial ? ' ' + targetFirstInitial : ''}"`
   };
 }

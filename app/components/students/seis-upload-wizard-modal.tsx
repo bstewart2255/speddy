@@ -280,7 +280,7 @@ export function SeisUploadWizardModal({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  3. Aeries Reports &gt; Special Ed Class List
+                  3. Aeries Reports &gt; Student Data &gt; Special Ed Class List
                 </label>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Optional</span>
               </div>

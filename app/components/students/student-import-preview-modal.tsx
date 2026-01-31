@@ -614,12 +614,6 @@ export function StudentImportPreviewModal({
                                 Possible Duplicate
                               </span>
                             ) : null}
-                            {/* Goal removal warning badge */}
-                            {student.goalsRemoved && student.goalsRemoved.length > 0 && (
-                              <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">
-                                ⚠ {student.goalsRemoved.length} goal{student.goalsRemoved.length !== 1 ? 's' : ''} removed
-                              </span>
-                            )}
                           </div>
                         </div>
 
