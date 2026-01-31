@@ -161,9 +161,9 @@ export default function LessonPreviewModal({
                   if (typeof value === 'string') {
                     displayValue = value;
                   } else if (Array.isArray(value)) {
-                    displayValue = value.filter(v => v != null).join(', ');
+                    displayValue = value.filter((v: unknown) => v != null).join(', ');
                   } else if (value.answers && Array.isArray(value.answers)) {
-                    displayValue = value.answers.filter(v => v != null).join(', ');
+                    displayValue = value.answers.filter((v: unknown) => v != null).join(', ');
                   } else if (typeof value === 'object') {
                     displayValue = JSON.stringify(value, null, 2);
                   } else {

@@ -104,7 +104,7 @@ Continue?`;
       }
     } catch (error) {
       console.error('Error in scheduling new sessions:', error);
-      alert('Failed to schedule new sessions: ' + error.message);
+      alert('Failed to schedule new sessions: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsProcessing(false);
     }
