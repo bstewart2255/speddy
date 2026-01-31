@@ -382,6 +382,8 @@ export function StudentImportPreviewModal({
                 <button
                   type="button"
                   onClick={() => setUnmatchedExpanded(!unmatchedExpanded)}
+                  aria-expanded={unmatchedExpanded}
+                  aria-controls="unmatched-students-content"
                   className="w-full flex items-center justify-between p-3 text-left hover:bg-yellow-100/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
@@ -400,7 +402,7 @@ export function StudentImportPreviewModal({
                   </span>
                 </button>
                 {unmatchedExpanded && (
-                  <div className="px-4 pb-3 pt-0">
+                  <div id="unmatched-students-content" className="px-4 pb-3 pt-0">
                     <p className="text-sm text-yellow-700 mb-2">
                       Found in Deliveries or Class List files but not in the Student Goals file:
                     </p>
@@ -434,6 +436,8 @@ export function StudentImportPreviewModal({
                 <button
                   type="button"
                   onClick={() => setWarningsExpanded(!warningsExpanded)}
+                  aria-expanded={warningsExpanded}
+                  aria-controls="warnings-content"
                   className="w-full flex items-center justify-between p-3 text-left hover:bg-yellow-100/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
@@ -452,7 +456,7 @@ export function StudentImportPreviewModal({
                   </span>
                 </button>
                 {warningsExpanded && (
-                  <div className="px-4 pb-3 pt-0 max-h-48 overflow-y-auto">
+                  <div id="warnings-content" className="px-4 pb-3 pt-0 max-h-48 overflow-y-auto">
                     <div className="space-y-1 text-sm text-yellow-800">
                       {data.parseWarnings.map((warning, idx) => (
                         <p key={idx}>Row {warning.row}: {warning.message}</p>

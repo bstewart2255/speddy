@@ -96,7 +96,7 @@ function isTeacherHeader(line: string): boolean {
  */
 function parseTeacherHeader(line: string): TeacherInfo | null {
   // Try quoted format first: Teacher#,9,"Teacher: Massey,C"
-  const quotedMatch = line.match(/^Teacher#,\s*(\d+),\s*"Teacher:\s*([^"]+)"?$/i);
+  const quotedMatch = line.match(/^Teacher#,\s*(\d+),\s*"Teacher:\s*([^"]+)"$/i);
   if (quotedMatch) {
     const teacherNumber = quotedMatch[1];
     const rawName = quotedMatch[2].trim();
@@ -226,8 +226,11 @@ export async function parseClassListTXT(buffer: Buffer): Promise<ClassListParseR
 /**
  * Normalize a name for comparison by removing special characters and extra whitespace.
  * Preserves name boundaries by converting hyphens to spaces.
+ * Returns empty string if input is empty or contains only non-alpha characters.
  */
 function normalizeName(name: string): string {
+  if (!name) return '';
+
   return name
     .toLowerCase()
     .replace(/-/g, ' ')       // Convert hyphens to spaces to preserve name boundaries
@@ -238,15 +241,24 @@ function normalizeName(name: string): string {
 
 /**
  * Check if two names are a partial match
- * Returns true if one name contains the other, or if they share significant overlap
+ * Returns true if one name contains the other, or if they share significant overlap.
+ * Requires minimum length to avoid false positives (e.g., "Li" matching "Williams").
  */
 function isPartialMatch(name1: string, name2: string): boolean {
   const n1 = normalizeName(name1);
   const n2 = normalizeName(name2);
 
-  // One contains the other
-  if (n1.includes(n2) || n2.includes(n1)) {
-    return true;
+  // Both must have content after normalization
+  if (!n1 || !n2) {
+    return false;
+  }
+
+  // Require minimum length for substring matching to avoid false positives
+  const minSubstringLength = 4;
+  if (n1.length >= minSubstringLength && n2.length >= minSubstringLength) {
+    if (n1.includes(n2) || n2.includes(n1)) {
+      return true;
+    }
   }
 
   // Check if they start with the same characters (at least 5 to reduce false positives)
@@ -282,11 +294,23 @@ export function matchTeacher(
   }
 
   const targetLastName = normalizeName(classListTeacher.lastName);
+  if (!targetLastName) {
+    return { teacherId: null, teacherName: null, confidence: 'none', reason: 'Teacher name normalized to empty string' };
+  }
+
   const targetFirstInitial = classListTeacher.firstInitial?.toUpperCase() || null;
 
   // Helper to get full name
   const getFullName = (t: { first_name: string | null; last_name: string | null }) =>
     [t.first_name, t.last_name].filter(Boolean).join(' ');
+
+  // Helper to check if first_name has content
+  const hasFirstName = (t: { first_name: string | null }) =>
+    t.first_name !== null && t.first_name.trim().length > 0;
+
+  // Helper to get first initial from first_name
+  const getFirstInitial = (t: { first_name: string | null }) =>
+    hasFirstName(t) ? t.first_name!.trim().charAt(0).toUpperCase() : null;
 
   // Step 1: Find teachers with exact last name match
   const exactMatches = dbTeachers.filter(
@@ -298,8 +322,8 @@ export function matchTeacher(
     const fullName = getFullName(match);
 
     // Validate with first initial if available
-    if (targetFirstInitial && match.first_name) {
-      const dbFirstInitial = match.first_name.charAt(0).toUpperCase();
+    if (targetFirstInitial && hasFirstName(match)) {
+      const dbFirstInitial = getFirstInitial(match);
       if (dbFirstInitial === targetFirstInitial) {
         return {
           teacherId: match.id,
@@ -329,7 +353,7 @@ export function matchTeacher(
     // Multiple exact matches - try to disambiguate with first initial
     if (targetFirstInitial) {
       const initialMatches = exactMatches.filter(
-        (t) => t.first_name && t.first_name.charAt(0).toUpperCase() === targetFirstInitial
+        (t) => hasFirstName(t) && getFirstInitial(t) === targetFirstInitial
       );
 
       if (initialMatches.length === 1) {
@@ -369,8 +393,8 @@ export function matchTeacher(
     const fullName = getFullName(match);
 
     // Validate with first initial if available
-    if (targetFirstInitial && match.first_name) {
-      const dbFirstInitial = match.first_name.charAt(0).toUpperCase();
+    if (targetFirstInitial && hasFirstName(match)) {
+      const dbFirstInitial = getFirstInitial(match);
       if (dbFirstInitial === targetFirstInitial) {
         return {
           teacherId: match.id,
@@ -392,7 +416,7 @@ export function matchTeacher(
   if (partialMatches.length > 1 && targetFirstInitial) {
     // Multiple partial matches - try first initial
     const initialMatches = partialMatches.filter(
-      (t) => t.first_name && t.first_name.charAt(0).toUpperCase() === targetFirstInitial
+      (t) => hasFirstName(t) && getFirstInitial(t) === targetFirstInitial
     );
 
     if (initialMatches.length === 1) {
