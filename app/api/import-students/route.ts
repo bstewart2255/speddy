@@ -93,6 +93,38 @@ interface UnmatchedStudent {
 }
 
 /**
+ * Normalize school name for comparison by removing common suffixes
+ * This handles cases where the same school might be listed as:
+ * - "Mt Diablo Elementary" vs "Mt Diablo Elementary School"
+ * - "Bancroft Elementary School" vs "Bancroft Elementary"
+ */
+function normalizeSchoolName(name: string): string {
+  let normalized = name.toLowerCase().trim();
+
+  // Remove common suffixes in order (most specific first)
+  const suffixes = [
+    ' elementary school',
+    ' middle school',
+    ' high school',
+    ' elementary',
+    ' middle',
+    ' high',
+    ' school',
+    ' elem.',
+    ' elem',
+  ];
+
+  for (const suffix of suffixes) {
+    if (normalized.endsWith(suffix)) {
+      normalized = normalized.slice(0, -suffix.length).trim();
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+/**
  * Compare two arrays of goals to determine what's changed
  * Goals are compared by normalized text (lowercase, trimmed)
  */
@@ -635,14 +667,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     let filteredOutSchools: string[] = [];
 
     if (currentSchoolSite && userProfile?.works_at_multiple_schools) {
-      const normalizedCurrentSchool = currentSchoolSite.toLowerCase().trim();
+      const normalizedCurrentSchool = normalizeSchoolName(currentSchoolSite);
 
       const beforeCount = filteredStudents.length;
       filteredStudents = filteredStudents.filter(student => {
         // If student has no school info, include them (they'll be assigned to current school)
         if (!student.schoolOfAttendance) return true;
 
-        const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+        const studentSchool = normalizeSchoolName(student.schoolOfAttendance);
         return studentSchool === normalizedCurrentSchool;
       });
 
@@ -653,7 +685,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         const otherSchools = new Set<string>();
         for (const student of parseResult.students) {
           if (student.schoolOfAttendance) {
-            const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+            const studentSchool = normalizeSchoolName(student.schoolOfAttendance);
             if (studentSchool !== normalizedCurrentSchool) {
               otherSchools.add(student.schoolOfAttendance);
             }
