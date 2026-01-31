@@ -224,12 +224,14 @@ export async function parseClassListTXT(buffer: Buffer): Promise<ClassListParseR
 }
 
 /**
- * Normalize a name for comparison by removing special characters and extra whitespace
+ * Normalize a name for comparison by removing special characters and extra whitespace.
+ * Preserves name boundaries by converting hyphens to spaces.
  */
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[^a-z\s]/g, '') // Remove non-alpha characters except spaces
+    .replace(/-/g, ' ')       // Convert hyphens to spaces to preserve name boundaries
+    .replace(/[^a-z\s]/g, '') // Remove other non-alpha characters except spaces
     .replace(/\s+/g, ' ')     // Normalize whitespace
     .trim();
 }
@@ -247,8 +249,9 @@ function isPartialMatch(name1: string, name2: string): boolean {
     return true;
   }
 
-  // Check if they start with the same characters (at least 3)
-  if (n1.length >= 3 && n2.length >= 3 && n1.substring(0, 3) === n2.substring(0, 3)) {
+  // Check if they start with the same characters (at least 5 to reduce false positives)
+  // This helps catch typos like "Calender" vs "Calendar"
+  if (n1.length >= 5 && n2.length >= 5 && n1.substring(0, 5) === n2.substring(0, 5)) {
     return true;
   }
 

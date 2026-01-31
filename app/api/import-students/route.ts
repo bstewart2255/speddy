@@ -93,7 +93,12 @@ interface UnmatchedStudent {
 }
 
 /**
- * Normalize school name for comparison by removing common suffixes
+ * Normalize school name for comparison by removing trailing "school" word
+ * and standardizing common abbreviations.
+ *
+ * NOTE: We intentionally keep "elementary/middle/high" to distinguish between
+ * schools like "Washington Elementary" vs "Washington Middle" which are different schools.
+ *
  * This handles cases where the same school might be listed as:
  * - "Mt Diablo Elementary" vs "Mt Diablo Elementary School"
  * - "Bancroft Elementary School" vs "Bancroft Elementary"
@@ -101,24 +106,16 @@ interface UnmatchedStudent {
 function normalizeSchoolName(name: string): string {
   let normalized = name.toLowerCase().trim();
 
-  // Remove common suffixes in order (most specific first)
-  const suffixes = [
-    ' elementary school',
-    ' middle school',
-    ' high school',
-    ' elementary',
-    ' middle',
-    ' high',
-    ' school',
-    ' elem.',
-    ' elem',
-  ];
+  // Standardize common abbreviations
+  normalized = normalized
+    .replace(/\bmt\.?\s/g, 'mount ')
+    .replace(/\bst\.?\s/g, 'saint ')
+    .replace(/\belem\.?\s/g, 'elementary ')
+    .replace(/\belem\.?$/g, 'elementary');
 
-  for (const suffix of suffixes) {
-    if (normalized.endsWith(suffix)) {
-      normalized = normalized.slice(0, -suffix.length).trim();
-      break;
-    }
+  // Only remove trailing "school" word (not elementary/middle/high to preserve school level distinction)
+  if (normalized.endsWith(' school')) {
+    normalized = normalized.slice(0, -7).trim();
   }
 
   return normalized;
