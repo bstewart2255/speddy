@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 
 interface ScheduleData {
@@ -140,6 +141,10 @@ export function StudentImportPreviewModal({
 
   // Track expanded students to show goals
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
+
+  // Track collapsed state for info sections (collapsed by default)
+  const [unmatchedExpanded, setUnmatchedExpanded] = useState(false);
+  const [warningsExpanded, setWarningsExpanded] = useState(false);
 
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -338,79 +343,81 @@ export function StudentImportPreviewModal({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Summary */}
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <h3 className="font-medium text-blue-900 mb-2">Import Summary</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-blue-700">Total students: {data.summary.total}</p>
-                  {/* Show UPSERT counts if available */}
-                  {data.summary.inserts !== undefined ? (
-                    <>
-                      <p className="text-green-700">+ New: {data.summary.inserts}</p>
-                      <p className="text-blue-700">↻ Update: {data.summary.updates || 0}</p>
-                      <p className="text-gray-500">○ No changes: {data.summary.skips || 0}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-green-700">✓ New students: {data.summary.new}</p>
-                      {data.summary.duplicates > 0 && (
-                        <p className="text-orange-700">⚠ Possible duplicates: {data.summary.duplicates}</p>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div>
-                  <p className="text-blue-700">Selected for import: {selectedCount}</p>
-                  <p className="text-green-700">Total IEP goals: {totalGoals}</p>
-                  {data.summary.withGoalsRemoved !== undefined && data.summary.withGoalsRemoved > 0 && (
-                    <p className="text-orange-700">⚠ With goals removed: {data.summary.withGoalsRemoved}</p>
-                  )}
-                  {data.summary.withSchedule !== undefined && data.summary.withSchedule > 0 && (
-                    <p className="text-blue-700">📅 With schedule: {data.summary.withSchedule}</p>
-                  )}
-                  {data.summary.withTeacher !== undefined && data.summary.withTeacher > 0 && (
-                    <p className="text-blue-700">👩‍🏫 With teacher: {data.summary.withTeacher}</p>
-                  )}
-                  {currentSchool && (
-                    <p className="text-blue-700 mt-1">
-                      📍 School: {currentSchool.display_name || currentSchool.school_site || 'Current School'}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {/* Show filtered out students info for multi-school users */}
-              {data.summary.filteredOutBySchool !== undefined && data.summary.filteredOutBySchool > 0 && (
-                <div className="mt-3 pt-3 border-t border-blue-200 text-sm">
-                  <p className="text-gray-600">
-                    ℹ️ {data.summary.filteredOutBySchool} student{data.summary.filteredOutBySchool !== 1 ? 's' : ''} from other school{data.summary.filteredOutSchools && data.summary.filteredOutSchools.length !== 1 ? 's' : ''} filtered out
-                    {data.summary.filteredOutSchools && data.summary.filteredOutSchools.length > 0 && (
-                      <span className="text-gray-500"> ({data.summary.filteredOutSchools.join(', ')})</span>
+            {/* Summary - compact with better contrast */}
+            <div className="border border-gray-200 rounded-md p-3 bg-white">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="text-gray-700 font-medium">{data.summary.total} students</span>
+                <span className="text-gray-300">|</span>
+                {data.summary.inserts !== undefined ? (
+                  <>
+                    <span className="text-green-600">+{data.summary.inserts} new</span>
+                    <span className="text-blue-600">↻{data.summary.updates || 0} update</span>
+                    {(data.summary.skips || 0) > 0 && (
+                      <span className="text-gray-400">○{data.summary.skips} unchanged</span>
                     )}
-                  </p>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-green-600">✓ {data.summary.new} new</span>
+                    {data.summary.duplicates > 0 && (
+                      <span className="text-orange-600">⚠ {data.summary.duplicates} duplicates</span>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Filtered out info */}
+              {data.summary.filteredOutBySchool !== undefined && data.summary.filteredOutBySchool > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                  ℹ️ {data.summary.filteredOutBySchool} student{data.summary.filteredOutBySchool !== 1 ? 's' : ''} from other school{data.summary.filteredOutSchools && data.summary.filteredOutSchools.length !== 1 ? 's' : ''} filtered out
+                  {data.summary.filteredOutSchools && data.summary.filteredOutSchools.length > 0 && (
+                    <span> ({data.summary.filteredOutSchools.join(', ')})</span>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Unmatched Students Warning */}
+            {/* Unmatched Students Warning - Collapsible */}
             {data.unmatchedStudents && data.unmatchedStudents.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                <h3 className="font-medium text-yellow-900 mb-2">Unmatched Students</h3>
-                <p className="text-sm text-yellow-700 mb-2">
-                  The following students were found in the Deliveries or Class List files but not in the Student Goals file:
-                </p>
-                <div className="max-h-32 overflow-y-auto">
-                  <ul className="text-sm text-yellow-800 space-y-1">
-                    {data.unmatchedStudents.map((s, idx) => (
-                      <li key={idx} className="flex items-center gap-2">
-                        <span className="text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded">
-                          {s.source === 'deliveries' ? 'Deliveries' : 'Class List'}
-                        </span>
-                        {s.name}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setUnmatchedExpanded(!unmatchedExpanded)}
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-yellow-100/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {unmatchedExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-yellow-700" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-yellow-700" />
+                    )}
+                    <h3 className="font-medium text-yellow-900">Unmatched Students</h3>
+                    <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
+                      {data.unmatchedStudents.length}
+                    </span>
+                  </div>
+                  <span className="text-xs text-yellow-600">
+                    {unmatchedExpanded ? 'Click to collapse' : 'Click to expand'}
+                  </span>
+                </button>
+                {unmatchedExpanded && (
+                  <div className="px-4 pb-3 pt-0">
+                    <p className="text-sm text-yellow-700 mb-2">
+                      Found in Deliveries or Class List files but not in the Student Goals file:
+                    </p>
+                    <div className="max-h-32 overflow-y-auto">
+                      <ul className="text-sm text-yellow-800 space-y-1">
+                        {data.unmatchedStudents.map((s, idx) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded">
+                              {s.source === 'deliveries' ? 'Deliveries' : 'Class List'}
+                            </span>
+                            {s.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -421,14 +428,38 @@ export function StudentImportPreviewModal({
               </div>
             )}
 
+            {/* Warnings - Collapsible */}
             {data.parseWarnings && data.parseWarnings.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-                <h3 className="font-medium text-yellow-900 mb-2">Warnings</h3>
-                <div className="space-y-1 text-sm text-yellow-800">
-                  {data.parseWarnings.map((warning, idx) => (
-                    <p key={idx}>Row {warning.row}: {warning.message}</p>
-                  ))}
-                </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setWarningsExpanded(!warningsExpanded)}
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-yellow-100/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {warningsExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-yellow-700" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-yellow-700" />
+                    )}
+                    <h3 className="font-medium text-yellow-900">Warnings</h3>
+                    <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
+                      {data.parseWarnings.length}
+                    </span>
+                  </div>
+                  <span className="text-xs text-yellow-600">
+                    {warningsExpanded ? 'Click to collapse' : 'Click to expand'}
+                  </span>
+                </button>
+                {warningsExpanded && (
+                  <div className="px-4 pb-3 pt-0 max-h-48 overflow-y-auto">
+                    <div className="space-y-1 text-sm text-yellow-800">
+                      {data.parseWarnings.map((warning, idx) => (
+                        <p key={idx}>Row {warning.row}: {warning.message}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
