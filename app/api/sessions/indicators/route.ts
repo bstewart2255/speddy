@@ -116,32 +116,30 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     const sessionIndicators: Record<string, IndicatorResult> = {};
     const groupIndicators: Record<string, IndicatorResult> = {};
 
-    // Fetch notes indicators from lessons table
-    // For individual sessions: match by provider_id + lesson_date + time_slot
-    // For groups: match by group_id + lesson_date
+    // Fetch notes indicators
+    // For individual sessions: check schedule_sessions.session_notes (per-session storage)
+    // For groups: check lessons table (shared notes)
 
     if (sessions && sessions.length > 0) {
-      // Get unique dates and time slots
+      // Get unique dates for queries
       const uniqueDates = [...new Set(sessions.map(s => s.sessionDate))];
-      const timeSlots = [...new Set(sessions.map(s => s.timeSlot))];
 
-      // Fetch all lessons with notes for these dates and time slots
-      const { data: lessonsWithNotes } = await supabase
-        .from('lessons')
-        .select('time_slot, lesson_date')
-        .eq('provider_id', userId)
-        .in('lesson_date', uniqueDates)
-        .in('time_slot', timeSlots)
-        .not('notes', 'is', null)
-        .neq('notes', '');
-
-      // Build a set of "date|timeSlot" keys that have notes
-      const dateTimeSlotWithNotes = new Set(
-        lessonsWithNotes?.map(l => `${l.lesson_date}|${l.time_slot}`) || []
-      );
-
-      // Get session IDs for document lookup
+      // Get session IDs for lookups
       const sessionIds = sessions.map(s => s.id);
+
+      // Fetch sessions with notes directly from schedule_sessions table
+      // This is the correct per-session storage location
+      const { data: sessionsWithNotes } = await supabase
+        .from('schedule_sessions')
+        .select('id, session_date')
+        .in('id', sessionIds)
+        .not('session_notes', 'is', null)
+        .neq('session_notes', '');
+
+      // Build a set of "sessionId|sessionDate" keys that have notes
+      const sessionNotesSet = new Set(
+        sessionsWithNotes?.map(s => `${s.id}|${s.session_date}`) || []
+      );
 
       // Fetch documents for individual sessions, including session_date for filtering
       const { data: sessionDocs } = await supabase
@@ -179,13 +177,11 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       // Build indicator map for sessions
       // Key by sessionId|sessionDate to properly isolate recurring instances
       for (const session of sessions) {
-        const notesKey = `${session.sessionDate}|${session.timeSlot}`;
-        const docKey = `${session.id}|${session.sessionDate}`;
-        const attendanceInfo = attendanceBySessionDate.get(docKey);
-        const indicatorKey = `${session.id}|${session.sessionDate}`;
-        sessionIndicators[indicatorKey] = {
-          hasNotes: dateTimeSlotWithNotes.has(notesKey),
-          hasDocuments: sessionDocsWithDate.has(docKey),
+        const sessionKey = `${session.id}|${session.sessionDate}`;
+        const attendanceInfo = attendanceBySessionDate.get(sessionKey);
+        sessionIndicators[sessionKey] = {
+          hasNotes: sessionNotesSet.has(sessionKey),
+          hasDocuments: sessionDocsWithDate.has(sessionKey),
           hasAttendance: attendanceInfo?.hasAttendance || false,
           allPresent: attendanceInfo?.allPresent
         };

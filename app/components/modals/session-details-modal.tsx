@@ -11,6 +11,7 @@ import {
 import { formatTime } from '@/lib/utils/time-options';
 import { ensureSessionsPersisted, ensureSessionPersisted } from '@/lib/services/session-persistence';
 import { LessonControl } from '@/app/components/lesson-control';
+import { createClient } from '@/lib/supabase/client';
 import type { Database } from '../../../src/types/database';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
@@ -120,6 +121,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     }
   }, [props.mode, sessionId]);
 
+  // Sync notes from session.session_notes when session prop changes (session mode only)
+  // This ensures notes are updated when opening a different session
+  const sessionNotes = props.mode === 'session' ? props.session.session_notes : undefined;
+  useEffect(() => {
+    if (props.mode === 'session') {
+      setNotes(sessionNotes || '');
+    }
+  }, [props.mode, sessionNotes]);
+
   /**
    * Ensures sessions are persisted before operations.
    * In group mode: persists all temp sessions and returns first persisted ID.
@@ -164,7 +174,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   // Lesson state
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loadingLesson, setLoadingLesson] = useState(true);
-  const [notes, setNotes] = useState('');
+  // For session mode, initialize notes from session.session_notes (per-session storage)
+  // For group mode, notes will be fetched from the lessons table (shared storage)
+  const [notes, setNotes] = useState(
+    props.mode === 'session' ? (props.session.session_notes || '') : ''
+  );
   const [editingNotes, setEditingNotes] = useState(false);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -284,7 +298,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
     try {
       if (props.mode === 'session') {
-        // Session mode: fetch existing lesson by provider_id, lesson_date, and time_slot
+        // Session mode: Notes are stored in session.session_notes (per-session), not in lessons table.
+        // We still fetch the lesson for curriculum data, but don't use lesson.notes for individual sessions.
         const timeSlot = sessionStartTime && sessionEndTime
           ? `${sessionStartTime}-${sessionEndTime}`
           : null;
@@ -292,12 +307,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         if (!sessionDate || !timeSlot) {
           // Clear stale state when session date is missing
           setLesson(null);
-          setNotes('');
+          // Notes come from session.session_notes, not lesson - don't clear here
           setLoadingLesson(false);
           return;
         }
 
-        // Use the save-lesson GET endpoint with query params
+        // Use the save-lesson GET endpoint with query params (for curriculum tracking only)
         const params = new URLSearchParams({
           lesson_date: sessionDate,
           time_slot: timeSlot
@@ -309,16 +324,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
           const data = await response.json();
           if (data.lesson) {
             setLesson(data.lesson);
-            setNotes(data.lesson.notes || '');
+            // Don't set notes from lesson - individual session notes come from session.session_notes
           } else {
-            // Clear stale state when no lesson exists
             setLesson(null);
-            setNotes('');
           }
         } else {
-          // Clear stale state on error/404
           setLesson(null);
-          setNotes('');
         }
       } else {
         // Group mode: fetch lesson for the group
@@ -976,16 +987,17 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
       const hasNotes = notes.trim().length > 0;
       const hasCurriculum = !!(curriculumType && curriculumLevel && currentLesson);
-      // Check if we need to clear existing notes (lesson exists but notes are now empty)
-      const shouldClearNotes = lesson !== null && !hasNotes;
+      // Check if we need to clear existing notes
+      // For session mode: check if session previously had notes (session_notes)
+      // For group mode: check if lesson exists with notes
+      const shouldClearNotes = props.mode === 'session'
+        ? (props.session.session_notes && !hasNotes)
+        : (lesson !== null && !hasNotes);
 
-      // Save lesson if there are notes OR if we need to clear existing notes
+      // Save notes - different storage for session mode vs group mode
       if (hasNotes || shouldClearNotes) {
-        let response: Response;
-
         if (props.mode === 'group') {
-          // Group mode: POST to /api/groups/{groupId}/lesson
-          // Get lesson_date from the first session in the group
+          // Group mode: Save to lessons table (shared notes across group)
           const firstSession = props.sessions.find(s => s.session_date);
           const groupLessonDate = firstSession?.session_date;
 
@@ -1003,51 +1015,49 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             lesson_date: groupLessonDate  // Include lesson_date for date-specific storage
           };
 
-          response = await fetch(`/api/groups/${props.groupId}/lesson`, {
+          const response = await fetch(`/api/groups/${props.groupId}/lesson`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
           });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error || `Failed to save lesson (${response.status})`;
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+          setLesson(data.lesson);
         } else {
-          // Session mode: POST to /api/save-lesson
-          const sessionDate = props.session.session_date || new Date().toISOString().split('T')[0];
-          const timeSlot = `${props.session.start_time}-${props.session.end_time}`;
+          // Session mode: Save notes directly to schedule_sessions.session_notes (per-session storage)
+          // This ensures notes are unique to each individual session, not shared across time slots
+          if (!persistedSessionId) {
+            showToast('Unable to save: no session available', 'error');
+            return;
+          }
 
-          const body = {
-            timeSlot,
-            students: [{ id: props.session.student_id, initials: props.student?.initials || '?' }],
-            content: null,
-            lessonDate: sessionDate,
-            notes: hasNotes ? notes.trim() : null,
-            title: null,
-            subject: null
-          };
+          const supabase = createClient();
+          const { error } = await supabase
+            .from('schedule_sessions')
+            .update({ session_notes: hasNotes ? notes.trim() : null })
+            .eq('id', persistedSessionId);
 
-          response = await fetch('/api/save-lesson', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
+          if (error) {
+            console.error('Error saving session notes:', error);
+            throw new Error('Failed to save notes');
+          }
         }
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const errorMessage = errorData.error || `Failed to save lesson (${response.status})`;
-          throw new Error(errorMessage);
-        }
-
-        const data = await response.json();
-        setLesson(data.lesson);
       }
 
-      // Save curriculum tracking if provided (independent of lesson)
+      // Save curriculum tracking if provided (independent of notes)
       if (hasCurriculum) {
         try {
           const curriculumSaved = await saveCurriculumTracking(persistedSessionId);
           if (!curriculumSaved) {
             // No session available to save curriculum to
             if (hasNotes || shouldClearNotes) {
-              showToast('Lesson saved, but no session available for curriculum', 'warning');
+              showToast('Notes saved, but no session available for curriculum', 'warning');
             } else {
               showToast('No session available to save curriculum', 'error');
             }
@@ -1056,7 +1066,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         } catch (currError) {
           // Curriculum API call failed
           if (hasNotes || shouldClearNotes) {
-            showToast('Lesson saved, but curriculum tracking failed', 'warning');
+            showToast('Notes saved, but curriculum tracking failed', 'warning');
           } else {
             showToast('Failed to save curriculum tracking', 'error');
           }
@@ -1066,10 +1076,10 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
       // Show appropriate success message and trigger refresh
       if ((hasNotes || shouldClearNotes) && hasCurriculum) {
-        showToast('Lesson and curriculum saved', 'success');
+        showToast('Notes and curriculum saved', 'success');
         onUpdate?.();
       } else if (hasNotes) {
-        showToast('Lesson saved', 'success');
+        showToast('Notes saved', 'success');
         onUpdate?.();
       } else if (shouldClearNotes) {
         showToast('Notes cleared', 'success');
@@ -1081,20 +1091,21 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         showToast('Nothing to save', 'info');
       }
     } catch (error) {
-      console.error('Error saving lesson:', error);
-      const message = error instanceof Error ? error.message : 'Failed to save lesson';
+      console.error('Error saving:', error);
+      const message = error instanceof Error ? error.message : 'Failed to save';
       showToast(message, 'error');
     }
   };
 
   const handleDeleteLesson = async () => {
-    if (!confirm('Are you sure you want to delete this lesson?')) return;
+    const confirmMessage = props.mode === 'group'
+      ? 'Are you sure you want to delete this lesson?'
+      : 'Are you sure you want to clear the notes?';
+    if (!confirm(confirmMessage)) return;
 
     try {
-      let response: Response;
-
       if (props.mode === 'group') {
-        // Get lesson_date from the first session to delete the correct lesson
+        // Group mode: delete lesson from lessons table
         const firstSession = props.sessions.find(s => s.session_date);
         const groupLessonDate = firstSession?.session_date;
 
@@ -1105,26 +1116,38 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         const deleteUrl = `/api/groups/${props.groupId}/lesson?lesson_date=${encodeURIComponent(groupLessonDate)}`;
 
-        response = await fetch(deleteUrl, {
+        const response = await fetch(deleteUrl, {
           method: 'DELETE'
         });
+
+        if (!response.ok) throw new Error('Failed to delete lesson');
+
+        setLesson(null);
+        setNotes('');
+        showToast('Lesson deleted successfully', 'success');
       } else {
-        // Session mode: delete via /api/save-lesson/{lessonId}
-        if (!lesson?.id) return;
-        response = await fetch(`/api/save-lesson/${lesson.id}`, {
-          method: 'DELETE'
-        });
+        // Session mode: clear session_notes from schedule_sessions table
+        const persistedSessionId = await ensureSessionsPersistence();
+        if (!persistedSessionId) {
+          showToast('Unable to clear notes: no session available', 'error');
+          return;
+        }
+
+        const supabase = createClient();
+        const { error } = await supabase
+          .from('schedule_sessions')
+          .update({ session_notes: null })
+          .eq('id', persistedSessionId);
+
+        if (error) throw new Error('Failed to clear notes');
+
+        setNotes('');
+        showToast('Notes cleared successfully', 'success');
+        onUpdate?.();
       }
-
-      if (!response.ok) throw new Error('Failed to delete lesson');
-
-      setLesson(null);
-      setNotes('');
-
-      showToast('Lesson deleted successfully', 'success');
     } catch (error) {
-      console.error('Error deleting lesson:', error);
-      showToast('Failed to delete lesson', 'error');
+      console.error('Error deleting:', error);
+      showToast(props.mode === 'group' ? 'Failed to delete lesson' : 'Failed to clear notes', 'error');
     }
   };
 
@@ -1699,12 +1722,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         {/* Footer */}
         <div className="flex justify-between gap-3 p-6 border-t border-gray-200">
           <div>
-            {lesson && (
+            {/* Show delete button based on mode:
+                - Group mode: show when lesson exists (deletes lesson)
+                - Session mode: show when there are notes (clears session_notes) */}
+            {(props.mode === 'group' ? lesson : notes.trim()) && (
               <button
                 onClick={handleDeleteLesson}
                 className="px-4 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors font-medium"
               >
-                Delete
+                {props.mode === 'group' ? 'Delete' : 'Clear Notes'}
               </button>
             )}
           </div>
