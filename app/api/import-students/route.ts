@@ -93,6 +93,35 @@ interface UnmatchedStudent {
 }
 
 /**
+ * Normalize school name for comparison by removing trailing "school" word
+ * and standardizing common abbreviations.
+ *
+ * NOTE: We intentionally keep "elementary/middle/high" to distinguish between
+ * schools like "Washington Elementary" vs "Washington Middle" which are different schools.
+ *
+ * This handles cases where the same school might be listed as:
+ * - "Mt Diablo Elementary" vs "Mt Diablo Elementary School"
+ * - "Bancroft Elementary School" vs "Bancroft Elementary"
+ */
+function normalizeSchoolName(name: string): string {
+  let normalized = name.toLowerCase().trim();
+
+  // Standardize common abbreviations
+  normalized = normalized
+    .replace(/\bmt\.?\s/g, 'mount ')
+    .replace(/\bst\.?\s/g, 'saint ')
+    .replace(/\belem\.?\s/g, 'elementary ')
+    .replace(/\belem\.?$/g, 'elementary');
+
+  // Only remove trailing "school" word (not elementary/middle/high to preserve school level distinction)
+  if (normalized.endsWith(' school')) {
+    normalized = normalized.slice(0, -7).trim();
+  }
+
+  return normalized;
+}
+
+/**
  * Compare two arrays of goals to determine what's changed
  * Goals are compared by normalized text (lowercase, trimmed)
  */
@@ -379,13 +408,7 @@ async function handleDeliveriesOrClassListOnly(
 
         // Match teacher to database
         const teacherMatch = matchTeacher(student.teacher, dbTeachers);
-        let teacherName: string | null = null;
-        if (teacherMatch.teacherId) {
-          const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
-          if (dbTeacher) {
-            teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
-          }
-        }
+        const teacherName = teacherMatch.teacherName;
 
         update.teacher = {
           teacherId: teacherMatch.teacherId,
@@ -635,14 +658,14 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     let filteredOutSchools: string[] = [];
 
     if (currentSchoolSite && userProfile?.works_at_multiple_schools) {
-      const normalizedCurrentSchool = currentSchoolSite.toLowerCase().trim();
+      const normalizedCurrentSchool = normalizeSchoolName(currentSchoolSite);
 
       const beforeCount = filteredStudents.length;
       filteredStudents = filteredStudents.filter(student => {
         // If student has no school info, include them (they'll be assigned to current school)
         if (!student.schoolOfAttendance) return true;
 
-        const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+        const studentSchool = normalizeSchoolName(student.schoolOfAttendance);
         return studentSchool === normalizedCurrentSchool;
       });
 
@@ -653,7 +676,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         const otherSchools = new Set<string>();
         for (const student of parseResult.students) {
           if (student.schoolOfAttendance) {
-            const studentSchool = student.schoolOfAttendance.toLowerCase().trim();
+            const studentSchool = normalizeSchoolName(student.schoolOfAttendance);
             if (studentSchool !== normalizedCurrentSchool) {
               otherSchools.add(student.schoolOfAttendance);
             }
@@ -860,13 +883,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         if (classListStudent) {
           matchedClassListNames.add(normalizedKey);
           const teacherMatch = matchTeacher(classListStudent.teacher, dbTeachers);
-          let teacherName: string | null = null;
-          if (teacherMatch.teacherId) {
-            const dbTeacher = dbTeachers.find(t => t.id === teacherMatch.teacherId);
-            if (dbTeacher) {
-              teacherName = [dbTeacher.first_name, dbTeacher.last_name].filter(Boolean).join(' ');
-            }
-          }
+          const teacherName = teacherMatch.teacherName;
           teacherMatchResult = {
             teacherId: teacherMatch.teacherId,
             teacherName: teacherName || classListStudent.teacher.rawName,
