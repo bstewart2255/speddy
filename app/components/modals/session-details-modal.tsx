@@ -1125,6 +1125,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         setLesson(null);
         setNotes('');
         showToast('Lesson deleted successfully', 'success');
+        onUpdate?.();
       } else {
         // Session mode: clear session_notes from schedule_sessions table
         const persistedSessionId = await ensureSessionsPersistence();
