@@ -17,6 +17,7 @@ interface Match {
   studentGrade: string;
   matchConfidence: 'high' | 'medium' | 'low';
   matchReason: string;
+  iepDate?: string;
   goals: Goal[];
 }
 
@@ -46,6 +47,41 @@ interface IEPGoalsPreviewModalProps {
   onClose: () => void;
   data: ImportData;
   onImportComplete?: () => void;
+}
+
+/**
+ * Check IEP date status for validation warnings
+ */
+function getIepDateWarning(iepDate?: string): { type: 'future' | 'stale' | null; message: string | null } {
+  if (!iepDate) {
+    return { type: null, message: null };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const iepDateObj = new Date(iepDate + 'T00:00:00');
+
+  // Future date check
+  if (iepDateObj > today) {
+    return {
+      type: 'future',
+      message: 'Goal may not be current - IEP date is in the future'
+    };
+  }
+
+  // Stale date check (more than 1 year old)
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  if (iepDateObj < oneYearAgo) {
+    return {
+      type: 'stale',
+      message: 'Goals may be outdated - check if these are the most recent'
+    };
+  }
+
+  return { type: null, message: null };
 }
 
 export function IEPGoalsPreviewModal({
@@ -126,14 +162,26 @@ export function IEPGoalsPreviewModal({
           }
         }
 
-        // Update student details
+        // Update student details (include goals_iep_date if available)
+        const upsertData: {
+          student_id: string;
+          iep_goals: string[];
+          updated_at: string;
+          goals_iep_date?: string | null;
+        } = {
+          student_id: match.studentId,
+          iep_goals: newGoals,
+          updated_at: new Date().toISOString()
+        };
+
+        // Only update goals_iep_date if we have a new one from the import
+        if (match.iepDate) {
+          upsertData.goals_iep_date = match.iepDate;
+        }
+
         const { error } = await supabase
           .from('student_details')
-          .upsert({
-            student_id: match.studentId,
-            iep_goals: newGoals,
-            updated_at: new Date().toISOString()
-          }, {
+          .upsert(upsertData, {
             onConflict: 'student_id'
           });
 
@@ -241,6 +289,7 @@ export function IEPGoalsPreviewModal({
               {data.matches.map((match) => {
                 const selectedCount = (selectedGoals[match.studentId] || []).length;
                 const isExpanded = expandedStudent === match.studentId;
+                const iepDateWarning = getIepDateWarning(match.iepDate);
 
                 return (
                   <div
@@ -260,6 +309,11 @@ export function IEPGoalsPreviewModal({
                           <p className="text-sm text-gray-600">
                             {match.matchReason} • {selectedCount} of {match.goals.length} goals selected
                           </p>
+                          {iepDateWarning.message && (
+                            <p className="text-xs text-yellow-700 mt-1">
+                              ⚠️ {iepDateWarning.message}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span

@@ -22,6 +22,7 @@ interface ProcessedMatch {
   studentGrade: string;
   matchConfidence: 'high' | 'medium' | 'low' | 'none';
   matchReason: string;
+  iepDate?: string; // The IEP date from the parsed report, for validation warnings
   goals: Array<{
     original: string;
     scrubbed: string;
@@ -391,6 +392,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         studentGrade: match.matchedStudent.grade_level,
         matchConfidence: match.confidence,
         matchReason: match.reason,
+        iepDate: match.excelStudent.iepDate,
         goals: scrubResult.goals
       });
     }
@@ -422,6 +424,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
       studentGrade: match.studentGrade,
       matchConfidence: match.matchConfidence,
       matchReason: match.matchReason,
+      iepDate: match.iepDate,
       goals: match.goals.map(goal => ({
         // Remove 'original' field to reduce payload size by ~50%
         scrubbed: goal.scrubbed,

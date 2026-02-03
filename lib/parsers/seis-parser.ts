@@ -22,6 +22,7 @@ export interface ParsedStudent {
   gradeLevel: string;
   goals: string[];
   schoolOfAttendance?: string; // From column G - used to filter by current school
+  iepDate?: string; // From column J - IEP date for validation warnings
   rawRow: number; // For debugging
 }
 
@@ -44,6 +45,7 @@ interface ColumnMapping {
   lastName?: number;
   grade?: number;
   schoolOfAttendance?: number; // Column G in SEIS reports
+  iepDate?: number; // Column J in SEIS reports - IEP Date
   areaOfNeed?: number; // Column L in SEIS Student Goals Report
   goalType?: number; // Annual Goal # / Service type column (Column M in SEIS)
   personResponsible?: number; // Column R in SEIS Student Goals Report
@@ -110,9 +112,15 @@ export async function parseSEISReport(
           const schoolOfAttendance = columnMapping.schoolOfAttendance
             ? getCellValue(row, columnMapping.schoolOfAttendance)
             : undefined;
+          const iepDateRaw = columnMapping.iepDate
+            ? getCellValue(row, columnMapping.iepDate)
+            : undefined;
 
           // Skip rows without student data
           if (!firstName || !lastName || !grade) return;
+
+          // Parse IEP date to ISO format if present
+          const iepDate = iepDateRaw ? parseDate(iepDateRaw) : undefined;
 
           // Get provider-related columns for filtering
           const areaOfNeed = columnMapping.areaOfNeed
@@ -186,6 +194,7 @@ export async function parseSEISReport(
               gradeLevel: normalizedGrade,
               goals,
               schoolOfAttendance: schoolOfAttendance?.trim() || undefined,
+              iepDate,
               rawRow: rowNumber
             });
           }
@@ -231,6 +240,7 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
   const schoolPatterns = /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i;
+  const iepDatePatterns = /iep\s*date|meeting\s*date|annual\s*review/i;
   const areaOfNeedPatterns = /area\s*of\s*need|area\s*need|need\s*area/i;
   const goalTypePatterns = /annual\s*goal\s*#|goal\s*type|service\s*type|service\s*area/i;
   const personResponsiblePatterns = /person\s*responsible|responsible\s*person|responsible\s*party|assigned\s*to/i;
@@ -264,6 +274,11 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
       // Check for school of attendance
       if (!mapping.schoolOfAttendance && schoolPatterns.test(headerText)) {
         mapping.schoolOfAttendance = colNumber;
+      }
+
+      // Check for IEP date (Column J in SEIS reports)
+      if (!mapping.iepDate && iepDatePatterns.test(headerText)) {
+        mapping.iepDate = colNumber;
       }
 
       // Check for area of need (Column L in SEIS Student Goals Report)
@@ -381,4 +396,47 @@ function normalizeGradeLevel(grade: string): string {
 
   // Return as-is if we couldn't normalize
   return grade.trim();
+}
+
+/**
+ * Parse a date string into ISO format (YYYY-MM-DD)
+ * Handles various date formats from Excel/SEIS exports
+ */
+function parseDate(dateStr: string): string | undefined {
+  if (!dateStr || !dateStr.trim()) {
+    return undefined;
+  }
+
+  const trimmed = dateStr.trim();
+
+  // Try parsing as ISO format first (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try parsing MM/DD/YYYY format
+  const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // Try parsing MM-DD-YYYY format
+  const usDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (usDashMatch) {
+    const [, month, day, year] = usDashMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // Try parsing as a JavaScript Date (handles Excel serial dates converted to strings)
+  try {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+
+  return undefined;
 }

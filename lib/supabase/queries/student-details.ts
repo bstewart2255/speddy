@@ -13,6 +13,7 @@ export interface StudentDetails {
   upcoming_triennial_date: string;
   iep_goals: string[];
   accommodations: string[];
+  goals_iep_date?: string; // The IEP date from imported SEIS report, for validation warnings
 }
 
 /**
@@ -75,8 +76,11 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const data = fetchResult.data;
   if (!data) return null;
 
-  // Cast to include accommodations field (added in migration 20251211_add_student_accommodations)
-  const dataWithAccommodations = data as typeof data & { accommodations?: string[] | null };
+  // Cast to include fields added in later migrations
+  const dataWithExtras = data as typeof data & {
+    accommodations?: string[] | null;
+    goals_iep_date?: string | null;
+  };
 
   return {
     first_name: data.first_name || '',
@@ -86,7 +90,8 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
-    accommodations: dataWithAccommodations.accommodations || []
+    accommodations: dataWithExtras.accommodations || [],
+    goals_iep_date: dataWithExtras.goals_iep_date || undefined
   };
 }
 
@@ -166,6 +171,7 @@ export async function upsertStudentDetails(
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
           accommodations: details.accommodations,
+          goals_iep_date: details.goals_iep_date || null,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'student_id'  // Add this to specify the conflict column
