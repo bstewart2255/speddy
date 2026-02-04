@@ -11,41 +11,7 @@ import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
-
-/**
- * Check IEP date status for validation warnings
- */
-function getIepDateWarning(iepDate?: string): { type: 'future' | 'stale' | null; message: string | null } {
-  if (!iepDate) {
-    return { type: null, message: null };
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const iepDateObj = new Date(iepDate + 'T00:00:00');
-
-  // Future date check
-  if (iepDateObj > today) {
-    return {
-      type: 'future',
-      message: 'Goal may not be current - IEP date is in the future'
-    };
-  }
-
-  // Stale date check (more than 1 year old)
-  const oneYearAgo = new Date(today);
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-  if (iepDateObj < oneYearAgo) {
-    return {
-      type: 'stale',
-      message: 'Goals may be outdated - check if these are the most recent'
-    };
-  }
-
-  return { type: null, message: null };
-}
+import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { createClient } from '@/lib/supabase/client';
+import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 interface Goal {
   original?: string; // Optional - not sent in optimized response
@@ -49,41 +50,6 @@ interface IEPGoalsPreviewModalProps {
   onImportComplete?: () => void;
 }
 
-/**
- * Check IEP date status for validation warnings
- */
-function getIepDateWarning(iepDate?: string): { type: 'future' | 'stale' | null; message: string | null } {
-  if (!iepDate) {
-    return { type: null, message: null };
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const iepDateObj = new Date(iepDate + 'T00:00:00');
-
-  // Future date check
-  if (iepDateObj > today) {
-    return {
-      type: 'future',
-      message: 'Goal may not be current - IEP date is in the future'
-    };
-  }
-
-  // Stale date check (more than 1 year old)
-  const oneYearAgo = new Date(today);
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-  if (iepDateObj < oneYearAgo) {
-    return {
-      type: 'stale',
-      message: 'Goals may be outdated - check if these are the most recent'
-    };
-  }
-
-  return { type: null, message: null };
-}
-
 export function IEPGoalsPreviewModal({
   isOpen,
   onClose,
@@ -94,14 +60,14 @@ export function IEPGoalsPreviewModal({
   const [importing, setImporting] = useState(false);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
-  // Initialize all goals as selected
-  useState(() => {
+  // Initialize all goals as selected when data.matches changes
+  useEffect(() => {
     const initial: { [studentId: string]: number[] } = {};
     data.matches.forEach(match => {
       initial[match.studentId] = match.goals.map((_, idx) => idx);
     });
     setSelectedGoals(initial);
-  });
+  }, [data.matches]);
 
   const toggleGoalSelection = (studentId: string, goalIndex: number) => {
     setSelectedGoals(prev => {

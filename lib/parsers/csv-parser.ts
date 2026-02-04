@@ -274,6 +274,10 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
               existing.goals.push(goal);
             }
           }
+          // Merge iepDate (keep first non-empty value)
+          if (!existing.iepDate && iepDate) {
+            existing.iepDate = iepDate;
+          }
         } else {
           // Add new student
           studentMap.set(studentKey, {
@@ -531,7 +535,7 @@ function isGoalForProvider(
 
 /**
  * Parse a date string into ISO format (YYYY-MM-DD)
- * Handles various date formats from CSV/SEIS exports
+ * Handles various date formats from CSV/SEIS exports including Excel serial dates
  */
 function parseDate(dateStr: string): string | undefined {
   if (!dateStr || !dateStr.trim()) {
@@ -559,16 +563,52 @@ function parseDate(dateStr: string): string | undefined {
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Try parsing as a JavaScript Date
-  try {
-    const date = new Date(trimmed);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+  // Check if it's a numeric-only string (Excel serial date)
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    if (Number.isFinite(serial) && serial > 0) {
+      return excelSerialToDate(serial);
     }
-  } catch {
-    // Ignore parsing errors
+  }
+
+  // Try parsing full ISO datetime format (YYYY-MM-DDTHH:MM:SS)
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    try {
+      const date = new Date(trimmed);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch {
+      // Ignore parsing errors
+    }
   }
 
   return undefined;
+}
+
+/**
+ * Convert Excel serial date to ISO date string
+ * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
+ */
+function excelSerialToDate(serial: number): string | undefined {
+  if (!Number.isFinite(serial) || serial < 1) {
+    return undefined;
+  }
+
+  // Excel's epoch: January 1, 1900 is day 1
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899
+  const days = Math.floor(serial);
+
+  // Add the days to the epoch
+  const resultDate = new Date(excelEpoch);
+  resultDate.setUTCDate(resultDate.getUTCDate() + days);
+
+  // Validate the result is a reasonable date (between 1900 and 2100)
+  const year = resultDate.getUTCFullYear();
+  if (year < 1900 || year > 2100) {
+    return undefined;
+  }
+
+  return resultDate.toISOString().split('T')[0];
 }
 

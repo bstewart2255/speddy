@@ -12,7 +12,7 @@ interface ExcelRichTextValue {
 }
 
 interface ExcelFormulaValue {
-  result?: string | number | boolean | Date;
+  result?: string | number | boolean | Date | undefined;
 }
 
 export interface ParsedStudent {
@@ -185,6 +185,10 @@ export async function parseSEISReport(
                 existing.goals.push(goal);
               }
             }
+            // Merge iepDate (keep first non-empty value)
+            if (!existing.iepDate && iepDate) {
+              existing.iepDate = iepDate;
+            }
           } else {
             // Add new student
             studentMap.set(studentKey, {
@@ -314,13 +318,21 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
 }
 
 /**
- * Get cell value as string
+ * Get cell value as string, with special handling for Date objects
  */
 function getCellValue(row: ExcelJS.Row, colNumber: number): string {
   const cell = row.getCell(colNumber);
 
   if (!cell || cell.value === null || cell.value === undefined) {
     return '';
+  }
+
+  // Handle Date objects (Excel stores dates as Date objects)
+  if (cell.value instanceof Date) {
+    if (isNaN(cell.value.getTime())) {
+      return '';
+    }
+    return cell.value.toISOString().split('T')[0];
   }
 
   // Handle different cell value types
@@ -342,9 +354,15 @@ function getCellValue(row: ExcelJS.Row, colNumber: number): string {
     return richText.richText.map((t) => t.text).join('');
   }
 
-  // Handle formula result
+  // Handle formula result (can also be Date)
   if (typeof cell.value === 'object' && 'result' in cell.value) {
     const formula = cell.value as ExcelFormulaValue;
+    if (formula.result instanceof Date) {
+      if (isNaN(formula.result.getTime())) {
+        return '';
+      }
+      return formula.result.toISOString().split('T')[0];
+    }
     return String(formula.result || '');
   }
 
@@ -400,7 +418,7 @@ function normalizeGradeLevel(grade: string): string {
 
 /**
  * Parse a date string into ISO format (YYYY-MM-DD)
- * Handles various date formats from Excel/SEIS exports
+ * Handles various date formats from Excel/SEIS exports including Excel serial dates
  */
 function parseDate(dateStr: string): string | undefined {
   if (!dateStr || !dateStr.trim()) {
@@ -428,15 +446,51 @@ function parseDate(dateStr: string): string | undefined {
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Try parsing as a JavaScript Date (handles Excel serial dates converted to strings)
-  try {
-    const date = new Date(trimmed);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+  // Check if it's a numeric-only string (Excel serial date)
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    if (Number.isFinite(serial) && serial > 0) {
+      return excelSerialToDate(serial);
     }
-  } catch {
-    // Ignore parsing errors
+  }
+
+  // Try parsing full ISO datetime format (YYYY-MM-DDTHH:MM:SS)
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    try {
+      const date = new Date(trimmed);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch {
+      // Ignore parsing errors
+    }
   }
 
   return undefined;
+}
+
+/**
+ * Convert Excel serial date to ISO date string
+ * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
+ */
+function excelSerialToDate(serial: number): string | undefined {
+  if (!Number.isFinite(serial) || serial < 1) {
+    return undefined;
+  }
+
+  // Excel's epoch: January 1, 1900 is day 1
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899
+  const days = Math.floor(serial);
+
+  // Add the days to the epoch
+  const resultDate = new Date(excelEpoch);
+  resultDate.setUTCDate(resultDate.getUTCDate() + days);
+
+  // Validate the result is a reasonable date (between 1900 and 2100)
+  const year = resultDate.getUTCFullYear();
+  if (year < 1900 || year > 2100) {
+    return undefined;
+  }
+
+  return resultDate.toISOString().split('T')[0];
 }
