@@ -13,6 +13,7 @@ export interface ParsedStudent {
   initials: string;
   gradeLevel: string;
   schoolOfAttendance?: string; // School of Attendance (SEIS Column G)
+  iepDate?: string; // IEP Date (SEIS Column J) - for validation warnings
   goals: string[];
   rawRow: number; // For debugging
 }
@@ -35,6 +36,7 @@ interface ColumnMapping {
   lastName?: number;
   grade?: number;
   schoolOfAttendance?: number; // School of Attendance (SEIS Column G)
+  iepDate?: number; // IEP Date (SEIS Column J) - for validation warnings
   areaOfNeed?: number; // Area of Need (SEIS Column L) - used for filtering
   goalType?: number; // Annual Goal # (SEIS Column M) - used for filtering
   personResponsible?: number; // Person Responsible (SEIS Column R) - used for filtering
@@ -148,6 +150,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const lastName = row[columnMapping.lastName] || '';
         const grade = row[columnMapping.grade] || '';
         const schoolOfAttendance = columnMapping.schoolOfAttendance !== undefined ? row[columnMapping.schoolOfAttendance] || '' : '';
+        const iepDateRaw = columnMapping.iepDate !== undefined ? row[columnMapping.iepDate] || '' : '';
 
         // Skip rows without student data
         if (!firstName.trim() || !lastName.trim() || !grade.trim()) {
@@ -157,6 +160,9 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         // Generate initials early for target matching
         const initials = `${firstName.charAt(0).toUpperCase()}${lastName.charAt(0).toUpperCase()}`;
         const normalizedGrade = normalizeGradeLevel(grade);
+
+        // Parse IEP date to ISO format if present
+        const iepDate = iepDateRaw ? parseDate(iepDateRaw) : undefined;
 
         // If target student specified, filter to only that student
         if (options.targetStudent) {
@@ -268,6 +274,10 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
               existing.goals.push(goal);
             }
           }
+          // Merge iepDate (keep first non-empty value)
+          if (!existing.iepDate && iepDate) {
+            existing.iepDate = iepDate;
+          }
         } else {
           // Add new student
           studentMap.set(studentKey, {
@@ -276,6 +286,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             initials,
             gradeLevel: normalizedGrade,
             schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
+            iepDate,
             goals,
             rawRow: rowIndex + 1
           });
@@ -339,6 +350,7 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
     // Column D (index 3): First Name
     // Column F (index 5): Grade
     // Column G (index 6): School of Attendance
+    // Column J (index 9): IEP Date
     // Column L (index 11): Area of Need (for filtering)
     // Column M (index 12): Annual Goal # (for filtering)
     // Column O (index 14): Goal
@@ -347,6 +359,7 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
     mapping.firstName = 3;
     mapping.grade = 5;
     mapping.schoolOfAttendance = 6;
+    mapping.iepDate = 9;
     mapping.areaOfNeed = 11;
     mapping.goalType = 12;
     mapping.personResponsible = 17;
@@ -518,5 +531,84 @@ function isGoalForProvider(
 
   // Fall back to keyword-based matching for Student Goals Report
   return isGoalForProviderByKeywords(areaOfNeed, goalType, personResponsible, providerRole);
+}
+
+/**
+ * Parse a date string into ISO format (YYYY-MM-DD)
+ * Handles various date formats from CSV/SEIS exports including Excel serial dates
+ */
+function parseDate(dateStr: string): string | undefined {
+  if (!dateStr || !dateStr.trim()) {
+    return undefined;
+  }
+
+  const trimmed = dateStr.trim();
+
+  // Try parsing as ISO format first (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try parsing MM/DD/YYYY format
+  const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // Try parsing MM-DD-YYYY format
+  const usDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (usDashMatch) {
+    const [, month, day, year] = usDashMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // Check if it's a numeric-only string (Excel serial date)
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    if (Number.isFinite(serial) && serial > 0) {
+      return excelSerialToDate(serial);
+    }
+  }
+
+  // Try parsing full ISO datetime format (YYYY-MM-DDTHH:MM:SS)
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    try {
+      const date = new Date(trimmed);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Convert Excel serial date to ISO date string
+ * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
+ */
+function excelSerialToDate(serial: number): string | undefined {
+  if (!Number.isFinite(serial) || serial < 1) {
+    return undefined;
+  }
+
+  // Excel's epoch: January 1, 1900 is day 1
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899
+  const days = Math.floor(serial);
+
+  // Add the days to the epoch
+  const resultDate = new Date(excelEpoch);
+  resultDate.setUTCDate(resultDate.getUTCDate() + days);
+
+  // Validate the result is a reasonable date (between 1900 and 2100)
+  const year = resultDate.getUTCFullYear();
+  if (year < 1900 || year > 2100) {
+    return undefined;
+  }
+
+  return resultDate.toISOString().split('T')[0];
 }
 

@@ -11,6 +11,7 @@ import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
+import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -53,7 +54,8 @@ export function StudentDetailsModal({
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
     iep_goals: [],
-    accommodations: []
+    accommodations: [],
+    goals_iep_date: undefined
   });
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
@@ -104,7 +106,8 @@ export function StudentDetailsModal({
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
               iep_goals: [],
-              accommodations: []
+              accommodations: [],
+              goals_iep_date: undefined
             });
           }
 
@@ -466,6 +469,27 @@ export function StudentDetailsModal({
                 <p className="text-sm text-gray-600">
                   Add specific goals from the student's IEP
                 </p>
+
+                {/* IEP Date Warning */}
+                {(() => {
+                  const warning = getIepDateWarning(details.goals_iep_date);
+                  if (warning.message) {
+                    return (
+                      <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <p className="text-sm text-yellow-800">
+                          ⚠️ {warning.message}
+                          {details.goals_iep_date && (
+                            <span className="text-yellow-600 ml-1">
+                              (IEP Date: {new Date(details.goals_iep_date + 'T00:00:00').toLocaleDateString()})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <p className="text-sm text-blue-900 font-medium mb-1">
                     ⚠️ Privacy Guidelines for IEP Goals:

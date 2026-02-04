@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { createClient } from '@/lib/supabase/client';
+import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 interface Goal {
   original?: string; // Optional - not sent in optimized response
@@ -17,6 +18,7 @@ interface Match {
   studentGrade: string;
   matchConfidence: 'high' | 'medium' | 'low';
   matchReason: string;
+  iepDate?: string;
   goals: Goal[];
 }
 
@@ -58,14 +60,14 @@ export function IEPGoalsPreviewModal({
   const [importing, setImporting] = useState(false);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
-  // Initialize all goals as selected
-  useState(() => {
+  // Initialize all goals as selected when data.matches changes
+  useEffect(() => {
     const initial: { [studentId: string]: number[] } = {};
     data.matches.forEach(match => {
       initial[match.studentId] = match.goals.map((_, idx) => idx);
     });
     setSelectedGoals(initial);
-  });
+  }, [data.matches]);
 
   const toggleGoalSelection = (studentId: string, goalIndex: number) => {
     setSelectedGoals(prev => {
@@ -126,14 +128,26 @@ export function IEPGoalsPreviewModal({
           }
         }
 
-        // Update student details
+        // Update student details (include goals_iep_date if available)
+        const upsertData: {
+          student_id: string;
+          iep_goals: string[];
+          updated_at: string;
+          goals_iep_date?: string | null;
+        } = {
+          student_id: match.studentId,
+          iep_goals: newGoals,
+          updated_at: new Date().toISOString()
+        };
+
+        // Only update goals_iep_date if we have a new one from the import
+        if (match.iepDate) {
+          upsertData.goals_iep_date = match.iepDate;
+        }
+
         const { error } = await supabase
           .from('student_details')
-          .upsert({
-            student_id: match.studentId,
-            iep_goals: newGoals,
-            updated_at: new Date().toISOString()
-          }, {
+          .upsert(upsertData, {
             onConflict: 'student_id'
           });
 
@@ -241,6 +255,7 @@ export function IEPGoalsPreviewModal({
               {data.matches.map((match) => {
                 const selectedCount = (selectedGoals[match.studentId] || []).length;
                 const isExpanded = expandedStudent === match.studentId;
+                const iepDateWarning = getIepDateWarning(match.iepDate);
 
                 return (
                   <div
@@ -260,6 +275,11 @@ export function IEPGoalsPreviewModal({
                           <p className="text-sm text-gray-600">
                             {match.matchReason} • {selectedCount} of {match.goals.length} goals selected
                           </p>
+                          {iepDateWarning.message && (
+                            <p className="text-xs text-yellow-700 mt-1">
+                              ⚠️ {iepDateWarning.message}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span
