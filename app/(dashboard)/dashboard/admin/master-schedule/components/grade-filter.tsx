@@ -43,10 +43,10 @@ export function GradeFilter({
               key={grade}
               onClick={() => onToggleGrade(grade)}
               className={`
-                px-2 py-0.5 text-xs font-medium rounded border transition-all
+                px-2 py-0.5 text-xs font-medium rounded transition-all
                 ${isSelected
-                  ? `${colors.selectedBg} ${colors.border} text-gray-900`
-                  : `${colors.bg} ${colors.border} text-gray-600 opacity-60 hover:opacity-100`
+                  ? `${colors.selectedBg} border-2 border-gray-900 text-gray-900`
+                  : `${colors.bg} border ${colors.border} text-gray-600 opacity-60 hover:opacity-100`
                 }
               `}
               title={`${isSelected ? 'Hide' : 'Show'} grade ${grade}`}
