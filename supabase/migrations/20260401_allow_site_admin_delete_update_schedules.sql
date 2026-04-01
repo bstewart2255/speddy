@@ -7,7 +7,7 @@
 DROP POLICY IF EXISTS "Users can update their own bell schedules" ON bell_schedules;
 
 CREATE POLICY "Users can update their own bell schedules" ON bell_schedules
-  FOR UPDATE
+  FOR UPDATE TO authenticated
   USING (
     (created_by_id = (SELECT auth.uid()))
     OR ((provider_id = (SELECT auth.uid())) AND (created_by_id IS NULL))
@@ -25,7 +25,7 @@ CREATE POLICY "Users can update their own bell schedules" ON bell_schedules
 DROP POLICY IF EXISTS "Users can delete their own bell schedules" ON bell_schedules;
 
 CREATE POLICY "Users can delete their own bell schedules" ON bell_schedules
-  FOR DELETE
+  FOR DELETE TO authenticated
   USING (
     (created_by_id = (SELECT auth.uid()))
     OR ((provider_id = (SELECT auth.uid())) AND (created_by_id IS NULL))
