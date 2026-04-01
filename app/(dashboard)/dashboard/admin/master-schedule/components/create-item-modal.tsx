@@ -22,6 +22,7 @@ interface CreateItemModalProps {
   filterSelectedGrades?: Set<string>;
   bellSchedules?: BellScheduleWithCreator[];
   teachers?: Teacher[];
+  schoolYear?: string;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -52,7 +53,8 @@ export function CreateItemModal({
   availableActivityTypes = [],
   filterSelectedGrades,
   bellSchedules = [],
-  teachers = []
+  teachers = [],
+  schoolYear
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -240,7 +242,8 @@ export function CreateItemModal({
               start_time: bellStartTime,
               end_time: bellEndTime,
               period_name: periodName,
-              school_id: schoolId
+              school_id: schoolId,
+              ...(schoolYear ? { school_year: schoolYear } : {})
             }, 'site_admin')
           )
         );
@@ -271,7 +274,8 @@ export function CreateItemModal({
               start_time: dailyTime,
               end_time: endTime,
               period_name: dailyTimeType,
-              school_id: schoolId
+              school_id: schoolId,
+              ...(schoolYear ? { school_year: schoolYear } : {})
             }, 'site_admin')
           )
         );
@@ -303,7 +307,8 @@ export function CreateItemModal({
           day_of_week: day,
           start_time: activityStartTime,
           end_time: activityEndTime,
-          school_id: schoolId
+          school_id: schoolId,
+          ...(schoolYear ? { school_year: schoolYear } : {})
         });
       }
 

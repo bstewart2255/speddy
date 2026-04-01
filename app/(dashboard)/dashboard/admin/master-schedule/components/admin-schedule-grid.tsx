@@ -33,6 +33,7 @@ interface AdminScheduleGridProps {
   onEditRotationPair?: (pair: RotationPairWithGroups) => void;
   filterSelectedGrades?: Set<string>;
   teachers?: Teacher[];
+  schoolYear?: string;
 }
 
 // Flattened rotation item for grid rendering
@@ -161,6 +162,7 @@ export function AdminScheduleGrid({
   onEditRotationPair,
   filterSelectedGrades,
   teachers = [],
+  schoolYear,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -559,6 +561,7 @@ export function AdminScheduleGrid({
           filterSelectedGrades={filterSelectedGrades}
           bellSchedules={allBellSchedules}
           teachers={teachers}
+          schoolYear={schoolYear}
         />
       )}
 

@@ -14,7 +14,7 @@ interface UseAdminScheduleDataReturn {
   refreshData: () => Promise<void>;
 }
 
-export function useAdminScheduleData(schoolId: string | null): UseAdminScheduleDataReturn {
+export function useAdminScheduleData(schoolId: string | null, schoolYear?: string): UseAdminScheduleDataReturn {
   const [bellSchedules, setBellSchedules] = useState<BellScheduleWithCreator[]>([]);
   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -33,8 +33,8 @@ export function useAdminScheduleData(schoolId: string | null): UseAdminScheduleD
 
       // Fetch all data in parallel
       const [bellScheduleData, activityData, teacherData] = await Promise.all([
-        getBellSchedulesForSchool(schoolId),
-        getSpecialActivities(schoolId),
+        getBellSchedulesForSchool(schoolId, schoolYear),
+        getSpecialActivities(schoolId, schoolYear),
         getTeachers(schoolId)
       ]);
 
@@ -47,7 +47,7 @@ export function useAdminScheduleData(schoolId: string | null): UseAdminScheduleD
     } finally {
       setLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, schoolYear]);
 
   useEffect(() => {
     fetchData();

@@ -249,7 +249,7 @@ export async function deleteGradeSchedules(
  * Fetch all bell schedules owned by the current user ordered for display.
  * Intelligently uses school_id for faster queries when available.
  */
-export async function getBellSchedules(school?: SchoolIdentifier) {
+export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: string) {
   console.log('[getBellSchedules] Called with school:', school);
   const queryType = school?.school_id ? 'indexed' : 'text-based';
   console.log('[getBellSchedules] Using', queryType, 'query strategy');
@@ -287,6 +287,10 @@ export async function getBellSchedules(school?: SchoolIdentifier) {
         // Fallback: filter by provider_id if no school context
         console.warn('[getBellSchedules] No school_id - falling back to provider_id filter');
         query = query.eq('provider_id', user.id);
+      }
+
+      if (schoolYear) {
+        query = query.eq('school_year', schoolYear);
       }
 
       const { data, error } = await query
@@ -526,7 +530,7 @@ export async function updateBellScheduleAsAdmin(
  * @param schoolId - The school ID to fetch schedules for
  * @returns Array of bell schedules with creator info
  */
-export async function getBellSchedulesForSchool(schoolId: string) {
+export async function getBellSchedulesForSchool(schoolId: string, schoolYear?: string) {
   console.log('[getBellSchedulesForSchool] Called with schoolId:', schoolId);
 
   const supabase = createClient<Database>();
@@ -566,10 +570,16 @@ export async function getBellSchedulesForSchool(schoolId: string) {
     async () => {
       // Fetch all bell schedules for the school
       // Note: creator join will work after migration is applied
-      const { data, error } = await supabase
+      let query = supabase
         .from('bell_schedules')
         .select('*')
-        .eq('school_id', schoolId)
+        .eq('school_id', schoolId);
+
+      if (schoolYear) {
+        query = query.eq('school_year', schoolYear);
+      }
+
+      const { data, error } = await query
         .order('grade_level', { ascending: true })
         .order('day_of_week', { ascending: true })
         .order('start_time', { ascending: true });

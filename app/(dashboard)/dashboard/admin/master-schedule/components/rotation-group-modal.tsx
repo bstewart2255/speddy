@@ -24,6 +24,7 @@ interface RotationGroupModalProps {
   existingPair?: RotationPairWithGroups;
   onClose: () => void;
   onSuccess: () => void;
+  schoolYear?: string;
 }
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -60,6 +61,7 @@ export function RotationGroupModal({
   teachers,
   existingPair,
   onClose,
+  schoolYear,
   onSuccess,
 }: RotationGroupModalProps) {
   const [step, setStep] = useState<Step>(1);
@@ -375,6 +377,7 @@ export function RotationGroupModal({
         school_id: schoolId,
         activity_type_a: activityA,
         activity_type_b: activityB,
+        ...(schoolYear ? { school_year: schoolYear } : {}),
       });
 
       // Step 3: Create groups

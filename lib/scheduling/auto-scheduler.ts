@@ -169,11 +169,14 @@ export class AutoScheduler {
         return [];
       }
 
+      const { getCurrentSchoolYear } = await import('@/lib/school-year');
+
       const { data } = await this.supabase
         .from('bell_schedules')
         .select('*')
         .eq('provider_id', this.providerId)
-        .eq('school_id', schoolId);
+        .eq('school_id', schoolId)
+        .eq('school_year', getCurrentSchoolYear());
 
       return data || [];
     }
@@ -185,12 +188,15 @@ export class AutoScheduler {
         return [];
       }
 
+      const { getCurrentSchoolYear } = await import('@/lib/school-year');
+
       // Query all activities at the school (teacher and provider created)
       // Exclude soft-deleted activities
       const { data } = await this.supabase
         .from('special_activities')
         .select('*')
         .eq('school_id', schoolId)
+        .eq('school_year', getCurrentSchoolYear())
         .is('deleted_at', null);
 
       return data || [];

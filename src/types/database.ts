@@ -26,6 +26,7 @@ export type Database = {
           monday_end_time: string | null
           monday_start_time: string | null
           school_id: string
+          school_year: string
           thursday: boolean
           thursday_end_time: string | null
           thursday_start_time: string | null
@@ -48,6 +49,7 @@ export type Database = {
           monday_end_time?: string | null
           monday_start_time?: string | null
           school_id: string
+          school_year?: string
           thursday?: boolean
           thursday_end_time?: string | null
           thursday_start_time?: string | null
@@ -70,6 +72,7 @@ export type Database = {
           monday_end_time?: string | null
           monday_start_time?: string | null
           school_id?: string
+          school_year?: string
           thursday?: boolean
           thursday_end_time?: string | null
           thursday_start_time?: string | null
@@ -380,6 +383,7 @@ export type Database = {
           period_name: string | null
           provider_id: string | null
           school_id: string | null
+          school_year: string
           school_site: string | null
           start_time: string
           state_id: string | null
@@ -398,6 +402,7 @@ export type Database = {
           period_name?: string | null
           provider_id?: string | null
           school_id?: string | null
+          school_year?: string
           school_site?: string | null
           start_time: string
           state_id?: string | null
@@ -416,6 +421,7 @@ export type Database = {
           period_name?: string | null
           provider_id?: string | null
           school_id?: string | null
+          school_year?: string
           school_site?: string | null
           start_time?: string
           state_id?: string | null
@@ -2078,6 +2084,7 @@ export type Database = {
           created_at: string | null
           id: string
           school_id: string
+          school_year: string
           updated_at: string | null
         }
         Insert: {
@@ -2086,6 +2093,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           school_id: string
+          school_year?: string
           updated_at?: string | null
         }
         Update: {
@@ -2094,6 +2102,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           school_id?: string
+          school_year?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -2113,6 +2122,7 @@ export type Database = {
           end_time: string
           group_id: string
           id: string
+          school_year: string
           start_time: string
           teacher_id: string
         }
@@ -2122,6 +2132,7 @@ export type Database = {
           end_time: string
           group_id: string
           id?: string
+          school_year?: string
           start_time: string
           teacher_id: string
         }
@@ -2131,6 +2142,7 @@ export type Database = {
           end_time?: string
           group_id?: string
           id?: string
+          school_year?: string
           start_time?: string
           teacher_id?: string
         }
@@ -2156,18 +2168,21 @@ export type Database = {
           created_at: string | null
           id: string
           name: string
+          school_year: string
           pair_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           name: string
+          school_year?: string
           pair_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
           name?: string
+          school_year?: string
           pair_id?: string
         }
         Relationships: [
@@ -2186,6 +2201,7 @@ export type Database = {
           created_at: string | null
           group_id: string
           id: string
+          school_year: string
           pair_id: string
           week_start_date: string
         }
@@ -2194,6 +2210,7 @@ export type Database = {
           created_at?: string | null
           group_id: string
           id?: string
+          school_year?: string
           pair_id: string
           week_start_date: string
         }
@@ -2202,6 +2219,7 @@ export type Database = {
           created_at?: string | null
           group_id?: string
           id?: string
+          school_year?: string
           pair_id?: string
           week_start_date?: string
         }
@@ -2612,6 +2630,7 @@ export type Database = {
           id: string
           provider_id: string | null
           school_id: string | null
+          school_year: string
           school_site: string | null
           start_time: string
           teacher_id: string | null
@@ -2631,6 +2650,7 @@ export type Database = {
           id?: string
           provider_id?: string | null
           school_id?: string | null
+          school_year?: string
           school_site?: string | null
           start_time: string
           teacher_id?: string | null
@@ -2650,6 +2670,7 @@ export type Database = {
           id?: string
           provider_id?: string | null
           school_id?: string | null
+          school_year?: string
           school_site?: string | null
           start_time?: string
           teacher_id?: string | null
