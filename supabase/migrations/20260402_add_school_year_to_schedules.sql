@@ -9,13 +9,13 @@ ALTER TABLE activity_type_availability ADD COLUMN school_year TEXT NOT NULL DEFA
 
 -- Update UNIQUE constraints to include school_year
 ALTER TABLE rotation_activity_pairs
-  DROP CONSTRAINT rotation_activity_pairs_school_id_activity_type_a_activity__key;
+  DROP CONSTRAINT IF EXISTS rotation_activity_pairs_school_id_activity_type_a_activity__key;
 ALTER TABLE rotation_activity_pairs
   ADD CONSTRAINT rotation_activity_pairs_school_year_unique
   UNIQUE (school_id, school_year, activity_type_a, activity_type_b);
 
 ALTER TABLE activity_type_availability
-  DROP CONSTRAINT activity_type_availability_school_id_activity_type_key;
+  DROP CONSTRAINT IF EXISTS activity_type_availability_school_id_activity_type_key;
 ALTER TABLE activity_type_availability
   ADD CONSTRAINT activity_type_availability_school_year_unique
   UNIQUE (school_id, school_year, activity_type);
@@ -34,8 +34,10 @@ CREATE OR REPLACE FUNCTION copy_schedule_to_year(
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
+  v_caller_id UUID;
   v_bell_count INTEGER := 0;
   v_activity_count INTEGER := 0;
   v_availability_count INTEGER := 0;
@@ -48,7 +50,22 @@ DECLARE
   v_group RECORD;
   v_cnt INTEGER;
 BEGIN
-  -- Check if target year already has data
+  -- Verify caller is a site admin for this school
+  v_caller_id := auth.uid();
+  IF v_caller_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM admin_permissions
+    WHERE admin_id = v_caller_id
+      AND school_id = p_school_id
+      AND role = 'site_admin'
+  ) THEN
+    RAISE EXCEPTION 'You do not have site admin permission for this school';
+  END IF;
+
+  -- Check if target year already has data in any of the copied tables
   IF EXISTS (
     SELECT 1 FROM bell_schedules
     WHERE school_id = p_school_id AND school_year = p_to_year
@@ -57,35 +74,43 @@ BEGIN
     SELECT 1 FROM special_activities
     WHERE school_id = p_school_id AND school_year = p_to_year AND deleted_at IS NULL
     LIMIT 1
+  ) OR EXISTS (
+    SELECT 1 FROM activity_type_availability
+    WHERE school_id = p_school_id AND school_year = p_to_year
+    LIMIT 1
+  ) OR EXISTS (
+    SELECT 1 FROM rotation_activity_pairs
+    WHERE school_id = p_school_id AND school_year = p_to_year
+    LIMIT 1
   ) THEN
     RAISE EXCEPTION 'Target year % already has data for this school', p_to_year;
   END IF;
 
-  -- Copy bell_schedules
+  -- Copy bell_schedules (including provider_id and content_hash)
   INSERT INTO bell_schedules (
-    grade_level, day_of_week, start_time, end_time, period_name,
+    provider_id, grade_level, day_of_week, start_time, end_time, period_name,
     school_id, school_year, created_by_id, created_by_role,
-    school_site, district_id, state_id
+    school_site, district_id, state_id, content_hash
   )
   SELECT
-    grade_level, day_of_week, start_time, end_time, period_name,
+    provider_id, grade_level, day_of_week, start_time, end_time, period_name,
     school_id, p_to_year, created_by_id, created_by_role,
-    school_site, district_id, state_id
+    school_site, district_id, state_id, content_hash
   FROM bell_schedules
   WHERE school_id = p_school_id AND school_year = p_from_year;
 
   GET DIAGNOSTICS v_bell_count = ROW_COUNT;
 
-  -- Copy special_activities (non-deleted only)
+  -- Copy special_activities (non-deleted only, including provider_id and content_hash)
   INSERT INTO special_activities (
-    teacher_id, teacher_name, activity_name, day_of_week, start_time, end_time,
+    provider_id, teacher_id, teacher_name, activity_name, day_of_week, start_time, end_time,
     school_id, school_year, created_by_id, created_by_role,
-    school_site, school_district, district_id, state_id
+    school_site, district_id, content_hash
   )
   SELECT
-    teacher_id, teacher_name, activity_name, day_of_week, start_time, end_time,
+    provider_id, teacher_id, teacher_name, activity_name, day_of_week, start_time, end_time,
     school_id, p_to_year, created_by_id, created_by_role,
-    school_site, school_district, district_id, state_id
+    school_site, district_id, content_hash
   FROM special_activities
   WHERE school_id = p_school_id AND school_year = p_from_year AND deleted_at IS NULL;
 
@@ -115,6 +140,9 @@ BEGIN
   GET DIAGNOSTICS v_availability_count = ROW_COUNT;
 
   -- Copy rotation_activity_pairs -> rotation_groups -> rotation_group_members
+  -- Note: rotation_week_assignments are NOT copied because they contain
+  -- date-specific entries (e.g., "week of Sept 8") that don't apply to the
+  -- next school year. Admins configure these fresh.
   FOR v_pair IN
     SELECT * FROM rotation_activity_pairs
     WHERE school_id = p_school_id AND school_year = p_from_year

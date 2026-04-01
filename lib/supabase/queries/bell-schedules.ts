@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type { Database } from '../../../src/types/database';
 
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Insert'];
@@ -89,6 +90,7 @@ export async function addBellSchedule(
         school_id: schoolData.school_id || undefined,
         created_by_id: user.id,
         created_by_role: creatorRole,
+        school_year: scheduleFields.school_year || getCurrentSchoolYear(),
       };
 
       const { data, error } = await supabase

@@ -6,18 +6,18 @@
  * from Jan-Jul it's (thisYear-1)-thisYear.
  */
 
-export const DEFAULT_SCHOOL_YEAR = '2025-2026';
-
 export function getCurrentSchoolYear(): string {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1; // 1-indexed
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() + 1; // 1-indexed
 
   if (month >= 8) {
     return `${year}-${year + 1}`;
   }
   return `${year - 1}-${year}`;
 }
+
+export const DEFAULT_SCHOOL_YEAR = getCurrentSchoolYear();
 
 export function getNextSchoolYear(): string {
   const current = getCurrentSchoolYear();

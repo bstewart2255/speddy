@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 
 export interface TimeRange {
   start: string; // HH:MM format
@@ -279,7 +280,7 @@ export async function upsertActivityAvailability(
         thursday: availability.thursday,
         friday: availability.friday,
         updated_at: new Date().toISOString(),
-        ...(schoolYear ? { school_year: schoolYear } : {}),
+        school_year: schoolYear ?? getCurrentSchoolYear(),
       },
       {
         onConflict: 'school_id,school_year,activity_type',
@@ -316,7 +317,7 @@ export async function upsertActivityAvailabilityWithTimes(
   const upsertData: Record<string, unknown> = {
     school_id: schoolId,
     activity_type: activityType,
-    ...(schoolYear ? { school_year: schoolYear } : {}),
+    school_year: schoolYear ?? getCurrentSchoolYear(),
     monday: availability.monday.available,
     tuesday: availability.tuesday.available,
     wednesday: availability.wednesday.available,
@@ -618,17 +619,12 @@ export async function deleteActivityAvailability(
     throw new Error('User not authenticated');
   }
 
-  let query = supabase
+  const { error } = await supabase
     .from('activity_type_availability')
     .delete()
     .eq('school_id', schoolId)
-    .eq('activity_type', activityType);
-
-  if (schoolYear) {
-    query = query.eq('school_year', schoolYear);
-  }
-
-  const { error } = await query;
+    .eq('activity_type', activityType)
+    .eq('school_year', schoolYear ?? getCurrentSchoolYear());
 
   if (error) {
     console.error('Error deleting activity availability:', error);

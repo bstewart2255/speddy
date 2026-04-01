@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import { SpecialActivity } from '../../../src/types/database';
 import type { Database } from '../../../src/types/database';
 
@@ -128,7 +129,8 @@ async function addSpecialActivityInternal(
       created_by_id: user.id,
       created_by_role: role,
       school_site: finalSchoolSite,
-      school_id: finalSchoolId
+      school_id: finalSchoolId,
+      school_year: activity.school_year || getCurrentSchoolYear(),
     })
     .select()
     .single();

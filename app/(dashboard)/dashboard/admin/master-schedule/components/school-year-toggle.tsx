@@ -23,6 +23,7 @@ export function SchoolYearToggle({
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
         <button
+          type="button"
           onClick={() => onSelectYear(currentYear)}
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
             selectedYear === currentYear
@@ -33,6 +34,7 @@ export function SchoolYearToggle({
           {currentYear}
         </button>
         <button
+          type="button"
           onClick={() => onSelectYear(nextYear)}
           className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
             selectedYear === nextYear
@@ -46,6 +48,7 @@ export function SchoolYearToggle({
 
       {selectedYear === nextYear && !nextYearHasData && (
         <button
+          type="button"
           onClick={onInitializeNextYear}
           disabled={initializing}
           className="px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50"

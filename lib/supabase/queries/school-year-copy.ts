@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 
 /**
  * Check if a school year already has schedule data for a school.
+ * Checks all tables that the copy function writes to.
  */
 export async function checkYearHasData(
   schoolId: string,
@@ -14,31 +15,36 @@ export async function checkYearHasData(
     throw new Error('User not authenticated');
   }
 
-  const { count, error } = await supabase
-    .from('bell_schedules')
-    .select('id', { count: 'exact', head: true })
-    .eq('school_id', schoolId)
-    .eq('school_year', schoolYear);
+  const checks = await Promise.all([
+    supabase
+      .from('bell_schedules')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('school_year', schoolYear),
+    supabase
+      .from('special_activities')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('school_year', schoolYear)
+      .is('deleted_at', null),
+    supabase
+      .from('activity_type_availability')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('school_year', schoolYear),
+    supabase
+      .from('rotation_activity_pairs')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('school_year', schoolYear),
+  ]);
 
-  if (error) {
-    throw error;
+  for (const result of checks) {
+    if (result.error) throw result.error;
+    if (result.count && result.count > 0) return true;
   }
 
-  if (count && count > 0) return true;
-
-  // Also check special_activities
-  const { count: activityCount, error: activityError } = await supabase
-    .from('special_activities')
-    .select('id', { count: 'exact', head: true })
-    .eq('school_id', schoolId)
-    .eq('school_year', schoolYear)
-    .is('deleted_at', null);
-
-  if (activityError) {
-    throw activityError;
-  }
-
-  return (activityCount ?? 0) > 0;
+  return false;
 }
 
 /**
