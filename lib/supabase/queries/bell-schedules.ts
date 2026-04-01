@@ -354,7 +354,7 @@ export async function deleteBellScheduleAsAdmin(id: string, schoolId: string) {
       const { data, error } = await supabase
         .from('admin_permissions')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('admin_id', user.id)
         .eq('school_id', schoolId)
         .eq('role', 'site_admin')
         .single();
@@ -449,7 +449,7 @@ export async function updateBellScheduleAsAdmin(
       const { data, error } = await supabase
         .from('admin_permissions')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('admin_id', user.id)
         .eq('school_id', schoolId)
         .eq('role', 'site_admin')
         .single();

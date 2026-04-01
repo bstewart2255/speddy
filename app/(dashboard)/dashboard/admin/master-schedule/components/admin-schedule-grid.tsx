@@ -31,6 +31,7 @@ interface AdminScheduleGridProps {
   availableActivityTypes?: string[];
   rotationPairs?: RotationPairWithGroups[];
   onEditRotationPair?: (pair: RotationPairWithGroups) => void;
+  filterSelectedGrades?: Set<string>;
 }
 
 // Flattened rotation item for grid rendering
@@ -157,6 +158,7 @@ export function AdminScheduleGrid({
   availableActivityTypes = [],
   rotationPairs = [],
   onEditRotationPair,
+  filterSelectedGrades,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -552,6 +554,7 @@ export function AdminScheduleGrid({
           defaultTab={viewFilter === 'activities' ? 'activity' : 'bell'}
           activityAvailability={activityAvailability}
           availableActivityTypes={availableActivityTypes}
+          filterSelectedGrades={filterSelectedGrades}
         />
       )}
 
