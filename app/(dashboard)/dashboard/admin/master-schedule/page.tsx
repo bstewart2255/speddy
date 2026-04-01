@@ -336,6 +336,7 @@ export default function MasterSchedulePage() {
               rotationPairs={rotationPairs}
               onEditRotationPair={handleEditPair}
               filterSelectedGrades={selectedGrades}
+              teachers={teachers}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">

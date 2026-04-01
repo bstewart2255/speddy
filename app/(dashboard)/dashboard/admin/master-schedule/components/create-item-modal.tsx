@@ -7,6 +7,8 @@ import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/querie
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
+import type { Teacher } from '@/src/types/database';
+import type { BellScheduleWithCreator } from '../types';
 
 interface CreateItemModalProps {
   day: number;
@@ -18,6 +20,8 @@ interface CreateItemModalProps {
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
   filterSelectedGrades?: Set<string>;
+  bellSchedules?: BellScheduleWithCreator[];
+  teachers?: Teacher[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -46,7 +50,9 @@ export function CreateItemModal({
   defaultTab = 'bell',
   activityAvailability = new Map(),
   availableActivityTypes = [],
-  filterSelectedGrades
+  filterSelectedGrades,
+  bellSchedules = [],
+  teachers = []
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -101,6 +107,32 @@ export function CreateItemModal({
 
     return result.available ? null : result.reason || null;
   }, [tab, effectiveActivityName, day, activityAvailability, activityStartTime, activityEndTime]);
+
+  // Check if selected activity conflicts with a bell schedule for the teacher's grade
+  const bellScheduleConflictWarning = useMemo(() => {
+    if (tab !== 'activity' || !teacherId || !activityStartTime || !activityEndTime) return null;
+
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher?.grade_level) return null;
+
+    const teacherGrades = teacher.grade_level.split(',').map(g => g.trim());
+
+    const conflicts = bellSchedules.filter(schedule => {
+      if (!schedule.day_of_week || !schedule.start_time || !schedule.end_time || !schedule.grade_level) return false;
+      if (schedule.day_of_week !== day) return false;
+
+      const scheduleGrades = schedule.grade_level.split(',').map(g => g.trim());
+      const gradesOverlap = scheduleGrades.some(g => teacherGrades.includes(g));
+      if (!gradesOverlap) return false;
+
+      return activityStartTime < schedule.end_time && schedule.start_time < activityEndTime;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c => `${c.grade_level} ${c.period_name} (${c.start_time}–${c.end_time})`);
+    return `This overlaps with: ${descriptions.join(', ')}`;
+  }, [tab, teacherId, teachers, bellSchedules, day, activityStartTime, activityEndTime]);
 
   // Handle start time change - auto-adjust end time to maintain 30min duration
   const handleBellStartTimeChange = (newStartTime: string) => {
@@ -507,6 +539,13 @@ export function CreateItemModal({
                 {activityAvailabilityWarning && (
                   <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                     {activityAvailabilityWarning}
+                  </div>
+                )}
+
+                {/* Bell schedule conflict warning */}
+                {bellScheduleConflictWarning && (
+                  <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    {bellScheduleConflictWarning}
                   </div>
                 )}
               </div>

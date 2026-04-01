@@ -35,7 +35,7 @@ export function useAdminScheduleData(schoolId: string | null): UseAdminScheduleD
       const [bellScheduleData, activityData, teacherData] = await Promise.all([
         getBellSchedulesForSchool(schoolId),
         getSpecialActivities(schoolId),
-        getTeachers()
+        getTeachers(schoolId)
       ]);
 
       setBellSchedules(bellScheduleData || []);

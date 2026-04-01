@@ -19,28 +19,32 @@ export type TeacherCreationData = {
   school_site?: string | null;
 };
 
-export async function getTeachers() {
+export async function getTeachers(schoolId?: string) {
   const supabase = createClient<Database>();
 
   const authResult = await safeQuery(
     () => supabase.auth.getUser(),
     { operation: 'get_user_for_fetch_teachers' }
   );
-  
+
   if (authResult.error || !authResult.data?.data.user) {
     throw new Error('No user found');
   }
-  
+
   const user = authResult.data.data.user;
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_teachers', 'database');
   const fetchResult = await safeQuery(
     async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('teachers')
         .select('*')
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true });
+      if (schoolId) {
+        query = query.eq('school_id', schoolId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },

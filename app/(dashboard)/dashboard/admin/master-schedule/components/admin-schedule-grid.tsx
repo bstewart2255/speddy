@@ -10,7 +10,7 @@ import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity } from '@/src/types/database';
+import type { SpecialActivity, Teacher } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { RotationPairWithGroups, RotationGroupMemberWithTeacher } from '../../../../../../lib/supabase/queries/rotation-groups';
@@ -32,6 +32,7 @@ interface AdminScheduleGridProps {
   rotationPairs?: RotationPairWithGroups[];
   onEditRotationPair?: (pair: RotationPairWithGroups) => void;
   filterSelectedGrades?: Set<string>;
+  teachers?: Teacher[];
 }
 
 // Flattened rotation item for grid rendering
@@ -159,6 +160,7 @@ export function AdminScheduleGrid({
   rotationPairs = [],
   onEditRotationPair,
   filterSelectedGrades,
+  teachers = [],
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -555,6 +557,8 @@ export function AdminScheduleGrid({
           activityAvailability={activityAvailability}
           availableActivityTypes={availableActivityTypes}
           filterSelectedGrades={filterSelectedGrades}
+          bellSchedules={allBellSchedules}
+          teachers={teachers}
         />
       )}
 
@@ -567,6 +571,8 @@ export function AdminScheduleGrid({
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
           availableActivityTypes={availableActivityTypes}
+          bellSchedules={allBellSchedules}
+          teachers={teachers}
         />
       )}
 

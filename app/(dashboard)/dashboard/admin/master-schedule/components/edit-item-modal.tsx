@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
-import type { SpecialActivity } from '@/src/types/database';
+import type { SpecialActivity, Teacher } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
@@ -15,6 +15,8 @@ interface EditItemModalProps {
   onClose: () => void;
   onSuccess: () => void;
   availableActivityTypes?: string[];
+  bellSchedules?: BellScheduleWithCreator[];
+  teachers?: Teacher[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -35,7 +37,9 @@ export function EditItemModal({
   schoolId,
   onClose,
   onSuccess,
-  availableActivityTypes = []
+  availableActivityTypes = [],
+  bellSchedules = [],
+  teachers = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +58,33 @@ export function EditItemModal({
   const [bellPeriodName, setBellPeriodName] = useState(bellSchedule?.period_name || '');
   const [bellStartTime, setBellStartTime] = useState(bellSchedule?.start_time || '');
   const [bellEndTime, setBellEndTime] = useState(bellSchedule?.end_time || '');
+
+  // Check if activity conflicts with a bell schedule for the teacher's grade
+  const bellScheduleConflictWarning = useMemo(() => {
+    if (type !== 'activity' || !activity?.teacher_id || !startTime || !endTime) return null;
+
+    const teacher = teachers.find(t => t.id === activity.teacher_id);
+    if (!teacher?.grade_level) return null;
+
+    const teacherGrades = teacher.grade_level.split(',').map(g => g.trim());
+    const dayOfWeek = item.day_of_week;
+
+    const conflicts = bellSchedules.filter(schedule => {
+      if (!schedule.day_of_week || !schedule.start_time || !schedule.end_time || !schedule.grade_level) return false;
+      if (schedule.day_of_week !== dayOfWeek) return false;
+
+      const scheduleGrades = schedule.grade_level.split(',').map(g => g.trim());
+      const gradesOverlap = scheduleGrades.some(g => teacherGrades.includes(g));
+      if (!gradesOverlap) return false;
+
+      return startTime < schedule.end_time && schedule.start_time < endTime;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c => `${c.grade_level} ${c.period_name} (${c.start_time}–${c.end_time})`);
+    return `This overlaps with: ${descriptions.join(', ')}`;
+  }, [type, activity, teachers, bellSchedules, item.day_of_week, startTime, endTime]);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -317,6 +348,13 @@ export function EditItemModal({
                   />
                 </div>
               </div>
+
+              {/* Bell schedule conflict warning */}
+              {bellScheduleConflictWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {bellScheduleConflictWarning}
+                </div>
+              )}
             </>
           )}
 
@@ -325,7 +363,9 @@ export function EditItemModal({
             <div className="bg-red-50 border border-red-200 rounded p-3">
               <p className="text-sm text-red-700">
                 Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : 'activity'}?
-                This action cannot be undone.
+                {type === 'bell'
+                  ? ' This action cannot be undone.'
+                  : ' This will remove the activity from the schedule.'}
               </p>
             </div>
           )}
