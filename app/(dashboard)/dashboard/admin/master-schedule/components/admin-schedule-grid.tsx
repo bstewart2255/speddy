@@ -566,6 +566,7 @@ export function AdminScheduleGrid({
           schoolId={schoolId}
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
+          availableActivityTypes={availableActivityTypes}
         />
       )}
 

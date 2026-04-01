@@ -70,7 +70,10 @@
       "mcp__supabase__generate_typescript_types",
       "Bash(xargs:*)",
       "WebSearch",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_edge_functions",
+      "Bash(wc:*)"
     ],
     "deny": []
   },

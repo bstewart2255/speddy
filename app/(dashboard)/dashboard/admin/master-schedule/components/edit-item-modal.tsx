@@ -14,6 +14,7 @@ interface EditItemModalProps {
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
+  availableActivityTypes?: string[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -33,7 +34,8 @@ export function EditItemModal({
   item,
   schoolId,
   onClose,
-  onSuccess
+  onSuccess,
+  availableActivityTypes = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -282,7 +284,7 @@ export function EditItemModal({
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select activity...</option>
-                  {SPECIAL_ACTIVITY_TYPES.map((activityType) => (
+                  {Array.from(new Set([...SPECIAL_ACTIVITY_TYPES, ...availableActivityTypes])).sort().map((activityType) => (
                     <option key={activityType} value={activityType}>
                       {activityType}
                     </option>
