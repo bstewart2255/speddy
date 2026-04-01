@@ -135,8 +135,13 @@ export default function MasterSchedulePage() {
     configuredActivityTypes.forEach(type => {
       types.add(type);
     });
+    // Add types from rotation pairs
+    rotationPairs.forEach(pair => {
+      if (pair.activity_type_a) types.add(pair.activity_type_a);
+      if (pair.activity_type_b) types.add(pair.activity_type_b);
+    });
     return Array.from(types).sort();
-  }, [specialActivities, configuredActivityTypes]);
+  }, [specialActivities, configuredActivityTypes, rotationPairs]);
 
   // Track which activity types are currently in use (have scheduled activities)
   const inUseActivityTypes = useMemo(() => {
@@ -146,8 +151,12 @@ export default function MasterSchedulePage() {
         types.add(activity.activity_name);
       }
     });
+    rotationPairs.forEach(pair => {
+      if (pair.activity_type_a) types.add(pair.activity_type_a);
+      if (pair.activity_type_b) types.add(pair.activity_type_b);
+    });
     return types;
-  }, [specialActivities]);
+  }, [specialActivities, rotationPairs]);
 
   // UI state management hook
   const {
@@ -216,6 +225,14 @@ export default function MasterSchedulePage() {
 
         return true;
       });
+
+  // Filter rotation pairs by selected activity types and view filter
+  const filteredRotationPairs = viewFilter === 'bell'
+    ? []
+    : rotationPairs.filter(pair =>
+        selectedActivityTypes.has(pair.activity_type_a) ||
+        selectedActivityTypes.has(pair.activity_type_b)
+      );
 
   const loading = permissionsLoading || dataLoading;
 
@@ -333,7 +350,7 @@ export default function MasterSchedulePage() {
               allBellSchedules={bellSchedules}
               activityAvailability={activityAvailability}
               availableActivityTypes={availableActivityTypes}
-              rotationPairs={rotationPairs}
+              rotationPairs={filteredRotationPairs}
               onEditRotationPair={handleEditPair}
               filterSelectedGrades={selectedGrades}
               teachers={teachers}
