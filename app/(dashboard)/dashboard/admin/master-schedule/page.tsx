@@ -335,6 +335,7 @@ export default function MasterSchedulePage() {
               availableActivityTypes={availableActivityTypes}
               rotationPairs={rotationPairs}
               onEditRotationPair={handleEditPair}
+              filterSelectedGrades={selectedGrades}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">

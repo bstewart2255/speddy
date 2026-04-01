@@ -17,10 +17,13 @@ interface CreateItemModalProps {
   defaultTab?: 'bell' | 'activity' | 'dailyTime';
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
+  filterSelectedGrades?: Set<string>;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
+const GRADE_ORDER: Record<string, number> = Object.fromEntries(GRADES.map((g, i) => [g, i]));
+const sortGrades = (grades: string[]) => [...grades].sort((a, b) => (GRADE_ORDER[a] ?? 99) - (GRADE_ORDER[b] ?? 99));
 const DAILY_TIME_TYPES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
 
 /**
@@ -42,7 +45,8 @@ export function CreateItemModal({
   onSuccess,
   defaultTab = 'bell',
   activityAvailability = new Map(),
-  availableActivityTypes = []
+  availableActivityTypes = [],
+  filterSelectedGrades
 }: CreateItemModalProps) {
   const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
   const [loading, setLoading] = useState(false);
@@ -51,7 +55,9 @@ export function CreateItemModal({
   const headingId = 'create-modal-heading';
 
   // Bell schedule form state
-  const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>(
+    filterSelectedGrades ? Array.from(filterSelectedGrades) : []
+  );
   const [selectedDays, setSelectedDays] = useState<number[]>([day]); // Pre-select the day modal was opened from
   const [periodName, setPeriodName] = useState('');
   const [bellStartTime, setBellStartTime] = useState(startTime);
@@ -189,7 +195,7 @@ export function CreateItemModal({
         await Promise.all(
           selectedDays.map(selectedDay =>
             addBellSchedule({
-              grade_level: selectedGrades.join(','),
+              grade_level: sortGrades(selectedGrades).join(','),
               day_of_week: selectedDay,
               start_time: bellStartTime,
               end_time: bellEndTime,
@@ -220,7 +226,7 @@ export function CreateItemModal({
         await Promise.all(
           dailyTimeDays.map(selectedDay =>
             addBellSchedule({
-              grade_level: dailyTimeGrades.join(','),
+              grade_level: sortGrades(dailyTimeGrades).join(','),
               day_of_week: selectedDay,
               start_time: dailyTime,
               end_time: endTime,
