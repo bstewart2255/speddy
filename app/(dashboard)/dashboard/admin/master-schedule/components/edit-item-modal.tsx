@@ -68,6 +68,10 @@ export function EditItemModal({
 
     const teacherGrades = teacher.grade_level.split(',').map(g => g.trim());
     const dayOfWeek = item.day_of_week;
+    // Normalize to HH:MM to avoid format mismatch (input gives HH:MM, Supabase may give HH:MM:SS)
+    const normTime = (t: string) => t.substring(0, 5);
+    const actStart = normTime(startTime);
+    const actEnd = normTime(endTime);
 
     const conflicts = bellSchedules.filter(schedule => {
       if (!schedule.day_of_week || !schedule.start_time || !schedule.end_time || !schedule.grade_level) return false;
@@ -77,12 +81,16 @@ export function EditItemModal({
       const gradesOverlap = scheduleGrades.some(g => teacherGrades.includes(g));
       if (!gradesOverlap) return false;
 
-      return startTime < schedule.end_time && schedule.start_time < endTime;
+      const schedStart = normTime(schedule.start_time);
+      const schedEnd = normTime(schedule.end_time);
+      return actStart < schedEnd && schedStart < actEnd;
     });
 
     if (conflicts.length === 0) return null;
 
-    const descriptions = conflicts.map(c => `${c.grade_level} ${c.period_name} (${c.start_time}–${c.end_time})`);
+    const descriptions = conflicts.map(c =>
+      `${c.grade_level} ${c.period_name} (${normTime(c.start_time!)}–${normTime(c.end_time!)})`
+    );
     return `This overlaps with: ${descriptions.join(', ')}`;
   }, [type, activity, teachers, bellSchedules, item.day_of_week, startTime, endTime]);
 
