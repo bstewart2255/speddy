@@ -155,7 +155,7 @@ export async function deleteSpecialActivityAsAdmin(id: string, schoolId: string)
   const { data: adminPerm, error: adminError } = await supabase
     .from('admin_permissions')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('admin_id', user.id)
     .eq('school_id', schoolId)
     .eq('role', 'site_admin')
     .single();
@@ -221,7 +221,7 @@ export async function updateSpecialActivityAsAdmin(
   const { data: adminPerm, error: adminError } = await supabase
     .from('admin_permissions')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('admin_id', user.id)
     .eq('school_id', schoolId)
     .eq('role', 'site_admin')
     .single();
