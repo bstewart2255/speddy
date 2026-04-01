@@ -43,7 +43,7 @@ CREATE POLICY "Users can delete their own bell schedules" ON bell_schedules
 DROP POLICY IF EXISTS "special_activities_update" ON special_activities;
 
 CREATE POLICY "special_activities_update" ON special_activities
-  FOR UPDATE
+  FOR UPDATE TO authenticated
   USING (
     (provider_id IN (SELECT teachers.id FROM teachers WHERE teachers.account_id = (SELECT auth.uid())))
     OR (provider_id = (SELECT auth.uid()))
@@ -71,7 +71,7 @@ CREATE POLICY "special_activities_update" ON special_activities
 DROP POLICY IF EXISTS "special_activities_delete" ON special_activities;
 
 CREATE POLICY "special_activities_delete" ON special_activities
-  FOR DELETE
+  FOR DELETE TO authenticated
   USING (
     (provider_id IN (SELECT teachers.id FROM teachers WHERE teachers.account_id = (SELECT auth.uid())))
     OR (provider_id = (SELECT auth.uid()))
