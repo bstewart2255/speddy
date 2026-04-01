@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
-import type { SpecialActivity } from '@/src/types/database';
+import type { SpecialActivity, Teacher } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
@@ -14,6 +14,9 @@ interface EditItemModalProps {
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
+  availableActivityTypes?: string[];
+  bellSchedules?: BellScheduleWithCreator[];
+  teachers?: Teacher[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -33,7 +36,10 @@ export function EditItemModal({
   item,
   schoolId,
   onClose,
-  onSuccess
+  onSuccess,
+  availableActivityTypes = [],
+  bellSchedules = [],
+  teachers = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +58,41 @@ export function EditItemModal({
   const [bellPeriodName, setBellPeriodName] = useState(bellSchedule?.period_name || '');
   const [bellStartTime, setBellStartTime] = useState(bellSchedule?.start_time || '');
   const [bellEndTime, setBellEndTime] = useState(bellSchedule?.end_time || '');
+
+  // Check if activity conflicts with a bell schedule for the teacher's grade
+  const bellScheduleConflictWarning = useMemo(() => {
+    if (type !== 'activity' || !activity?.teacher_id || !startTime || !endTime) return null;
+
+    const teacher = teachers.find(t => t.id === activity.teacher_id);
+    if (!teacher?.grade_level) return null;
+
+    const teacherGrades = teacher.grade_level.split(',').map(g => g.trim());
+    const dayOfWeek = item.day_of_week;
+    // Normalize to HH:MM to avoid format mismatch (input gives HH:MM, Supabase may give HH:MM:SS)
+    const normTime = (t: string) => t.substring(0, 5);
+    const actStart = normTime(startTime);
+    const actEnd = normTime(endTime);
+
+    const conflicts = bellSchedules.filter(schedule => {
+      if (!schedule.day_of_week || !schedule.start_time || !schedule.end_time || !schedule.grade_level) return false;
+      if (schedule.day_of_week !== dayOfWeek) return false;
+
+      const scheduleGrades = schedule.grade_level.split(',').map(g => g.trim());
+      const gradesOverlap = scheduleGrades.some(g => teacherGrades.includes(g));
+      if (!gradesOverlap) return false;
+
+      const schedStart = normTime(schedule.start_time);
+      const schedEnd = normTime(schedule.end_time);
+      return actStart < schedEnd && schedStart < actEnd;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c =>
+      `${c.grade_level} ${c.period_name} (${normTime(c.start_time!)}–${normTime(c.end_time!)})`
+    );
+    return `This overlaps with: ${descriptions.join(', ')}`;
+  }, [type, activity, teachers, bellSchedules, item.day_of_week, startTime, endTime]);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -282,7 +323,7 @@ export function EditItemModal({
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select activity...</option>
-                  {SPECIAL_ACTIVITY_TYPES.map((activityType) => (
+                  {Array.from(new Set([...SPECIAL_ACTIVITY_TYPES, ...availableActivityTypes])).sort().map((activityType) => (
                     <option key={activityType} value={activityType}>
                       {activityType}
                     </option>
@@ -315,6 +356,13 @@ export function EditItemModal({
                   />
                 </div>
               </div>
+
+              {/* Bell schedule conflict warning */}
+              {bellScheduleConflictWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {bellScheduleConflictWarning}
+                </div>
+              )}
             </>
           )}
 
@@ -323,7 +371,9 @@ export function EditItemModal({
             <div className="bg-red-50 border border-red-200 rounded p-3">
               <p className="text-sm text-red-700">
                 Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : 'activity'}?
-                This action cannot be undone.
+                {type === 'bell'
+                  ? ' This action cannot be undone.'
+                  : ' This will remove the activity from the schedule.'}
               </p>
             </div>
           )}
