@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import { SpecialActivity } from '../../../src/types/database';
 import type { Database } from '../../../src/types/database';
 
@@ -6,7 +7,7 @@ import type { Database } from '../../../src/types/database';
  * Retrieve all special activities at schools where the provider has students.
  * @param schoolId - Optional school ID to filter activities
  */
-export async function getSpecialActivities(schoolId?: string): Promise<SpecialActivity[]> {
+export async function getSpecialActivities(schoolId?: string, schoolYear?: string): Promise<SpecialActivity[]> {
   const supabase = createClient();
 
   // Get current user first - CRITICAL for security
@@ -25,6 +26,10 @@ export async function getSpecialActivities(schoolId?: string): Promise<SpecialAc
   // Filter by school_id if provided
   if (schoolId) {
     query = query.eq('school_id', schoolId);
+  }
+
+  if (schoolYear) {
+    query = query.eq('school_year', schoolYear);
   }
 
   const { data, error } = await query
@@ -65,6 +70,7 @@ export async function addSpecialActivityAsAdmin(
     start_time: string;
     end_time: string;
     school_id: string;
+    school_year?: string;
   }
 ): Promise<SpecialActivity> {
   // Cast to satisfy the type - the internal function handles nulls appropriately
@@ -123,7 +129,8 @@ async function addSpecialActivityInternal(
       created_by_id: user.id,
       created_by_role: role,
       school_site: finalSchoolSite,
-      school_id: finalSchoolId
+      school_id: finalSchoolId,
+      school_year: activity.school_year || getCurrentSchoolYear(),
     })
     .select()
     .single();

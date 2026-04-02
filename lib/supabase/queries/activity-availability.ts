@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 
 export interface TimeRange {
   start: string; // HH:MM format
@@ -90,7 +91,8 @@ const DEFAULT_AVAILABILITY_WITH_TIMES: DayAvailabilityWithTimes = {
  * If an activity type has no row, it's considered available all days.
  */
 export async function getActivityAvailability(
-  schoolId: string
+  schoolId: string,
+  schoolYear?: string
 ): Promise<Map<string, DayAvailability>> {
   const supabase = createClient();
 
@@ -99,10 +101,16 @@ export async function getActivityAvailability(
     throw new Error('User not authenticated');
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('activity_type_availability')
     .select('*')
     .eq('school_id', schoolId);
+
+  if (schoolYear) {
+    query = query.eq('school_year', schoolYear);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error fetching activity availability:', error);
@@ -250,7 +258,8 @@ export async function getActivityTypeAvailabilityWithTimes(
 export async function upsertActivityAvailability(
   schoolId: string,
   activityType: string,
-  availability: DayAvailability
+  availability: DayAvailability,
+  schoolYear?: string
 ): Promise<ActivityAvailability> {
   const supabase = createClient();
 
@@ -271,9 +280,10 @@ export async function upsertActivityAvailability(
         thursday: availability.thursday,
         friday: availability.friday,
         updated_at: new Date().toISOString(),
+        school_year: schoolYear ?? getCurrentSchoolYear(),
       },
       {
-        onConflict: 'school_id,activity_type',
+        onConflict: 'school_id,school_year,activity_type',
       }
     )
     .select()
@@ -293,7 +303,8 @@ export async function upsertActivityAvailability(
 export async function upsertActivityAvailabilityWithTimes(
   schoolId: string,
   activityType: string,
-  availability: DayAvailabilityWithTimes
+  availability: DayAvailabilityWithTimes,
+  schoolYear?: string
 ): Promise<ActivityAvailability> {
   const supabase = createClient();
 
@@ -306,6 +317,7 @@ export async function upsertActivityAvailabilityWithTimes(
   const upsertData: Record<string, unknown> = {
     school_id: schoolId,
     activity_type: activityType,
+    school_year: schoolYear ?? getCurrentSchoolYear(),
     monday: availability.monday.available,
     tuesday: availability.tuesday.available,
     wednesday: availability.wednesday.available,
@@ -343,7 +355,7 @@ export async function upsertActivityAvailabilityWithTimes(
   const { data, error } = await supabase
     .from('activity_type_availability')
     .upsert(upsertData, {
-      onConflict: 'school_id,activity_type',
+      onConflict: 'school_id,school_year,activity_type',
     })
     .select()
     .single();
@@ -404,7 +416,8 @@ export function getDayName(dayOfWeek: number): string {
  * Returns a Map of activity type -> full day availability including time ranges.
  */
 export async function getActivityAvailabilityWithTimeRanges(
-  schoolId: string
+  schoolId: string,
+  schoolYear?: string
 ): Promise<Map<string, FullDayAvailability>> {
   const supabase = createClient();
 
@@ -413,10 +426,16 @@ export async function getActivityAvailabilityWithTimeRanges(
     throw new Error('User not authenticated');
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('activity_type_availability')
     .select('*')
     .eq('school_id', schoolId);
+
+  if (schoolYear) {
+    query = query.eq('school_year', schoolYear);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error fetching activity availability:', error);
@@ -555,7 +574,8 @@ export function checkActivityAvailability(
  * Returns array of activity type names that have availability configured.
  */
 export async function getConfiguredActivityTypes(
-  schoolId: string
+  schoolId: string,
+  schoolYear?: string
 ): Promise<string[]> {
   const supabase = createClient();
 
@@ -564,11 +584,16 @@ export async function getConfiguredActivityTypes(
     throw new Error('User not authenticated');
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('activity_type_availability')
     .select('activity_type')
-    .eq('school_id', schoolId)
-    .order('activity_type');
+    .eq('school_id', schoolId);
+
+  if (schoolYear) {
+    query = query.eq('school_year', schoolYear);
+  }
+
+  const { data, error } = await query.order('activity_type');
 
   if (error) {
     console.error('Error fetching configured activity types:', error);
@@ -584,7 +609,8 @@ export async function getConfiguredActivityTypes(
  */
 export async function deleteActivityAvailability(
   schoolId: string,
-  activityType: string
+  activityType: string,
+  schoolYear?: string
 ): Promise<void> {
   const supabase = createClient();
 
@@ -597,7 +623,8 @@ export async function deleteActivityAvailability(
     .from('activity_type_availability')
     .delete()
     .eq('school_id', schoolId)
-    .eq('activity_type', activityType);
+    .eq('activity_type', activityType)
+    .eq('school_year', schoolYear ?? getCurrentSchoolYear());
 
   if (error) {
     console.error('Error deleting activity availability:', error);

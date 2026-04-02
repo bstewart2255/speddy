@@ -7,7 +7,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableAct
 import { Tag } from '../../../components/ui/tag';
 import AddSpecialActivityForm from '../../../components/special-activities/add-special-activity-form';
 import SpecialActivitiesCSVImport from '../../../components/special-activities/csv-import';
-import { getSpecialActivities, deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
+import { deleteSpecialActivity } from '../../../../lib/supabase/queries/special-activities';
+import { getCurrentSchoolYear } from '../../../../lib/school-year';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '../../../components/providers/school-context';
 import { FilterSelect } from '../../../components/schedule/filter-select';
@@ -68,6 +69,8 @@ export default function SpecialActivitiesPage() {
       if (currentSchool.school_id) {
         query = query.eq('school_id', currentSchool.school_id);
       }
+
+      query = query.eq('school_year', getCurrentSchoolYear());
 
       const { data, error } = await query
         .order('teacher_name', { ascending: true })

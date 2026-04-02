@@ -70,6 +70,7 @@ export interface CreateRotationPairInput {
   school_id: string;
   activity_type_a: string;
   activity_type_b: string;
+  school_year?: string;
 }
 
 export interface CreateRotationGroupInput {
@@ -198,7 +199,8 @@ export async function getRotationPairs(
  * Get all rotation pairs with their groups and members.
  */
 export async function getRotationPairsWithGroups(
-  schoolId: string
+  schoolId: string,
+  schoolYear?: string
 ): Promise<RotationPairWithGroups[]> {
   const supabase = createClient();
 
@@ -207,7 +209,7 @@ export async function getRotationPairsWithGroups(
     throw new Error('User not authenticated');
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('rotation_activity_pairs')
     .select(`
       *,
@@ -223,8 +225,13 @@ export async function getRotationPairsWithGroups(
         )
       )
     `)
-    .eq('school_id', schoolId)
-    .order('created_at', { ascending: false });
+    .eq('school_id', schoolId);
+
+  if (schoolYear) {
+    query = query.eq('school_year', schoolYear);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching rotation pairs with groups:', error);

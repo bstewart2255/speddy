@@ -12,6 +12,9 @@ import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
 import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 import { getRotationPairsWithGroups, type RotationPairWithGroups } from '../../../../../lib/supabase/queries/rotation-groups';
+import { getCurrentSchoolYear, getNextSchoolYear } from '../../../../../lib/school-year';
+import { checkYearHasData, copyScheduleToNextYear } from '../../../../../lib/supabase/queries/school-year-copy';
+import { SchoolYearToggle } from './components/school-year-toggle';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -22,6 +25,13 @@ export default function MasterSchedulePage() {
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [activityAvailability, setActivityAvailability] = useState<Map<string, FullDayAvailability>>(new Map());
   const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
+
+  // School year state
+  const currentYear = getCurrentSchoolYear();
+  const nextYear = getNextSchoolYear();
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(currentYear);
+  const [nextYearHasData, setNextYearHasData] = useState(false);
+  const [initializingYear, setInitializingYear] = useState(false);
 
   // Rotation groups state
   const [rotationPairs, setRotationPairs] = useState<RotationPairWithGroups[]>([]);
@@ -34,37 +44,67 @@ export default function MasterSchedulePage() {
     if (!schoolId) return;
     try {
       const [availability, configuredTypes] = await Promise.all([
-        getActivityAvailabilityWithTimeRanges(schoolId),
-        getConfiguredActivityTypes(schoolId),
+        getActivityAvailabilityWithTimeRanges(schoolId, selectedSchoolYear),
+        getConfiguredActivityTypes(schoolId, selectedSchoolYear),
       ]);
       setActivityAvailability(availability);
       setConfiguredActivityTypes(configuredTypes);
     } catch (err) {
       console.error('Error fetching activity availability:', err);
     }
-  }, [schoolId]);
+  }, [schoolId, selectedSchoolYear]);
 
   // Fetch rotation pairs for the school
   const fetchRotationPairs = useCallback(async () => {
     if (!schoolId) return;
     setRotationPairsLoading(true);
     try {
-      const pairs = await getRotationPairsWithGroups(schoolId);
+      const pairs = await getRotationPairsWithGroups(schoolId, selectedSchoolYear);
       setRotationPairs(pairs);
     } catch (err) {
       console.error('Error fetching rotation pairs:', err);
     } finally {
       setRotationPairsLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, selectedSchoolYear]);
 
-  // Fetch availability and rotation pairs when schoolId changes
+  // Fetch availability and rotation pairs when schoolId or school year changes
   useEffect(() => {
     if (schoolId) {
       fetchActivityAvailability();
       fetchRotationPairs();
     }
   }, [schoolId, fetchActivityAvailability, fetchRotationPairs]);
+
+  // Check if next year has data when schoolId is available
+  useEffect(() => {
+    if (schoolId) {
+      checkYearHasData(schoolId, nextYear)
+        .then(setNextYearHasData)
+        .catch(() => setNextYearHasData(false));
+    }
+  }, [schoolId, nextYear]);
+
+  // Handle initialize next year
+  const handleInitializeNextYear = async () => {
+    if (!schoolId) return;
+    setInitializingYear(true);
+    try {
+      await copyScheduleToNextYear(schoolId, currentYear, nextYear);
+      setNextYearHasData(true);
+      // Refresh data if we're viewing the next year
+      if (selectedSchoolYear === nextYear) {
+        refreshData();
+        fetchActivityAvailability();
+        fetchRotationPairs();
+      }
+    } catch (err: any) {
+      console.error('Error initializing next year:', err);
+      alert(err.message || 'Failed to copy schedule to next year');
+    } finally {
+      setInitializingYear(false);
+    }
+  };
 
   // Handlers for rotation groups modal
   const handleCreateGroups = () => {
@@ -120,7 +160,7 @@ export default function MasterSchedulePage() {
     teachers,
     loading: dataLoading,
     refreshData
-  } = useAdminScheduleData(schoolId);
+  } = useAdminScheduleData(schoolId, selectedSchoolYear);
 
   // Derive available activity types from scheduled activities AND configured types
   const availableActivityTypes = useMemo(() => {
@@ -270,6 +310,18 @@ export default function MasterSchedulePage() {
               </p>
             </div>
 
+            <div className="flex items-center gap-4">
+            {/* School Year Toggle */}
+            <SchoolYearToggle
+              currentYear={currentYear}
+              nextYear={nextYear}
+              selectedYear={selectedSchoolYear}
+              onSelectYear={setSelectedSchoolYear}
+              nextYearHasData={nextYearHasData}
+              onInitializeNextYear={handleInitializeNextYear}
+              initializing={initializingYear}
+            />
+
             {/* View Filter Toggle */}
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               <button
@@ -302,6 +354,7 @@ export default function MasterSchedulePage() {
               >
                 Special Activities
               </button>
+            </div>
             </div>
           </div>
 
@@ -354,6 +407,7 @@ export default function MasterSchedulePage() {
               onEditRotationPair={handleEditPair}
               filterSelectedGrades={selectedGrades}
               teachers={teachers}
+              schoolYear={selectedSchoolYear}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">
@@ -398,6 +452,7 @@ export default function MasterSchedulePage() {
           existingPair={editingPair}
           onClose={handleRotationModalClose}
           onSuccess={handleRotationModalSuccess}
+          schoolYear={selectedSchoolYear}
         />
       )}
     </div>

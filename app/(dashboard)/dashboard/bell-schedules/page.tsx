@@ -8,6 +8,7 @@ import { GradeTag } from '../../../components/ui/tag';
 import AddBellScheduleForm from '../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import';
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
+import { getCurrentSchoolYear } from '../../../../lib/school-year';
 import { useSchool } from '../../../components/providers/school-context';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
@@ -51,7 +52,7 @@ export default function BellSchedulesPage() {
       console.log('Fetching bell schedules for:', currentSchool?.display_name || currentSchool?.school_site);
       console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
 
-      const data = await getBellSchedules(currentSchool || undefined);
+      const data = await getBellSchedules(currentSchool || undefined, getCurrentSchoolYear());
       
       // Fetch last saved timestamp
       const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
