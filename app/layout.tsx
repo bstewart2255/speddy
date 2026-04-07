@@ -40,7 +40,6 @@ export default function RootLayout({
             __html: `
               window.$crisp=[];
               window.CRISP_WEBSITE_ID="23e988ce-802b-4c86-8738-eb8a1d3374b0";
-              window.CRISP_HIDE_ON_LOAD = true;
               (function(){
                 var d=document;
                 var s=d.createElement("script");
@@ -48,13 +47,6 @@ export default function RootLayout({
                 s.async=1;
                 d.getElementsByTagName("head")[0].appendChild(s);
               })();
-
-              // Ensure it's hidden after load
-              setTimeout(() => {
-                if (window.$crisp) {
-                  window.$crisp.push(['do', 'chat:hide']);
-                }
-              }, 2000);
             `,
           }}
         />
