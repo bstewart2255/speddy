@@ -82,7 +82,6 @@ export async function addSpecialActivityAsAdmin(
     deleted_at: null,
     district_id: null,
     school_site: null,
-    state_id: null,
     updated_at: null
   } as unknown as Omit<SpecialActivity, 'id' | 'created_at' | 'provider_id'> & { school_site?: string; school_id?: string };
 

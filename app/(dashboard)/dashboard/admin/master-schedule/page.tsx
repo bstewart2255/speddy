@@ -113,7 +113,9 @@ export default function MasterSchedulePage() {
   };
 
   const handleEditPair = (pair: RotationPairWithGroups) => {
-    setEditingPair(pair);
+    // Always use the unfiltered pair so the edit modal sees all members
+    const fullPair = rotationPairs.find(p => p.id === pair.id) || pair;
+    setEditingPair(fullPair);
     setShowRotationModal(true);
   };
 
@@ -258,21 +260,39 @@ export default function MasterSchedulePage() {
           return false;
         }
 
-        // If teachers are selected, also filter by their grade levels
-        if (selectedTeacherGrades) {
+        // If teachers are selected, filter by their grade levels
+        // If selected teachers have no grade levels, hide bell schedules
+        if (selectedTeacherIds.size > 0) {
+          if (!selectedTeacherGrades) return false;
           return grades.some(g => selectedTeacherGrades.has(g));
         }
 
         return true;
       });
 
-  // Filter rotation pairs by selected activity types and view filter
+  // Filter rotation pairs by selected activity types, teacher selection, and view filter
   const filteredRotationPairs = viewFilter === 'bell'
     ? []
-    : rotationPairs.filter(pair =>
-        selectedActivityTypes.has(pair.activity_type_a) ||
-        selectedActivityTypes.has(pair.activity_type_b)
-      );
+    : rotationPairs
+        .filter(pair =>
+          selectedActivityTypes.has(pair.activity_type_a) ||
+          selectedActivityTypes.has(pair.activity_type_b)
+        )
+        .map(pair => {
+          // If no teachers selected, show all members
+          if (selectedTeacherIds.size === 0) return pair;
+          // Filter groups to only include members matching selected teachers
+          const filteredGroups = pair.groups
+            .map(group => ({
+              ...group,
+              members: group.members.filter(member =>
+                member.teacher_id && selectedTeacherIds.has(member.teacher_id)
+              ),
+            }))
+            .filter(group => group.members.length > 0);
+          return { ...pair, groups: filteredGroups };
+        })
+        .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
 
   const loading = permissionsLoading || dataLoading;
 

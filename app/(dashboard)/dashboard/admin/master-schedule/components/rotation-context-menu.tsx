@@ -8,6 +8,8 @@ interface RotationContextMenuProps {
   teacherName: string;
   activityA: string;
   activityB: string;
+  startTime: string;
+  endTime: string;
   position: { x: number; y: number };
   onClose: () => void;
   onEditSchedule: () => void;
@@ -15,10 +17,21 @@ interface RotationContextMenuProps {
   onRemoveFromRotation: () => void;
 }
 
+function formatTime(time: string): string {
+  const [hourStr, minuteStr] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${hour}:${minuteStr} ${ampm}`;
+}
+
 export function RotationContextMenu({
   teacherName,
   activityA,
   activityB,
+  startTime,
+  endTime,
   position,
   onClose,
   onEditSchedule,
@@ -73,6 +86,7 @@ export function RotationContextMenu({
       <div className="px-3 py-2 border-b border-gray-100">
         <div className="text-xs font-medium text-gray-500 truncate">{teacherName}</div>
         <div className="text-xs text-gray-400 truncate">{activityA} / {activityB}</div>
+        <div className="text-xs text-gray-400">{formatTime(startTime)} – {formatTime(endTime)}</div>
       </div>
 
       {/* Edit this schedule */}
