@@ -73,7 +73,9 @@
       "Bash(git stash:*)",
       "mcp__supabase__list_migrations",
       "mcp__supabase__list_edge_functions",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(gh pr:*)",
+      "Bash(npx next:*)"
     ],
     "deny": []
   },
