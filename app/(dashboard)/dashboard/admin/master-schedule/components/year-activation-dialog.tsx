@@ -30,10 +30,14 @@ export function YearActivationDialog({
   loading,
 }: YearActivationDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
+  const [activeAction, setActiveAction] = useState<'copy' | 'blank' | null>(null);
 
   // Reset to step 1 when dialog opens
   useEffect(() => {
-    if (open) setStep(1);
+    if (open) {
+      setStep(1);
+      setActiveAction(null);
+    }
   }, [open]);
 
   return (
@@ -73,19 +77,19 @@ export function YearActivationDialog({
             <>
               <button
                 type="button"
-                onClick={onActivateBlank}
+                onClick={() => { setActiveAction('blank'); onActivateBlank(); }}
                 disabled={loading}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                {loading ? 'Activating...' : 'No'}
+                {loading && activeAction === 'blank' ? 'Activating...' : 'No'}
               </button>
               <button
                 type="button"
-                onClick={onActivateWithCopy}
+                onClick={() => { setActiveAction('copy'); onActivateWithCopy(); }}
                 disabled={loading}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {loading ? 'Copying...' : 'Yes'}
+                {loading && activeAction === 'copy' ? 'Copying...' : 'Yes'}
               </button>
             </>
           )}

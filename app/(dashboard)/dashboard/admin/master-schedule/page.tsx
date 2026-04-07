@@ -83,7 +83,10 @@ export default function MasterSchedulePage() {
     if (schoolId) {
       checkYearActivated(schoolId, nextYear)
         .then(setNextYearActivated)
-        .catch(() => setNextYearActivated(false));
+        .catch((err) => {
+          console.warn('Failed to check year activation status:', err);
+          setNextYearActivated(false);
+        });
     }
   }, [schoolId, nextYear]);
 
@@ -104,6 +107,18 @@ export default function MasterSchedulePage() {
       setSelectedSchoolYear(nextYear);
     } catch (err: any) {
       console.error('Error activating with copy:', err);
+      // If copy succeeded but activate failed, retry activation
+      if (err.message?.includes('already has data')) {
+        try {
+          await activateSchoolYear(schoolId, nextYear);
+          setNextYearActivated(true);
+          setShowActivationDialog(false);
+          setSelectedSchoolYear(nextYear);
+          return;
+        } catch (activateErr: any) {
+          console.error('Error activating after partial copy:', activateErr);
+        }
+      }
       alert(err.message || 'Failed to copy schedule to next year');
     } finally {
       setActivating(false);

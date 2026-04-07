@@ -23,6 +23,10 @@ export async function checkYearActivated(
     .eq('school_id', schoolId)
     .eq('school_year', schoolYear);
 
+  if (error) {
+    console.warn('Error checking activated_school_years, falling back to data check:', error);
+  }
+
   if (!error && count && count > 0) return true;
 
   // Fall back to checking if year already has data (backward compat)
