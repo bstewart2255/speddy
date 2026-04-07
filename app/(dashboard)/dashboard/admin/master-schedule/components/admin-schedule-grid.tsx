@@ -585,6 +585,8 @@ export function AdminScheduleGrid({
           teacherName={rotationContextMenu.rotation.teacherName}
           activityA={rotationContextMenu.rotation.pair.activity_type_a}
           activityB={rotationContextMenu.rotation.pair.activity_type_b}
+          startTime={rotationContextMenu.rotation.startTime}
+          endTime={rotationContextMenu.rotation.endTime}
           position={rotationContextMenu.position}
           onClose={handleRotationContextMenuClose}
           onEditSchedule={handleEditRotationSchedule}
