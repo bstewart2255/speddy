@@ -8,6 +8,7 @@ DROP POLICY IF EXISTS "special_activities_insert" ON "public"."special_activitie
 
 CREATE POLICY "special_activities_insert" ON "public"."special_activities"
 FOR INSERT
+TO authenticated
 WITH CHECK (
   (provider_id IN (
     SELECT teachers.id FROM teachers WHERE teachers.account_id = (SELECT auth.uid())

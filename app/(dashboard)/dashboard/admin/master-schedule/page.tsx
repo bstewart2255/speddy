@@ -113,7 +113,9 @@ export default function MasterSchedulePage() {
   };
 
   const handleEditPair = (pair: RotationPairWithGroups) => {
-    setEditingPair(pair);
+    // Always use the unfiltered pair so the edit modal sees all members
+    const fullPair = rotationPairs.find(p => p.id === pair.id) || pair;
+    setEditingPair(fullPair);
     setShowRotationModal(true);
   };
 
