@@ -13,8 +13,9 @@ import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
 import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
 import { getRotationPairsWithGroups, type RotationPairWithGroups } from '../../../../../lib/supabase/queries/rotation-groups';
 import { getCurrentSchoolYear, getNextSchoolYear } from '../../../../../lib/school-year';
-import { checkYearHasData, copyScheduleToNextYear } from '../../../../../lib/supabase/queries/school-year-copy';
+import { checkYearActivated, activateSchoolYear, copyScheduleToNextYear } from '../../../../../lib/supabase/queries/school-year-copy';
 import { SchoolYearToggle } from './components/school-year-toggle';
+import { YearActivationDialog } from './components/year-activation-dialog';
 
 type ViewFilter = 'all' | 'bell' | 'activities';
 
@@ -30,8 +31,9 @@ export default function MasterSchedulePage() {
   const currentYear = getCurrentSchoolYear();
   const nextYear = getNextSchoolYear();
   const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(currentYear);
-  const [nextYearHasData, setNextYearHasData] = useState(false);
-  const [initializingYear, setInitializingYear] = useState(false);
+  const [nextYearActivated, setNextYearActivated] = useState(false);
+  const [showActivationDialog, setShowActivationDialog] = useState(false);
+  const [activating, setActivating] = useState(false);
 
   // Rotation groups state
   const [rotationPairs, setRotationPairs] = useState<RotationPairWithGroups[]>([]);
@@ -76,33 +78,52 @@ export default function MasterSchedulePage() {
     }
   }, [schoolId, fetchActivityAvailability, fetchRotationPairs]);
 
-  // Check if next year has data when schoolId is available
+  // Check if next year has been activated when schoolId is available
   useEffect(() => {
     if (schoolId) {
-      checkYearHasData(schoolId, nextYear)
-        .then(setNextYearHasData)
-        .catch(() => setNextYearHasData(false));
+      checkYearActivated(schoolId, nextYear)
+        .then(setNextYearActivated)
+        .catch(() => setNextYearActivated(false));
     }
   }, [schoolId, nextYear]);
 
-  // Handle initialize next year
-  const handleInitializeNextYear = async () => {
+  // Handle clicking the next year button when not yet activated
+  const handleNextYearClick = () => {
+    setShowActivationDialog(true);
+  };
+
+  // Activate with copy: copy all items from current year, then activate
+  const handleActivateWithCopy = async () => {
     if (!schoolId) return;
-    setInitializingYear(true);
+    setActivating(true);
     try {
       await copyScheduleToNextYear(schoolId, currentYear, nextYear);
-      setNextYearHasData(true);
-      // Refresh data if we're viewing the next year
-      if (selectedSchoolYear === nextYear) {
-        refreshData();
-        fetchActivityAvailability();
-        fetchRotationPairs();
-      }
+      await activateSchoolYear(schoolId, nextYear);
+      setNextYearActivated(true);
+      setShowActivationDialog(false);
+      setSelectedSchoolYear(nextYear);
     } catch (err: any) {
-      console.error('Error initializing next year:', err);
+      console.error('Error activating with copy:', err);
       alert(err.message || 'Failed to copy schedule to next year');
     } finally {
-      setInitializingYear(false);
+      setActivating(false);
+    }
+  };
+
+  // Activate blank: activate the year without copying items
+  const handleActivateBlank = async () => {
+    if (!schoolId) return;
+    setActivating(true);
+    try {
+      await activateSchoolYear(schoolId, nextYear);
+      setNextYearActivated(true);
+      setShowActivationDialog(false);
+      setSelectedSchoolYear(nextYear);
+    } catch (err: any) {
+      console.error('Error activating school year:', err);
+      alert(err.message || 'Failed to activate school year');
+    } finally {
+      setActivating(false);
     }
   };
 
@@ -337,9 +358,8 @@ export default function MasterSchedulePage() {
               nextYear={nextYear}
               selectedYear={selectedSchoolYear}
               onSelectYear={setSelectedSchoolYear}
-              nextYearHasData={nextYearHasData}
-              onInitializeNextYear={handleInitializeNextYear}
-              initializing={initializingYear}
+              nextYearActivated={nextYearActivated}
+              onNextYearClick={handleNextYearClick}
             />
 
             {/* View Filter Toggle */}
@@ -463,6 +483,17 @@ export default function MasterSchedulePage() {
           </div>
         </div>
       </div>
+
+      {/* Year Activation Dialog */}
+      <YearActivationDialog
+        open={showActivationDialog}
+        onClose={() => setShowActivationDialog(false)}
+        onActivateWithCopy={handleActivateWithCopy}
+        onActivateBlank={handleActivateBlank}
+        currentYear={currentYear}
+        nextYear={nextYear}
+        loading={activating}
+      />
 
       {/* Rotation Group Modal */}
       {showRotationModal && schoolId && (
