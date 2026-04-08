@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
-import type { StaffWithHours, StaffRole, TeacherOption } from '@/lib/supabase/queries/staff';
+import type { StaffWithHours, StaffRole, TeacherOption, StaffAssignment } from '@/lib/supabase/queries/staff';
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'instructional_assistant', label: 'Instructional Assistant' },
@@ -56,7 +56,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<StaffRole>('instructional_assistant');
   const [program, setProgram] = useState('');
-  const [teacherId, setTeacherId] = useState('');
+  const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(new Set());
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState('');
   const [hours, setHours] = useState<HoursEntry[]>(initHours());
@@ -82,7 +82,13 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
         setLastName(staff.last_name);
         setRole(staff.role as StaffRole);
         setProgram(staff.program || '');
-        setTeacherId(staff.teacher_id || staff.provider_id || '');
+        // Build selected assignees from existing assignments
+        const assigneeIds = new Set<string>();
+        (staff.staff_teacher_assignments || []).forEach(a => {
+          if (a.teacher_id) assigneeIds.add(a.teacher_id);
+          if (a.provider_id) assigneeIds.add(a.provider_id);
+        });
+        setSelectedAssignees(assigneeIds);
         setRoomNumber(staff.room_number || '');
         setStatus(staff.status || '');
         setHours(initHours(staff.staff_hours));
@@ -91,7 +97,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
         setLastName('');
         setRole('instructional_assistant');
         setProgram('');
-        setTeacherId('');
+        setSelectedAssignees(new Set());
         setRoomNumber('');
         setStatus('');
         setHours(initHours());
@@ -169,9 +175,13 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
       // Dynamic import to avoid circular deps
       const { createStaffMember, updateStaffMember } = await import('@/lib/supabase/queries/staff');
 
-      // Determine if selection is a teacher or provider
-      const selectedOption = teachers.find(t => t.id === teacherId);
-      const isProvider = selectedOption?.type === 'provider';
+      // Build assignments from selected assignees
+      const assignments = Array.from(selectedAssignees).map(id => {
+        const option = teachers.find(t => t.id === id);
+        return option?.type === 'provider'
+          ? { provider_id: id }
+          : { teacher_id: id };
+      });
 
       if (isEdit && staff) {
         await updateStaffMember(staff.id, {
@@ -179,11 +189,10 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
           last_name: lastName,
           role,
           program: program || null,
-          teacher_id: isProvider ? null : (teacherId || null),
-          provider_id: isProvider ? teacherId : null,
           room_number: roomNumber || null,
           status: status || null,
           hours: enabledHours,
+          assignments,
         });
       } else {
         await createStaffMember({
@@ -192,11 +201,10 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
           role,
           school_id: schoolId,
           program: program || undefined,
-          teacher_id: isProvider ? undefined : (teacherId || undefined),
-          provider_id: isProvider ? teacherId : undefined,
           room_number: roomNumber || undefined,
           status: status || undefined,
           hours: enabledHours,
+          assignments,
         });
       }
 
@@ -271,53 +279,88 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
             </select>
           </div>
 
-          {/* Program & Teacher */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Program */}
+          <div>
+            <label htmlFor="staff-program" className="block text-sm font-medium text-gray-700 mb-1">
+              Program
+            </label>
+            <input
+              id="staff-program"
+              type="text"
+              value={program}
+              onChange={e => setProgram(e.target.value)}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="e.g. RSP, SDC"
+            />
+          </div>
+
+          {/* Teacher / Provider Assignments */}
+          {teachers.length > 0 && (
             <div>
-              <label htmlFor="staff-program" className="block text-sm font-medium text-gray-700 mb-1">
-                Program
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Assigned Teachers / Providers
               </label>
-              <input
-                id="staff-program"
-                type="text"
-                value={program}
-                onChange={e => setProgram(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. RSP, SDC"
-              />
-            </div>
-            <div>
-              <label htmlFor="staff-teacher" className="block text-sm font-medium text-gray-700 mb-1">
-                Teacher / Provider
-              </label>
-              <select
-                id="staff-teacher"
-                value={teacherId}
-                onChange={e => setTeacherId(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">None</option>
+              <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
                 {teachers.filter(t => t.type === 'teacher').length > 0 && (
-                  <optgroup label="Teachers">
+                  <div>
+                    <div className="px-3 py-1.5 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0">
+                      Teachers
+                    </div>
                     {teachers.filter(t => t.type === 'teacher').map(t => (
-                      <option key={t.id} value={t.id}>
-                        {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'}
-                      </option>
+                      <label key={t.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedAssignees.has(t.id)}
+                          onChange={e => {
+                            setSelectedAssignees(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(t.id);
+                              else next.delete(t.id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'}
+                        </span>
+                      </label>
                     ))}
-                  </optgroup>
+                  </div>
                 )}
                 {teachers.filter(t => t.type === 'provider').length > 0 && (
-                  <optgroup label="Providers">
+                  <div>
+                    <div className="px-3 py-1.5 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0">
+                      Providers
+                    </div>
                     {teachers.filter(t => t.type === 'provider').map(t => (
-                      <option key={t.id} value={t.id}>
-                        {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Provider'}
-                      </option>
+                      <label key={t.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedAssignees.has(t.id)}
+                          onChange={e => {
+                            setSelectedAssignees(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(t.id);
+                              else next.delete(t.id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Provider'}
+                        </span>
+                      </label>
                     ))}
-                  </optgroup>
+                  </div>
                 )}
-              </select>
+              </div>
+              {selectedAssignees.size > 0 && (
+                <p className="mt-1 text-xs text-gray-500">{selectedAssignees.size} selected</p>
+              )}
             </div>
-          </div>
+          )}
 
           {/* Room & Status */}
           <div className="grid grid-cols-2 gap-4">

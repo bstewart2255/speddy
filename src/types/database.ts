@@ -2747,12 +2747,10 @@ export type Database = {
           id: string
           last_name: string
           program: string | null
-          provider_id: string | null
           role: string
           room_number: string | null
           school_id: string
           status: string | null
-          teacher_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2761,12 +2759,10 @@ export type Database = {
           id?: string
           last_name: string
           program?: string | null
-          provider_id?: string | null
           role: string
           room_number?: string | null
           school_id: string
           status?: string | null
-          teacher_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2775,22 +2771,13 @@ export type Database = {
           id?: string
           last_name?: string
           program?: string | null
-          provider_id?: string | null
           role?: string
           room_number?: string | null
           school_id?: string
           status?: string | null
-          teacher_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "staff_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "staff_school_id_fkey"
             columns: ["school_id"]
@@ -2798,11 +2785,50 @@ export type Database = {
             referencedRelation: "schools"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      staff_teacher_assignments: {
+        Row: {
+          id: string
+          staff_id: string
+          teacher_id: string | null
+          provider_id: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          staff_id: string
+          teacher_id?: string | null
+          provider_id?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          staff_id?: string
+          teacher_id?: string | null
+          provider_id?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
           {
-            foreignKeyName: "staff_teacher_id_fkey"
+            foreignKeyName: "staff_teacher_assignments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_teacher_assignments_teacher_id_fkey"
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_teacher_assignments_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

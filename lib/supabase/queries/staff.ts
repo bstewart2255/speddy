@@ -16,10 +16,17 @@ export type TeacherOption = {
   type: 'teacher' | 'provider';
 };
 
+export type StaffAssignment = {
+  id: string;
+  teacher_id: string | null;
+  provider_id: string | null;
+  teachers: { id: string; first_name: string | null; last_name: string | null } | null;
+  profiles: { id: string; full_name: string } | null;
+};
+
 export type StaffWithHours = StaffRow & {
   staff_hours: StaffHoursRow[];
-  teachers: { id: string; first_name: string | null; last_name: string | null } | null;
-  providers: { id: string; full_name: string } | null;
+  staff_teacher_assignments: StaffAssignment[];
 };
 
 export type CreateStaffData = {
@@ -28,11 +35,10 @@ export type CreateStaffData = {
   role: StaffRole;
   school_id: string;
   program?: string;
-  teacher_id?: string;
-  provider_id?: string;
   room_number?: string;
   status?: string;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
+  assignments?: Array<{ teacher_id?: string; provider_id?: string }>;
 };
 
 export type UpdateStaffData = {
@@ -40,11 +46,10 @@ export type UpdateStaffData = {
   last_name?: string;
   role?: StaffRole;
   program?: string | null;
-  teacher_id?: string | null;
-  provider_id?: string | null;
   room_number?: string | null;
   status?: string | null;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
+  assignments?: Array<{ teacher_id?: string; provider_id?: string }>;
 };
 
 // ============================================================================
@@ -64,7 +69,7 @@ export async function getSchoolStaffMembers(schoolId: string): Promise<StaffWith
     async () => {
       const { data, error } = await supabase
         .from('staff')
-        .select('*, staff_hours(*), teachers(id, first_name, last_name), providers:profiles!staff_provider_id_fkey(id, full_name)')
+        .select('*, staff_hours(*), staff_teacher_assignments(id, teacher_id, provider_id, teachers(id, first_name, last_name), profiles:provider_id(id, full_name))')
         .eq('school_id', schoolId)
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true });
@@ -166,7 +171,7 @@ export async function createStaffMember(data: CreateStaffData): Promise<StaffRow
     throw new Error('You do not have permission to add staff at this school');
   }
 
-  const { hours, ...staffData } = data;
+  const { hours, assignments, ...staffData } = data;
 
   const createPerf = measurePerformanceWithAlerts('create_staff_member', 'database');
   const createResult = await safeQuery(
@@ -206,6 +211,25 @@ export async function createStaffMember(data: CreateStaffData): Promise<StaffRow
     if (hoursResult.error) throw hoursResult.error;
   }
 
+  // Insert teacher/provider assignments if provided
+  if (assignments && assignments.length > 0) {
+    const assignmentRows = assignments.map(a => ({
+      staff_id: staff.id,
+      teacher_id: a.teacher_id || null,
+      provider_id: a.provider_id || null,
+    }));
+
+    const assignResult = await safeQuery(
+      async () => {
+        const { error } = await supabase.from('staff_teacher_assignments').insert(assignmentRows);
+        if (error) throw error;
+      },
+      { operation: 'create_staff_assignments', staffId: staff.id }
+    );
+
+    if (assignResult.error) throw assignResult.error;
+  }
+
   return staff;
 }
 
@@ -238,7 +262,7 @@ export async function updateStaffMember(staffId: string, updates: UpdateStaffDat
     throw new Error('You do not have permission to update staff at this school');
   }
 
-  const { hours, ...staffUpdates } = updates;
+  const { hours, assignments, ...staffUpdates } = updates;
 
   // Update staff record
   const updatePerf = measurePerformanceWithAlerts('update_staff_member', 'database');
@@ -292,6 +316,41 @@ export async function updateStaffMember(staffId: string, updates: UpdateStaffDat
       );
 
       if (hoursResult.error) throw hoursResult.error;
+    }
+  }
+
+  // Replace assignments if provided
+  if (assignments !== undefined) {
+    // Delete existing assignments
+    const deleteAssignResult = await safeQuery(
+      async () => {
+        const { error } = await supabase
+          .from('staff_teacher_assignments')
+          .delete()
+          .eq('staff_id', staffId);
+        if (error) throw error;
+      },
+      { operation: 'delete_staff_assignments', staffId }
+    );
+    if (deleteAssignResult.error) throw deleteAssignResult.error;
+
+    // Insert new assignments
+    if (assignments.length > 0) {
+      const assignmentRows = assignments.map(a => ({
+        staff_id: staffId,
+        teacher_id: a.teacher_id || null,
+        provider_id: a.provider_id || null,
+      }));
+
+      const assignResult = await safeQuery(
+        async () => {
+          const { error } = await supabase.from('staff_teacher_assignments').insert(assignmentRows);
+          if (error) throw error;
+        },
+        { operation: 'insert_staff_assignments', staffId }
+      );
+
+      if (assignResult.error) throw assignResult.error;
     }
   }
 

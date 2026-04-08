@@ -128,9 +128,12 @@ export default function StaffDirectoryPage() {
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
     const role = [ROLE_LABELS[s.role as StaffRole] || s.role, s.role.replace(/_/g, ' ')].join(' ').toLowerCase();
     const room = (s.room_number || '').toLowerCase();
-    const teacher = s.teachers ? `${s.teachers.first_name} ${s.teachers.last_name}`.toLowerCase() : '';
-    const provider = s.providers ? (s.providers.full_name || '').toLowerCase() : '';
-    return name.includes(q) || role.includes(q) || room.includes(q) || teacher.includes(q) || provider.includes(q);
+    const assignees = (s.staff_teacher_assignments || []).map(a => {
+      if (a.teachers) return `${a.teachers.first_name} ${a.teachers.last_name}`;
+      if (a.profiles) return a.profiles.full_name || '';
+      return '';
+    }).join(' ').toLowerCase();
+    return name.includes(q) || role.includes(q) || room.includes(q) || assignees.includes(q);
   });
 
   if (loading) {
@@ -232,7 +235,7 @@ export default function StaffDirectoryPage() {
           )}
         </Card>
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -262,12 +265,18 @@ export default function StaffDirectoryPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.program || <span className="text-gray-400 italic">—</span>}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {s.teachers
-                      ? [s.teachers.last_name, s.teachers.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'
-                      : s.providers
-                        ? s.providers.full_name || 'Unnamed Provider'
-                        : <span className="text-gray-400 italic">—</span>}
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {s.staff_teacher_assignments && s.staff_teacher_assignments.length > 0
+                      ? s.staff_teacher_assignments.map(a => {
+                          if (a.teachers) {
+                            return [a.teachers.last_name, a.teachers.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher';
+                          }
+                          if (a.profiles) {
+                            return a.profiles.full_name || 'Unnamed Provider';
+                          }
+                          return null;
+                        }).filter(Boolean).join('; ')
+                      : <span className="text-gray-400 italic">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.room_number || <span className="text-gray-400 italic">—</span>}
