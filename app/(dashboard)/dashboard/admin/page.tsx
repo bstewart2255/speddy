@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   getCurrentAdminPermissions,
@@ -15,6 +15,9 @@ import {
 } from '@/lib/supabase/queries/admin-dashboard';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import type { District, Profile } from '@/src/types/database';
+
+type AdminPermission = Awaited<ReturnType<typeof getCurrentAdminPermissions>>[number];
 
 // Helper functions for Today's Sessions widget
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -203,17 +206,17 @@ function TodaySessionsWidget({
 }
 
 export default function AdminDashboardPage() {
-  const [permissions, setPermissions] = useState<any>(null);
+  const [permissions, setPermissions] = useState<AdminPermission | null>(null);
   const [staffCounts, setStaffCounts] = useState({ teachers: 0, specialists: 0, schools: 0, students: 0 });
-  const [districtInfo, setDistrictInfo] = useState<any>(null);
+  const [districtInfo, setDistrictInfo] = useState<District | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   // Today's Sessions state (site admin only)
   const [todaySessions, setTodaySessions] = useState<SessionWithDetails[]>([]);
   const [isWeekend, setIsWeekend] = useState(false);
   const [todayHoliday, setTodayHoliday] = useState<{ name: string } | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const isDistrictAdmin = permissions?.role === 'district_admin';
 

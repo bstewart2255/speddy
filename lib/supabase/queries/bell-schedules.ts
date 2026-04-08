@@ -252,9 +252,6 @@ export async function deleteGradeSchedules(
  * Intelligently uses school_id for faster queries when available.
  */
 export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: string) {
-  console.log('[getBellSchedules] Called with school:', school);
-  const queryType = school?.school_id ? 'indexed' : 'text-based';
-  console.log('[getBellSchedules] Using', queryType, 'query strategy');
 
   const supabase = createClient<Database>();
 
@@ -269,7 +266,6 @@ export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: s
   }
 
   const user = authResult.data.data.user;
-  console.log('[getBellSchedules] User ID:', user.id);
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_bell_schedules', 'database');
   const fetchResult = await safeQuery(
@@ -283,11 +279,9 @@ export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: s
 
       // Filter by school_id (required for providers to see all school schedules)
       if (school && school.school_id) {
-        console.log('[getBellSchedules] Filtering by school_id:', school.school_id);
         query = query.eq('school_id', school.school_id);
       } else {
         // Fallback: filter by provider_id if no school context
-        console.warn('[getBellSchedules] No school_id - falling back to provider_id filter');
         query = query.eq('provider_id', user.id);
       }
 
@@ -303,18 +297,16 @@ export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: s
       if (error) throw error;
       return data;
     },
-    { 
-      operation: 'fetch_bell_schedules', 
+    {
+      operation: 'fetch_bell_schedules',
       userId: user.id,
       schoolSite: school?.school_site,
       schoolId: school?.school_id,
-      queryType,
-      isMigrated: !!school?.school_id
     }
   );
-  fetchPerf.end({ 
+  fetchPerf.end({
     success: !fetchResult.error,
-    metadata: { queryType, recordCount: fetchResult.data?.length || 0 }
+    metadata: { recordCount: fetchResult.data?.length || 0 }
   });
 
   if (fetchResult.error) {
@@ -322,15 +314,7 @@ export async function getBellSchedules(school?: SchoolIdentifier, schoolYear?: s
     throw fetchResult.error;
   }
 
-  console.log('[getBellSchedules] Results:', fetchResult.data?.length || 0, 'bell schedules found');
-
-  // Add migration hint to results for UI display
-  const results = fetchResult.data || [];
-  if (school?.school_id && results.length > 0) {
-    console.log('[getBellSchedules] Note: Using indexed queries would improve performance');
-  }
-
-  return results;
+  return fetchResult.data || [];
 }
 
 /**
@@ -533,7 +517,6 @@ export async function updateBellScheduleAsAdmin(
  * @returns Array of bell schedules with creator info
  */
 export async function getBellSchedulesForSchool(schoolId: string, schoolYear?: string) {
-  console.log('[getBellSchedulesForSchool] Called with schoolId:', schoolId);
 
   const supabase = createClient<Database>();
 
@@ -548,7 +531,6 @@ export async function getBellSchedulesForSchool(schoolId: string, schoolYear?: s
   }
 
   const user = authResult.data.data.user;
-  console.log('[getBellSchedulesForSchool] User ID:', user.id);
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_school_bell_schedules', 'database');
 
@@ -604,8 +586,6 @@ export async function getBellSchedulesForSchool(schoolId: string, schoolYear?: s
     console.error('[getBellSchedulesForSchool] Query error:', fetchResult.error);
     throw fetchResult.error;
   }
-
-  console.log('[getBellSchedulesForSchool] Results:', fetchResult.data?.length || 0, 'bell schedules found');
 
   // Get creator profiles for display (separate query to avoid join issues during migration)
   const creatorIds = [...new Set((fetchResult.data || [])

@@ -13,6 +13,8 @@ import { Card } from '@/app/components/ui/card';
 import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
 import { StudentScheduleModal } from '@/app/components/admin/student-schedule-modal';
+import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
+import { useToast } from '@/app/contexts/toast-context';
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<AdminStudentView[]>([]);
@@ -22,6 +24,8 @@ export default function AdminStudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [scheduleModalStudent, setScheduleModalStudent] = useState<GroupedStudent | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<GroupedStudent | null>(null);
+  const { showToast } = useToast();
 
   const fetchStudents = async () => {
     try {
@@ -78,36 +82,28 @@ export default function AdminStudentsPage() {
     });
   }, [groupedStudents, searchTerm]);
 
-  const handleDeleteGrouped = async (student: GroupedStudent) => {
-    if (!schoolId) return;
+  const handleDeleteGrouped = (student: GroupedStudent) => {
+    setConfirmDelete(student);
+  };
 
-    const providerCount = student.providerRecords.length;
-    const providerNames = student.providerRecords
-      .map(r => formatRoleLabel(r.specialist_role))
-      .join(', ');
-
-    const confirmMessage = providerCount > 1
-      ? `Are you sure you want to delete student "${student.initials}"? This will remove records for ${providerCount} providers (${providerNames}) and all their scheduled sessions. This action cannot be undone.`
-      : `Are you sure you want to delete student "${student.initials}"? This will also delete all their scheduled sessions. This action cannot be undone.`;
-
-    if (!confirm(confirmMessage)) {
-      return;
-    }
+  const executeDelete = async () => {
+    if (!confirmDelete || !schoolId) return;
 
     try {
-      setDeletingGroupKey(student.groupKey);
+      setDeletingGroupKey(confirmDelete.groupKey);
+      setConfirmDelete(null);
 
       // Delete all provider records for this student
       await Promise.all(
-        student.providerRecords.map(r => deleteStudentAsAdmin(r.id, schoolId))
+        confirmDelete.providerRecords.map(r => deleteStudentAsAdmin(r.id, schoolId))
       );
 
       // Remove all related student records from local state
-      const idsToRemove = new Set(student.providerRecords.map(r => r.id));
+      const idsToRemove = new Set(confirmDelete.providerRecords.map(r => r.id));
       setStudents(prev => prev.filter(s => !idsToRemove.has(s.id)));
     } catch (err) {
       console.error('Error deleting student:', err);
-      alert(err instanceof Error ? err.message : 'Failed to delete student');
+      showToast(err instanceof Error ? err.message : 'Failed to delete student', 'error');
     } finally {
       setDeletingGroupKey(null);
     }
@@ -337,6 +333,23 @@ export default function AdminStudentsPage() {
           schoolId={schoolId}
         />
       )}
+
+      {/* Delete Confirmation */}
+      <ConfirmationModal
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={executeDelete}
+        title="Delete Student"
+        message={
+          confirmDelete
+            ? confirmDelete.providerRecords.length > 1
+              ? `Are you sure you want to delete student "${confirmDelete.initials}"? This will remove records for ${confirmDelete.providerRecords.length} providers (${confirmDelete.providerRecords.map(r => formatRoleLabel(r.specialist_role)).join(', ')}) and all their scheduled sessions. This action cannot be undone.`
+              : `Are you sure you want to delete student "${confirmDelete.initials}"? This will also delete all their scheduled sessions. This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }
