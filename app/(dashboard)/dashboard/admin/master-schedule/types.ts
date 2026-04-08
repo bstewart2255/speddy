@@ -15,3 +15,6 @@ export interface BellScheduleWithCreator {
   creator_name: string;
   is_owner: boolean;
 }
+
+// Re-export from database types for convenience
+export type { YardDutyAssignment } from '@/src/types/database';

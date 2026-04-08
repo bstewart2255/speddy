@@ -27,7 +27,7 @@ export function SchoolYearToggle({
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-1">
         <button
           type="button"
           onClick={() => onSelectYear(currentYear)}

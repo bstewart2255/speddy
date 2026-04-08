@@ -4,10 +4,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
+import { addYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
-import type { Teacher } from '@/src/types/database';
+import type { Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { StaffWithHours } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 
 interface CreateItemModalProps {
@@ -16,12 +18,14 @@ interface CreateItemModalProps {
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
-  defaultTab?: 'bell' | 'activity' | 'dailyTime';
+  defaultTab?: 'bell' | 'activity' | 'dailyTime' | 'yardDuty';
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
   filterSelectedGrades?: Set<string>;
   bellSchedules?: BellScheduleWithCreator[];
   teachers?: Teacher[];
+  staffMembers?: StaffWithHours[];
+  yardDutyAssignments?: YardDutyAssignment[];
   schoolYear?: string;
 }
 
@@ -54,9 +58,11 @@ export function CreateItemModal({
   filterSelectedGrades,
   bellSchedules = [],
   teachers = [],
+  staffMembers = [],
+  yardDutyAssignments = [],
   schoolYear
 }: CreateItemModalProps) {
-  const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime'>(defaultTab);
+  const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime' | 'yardDuty'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -84,6 +90,46 @@ export function CreateItemModal({
   const [customActivityName, setCustomActivityName] = useState('');
   const [activityStartTime, setActivityStartTime] = useState(startTime);
   const [activityEndTime, setActivityEndTime] = useState(() => calculateDefaultEndTime(startTime));
+
+  // Yard duty form state
+  const [ydPeriodName, setYdPeriodName] = useState('');
+  const [ydZoneName, setYdZoneName] = useState('');
+  const [ydDays, setYdDays] = useState<number[]>([day]);
+  const [ydStartTime, setYdStartTime] = useState(startTime);
+  const [ydEndTime, setYdEndTime] = useState(() => calculateDefaultEndTime(startTime, 20));
+  const [ydAssigneeType, setYdAssigneeType] = useState<'teacher' | 'staff' | ''>('');
+  const [ydTeacherId, setYdTeacherId] = useState<string | null>(null);
+  const [ydTeacherName, setYdTeacherName] = useState('');
+  const [ydStaffId, setYdStaffId] = useState<string | null>(null);
+  const [ydStaffName, setYdStaffName] = useState('');
+
+  // Get distinct period names and zone names from existing yard duty assignments for suggestions
+  const existingPeriodNames = useMemo(() => {
+    const names = new Set<string>();
+    yardDutyAssignments.forEach(yd => names.add(yd.period_name));
+    return Array.from(names).sort();
+  }, [yardDutyAssignments]);
+
+  const existingZoneNames = useMemo(() => {
+    const names = new Set<string>();
+    yardDutyAssignments.forEach(yd => {
+      if (yd.zone_name) names.add(yd.zone_name);
+    });
+    return Array.from(names).sort();
+  }, [yardDutyAssignments]);
+
+  const handleYdDayToggle = (dayNum: number) => {
+    setYdDays(prev =>
+      prev.includes(dayNum)
+        ? prev.filter(d => d !== dayNum)
+        : [...prev, dayNum].sort((a, b) => a - b)
+    );
+  };
+
+  const handleYdStartTimeChange = (newStartTime: string) => {
+    setYdStartTime(newStartTime);
+    setYdEndTime(calculateDefaultEndTime(newStartTime, 20));
+  };
 
   // Merge default types with available types (configured + scheduled)
   const allActivityTypes = useMemo(() => {
@@ -279,6 +325,52 @@ export function CreateItemModal({
             }, 'site_admin')
           )
         );
+      } else if (tab === 'yardDuty') {
+        // Validate yard duty
+        if (!ydPeriodName.trim()) {
+          setError('Please enter a duty period name');
+          return;
+        }
+        if (ydDays.length === 0) {
+          setError('Please select at least one day');
+          return;
+        }
+        if (ydEndTime <= ydStartTime) {
+          setError('End time must be after start time');
+          return;
+        }
+        if (!ydAssigneeType) {
+          setError('Please select an assignee');
+          return;
+        }
+        if (ydAssigneeType === 'teacher' && !ydTeacherId) {
+          setError('Please select a teacher');
+          return;
+        }
+        if (ydAssigneeType === 'staff' && !ydStaffId) {
+          setError('Please select a staff member');
+          return;
+        }
+
+        const assigneeName = ydAssigneeType === 'teacher' ? ydTeacherName : ydStaffName;
+
+        setLoading(true);
+        await Promise.all(
+          ydDays.map(selectedDay =>
+            addYardDutyAssignment({
+              school_id: schoolId,
+              period_name: ydPeriodName.trim(),
+              zone_name: ydZoneName.trim() || null,
+              day_of_week: selectedDay,
+              start_time: ydStartTime,
+              end_time: ydEndTime,
+              teacher_id: ydAssigneeType === 'teacher' ? ydTeacherId : null,
+              staff_id: ydAssigneeType === 'staff' ? ydStaffId : null,
+              assignee_name: assigneeName,
+              ...(schoolYear ? { school_year: schoolYear } : {})
+            })
+          )
+        );
       } else {
         // Validate activity
         if (!teacherId) {
@@ -377,6 +469,19 @@ export function CreateItemModal({
             onClick={() => setTab('activity')}
           >
             Special Activity
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === 'yardDuty'}
+            aria-controls="yardDuty-panel"
+            className={`flex-1 px-4 py-3 text-sm font-medium ${
+              tab === 'yardDuty'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setTab('yardDuty')}
+          >
+            Yard Duty
           </button>
           <button
             role="tab"
@@ -492,6 +597,159 @@ export function CreateItemModal({
                     type="time"
                     value={bellEndTime}
                     onChange={(e) => setBellEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </>
+          ) : tab === 'yardDuty' ? (
+            <>
+              {/* Period name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Duty Period
+                </label>
+                <input
+                  type="text"
+                  value={ydPeriodName}
+                  onChange={(e) => setYdPeriodName(e.target.value)}
+                  placeholder="e.g., TK Recess, Before School Duty"
+                  list="period-suggestions"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <datalist id="period-suggestions">
+                  {existingPeriodNames.map(name => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Zone name (optional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Zone / Location <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={ydZoneName}
+                  onChange={(e) => setYdZoneName(e.target.value)}
+                  placeholder="e.g., Basketball & Blacktop, Playstructure"
+                  list="zone-suggestions"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <datalist id="zone-suggestions">
+                  {existingZoneNames.map(name => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Assignee type selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Assign To
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setYdAssigneeType('teacher'); setYdStaffId(null); setYdStaffName(''); }}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      ydAssigneeType === 'teacher'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Teacher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setYdAssigneeType('staff'); setYdTeacherId(null); setYdTeacherName(''); }}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      ydAssigneeType === 'staff'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Staff
+                  </button>
+                </div>
+
+                {ydAssigneeType === 'teacher' && (
+                  <TeacherAutocomplete
+                    value={ydTeacherId}
+                    teacherName={ydTeacherName}
+                    onChange={(id, name) => { setYdTeacherId(id); setYdTeacherName(name || ''); }}
+                    placeholder="Search for a teacher..."
+                  />
+                )}
+
+                {ydAssigneeType === 'staff' && (
+                  <select
+                    value={ydStaffId || ''}
+                    onChange={(e) => {
+                      const selected = staffMembers.find(s => s.id === e.target.value);
+                      setYdStaffId(e.target.value || null);
+                      setYdStaffName(selected ? `${selected.first_name} ${selected.last_name}` : '');
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select staff member...</option>
+                    {staffMembers.map(staff => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.first_name} {staff.last_name} ({staff.role === 'instructional_assistant' ? 'IA' : staff.role === 'supervisor' ? 'Supervisor' : 'Office'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Day selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Day(s)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.map((dayName, index) => {
+                    const dayNum = index + 1;
+                    return (
+                      <button
+                        key={dayName}
+                        type="button"
+                        onClick={() => handleYdDayToggle(dayNum)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                          ydDays.includes(dayNum)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {dayName.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={ydStartTime}
+                    onChange={(e) => handleYdStartTimeChange(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={ydEndTime}
+                    onChange={(e) => setYdEndTime(e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>

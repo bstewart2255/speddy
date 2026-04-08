@@ -98,6 +98,11 @@ export async function checkYearHasData(
       .select('id', { count: 'exact', head: true })
       .eq('school_id', schoolId)
       .eq('school_year', schoolYear),
+    supabase
+      .from('yard_duty_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('school_year', schoolYear),
   ]);
 
   for (const result of checks) {
@@ -116,7 +121,7 @@ export async function copyScheduleToNextYear(
   schoolId: string,
   fromYear: string,
   toYear: string
-): Promise<{ bell_schedules: number; special_activities: number; activity_type_availability: number; rotation_pairs: number; rotation_groups: number; rotation_group_members: number }> {
+): Promise<{ bell_schedules: number; special_activities: number; activity_type_availability: number; rotation_pairs: number; rotation_groups: number; rotation_group_members: number; yard_duty_assignments: number }> {
   const supabase = createClient();
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();

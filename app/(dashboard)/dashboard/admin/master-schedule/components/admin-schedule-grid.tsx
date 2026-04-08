@@ -10,7 +10,8 @@ import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity, Teacher } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { StaffWithHours } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { RotationPairWithGroups, RotationGroupMemberWithTeacher } from '../../../../../../lib/supabase/queries/rotation-groups';
@@ -24,7 +25,7 @@ interface AdminScheduleGridProps {
   allSpecialActivities?: SpecialActivity[]; // All activities for conflict detection
   schoolId: string | null;
   onRefresh: () => Promise<void>;
-  viewFilter?: 'all' | 'bell' | 'activities';
+  viewFilter?: 'all' | 'bell' | 'activities' | 'yard-duty';
   showDailyTimes?: boolean;
   allBellSchedules?: BellScheduleWithCreator[];
   activityAvailability?: Map<string, FullDayAvailability>;
@@ -33,6 +34,8 @@ interface AdminScheduleGridProps {
   onEditRotationPair?: (pair: RotationPairWithGroups) => void;
   filterSelectedGrades?: Set<string>;
   teachers?: Teacher[];
+  staffMembers?: StaffWithHours[];
+  yardDutyAssignments?: YardDutyAssignment[];
   schoolYear?: string;
 }
 
@@ -72,6 +75,7 @@ const ACTIVITY_COLOR_MAP: Record<string, string> = {
 };
 
 const DEFAULT_ACTIVITY_COLOR = 'bg-gray-200 border-gray-400';
+const YARD_DUTY_COLOR = 'bg-amber-200 border-amber-400';
 
 // Grid configuration
 const GRID_CONFIG = {
@@ -162,6 +166,8 @@ export function AdminScheduleGrid({
   onEditRotationPair,
   filterSelectedGrades,
   teachers = [],
+  staffMembers = [],
+  yardDutyAssignments = [],
   schoolYear,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
@@ -170,8 +176,8 @@ export function AdminScheduleGrid({
   } | null>(null);
 
   const [editModal, setEditModal] = useState<{
-    type: 'bell' | 'activity';
-    item: BellScheduleWithCreator | SpecialActivity;
+    type: 'bell' | 'activity' | 'yard-duty';
+    item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment;
   } | null>(null);
 
   // Context menu state for rotation items
@@ -278,7 +284,7 @@ export function AdminScheduleGrid({
   }, []);
 
   // Handle item click for edit
-  const handleItemClick = useCallback((type: 'bell' | 'activity', item: BellScheduleWithCreator | SpecialActivity) => {
+  const handleItemClick = useCallback((type: 'bell' | 'activity' | 'yard-duty', item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment) => {
     setEditModal({ type, item });
   }, []);
 
@@ -401,11 +407,12 @@ export function AdminScheduleGrid({
             );
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
             const dayRotations = rotationGridItems.filter(r => r.dayOfWeek === dayNumber);
+            const dayYardDuty = yardDutyAssignments.filter(yd => yd.day_of_week === dayNumber);
 
             // Calculate overlaps for this day
             const bellOverlaps = calculateOverlaps(dayBellSchedules);
 
-            // Combine activities and rotations for overlap calculation
+            // Combine activities, rotations, and yard duty for overlap calculation
             const allActivityItems = [
               ...dayActivities.map(a => ({
                 id: a.id,
@@ -418,6 +425,12 @@ export function AdminScheduleGrid({
                 start_time: r.startTime,
                 end_time: r.endTime,
                 type: 'rotation' as const,
+              })),
+              ...dayYardDuty.map(yd => ({
+                id: yd.id,
+                start_time: yd.start_time,
+                end_time: yd.end_time,
+                type: 'yard-duty' as const,
               })),
             ];
             const combinedOverlaps = calculateOverlaps(allActivityItems);
@@ -540,6 +553,30 @@ export function AdminScheduleGrid({
                       />
                     );
                   })}
+
+                  {/* Yard duty assignments */}
+                  {dayYardDuty.map((yd) => {
+                    if (!yd.start_time || !yd.end_time) return null;
+                    const top = timeToPixels(yd.start_time);
+                    const height = calculateHeight(yd.start_time, yd.end_time);
+                    const overlap = combinedOverlaps.get(yd.id);
+                    const sublabel = [yd.period_name, yd.zone_name].filter(Boolean).join(' - ');
+
+                    return (
+                      <ScheduleItem
+                        key={yd.id}
+                        type="activity"
+                        label={yd.assignee_name}
+                        sublabel={sublabel}
+                        top={top}
+                        height={height}
+                        colorClass={YARD_DUTY_COLOR}
+                        onClick={() => handleItemClick('yard-duty', yd)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -555,12 +592,14 @@ export function AdminScheduleGrid({
           schoolId={schoolId}
           onClose={handleModalClose}
           onSuccess={handleModalSuccess}
-          defaultTab={viewFilter === 'activities' ? 'activity' : 'bell'}
+          defaultTab={viewFilter === 'yard-duty' ? 'yardDuty' : viewFilter === 'activities' ? 'activity' : 'bell'}
           activityAvailability={activityAvailability}
           availableActivityTypes={availableActivityTypes}
           filterSelectedGrades={filterSelectedGrades}
           bellSchedules={allBellSchedules}
           teachers={teachers}
+          staffMembers={staffMembers}
+          yardDutyAssignments={yardDutyAssignments}
           schoolYear={schoolYear}
         />
       )}
@@ -576,6 +615,7 @@ export function AdminScheduleGrid({
           availableActivityTypes={availableActivityTypes}
           bellSchedules={allBellSchedules}
           teachers={teachers}
+          yardDutyAssignments={yardDutyAssignments}
         />
       )}
 
