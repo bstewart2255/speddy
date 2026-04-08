@@ -100,6 +100,7 @@ export default function Navbar() {
       ];
     } else if (role === 'site_admin') {
       // Site admins see their dashboard, master schedule, teacher/provider/staff directories, students, and CARE
+      // Bell Schedules omitted — bell schedule items are shown within Master Schedule
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Master Schedule', href: '/dashboard/admin/master-schedule' },

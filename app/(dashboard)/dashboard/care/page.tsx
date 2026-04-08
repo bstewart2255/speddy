@@ -10,6 +10,7 @@ import { CareReferral, getTeacherByAccountId } from '@/lib/supabase/queries/care
 import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/queries/care-cases';
 import { createClient } from '@/lib/supabase/client';
 import type { CareStatus } from '@/lib/constants/care';
+import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
 
 type TabType = 'pending' | 'active' | 'initial' | 'closed' | 'assigned_to_me';
 
@@ -91,6 +92,7 @@ export default function CareDashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [confirmDeleteReferral, setConfirmDeleteReferral] = useState<CareReferral | null>(null);
 
   // Fetch assignable users when school changes
   useEffect(() => {
@@ -138,18 +140,24 @@ export default function CareDashboardPage() {
   );
 
   const handleDeleteReferral = useCallback(
-    async (referral: CareReferral) => {
-      if (!confirm('Are you sure you want to delete this referral? This action cannot be undone.')) {
-        return;
-      }
+    (referral: CareReferral) => {
+      setConfirmDeleteReferral(referral);
+    },
+    []
+  );
+
+  const executeDeleteReferral = useCallback(
+    async () => {
+      if (!confirmDeleteReferral) return;
+      setConfirmDeleteReferral(null);
       setActionError(null);
       try {
-        await deleteReferral(referral.id);
+        await deleteReferral(confirmDeleteReferral.id);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : 'Failed to delete referral');
       }
     },
-    [deleteReferral]
+    [confirmDeleteReferral, deleteReferral]
   );
 
   const handleReferralClick = useCallback(
@@ -351,6 +359,17 @@ export default function CareDashboardPage() {
         onClose={() => setShowAddModal(false)}
         onSubmit={handleAddReferral}
         lockedTeacher={isTeacher && teacherRecord ? teacherRecord : undefined}
+      />
+
+      {/* Delete Referral Confirmation */}
+      <ConfirmationModal
+        isOpen={!!confirmDeleteReferral}
+        onClose={() => setConfirmDeleteReferral(null)}
+        onConfirm={executeDeleteReferral}
+        title="Delete Referral"
+        message="Are you sure you want to delete this referral? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
       />
     </div>
   );
