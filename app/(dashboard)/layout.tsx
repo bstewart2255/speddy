@@ -8,6 +8,7 @@ import Footer from '../components/navigation/footer';
 import { DashboardErrorBoundary, AsyncErrorBoundary } from '../components/ui/dashboard-error-boundary';
 import { SchoolProvider } from '../components/providers/school-context';
 import { CrispUserIdentifier } from '../components/crisp-user-identifier';
+import { ToastProvider } from '../contexts/toast-context';
 import { log } from '@/lib/monitoring/logger';
 
 export default function DashboardLayout({
@@ -64,18 +65,20 @@ export default function DashboardLayout({
     >
       <AsyncErrorBoundary>
         <SchoolProvider>
-          <div className="min-h-screen bg-gray-50 flex flex-col">
-            <DashboardErrorBoundary>
-              <Navbar />
-            </DashboardErrorBoundary>
-            <CrispUserIdentifier />
-            <main className="flex-1 max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
+          <ToastProvider>
+            <div className="min-h-screen bg-gray-50 flex flex-col">
               <DashboardErrorBoundary>
-                {children}
+                <Navbar />
               </DashboardErrorBoundary>
-            </main>
-            <Footer />
-          </div>
+              <CrispUserIdentifier />
+              <main className="flex-1 max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
+                <DashboardErrorBoundary>
+                  {children}
+                </DashboardErrorBoundary>
+              </main>
+              <Footer />
+            </div>
+          </ToastProvider>
         </SchoolProvider>
       </AsyncErrorBoundary>
     </DashboardErrorBoundary>

@@ -7,7 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableAct
 import { GradeTag } from '../../../../components/ui/tag';
 import AddBellScheduleForm from '../../../../components/bell-schedules/add-bell-schedule-form';
 import BellScheduleCSVImport from '../../../../components/bell-schedules/csv-import';
-import { getBellSchedulesForSchool, deleteBellSchedule } from '../../../../../lib/supabase/queries/bell-schedules';
+import { getBellSchedulesForSchool, deleteBellScheduleAsAdmin } from '../../../../../lib/supabase/queries/bell-schedules';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 
 type BellScheduleRow = Awaited<ReturnType<typeof getBellSchedulesForSchool>>[number];
@@ -89,11 +89,15 @@ export default function SiteAdminBellSchedulesPage() {
 
   const executeDelete = async () => {
     if (!confirmDelete) return;
+    if (!schoolId) {
+      showToast('Missing school context', 'error');
+      return;
+    }
 
     try {
       setDeletingId(confirmDelete.id);
       setConfirmDelete(null);
-      await deleteBellSchedule(confirmDelete.id);
+      await deleteBellScheduleAsAdmin(confirmDelete.id, schoolId);
       await fetchSchedules();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to delete bell schedule', 'error');
