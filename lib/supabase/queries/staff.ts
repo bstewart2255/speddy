@@ -110,6 +110,9 @@ export async function getSchoolTeacherOptions(schoolId: string): Promise<Teacher
 
 // ============================================================================
 // CREATE STAFF MEMBER
+// TODO: Wrap staff + hours mutations in a single Postgres RPC function
+// for atomicity. Currently split across multiple HTTP requests — if hours
+// insert fails, a partial staff record is left behind. (#582 review item)
 // ============================================================================
 
 export async function createStaffMember(data: CreateStaffData): Promise<StaffRow> {
@@ -216,7 +219,7 @@ export async function updateStaffMember(staffId: string, updates: UpdateStaffDat
   // Replace hours if provided
   if (hours !== undefined) {
     // Delete existing hours
-    await safeQuery(
+    const deleteHoursResult = await safeQuery(
       async () => {
         const { error } = await supabase
           .from('staff_hours')
@@ -226,6 +229,7 @@ export async function updateStaffMember(staffId: string, updates: UpdateStaffDat
       },
       { operation: 'delete_staff_hours', staffId }
     );
+    if (deleteHoursResult.error) throw deleteHoursResult.error;
 
     // Insert new hours
     if (hours.length > 0) {

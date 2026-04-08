@@ -271,7 +271,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
                 <option value="">None</option>
                 {teachers.map(t => (
                   <option key={t.id} value={t.id}>
-                    {t.last_name}, {t.first_name}
+                    {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'}
                   </option>
                 ))}
               </select>

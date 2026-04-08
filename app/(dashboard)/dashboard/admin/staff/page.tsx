@@ -126,7 +126,7 @@ export default function StaffDirectoryPage() {
     if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
-    const role = (ROLE_LABELS[s.role as StaffRole] || s.role).toLowerCase();
+    const role = [ROLE_LABELS[s.role as StaffRole] || s.role, s.role.replace(/_/g, ' ')].join(' ').toLowerCase();
     const room = (s.room_number || '').toLowerCase();
     const teacher = s.teachers ? `${s.teachers.first_name} ${s.teachers.last_name}`.toLowerCase() : '';
     return name.includes(q) || role.includes(q) || room.includes(q) || teacher.includes(q);
@@ -263,7 +263,7 @@ export default function StaffDirectoryPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.teachers
-                      ? `${s.teachers.last_name}, ${s.teachers.first_name}`
+                      ? [s.teachers.last_name, s.teachers.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'
                       : <span className="text-gray-400 italic">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -84,11 +84,12 @@ CREATE TABLE IF NOT EXISTS public.staff_hours (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   staff_id UUID NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
   day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 5),
-  start_time TEXT NOT NULL,
-  end_time TEXT NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(staff_id, day_of_week)
+  UNIQUE(staff_id, day_of_week),
+  CHECK (start_time < end_time)
 );
 
 CREATE INDEX IF NOT EXISTS idx_staff_hours_staff_id ON staff_hours(staff_id);
