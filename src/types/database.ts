@@ -2787,52 +2787,6 @@ export type Database = {
           },
         ]
       }
-      staff_teacher_assignments: {
-        Row: {
-          id: string
-          staff_id: string
-          teacher_id: string | null
-          provider_id: string | null
-          created_at: string | null
-        }
-        Insert: {
-          id?: string
-          staff_id: string
-          teacher_id?: string | null
-          provider_id?: string | null
-          created_at?: string | null
-        }
-        Update: {
-          id?: string
-          staff_id?: string
-          teacher_id?: string | null
-          provider_id?: string | null
-          created_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "staff_teacher_assignments_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_teacher_assignments_teacher_id_fkey"
-            columns: ["teacher_id"]
-            isOneToOne: false
-            referencedRelation: "teachers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_teacher_assignments_provider_id_fkey"
-            columns: ["provider_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       staff_hours: {
         Row: {
           created_at: string | null
@@ -2867,6 +2821,52 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_teacher_assignments: {
+        Row: {
+          created_at: string | null
+          id: string
+          provider_id: string | null
+          staff_id: string
+          teacher_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          provider_id?: string | null
+          staff_id: string
+          teacher_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          provider_id?: string | null
+          staff_id?: string
+          teacher_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_teacher_assignments_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_teacher_assignments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_teacher_assignments_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
             referencedColumns: ["id"]
           },
         ]
@@ -3478,6 +3478,79 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "unmatched_student_teachers"
             referencedColumns: ["student_id"]
+          },
+        ]
+      }
+      yard_duty_assignments: {
+        Row: {
+          assignee_name: string
+          created_at: string | null
+          created_by_id: string
+          day_of_week: number
+          end_time: string
+          id: string
+          period_name: string
+          school_id: string
+          school_year: string
+          staff_id: string | null
+          start_time: string
+          teacher_id: string | null
+          updated_at: string | null
+          zone_name: string | null
+        }
+        Insert: {
+          assignee_name: string
+          created_at?: string | null
+          created_by_id: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          period_name: string
+          school_id: string
+          school_year: string
+          staff_id?: string | null
+          start_time: string
+          teacher_id?: string | null
+          updated_at?: string | null
+          zone_name?: string | null
+        }
+        Update: {
+          assignee_name?: string
+          created_at?: string | null
+          created_by_id?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          period_name?: string
+          school_id?: string
+          school_year?: string
+          staff_id?: string | null
+          start_time?: string
+          teacher_id?: string | null
+          updated_at?: string | null
+          zone_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yard_duty_assignments_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yard_duty_assignments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yard_duty_assignments_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4188,6 +4261,7 @@ export type District = Database['public']['Tables']['districts']['Row'];
 export type Teacher = Database['public']['Tables']['teachers']['Row'];
 export type Staff = Database['public']['Tables']['staff']['Row'];
 export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
+export type YardDutyAssignment = Database['public']['Tables']['yard_duty_assignments']['Row'];
 
 // CARE module types
 export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];

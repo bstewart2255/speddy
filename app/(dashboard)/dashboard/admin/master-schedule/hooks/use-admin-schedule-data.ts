@@ -2,13 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { getBellSchedulesForSchool } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { getSpecialActivities } from '../../../../../../lib/supabase/queries/special-activities';
 import { getTeachers } from '../../../../../../lib/supabase/queries/teachers';
-import type { SpecialActivity, Teacher } from '@/src/types/database';
+import { getYardDutyAssignments } from '../../../../../../lib/supabase/queries/yard-duty';
+import { getSchoolStaffMembers } from '../../../../../../lib/supabase/queries/staff';
+import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { StaffWithHours } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 
 interface UseAdminScheduleDataReturn {
   bellSchedules: BellScheduleWithCreator[];
   specialActivities: SpecialActivity[];
   teachers: Teacher[];
+  yardDutyAssignments: YardDutyAssignment[];
+  staffMembers: StaffWithHours[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
@@ -18,6 +23,8 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
   const [bellSchedules, setBellSchedules] = useState<BellScheduleWithCreator[]>([]);
   const [specialActivities, setSpecialActivities] = useState<SpecialActivity[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [yardDutyAssignments, setYardDutyAssignments] = useState<YardDutyAssignment[]>([]);
+  const [staffMembers, setStaffMembers] = useState<StaffWithHours[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,16 +38,31 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel
+      // Fetch core schedule data in parallel
       const [bellScheduleData, activityData, teacherData] = await Promise.all([
         getBellSchedulesForSchool(schoolId, schoolYear),
         getSpecialActivities(schoolId, schoolYear),
-        getTeachers(schoolId)
+        getTeachers(schoolId),
       ]);
 
       setBellSchedules(bellScheduleData || []);
       setSpecialActivities(activityData || []);
       setTeachers(teacherData || []);
+
+      // Fetch yard duty and staff separately so permission errors don't block core data
+      let yardDutyData: YardDutyAssignment[] = [];
+      let staffData: StaffWithHours[] = [];
+      try {
+        [yardDutyData, staffData] = await Promise.all([
+          getYardDutyAssignments(schoolId, schoolYear),
+          getSchoolStaffMembers(schoolId),
+        ]);
+      } catch (err) {
+        console.warn('Unable to fetch yard duty/staff data:', err);
+      }
+
+      setYardDutyAssignments(yardDutyData || []);
+      setStaffMembers(staffData || []);
     } catch (err) {
       console.error('Error fetching schedule data:', err);
       setError('Failed to load schedule data');
@@ -57,6 +79,8 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
     bellSchedules,
     specialActivities,
     teachers,
+    yardDutyAssignments,
+    staffMembers,
     loading,
     error,
     refreshData: fetchData

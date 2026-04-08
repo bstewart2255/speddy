@@ -4,19 +4,21 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
+import { updateYardDutyAssignment, deleteYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
 import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
-import type { SpecialActivity, Teacher } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
-  type: 'bell' | 'activity';
-  item: BellScheduleWithCreator | SpecialActivity;
+  type: 'bell' | 'activity' | 'yard-duty';
+  item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment;
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
   availableActivityTypes?: string[];
   bellSchedules?: BellScheduleWithCreator[];
   teachers?: Teacher[];
+  yardDutyAssignments?: YardDutyAssignment[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -39,7 +41,8 @@ export function EditItemModal({
   onSuccess,
   availableActivityTypes = [],
   bellSchedules = [],
-  teachers = []
+  teachers = [],
+  yardDutyAssignments = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,28 @@ export function EditItemModal({
   const [bellPeriodName, setBellPeriodName] = useState(bellSchedule?.period_name || '');
   const [bellStartTime, setBellStartTime] = useState(bellSchedule?.start_time || '');
   const [bellEndTime, setBellEndTime] = useState(bellSchedule?.end_time || '');
+
+  // Form state for yard duty
+  const yardDuty = type === 'yard-duty' ? item as YardDutyAssignment : null;
+  const [ydPeriodName, setYdPeriodName] = useState(yardDuty?.period_name || '');
+  const [ydZoneName, setYdZoneName] = useState(yardDuty?.zone_name || '');
+  const [ydStartTime, setYdStartTime] = useState(yardDuty?.start_time || '');
+  const [ydEndTime, setYdEndTime] = useState(yardDuty?.end_time || '');
+
+  // Get existing period/zone names for datalist suggestions
+  const existingPeriodNames = useMemo(() => {
+    const names = new Set<string>();
+    yardDutyAssignments.forEach(yd => names.add(yd.period_name));
+    return Array.from(names).sort();
+  }, [yardDutyAssignments]);
+
+  const existingZoneNames = useMemo(() => {
+    const names = new Set<string>();
+    yardDutyAssignments.forEach(yd => {
+      if (yd.zone_name) names.add(yd.zone_name);
+    });
+    return Array.from(names).sort();
+  }, [yardDutyAssignments]);
 
   // Check if activity conflicts with a bell schedule for the teacher's grade
   const bellScheduleConflictWarning = useMemo(() => {
@@ -122,6 +147,8 @@ export function EditItemModal({
     try {
       if (type === 'bell') {
         await deleteBellScheduleAsAdmin(item.id, schoolId);
+      } else if (type === 'yard-duty') {
+        await deleteYardDutyAssignment(item.id, schoolId);
       } else {
         await deleteSpecialActivityAsAdmin(item.id, schoolId);
       }
@@ -195,6 +222,33 @@ export function EditItemModal({
     }
   };
 
+  const handleYardDutyUpdate = async () => {
+    if (type !== 'yard-duty') return;
+
+    if (ydStartTime && ydEndTime && ydStartTime >= ydEndTime) {
+      setError('End time must be after start time');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      await updateYardDutyAssignment(item.id, schoolId, {
+        period_name: ydPeriodName,
+        zone_name: ydZoneName || null,
+        start_time: ydStartTime,
+        end_time: ydEndTime,
+      });
+      onSuccess();
+    } catch (err: any) {
+      console.error('Error updating yard duty assignment:', err);
+      setError(err.message || 'Failed to update yard duty assignment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatTime = (time: string | null): string => {
     if (!time) return '';
     const [hours, minutes] = time.split(':').map(Number);
@@ -220,7 +274,7 @@ export function EditItemModal({
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 id={headingId} className="text-lg font-semibold text-gray-900">
-            {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : 'Special Activity'}
+            {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : type === 'yard-duty' ? 'Yard Duty' : 'Special Activity'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
             {dayName} at {formatTime(item.start_time || null)}
@@ -302,6 +356,83 @@ export function EditItemModal({
             </>
           )}
 
+          {type === 'yard-duty' && yardDuty && (
+            <>
+              {/* Assignee (read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assigned To
+                </label>
+                <p className="text-sm text-gray-900">{yardDuty.assignee_name}</p>
+              </div>
+
+              {/* Period name (editable) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Duty Period
+                </label>
+                <input
+                  type="text"
+                  value={ydPeriodName}
+                  onChange={(e) => setYdPeriodName(e.target.value)}
+                  list="edit-period-suggestions"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <datalist id="edit-period-suggestions">
+                  {existingPeriodNames.map(name => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Zone name (editable) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Zone / Location
+                </label>
+                <input
+                  type="text"
+                  value={ydZoneName}
+                  onChange={(e) => setYdZoneName(e.target.value)}
+                  placeholder="Optional"
+                  list="edit-zone-suggestions"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <datalist id="edit-zone-suggestions">
+                  {existingZoneNames.map(name => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+
+              {/* Times (editable) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={ydStartTime}
+                    onChange={(e) => setYdStartTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={ydEndTime}
+                    onChange={(e) => setYdEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           {type === 'activity' && activity && (
             <>
               {/* Teacher (read-only) */}
@@ -370,9 +501,11 @@ export function EditItemModal({
           {confirmDelete && (
             <div className="bg-red-50 border border-red-200 rounded p-3">
               <p className="text-sm text-red-700">
-                Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : 'activity'}?
+                Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : type === 'yard-duty' ? 'yard duty assignment' : 'activity'}?
                 {type === 'bell'
                   ? ' This action cannot be undone.'
+                  : type === 'yard-duty'
+                  ? ' This will remove the assignment from the schedule.'
                   : ' This will remove the activity from the schedule.'}
               </p>
             </div>
@@ -400,6 +533,11 @@ export function EditItemModal({
             )}
             {type === 'activity' && (
               <Button variant="primary" onClick={handleUpdate} disabled={loading}>
+                {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
+              </Button>
+            )}
+            {type === 'yard-duty' && (
+              <Button variant="primary" onClick={handleYardDutyUpdate} disabled={loading}>
                 {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
               </Button>
             )}

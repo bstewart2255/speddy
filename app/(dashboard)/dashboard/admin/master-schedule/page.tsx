@@ -17,7 +17,7 @@ import { checkYearActivated, activateSchoolYear, copyScheduleToNextYear } from '
 import { SchoolYearToggle } from './components/school-year-toggle';
 import { YearActivationDialog } from './components/year-activation-dialog';
 
-type ViewFilter = 'all' | 'bell' | 'activities';
+type ViewFilter = 'all' | 'bell' | 'activities' | 'yard-duty';
 
 export default function MasterSchedulePage() {
   const [schoolId, setSchoolId] = useState<string | null>(null);
@@ -196,6 +196,8 @@ export default function MasterSchedulePage() {
     bellSchedules,
     specialActivities,
     teachers,
+    yardDutyAssignments,
+    staffMembers,
     loading: dataLoading,
     refreshData
   } = useAdminScheduleData(schoolId, selectedSchoolYear);
@@ -268,7 +270,7 @@ export default function MasterSchedulePage() {
   }, [selectedTeacherIds, teachers]);
 
   // Filter special activities by selected teachers, activity types, and view filter
-  const filteredActivities = viewFilter === 'bell'
+  const filteredActivities = (viewFilter === 'bell' || viewFilter === 'yard-duty')
     ? []
     : specialActivities.filter(activity => {
         // Filter by activity type
@@ -284,7 +286,7 @@ export default function MasterSchedulePage() {
 
   // Filter bell schedules by selected grades and view filter
   // When teachers are selected, also filter by their grade levels
-  const filteredBellSchedules = viewFilter === 'activities'
+  const filteredBellSchedules = (viewFilter === 'activities' || viewFilter === 'yard-duty')
     ? []
     : bellSchedules.filter(schedule => {
         if (!schedule.grade_level) return false;
@@ -307,7 +309,7 @@ export default function MasterSchedulePage() {
       });
 
   // Filter rotation pairs by selected activity types, teacher selection, and view filter
-  const filteredRotationPairs = viewFilter === 'bell'
+  const filteredRotationPairs = (viewFilter === 'bell' || viewFilter === 'yard-duty')
     ? []
     : rotationPairs
         .filter(pair =>
@@ -329,6 +331,16 @@ export default function MasterSchedulePage() {
           return { ...pair, groups: filteredGroups };
         })
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
+
+  // Filter yard duty assignments by selected teachers and view filter
+  const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
+    ? []
+    : yardDutyAssignments.filter(yd => {
+        if (selectedTeacherIds.size > 0) {
+          return yd.teacher_id && selectedTeacherIds.has(yd.teacher_id);
+        }
+        return true;
+      });
 
   const loading = permissionsLoading || dataLoading;
 
@@ -362,7 +374,7 @@ export default function MasterSchedulePage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Master Schedule</h1>
               <p className="text-gray-600">
-                View and manage bell schedules and special activities for your school
+                View and manage your school year calendars
               </p>
             </div>
 
@@ -378,7 +390,7 @@ export default function MasterSchedulePage() {
             />
 
             {/* View Filter Toggle */}
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-gray-200 rounded-lg p-1">
               <button
                 onClick={() => setViewFilter('all')}
                 className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -409,6 +421,16 @@ export default function MasterSchedulePage() {
               >
                 Special Activities
               </button>
+              <button
+                onClick={() => setViewFilter('yard-duty')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  viewFilter === 'yard-duty'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Yard Duty
+              </button>
             </div>
             </div>
           </div>
@@ -418,7 +440,7 @@ export default function MasterSchedulePage() {
             viewFilter === 'all' ? 'flex-row flex-wrap items-center' : 'flex-col'
           }`}>
             {/* Grade Filter - for bell schedules */}
-            {viewFilter !== 'activities' && (
+            {viewFilter !== 'activities' && viewFilter !== 'yard-duty' && (
               <GradeFilter
                 selectedGrades={selectedGrades}
                 onToggleGrade={toggleGrade}
@@ -428,7 +450,7 @@ export default function MasterSchedulePage() {
             )}
 
             {/* Activity Type Filter - for special activities */}
-            {viewFilter !== 'bell' && (
+            {viewFilter !== 'bell' && viewFilter !== 'yard-duty' && (
               <ActivityTypeFilter
                 selectedTypes={selectedActivityTypes}
                 availableTypes={availableActivityTypes}
@@ -462,6 +484,8 @@ export default function MasterSchedulePage() {
               onEditRotationPair={handleEditPair}
               filterSelectedGrades={selectedGrades}
               teachers={teachers}
+              staffMembers={staffMembers}
+              yardDutyAssignments={filteredYardDuty}
               schoolYear={selectedSchoolYear}
             />
             {/* Daily Times Toggle */}
