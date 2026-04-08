@@ -38,18 +38,29 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel
-      const [bellScheduleData, activityData, teacherData, yardDutyData, staffData] = await Promise.all([
+      // Fetch core schedule data in parallel
+      const [bellScheduleData, activityData, teacherData] = await Promise.all([
         getBellSchedulesForSchool(schoolId, schoolYear),
         getSpecialActivities(schoolId, schoolYear),
         getTeachers(schoolId),
-        getYardDutyAssignments(schoolId, schoolYear),
-        getSchoolStaffMembers(schoolId),
       ]);
 
       setBellSchedules(bellScheduleData || []);
       setSpecialActivities(activityData || []);
       setTeachers(teacherData || []);
+
+      // Fetch yard duty and staff separately so permission errors don't block core data
+      let yardDutyData: YardDutyAssignment[] = [];
+      let staffData: StaffWithHours[] = [];
+      try {
+        [yardDutyData, staffData] = await Promise.all([
+          getYardDutyAssignments(schoolId, schoolYear),
+          getSchoolStaffMembers(schoolId),
+        ]);
+      } catch (err) {
+        console.warn('Unable to fetch yard duty/staff data:', err);
+      }
+
       setYardDutyAssignments(yardDutyData || []);
       setStaffMembers(staffData || []);
     } catch (err) {
