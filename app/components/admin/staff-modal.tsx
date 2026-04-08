@@ -50,6 +50,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
   const isEdit = !!staff;
   const cancelRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<Element | null>(null);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -62,6 +63,17 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Save and restore focus
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement;
+      cancelRef.current?.focus();
+    } else if (previousFocusRef.current instanceof HTMLElement) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [isOpen]);
+
   // Reset form when modal opens/closes or staff changes
   useEffect(() => {
     if (isOpen) {
@@ -70,7 +82,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
         setLastName(staff.last_name);
         setRole(staff.role as StaffRole);
         setProgram(staff.program || '');
-        setTeacherId(staff.teacher_id || '');
+        setTeacherId(staff.teacher_id || staff.provider_id || '');
         setRoomNumber(staff.room_number || '');
         setStatus(staff.status || '');
         setHours(initHours(staff.staff_hours));
@@ -137,15 +149,29 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSaving(true);
 
     const enabledHours = hours
       .filter(h => h.enabled)
       .map(h => ({ day_of_week: h.day_of_week, start_time: h.start_time, end_time: h.end_time }));
 
+    const invalidHour = enabledHours.find(
+      h => !h.start_time || !h.end_time || h.start_time >= h.end_time
+    );
+    if (invalidHour) {
+      const dayLabel = DAYS.find(day => day.value === invalidHour.day_of_week)?.label ?? 'Selected day';
+      setError(`${dayLabel}: enter a start time earlier than the end time`);
+      return;
+    }
+
+    setSaving(true);
+
     try {
       // Dynamic import to avoid circular deps
       const { createStaffMember, updateStaffMember } = await import('@/lib/supabase/queries/staff');
+
+      // Determine if selection is a teacher or provider
+      const selectedOption = teachers.find(t => t.id === teacherId);
+      const isProvider = selectedOption?.type === 'provider';
 
       if (isEdit && staff) {
         await updateStaffMember(staff.id, {
@@ -153,7 +179,8 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
           last_name: lastName,
           role,
           program: program || null,
-          teacher_id: teacherId || null,
+          teacher_id: isProvider ? null : (teacherId || null),
+          provider_id: isProvider ? teacherId : null,
           room_number: roomNumber || null,
           status: status || null,
           hours: enabledHours,
@@ -165,7 +192,8 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
           role,
           school_id: schoolId,
           program: program || undefined,
-          teacher_id: teacherId || undefined,
+          teacher_id: isProvider ? undefined : (teacherId || undefined),
+          provider_id: isProvider ? teacherId : undefined,
           room_number: roomNumber || undefined,
           status: status || undefined,
           hours: enabledHours,
@@ -260,7 +288,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
             </div>
             <div>
               <label htmlFor="staff-teacher" className="block text-sm font-medium text-gray-700 mb-1">
-                Teacher
+                Teacher / Provider
               </label>
               <select
                 id="staff-teacher"
@@ -269,11 +297,24 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teache
                 className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">None</option>
-                {teachers.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'}
-                  </option>
-                ))}
+                {teachers.filter(t => t.type === 'teacher').length > 0 && (
+                  <optgroup label="Teachers">
+                    {teachers.filter(t => t.type === 'teacher').map(t => (
+                      <option key={t.id} value={t.id}>
+                        {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {teachers.filter(t => t.type === 'provider').length > 0 && (
+                  <optgroup label="Providers">
+                    {teachers.filter(t => t.type === 'provider').map(t => (
+                      <option key={t.id} value={t.id}>
+                        {[t.last_name, t.first_name].filter(Boolean).join(', ') || 'Unnamed Provider'}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           </div>

@@ -2747,6 +2747,7 @@ export type Database = {
           id: string
           last_name: string
           program: string | null
+          provider_id: string | null
           role: string
           room_number: string | null
           school_id: string
@@ -2760,6 +2761,7 @@ export type Database = {
           id?: string
           last_name: string
           program?: string | null
+          provider_id?: string | null
           role: string
           room_number?: string | null
           school_id: string
@@ -2773,6 +2775,7 @@ export type Database = {
           id?: string
           last_name?: string
           program?: string | null
+          provider_id?: string | null
           role?: string
           room_number?: string | null
           school_id?: string
@@ -2781,6 +2784,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "staff_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "staff_school_id_fkey"
             columns: ["school_id"]

@@ -13,11 +13,13 @@ export type TeacherOption = {
   id: string;
   first_name: string | null;
   last_name: string | null;
+  type: 'teacher' | 'provider';
 };
 
 export type StaffWithHours = StaffRow & {
   staff_hours: StaffHoursRow[];
-  teachers: TeacherOption | null;
+  teachers: { id: string; first_name: string | null; last_name: string | null } | null;
+  providers: { id: string; full_name: string } | null;
 };
 
 export type CreateStaffData = {
@@ -27,6 +29,7 @@ export type CreateStaffData = {
   school_id: string;
   program?: string;
   teacher_id?: string;
+  provider_id?: string;
   room_number?: string;
   status?: string;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
@@ -38,6 +41,7 @@ export type UpdateStaffData = {
   role?: StaffRole;
   program?: string | null;
   teacher_id?: string | null;
+  provider_id?: string | null;
   room_number?: string | null;
   status?: string | null;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
@@ -60,7 +64,7 @@ export async function getSchoolStaffMembers(schoolId: string): Promise<StaffWith
     async () => {
       const { data, error } = await supabase
         .from('staff')
-        .select('*, staff_hours(*), teachers(id, first_name, last_name)')
+        .select('*, staff_hours(*), teachers(id, first_name, last_name), providers:profiles!staff_provider_id_fkey(id, full_name)')
         .eq('school_id', schoolId)
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true });
@@ -90,22 +94,61 @@ export async function getSchoolTeacherOptions(schoolId: string): Promise<Teacher
     throw new Error('You do not have permission to view teachers at this school');
   }
 
-  const fetchResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('teachers')
-        .select('id, first_name, last_name')
-        .eq('school_id', schoolId)
-        .order('last_name', { ascending: true })
-        .order('first_name', { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    { operation: 'fetch_school_teacher_options', schoolId }
-  );
+  // Fetch teachers and providers in parallel
+  const [teacherResult, providerResult] = await Promise.all([
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('teachers')
+          .select('id, first_name, last_name')
+          .eq('school_id', schoolId)
+          .order('last_name', { ascending: true })
+          .order('first_name', { ascending: true });
+        if (error) throw error;
+        return data;
+      },
+      { operation: 'fetch_school_teacher_options', schoolId }
+    ),
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('provider_schools')
+          .select('profiles:provider_id(id, full_name)')
+          .eq('school_id', schoolId);
+        if (error) throw error;
+        return data;
+      },
+      { operation: 'fetch_school_provider_options', schoolId }
+    ),
+  ]);
 
-  if (fetchResult.error) throw fetchResult.error;
-  return (fetchResult.data || []) as TeacherOption[];
+  if (teacherResult.error) throw teacherResult.error;
+  if (providerResult.error) throw providerResult.error;
+
+  const teachers: TeacherOption[] = (teacherResult.data || []).map(t => ({
+    id: t.id,
+    first_name: t.first_name,
+    last_name: t.last_name,
+    type: 'teacher' as const,
+  }));
+
+  const providers: TeacherOption[] = (providerResult.data || [])
+    .filter((row: any) => row.profiles)
+    .map((row: any) => {
+      const p = row.profiles;
+      // Split full_name into first/last for consistent display
+      const parts = (p.full_name || '').trim().split(/\s+/);
+      const firstName = parts[0] || null;
+      const lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
+      return {
+        id: p.id,
+        first_name: firstName,
+        last_name: lastName,
+        type: 'provider' as const,
+      };
+    });
+
+  return [...teachers, ...providers];
 }
 
 // ============================================================================

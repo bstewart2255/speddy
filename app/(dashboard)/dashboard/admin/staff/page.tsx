@@ -129,7 +129,8 @@ export default function StaffDirectoryPage() {
     const role = [ROLE_LABELS[s.role as StaffRole] || s.role, s.role.replace(/_/g, ' ')].join(' ').toLowerCase();
     const room = (s.room_number || '').toLowerCase();
     const teacher = s.teachers ? `${s.teachers.first_name} ${s.teachers.last_name}`.toLowerCase() : '';
-    return name.includes(q) || role.includes(q) || room.includes(q) || teacher.includes(q);
+    const provider = s.providers ? (s.providers.full_name || '').toLowerCase() : '';
+    return name.includes(q) || role.includes(q) || room.includes(q) || teacher.includes(q) || provider.includes(q);
   });
 
   if (loading) {
@@ -188,7 +189,7 @@ export default function StaffDirectoryPage() {
       <Card className="p-4 mb-6">
         <div className="relative">
           <label htmlFor="staff-search" className="sr-only">
-            Search staff by name, role, room, or teacher
+            Search staff by name, role, room, teacher, or provider
           </label>
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,7 +199,7 @@ export default function StaffDirectoryPage() {
           <input
             id="staff-search"
             type="text"
-            placeholder="Search by name, role, room, or teacher..."
+            placeholder="Search by name, role, room, teacher, or provider..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
@@ -238,7 +239,7 @@ export default function StaffDirectoryPage() {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Program</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher / Provider</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Room</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours</th>
@@ -264,7 +265,9 @@ export default function StaffDirectoryPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.teachers
                       ? [s.teachers.last_name, s.teachers.first_name].filter(Boolean).join(', ') || 'Unnamed Teacher'
-                      : <span className="text-gray-400 italic">—</span>}
+                      : s.providers
+                        ? s.providers.full_name || 'Unnamed Provider'
+                        : <span className="text-gray-400 italic">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.room_number || <span className="text-gray-400 italic">—</span>}
