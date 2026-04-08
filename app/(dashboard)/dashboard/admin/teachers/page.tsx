@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 import { TeacherEditModal } from '@/app/components/admin/teacher-edit-modal';
+import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
+import { useToast } from '@/app/contexts/toast-context';
 
 type TeacherWithCount = NonNullable<Awaited<ReturnType<typeof getTeachersWithStudentCount>>>[number];
 
@@ -21,6 +23,8 @@ export default function TeacherDirectoryPage() {
     userName: string;
   } | null>(null);
   const [editingTeacher, setEditingTeacher] = useState<TeacherWithCount | null>(null);
+  const [confirmReset, setConfirmReset] = useState<{ id: string; name: string } | null>(null);
+  const { showToast } = useToast();
 
   const fetchTeachers = async () => {
     try {
@@ -41,16 +45,19 @@ export default function TeacherDirectoryPage() {
   }, []);
 
   const handleResetPassword = async (accountId: string, teacherName: string) => {
-    if (!confirm(`Are you sure you want to reset the password for ${teacherName}? They will need to use the new password to log in.`)) {
-      return;
-    }
+    setConfirmReset({ id: accountId, name: teacherName });
+  };
+
+  const executeResetPassword = async () => {
+    if (!confirmReset) return;
 
     try {
-      setResettingId(accountId);
+      setResettingId(confirmReset.id);
+      setConfirmReset(null);
       const response = await fetch('/api/admin/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: accountId }),
+        body: JSON.stringify({ userId: confirmReset.id }),
       });
 
       const data = await response.json();
@@ -63,11 +70,11 @@ export default function TeacherDirectoryPage() {
       setResetCredentials({
         email: data.credentials.email,
         temporaryPassword: data.credentials.temporaryPassword,
-        userName: teacherName,
+        userName: confirmReset.name,
       });
     } catch (err) {
       console.error('Error resetting password:', err);
-      alert(err instanceof Error ? err.message : 'Failed to reset password');
+      showToast(err instanceof Error ? err.message : 'Failed to reset password', 'error');
     } finally {
       setResettingId(null);
     }
@@ -308,6 +315,17 @@ export default function TeacherDirectoryPage() {
         }}
         onResetPassword={handleResetPassword}
         teacher={editingTeacher}
+      />
+
+      {/* Password Reset Confirmation */}
+      <ConfirmationModal
+        isOpen={!!confirmReset}
+        onClose={() => setConfirmReset(null)}
+        onConfirm={executeResetPassword}
+        title="Reset Password"
+        message={`Are you sure you want to reset the password for ${confirmReset?.name}? They will need to use the new password to log in.`}
+        confirmLabel="Reset Password"
+        variant="warning"
       />
     </div>
   );

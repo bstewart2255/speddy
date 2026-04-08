@@ -9,20 +9,26 @@ import AddBellScheduleForm from '../../../../components/bell-schedules/add-bell-
 import BellScheduleCSVImport from '../../../../components/bell-schedules/csv-import';
 import { getBellSchedulesForSchool, deleteBellSchedule } from '../../../../../lib/supabase/queries/bell-schedules';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
+
+type BellScheduleRow = Awaited<ReturnType<typeof getBellSchedulesForSchool>>[number];
 import { CollapsibleCard } from '../../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../../components/schedule/filter-select';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../../../lib/constants/activity-types';
+import { ConfirmationModal } from '../../../../components/ui/confirmation-modal';
+import { useToast } from '../../../../contexts/toast-context';
 
 export default function SiteAdminBellSchedulesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportSection, setShowImportSection] = useState(false);
-  const [bellSchedules, setBellSchedules] = useState<any[]>([]);
+  const [bellSchedules, setBellSchedules] = useState<BellScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const { showToast } = useToast();
 
   // Filter states
   const [gradeFilter, setGradeFilter] = useState('');
@@ -59,10 +65,7 @@ export default function SiteAdminBellSchedulesPage() {
 
     try {
       setLoading(true);
-      console.log('Fetching bell schedules for school:', schoolId);
-
       const data = await getBellSchedulesForSchool(schoolId);
-      console.log('Bell schedules received:', data?.length || 0, 'schedules');
 
       setBellSchedules(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -80,18 +83,20 @@ export default function SiteAdminBellSchedulesPage() {
   }, [schoolId, fetchSchedules]);
 
   // Handle delete
-  const handleDelete = async (id: string, periodName: string) => {
-    if (!confirm(`Are you sure you want to delete "${periodName}"?`)) {
-      return;
-    }
+  const handleDelete = (id: string, periodName: string) => {
+    setConfirmDelete({ id, name: periodName });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDelete) return;
 
     try {
-      setDeletingId(id);
-      await deleteBellSchedule(id);
-      await fetchSchedules(); // Refresh the list
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete bell schedule');
-      console.error(err);
+      setDeletingId(confirmDelete.id);
+      setConfirmDelete(null);
+      await deleteBellSchedule(confirmDelete.id);
+      await fetchSchedules();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete bell schedule', 'error');
     } finally {
       setDeletingId(null);
     }
@@ -219,9 +224,7 @@ export default function SiteAdminBellSchedulesPage() {
         {/* School Start & End Times Section */}
         <div className="mb-8">
           <CollapsibleCard title="School Start & End Times" defaultOpen={false}>
-            <SchoolHoursForm onSuccess={() => {
-              console.log('School hours saved successfully');
-            }} />
+            <SchoolHoursForm onSuccess={() => {}} />
           </CollapsibleCard>
         </div>
 
@@ -387,6 +390,17 @@ export default function SiteAdminBellSchedulesPage() {
             )}
           </CardBody>
         </Card>
+
+        {/* Delete Confirmation */}
+        <ConfirmationModal
+          isOpen={!!confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={executeDelete}
+          title="Delete Bell Schedule"
+          message={`Are you sure you want to delete "${confirmDelete?.name}"?`}
+          confirmLabel="Delete"
+          variant="danger"
+        />
 
       </div>
     </div>
