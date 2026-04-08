@@ -2981,6 +2981,94 @@ export type Database = {
           },
         ]
       }
+      staff: {
+        Row: {
+          created_at: string | null
+          first_name: string
+          id: string
+          last_name: string
+          program: string | null
+          role: string
+          room_number: string | null
+          school_id: string
+          status: string | null
+          teacher_name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          program?: string | null
+          role: string
+          room_number?: string | null
+          school_id: string
+          status?: string | null
+          teacher_name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          program?: string | null
+          role?: string
+          room_number?: string | null
+          school_id?: string
+          status?: string | null
+          teacher_name?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_hours: {
+        Row: {
+          created_at: string | null
+          day_of_week: number
+          end_time: string
+          id: string
+          staff_id: string
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: number
+          end_time: string
+          id?: string
+          staff_id: string
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          staff_id?: string
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_hours_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teachers: {
         Row: {
           account_id: string | null
@@ -4017,6 +4105,8 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type School = Database['public']['Tables']['schools']['Row'];
 export type District = Database['public']['Tables']['districts']['Row'];
 export type Teacher = Database['public']['Tables']['teachers']['Row'];
+export type Staff = Database['public']['Tables']['staff']['Row'];
+export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
 
 // CARE module types
 export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];

@@ -99,13 +99,13 @@ export default function Navbar() {
         { name: 'CARE', href: '/dashboard/admin/care' },
       ];
     } else if (role === 'site_admin') {
-      // Site admins see their dashboard, master schedule, bell schedules, teacher directory, provider directory, students, and CARE
+      // Site admins see their dashboard, master schedule, teacher/provider/staff directories, students, and CARE
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Master Schedule', href: '/dashboard/admin/master-schedule' },
-        { name: 'Bell Schedules', href: '/dashboard/admin/bell-schedules' },
         { name: 'Teachers', href: '/dashboard/admin/teachers' },
         { name: 'Providers', href: '/dashboard/admin/providers' },
+        { name: 'Staff', href: '/dashboard/admin/staff' },
         { name: 'Students', href: '/dashboard/admin/students' },
         { name: 'CARE', href: '/dashboard/care' },
       ];
