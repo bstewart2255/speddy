@@ -15,7 +15,10 @@ CREATE TABLE public.yard_duty_assignments (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (start_time < end_time),
-  CHECK (teacher_id IS NOT NULL OR staff_id IS NOT NULL)
+  CHECK (
+    (teacher_id IS NOT NULL AND staff_id IS NULL)
+    OR (teacher_id IS NULL AND staff_id IS NOT NULL)
+  )
 );
 
 CREATE INDEX idx_yard_duty_school_year ON yard_duty_assignments(school_id, school_year);
