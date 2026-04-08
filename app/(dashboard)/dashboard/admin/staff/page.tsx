@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import { getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 import {
   getSchoolStaffMembers,
+  getSchoolTeacherOptions,
   deleteStaffMember,
   type StaffWithHours,
   type StaffRole,
+  type TeacherOption,
 } from '@/lib/supabase/queries/staff';
 import { Card } from '@/app/components/ui/card';
 import { StaffModal } from '@/app/components/admin/staff-modal';
@@ -64,14 +66,19 @@ export default function StaffDirectoryPage() {
   const [editingStaff, setEditingStaff] = useState<StaffWithHours | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<StaffWithHours | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const { showToast } = useToast();
 
   const fetchStaff = async (sid: string) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getSchoolStaffMembers(sid);
+      const [data, teacherData] = await Promise.all([
+        getSchoolStaffMembers(sid),
+        getSchoolTeacherOptions(sid),
+      ]);
       setStaffMembers(data);
+      setTeachers(teacherData);
     } catch (err) {
       console.error('Error loading staff:', err);
       setError(err instanceof Error ? err.message : 'Failed to load staff');
@@ -121,7 +128,7 @@ export default function StaffDirectoryPage() {
     const name = `${s.first_name} ${s.last_name}`.toLowerCase();
     const role = (ROLE_LABELS[s.role as StaffRole] || s.role).toLowerCase();
     const room = (s.room_number || '').toLowerCase();
-    const teacher = (s.teacher_name || '').toLowerCase();
+    const teacher = s.teachers ? `${s.teachers.first_name} ${s.teachers.last_name}`.toLowerCase() : '';
     return name.includes(q) || role.includes(q) || room.includes(q) || teacher.includes(q);
   });
 
@@ -255,7 +262,9 @@ export default function StaffDirectoryPage() {
                     {s.program || <span className="text-gray-400 italic">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {s.teacher_name || <span className="text-gray-400 italic">—</span>}
+                    {s.teachers
+                      ? `${s.teachers.last_name}, ${s.teachers.first_name}`
+                      : <span className="text-gray-400 italic">—</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {s.room_number || <span className="text-gray-400 italic">—</span>}
@@ -306,6 +315,7 @@ export default function StaffDirectoryPage() {
           }}
           staff={editingStaff}
           schoolId={schoolId}
+          teachers={teachers}
         />
       )}
 

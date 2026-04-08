@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
-import type { StaffWithHours, StaffRole } from '@/lib/supabase/queries/staff';
+import type { StaffWithHours, StaffRole, TeacherOption } from '@/lib/supabase/queries/staff';
 
 const ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: 'instructional_assistant', label: 'Instructional Assistant' },
@@ -31,6 +31,7 @@ interface StaffModalProps {
   onSuccess: () => void;
   staff: StaffWithHours | null; // null = create mode
   schoolId: string;
+  teachers: TeacherOption[];
 }
 
 function initHours(existing?: StaffWithHours['staff_hours']): HoursEntry[] {
@@ -45,7 +46,7 @@ function initHours(existing?: StaffWithHours['staff_hours']): HoursEntry[] {
   });
 }
 
-export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: StaffModalProps) {
+export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId, teachers }: StaffModalProps) {
   const isEdit = !!staff;
   const cancelRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -54,7 +55,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
   const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<StaffRole>('instructional_assistant');
   const [program, setProgram] = useState('');
-  const [teacherName, setTeacherName] = useState('');
+  const [teacherId, setTeacherId] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [status, setStatus] = useState('');
   const [hours, setHours] = useState<HoursEntry[]>(initHours());
@@ -69,7 +70,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
         setLastName(staff.last_name);
         setRole(staff.role as StaffRole);
         setProgram(staff.program || '');
-        setTeacherName(staff.teacher_name || '');
+        setTeacherId(staff.teacher_id || '');
         setRoomNumber(staff.room_number || '');
         setStatus(staff.status || '');
         setHours(initHours(staff.staff_hours));
@@ -78,7 +79,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
         setLastName('');
         setRole('instructional_assistant');
         setProgram('');
-        setTeacherName('');
+        setTeacherId('');
         setRoomNumber('');
         setStatus('');
         setHours(initHours());
@@ -152,7 +153,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
           last_name: lastName,
           role,
           program: program || null,
-          teacher_name: teacherName || null,
+          teacher_id: teacherId || null,
           room_number: roomNumber || null,
           status: status || null,
           hours: enabledHours,
@@ -164,7 +165,7 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
           role,
           school_id: schoolId,
           program: program || undefined,
-          teacher_name: teacherName || undefined,
+          teacher_id: teacherId || undefined,
           room_number: roomNumber || undefined,
           status: status || undefined,
           hours: enabledHours,
@@ -261,14 +262,19 @@ export function StaffModal({ isOpen, onClose, onSuccess, staff, schoolId }: Staf
               <label htmlFor="staff-teacher" className="block text-sm font-medium text-gray-700 mb-1">
                 Teacher
               </label>
-              <input
+              <select
                 id="staff-teacher"
-                type="text"
-                value={teacherName}
-                onChange={e => setTeacherName(e.target.value)}
+                value={teacherId}
+                onChange={e => setTeacherId(e.target.value)}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. Ms. Smith"
-              />
+              >
+                <option value="">None</option>
+                {teachers.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.last_name}, {t.first_name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.staff (
   last_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('instructional_assistant', 'supervisor', 'office')),
   program TEXT,
-  teacher_name TEXT,
+  teacher_id UUID REFERENCES teachers(id) ON DELETE SET NULL,
   room_number TEXT,
   status TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.staff (
 CREATE INDEX IF NOT EXISTS idx_staff_school_id ON staff(school_id);
 CREATE INDEX IF NOT EXISTS idx_staff_name ON staff(last_name, first_name);
 CREATE INDEX IF NOT EXISTS idx_staff_role ON staff(school_id, role);
+CREATE INDEX IF NOT EXISTS idx_staff_teacher_id ON staff(teacher_id);
 
 ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
 

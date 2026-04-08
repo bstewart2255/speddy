@@ -9,8 +9,15 @@ type StaffHoursRow = Database['public']['Tables']['staff_hours']['Row'];
 
 export type StaffRole = 'instructional_assistant' | 'supervisor' | 'office';
 
+export type TeacherOption = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
 export type StaffWithHours = StaffRow & {
   staff_hours: StaffHoursRow[];
+  teachers: TeacherOption | null;
 };
 
 export type CreateStaffData = {
@@ -19,7 +26,7 @@ export type CreateStaffData = {
   role: StaffRole;
   school_id: string;
   program?: string;
-  teacher_name?: string;
+  teacher_id?: string;
   room_number?: string;
   status?: string;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
@@ -30,7 +37,7 @@ export type UpdateStaffData = {
   last_name?: string;
   role?: StaffRole;
   program?: string | null;
-  teacher_name?: string | null;
+  teacher_id?: string | null;
   room_number?: string | null;
   status?: string | null;
   hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
@@ -53,7 +60,7 @@ export async function getSchoolStaffMembers(schoolId: string): Promise<StaffWith
     async () => {
       const { data, error } = await supabase
         .from('staff')
-        .select('*, staff_hours(*)')
+        .select('*, staff_hours(*), teachers(id, first_name, last_name)')
         .eq('school_id', schoolId)
         .order('last_name', { ascending: true })
         .order('first_name', { ascending: true });
@@ -69,6 +76,36 @@ export async function getSchoolStaffMembers(schoolId: string): Promise<StaffWith
 
   if (fetchResult.error) throw fetchResult.error;
   return (fetchResult.data || []) as StaffWithHours[];
+}
+
+// ============================================================================
+// GET SCHOOL TEACHER OPTIONS (for dropdown)
+// ============================================================================
+
+export async function getSchoolTeacherOptions(schoolId: string): Promise<TeacherOption[]> {
+  const supabase = createClient<Database>();
+
+  const hasAccess = await isAdminForSchool(schoolId);
+  if (!hasAccess) {
+    throw new Error('You do not have permission to view teachers at this school');
+  }
+
+  const fetchResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('id, first_name, last_name')
+        .eq('school_id', schoolId)
+        .order('last_name', { ascending: true })
+        .order('first_name', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    { operation: 'fetch_school_teacher_options', schoolId }
+  );
+
+  if (fetchResult.error) throw fetchResult.error;
+  return (fetchResult.data || []) as TeacherOption[];
 }
 
 // ============================================================================
