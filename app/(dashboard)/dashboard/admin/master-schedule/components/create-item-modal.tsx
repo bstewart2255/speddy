@@ -112,12 +112,58 @@ export function CreateItemModal({
   const [ydProviderId, setYdProviderId] = useState<string | null>(null);
   const [ydProviderName, setYdProviderName] = useState('');
 
-  // Get distinct period names and zone names from existing yard duty assignments for suggestions
-  const existingPeriodNames = useMemo(() => {
-    const names = new Set<string>();
-    yardDutyAssignments.forEach(yd => names.add(yd.period_name));
-    return Array.from(names).sort();
-  }, [yardDutyAssignments]);
+  // Build duty period options from bell schedules that overlap selected time/days
+  const availableDutyPeriods = useMemo(() => {
+    const normTime = (t: string) => t.substring(0, 5);
+    const fmtTime = (t: string) => {
+      const [h, m] = normTime(t).split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hr = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+    };
+    const start = normTime(ydStartTime);
+    const end = normTime(ydEndTime);
+    const dailyTimeNames = ['School Start', 'Dismissal', 'Early Dismissal'];
+
+    // Find bell schedules that overlap with selected time on any selected day
+    const overlapping = bellSchedules.filter(bs => {
+      if (!bs.period_name || !bs.start_time || !bs.end_time) return false;
+      if (dailyTimeNames.includes(bs.period_name)) return false;
+      if (!ydDays.includes(bs.day_of_week ?? 0)) return false;
+      const bsStart = normTime(bs.start_time);
+      const bsEnd = normTime(bs.end_time);
+      return start < bsEnd && bsStart < end;
+    });
+
+    const hasOverlap = overlapping.length > 0;
+    const source = hasOverlap
+      ? overlapping
+      : bellSchedules.filter(bs => bs.period_name && !dailyTimeNames.includes(bs.period_name));
+
+    // Deduplicate by grade_level + period_name
+    const seen = new Map<string, { value: string; label: string; sortTime: string }>();
+    for (const bs of source) {
+      if (!bs.period_name || !bs.grade_level || !bs.start_time || !bs.end_time) continue;
+      const value = `${bs.grade_level} ${bs.period_name}`;
+      if (!seen.has(value)) {
+        seen.set(value, {
+          value,
+          label: `${bs.grade_level} ${bs.period_name} (${fmtTime(bs.start_time)}–${fmtTime(bs.end_time)})`,
+          sortTime: bs.start_time,
+        });
+      }
+    }
+
+    const options = Array.from(seen.values()).sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+
+    // When no overlap, include Before School / After School as static options
+    if (!hasOverlap) {
+      options.unshift({ value: 'Before School', label: 'Before School', sortTime: '00:00' });
+      options.push({ value: 'After School', label: 'After School', sortTime: '99:99' });
+    }
+
+    return options;
+  }, [bellSchedules, ydDays, ydStartTime, ydEndTime]);
 
   // Get distinct zone names from existing yard duty assignments for suggestions
   const existingZoneNames = useMemo(() => {
@@ -152,6 +198,41 @@ export function CreateItemModal({
     });
     return `This overlaps with: ${descriptions.join(', ')}`;
   }, [tab, ydTeacherId, ydStartTime, ydEndTime, ydDays, specialActivities]);
+
+  // Conflict detection: yard duty assignee vs their other yard duty assignments
+  const ydDoubleBookWarning = useMemo(() => {
+    if (tab !== 'yardDuty' || !ydStartTime || !ydEndTime || ydDays.length === 0) return null;
+
+    const assigneeId = ydAssigneeType === 'teacher' ? ydTeacherId
+      : ydAssigneeType === 'staff' ? ydStaffId
+      : ydAssigneeType === 'provider' ? ydProviderId
+      : null;
+    if (!assigneeId) return null;
+
+    const normTime = (t: string) => t.substring(0, 5);
+    const start = normTime(ydStartTime);
+    const end = normTime(ydEndTime);
+
+    const conflicts = yardDutyAssignments.filter(yd => {
+      // Match on the same assignee type
+      const matchesAssignee = (ydAssigneeType === 'teacher' && yd.teacher_id === assigneeId)
+        || (ydAssigneeType === 'staff' && yd.staff_id === assigneeId)
+        || (ydAssigneeType === 'provider' && yd.provider_id === assigneeId);
+      if (!matchesAssignee || !yd.start_time || !yd.end_time) return false;
+      if (!ydDays.includes(yd.day_of_week)) return false;
+      const ydStart = normTime(yd.start_time);
+      const ydEnd = normTime(yd.end_time);
+      return start < ydEnd && ydStart < end;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c => {
+      const dayName = DAYS[(c.day_of_week || 1) - 1];
+      return `${c.period_name}${c.zone_name ? ` (${c.zone_name})` : ''} on ${dayName} (${normTime(c.start_time)}–${normTime(c.end_time)})`;
+    });
+    return `This assignee already has yard duty: ${descriptions.join(', ')}`;
+  }, [tab, ydAssigneeType, ydTeacherId, ydStaffId, ydProviderId, ydStartTime, ydEndTime, ydDays, yardDutyAssignments]);
 
   const handleYdDayToggle = (dayNum: number) => {
     setYdDays(prev =>
@@ -675,19 +756,21 @@ export function CreateItemModal({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Duty Period
                 </label>
-                <input
-                  type="text"
+                <select
                   value={ydPeriodName}
                   onChange={(e) => setYdPeriodName(e.target.value)}
-                  placeholder="e.g., TK Recess, Before School Duty"
-                  list="period-suggestions"
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-                <datalist id="period-suggestions">
-                  {existingPeriodNames.map(name => (
-                    <option key={name} value={name} />
+                >
+                  <option value="">Select duty period...</option>
+                  {ydPeriodName && !availableDutyPeriods.some(o => o.value === ydPeriodName) && (
+                    <option value={ydPeriodName}>{ydPeriodName}</option>
+                  )}
+                  {availableDutyPeriods.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
-                </datalist>
+                </select>
               </div>
 
               {/* Zone name (optional) */}
@@ -868,10 +951,17 @@ export function CreateItemModal({
                 </div>
               </div>
 
-              {/* Yard duty conflict warning */}
+              {/* Yard duty conflict warning (vs special activities) */}
               {ydConflictWarning && (
                 <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                   {ydConflictWarning}
+                </div>
+              )}
+
+              {/* Yard duty double-booking warning (vs other yard duty) */}
+              {ydDoubleBookWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {ydDoubleBookWarning}
                 </div>
               )}
             </>
