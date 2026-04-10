@@ -37,6 +37,7 @@ interface AdminScheduleGridProps {
   staffMembers?: StaffWithHours[];
   providers?: ProviderOption[];
   yardDutyAssignments?: YardDutyAssignment[];
+  allYardDutyAssignments?: YardDutyAssignment[];
   schoolYear?: string;
 }
 
@@ -170,6 +171,7 @@ export function AdminScheduleGrid({
   staffMembers = [],
   providers = [],
   yardDutyAssignments = [],
+  allYardDutyAssignments = [],
   schoolYear,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
@@ -602,7 +604,7 @@ export function AdminScheduleGrid({
           teachers={teachers}
           staffMembers={staffMembers}
           providers={providers}
-          yardDutyAssignments={yardDutyAssignments}
+          yardDutyAssignments={allYardDutyAssignments}
           specialActivities={allSpecialActivities}
           schoolYear={schoolYear}
         />
@@ -621,8 +623,8 @@ export function AdminScheduleGrid({
           teachers={teachers}
           staffMembers={staffMembers}
           providers={providers}
-          yardDutyAssignments={yardDutyAssignments}
-          specialActivities={specialActivities}
+          yardDutyAssignments={allYardDutyAssignments}
+          specialActivities={allSpecialActivities}
         />
       )}
 

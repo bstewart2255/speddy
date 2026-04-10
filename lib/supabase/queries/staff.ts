@@ -168,15 +168,17 @@ export async function getSchoolTeacherOptions(schoolId: string): Promise<Teacher
 export async function getSchoolProviders(schoolId: string): Promise<ProviderOption[]> {
   const supabase = createClient<Database>();
 
+  const hasAccess = await isAdminForSchool(schoolId);
+  if (!hasAccess) {
+    throw new Error('You do not have permission to view providers at this school');
+  }
+
   const { data, error } = await supabase
     .from('provider_schools')
     .select('profiles:provider_id(id, full_name)')
     .eq('school_id', schoolId);
 
-  if (error) {
-    console.error('Error fetching providers:', error);
-    return [];
-  }
+  if (error) throw error;
 
   return (data || [])
     .filter((row: any) => row.profiles)

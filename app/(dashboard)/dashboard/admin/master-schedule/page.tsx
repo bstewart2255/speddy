@@ -494,6 +494,7 @@ export default function MasterSchedulePage() {
               staffMembers={staffMembers}
               providers={providers}
               yardDutyAssignments={filteredYardDuty}
+              allYardDutyAssignments={yardDutyAssignments}
               schoolYear={selectedSchoolYear}
             />
             {/* Daily Times Toggle */}
