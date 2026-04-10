@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
+import { ProvidersPanel } from './components/providers-panel';
+import { StaffPanel } from './components/staff-panel';
 import { RotationGroupsPanel } from './components/rotation-groups-panel';
 import { RotationGroupModal } from './components/rotation-group-modal';
 import { GradeFilter } from './components/grade-filter';
@@ -506,8 +508,8 @@ export default function MasterSchedulePage() {
             </div>
           </div>
 
-          {/* Teacher Panel Sidebar */}
-          <div className="w-64 flex-shrink-0">
+          {/* Sidebar */}
+          <div className="w-64 flex-shrink-0 space-y-2">
             <TeacherPanel
               teachers={teachers}
               selectedTeacherIds={selectedTeacherIds}
@@ -515,6 +517,8 @@ export default function MasterSchedulePage() {
               onSelectAll={selectAllTeachers}
               onDeselectAll={deselectAllTeachers}
             />
+            <ProvidersPanel providers={providers} />
+            <StaffPanel staffMembers={staffMembers} />
             <RotationGroupsPanel
               rotationPairs={rotationPairs}
               onCreateGroups={handleCreateGroups}
