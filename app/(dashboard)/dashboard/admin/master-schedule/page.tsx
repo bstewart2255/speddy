@@ -18,6 +18,9 @@ import { getCurrentSchoolYear, getNextSchoolYear } from '../../../../../lib/scho
 import { checkYearActivated, activateSchoolYear, copyScheduleToNextYear } from '../../../../../lib/supabase/queries/school-year-copy';
 import { SchoolYearToggle } from './components/school-year-toggle';
 import { YearActivationDialog } from './components/year-activation-dialog';
+import { YardDutyZonesModal } from './components/yard-duty-zones-modal';
+import { getYardDutyZones, type YardDutyZone } from '../../../../../lib/supabase/queries/yard-duty-zones';
+import { Cog6ToothIcon } from '@heroicons/react/24/outline';
 
 type ViewFilter = 'all' | 'bell' | 'activities' | 'yard-duty';
 
@@ -58,6 +61,24 @@ export default function MasterSchedulePage() {
   const [nextYearActivated, setNextYearActivated] = useState(false);
   const [showActivationDialog, setShowActivationDialog] = useState(false);
   const [activating, setActivating] = useState(false);
+
+  // Yard duty zones state
+  const [yardDutyZones, setYardDutyZones] = useState<YardDutyZone[]>([]);
+  const [showZonesModal, setShowZonesModal] = useState(false);
+
+  const fetchZones = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const data = await getYardDutyZones(schoolId);
+      setYardDutyZones(data);
+    } catch (err) {
+      console.warn('Unable to fetch yard duty zones:', err);
+    }
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (schoolId) fetchZones();
+  }, [schoolId, fetchZones]);
 
   // Rotation groups state
   const [rotationPairs, setRotationPairs] = useState<RotationPairWithGroups[]>([]);
@@ -492,6 +513,21 @@ export default function MasterSchedulePage() {
                 inUseActivityTypes={inUseActivityTypes}
               />
             )}
+
+            {/* Yard Duty Zone Settings - right-aligned */}
+            {viewFilter === 'yard-duty' && (
+              <button
+                onClick={() => setShowZonesModal(true)}
+                className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                title="Configure yard duty zones"
+              >
+                <Cog6ToothIcon className="w-4 h-4" />
+                <span>Zone Settings</span>
+                {yardDutyZones.length > 0 && (
+                  <span className="text-xs text-gray-400">({yardDutyZones.length})</span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -518,6 +554,7 @@ export default function MasterSchedulePage() {
               providers={providers}
               yardDutyAssignments={filteredYardDuty}
               allYardDutyAssignments={yardDutyAssignments}
+              yardDutyZones={yardDutyZones}
               schoolYear={selectedSchoolYear}
             />
             {/* Daily Times Toggle */}
@@ -585,6 +622,15 @@ export default function MasterSchedulePage() {
           onClose={handleRotationModalClose}
           onSuccess={handleRotationModalSuccess}
           schoolYear={selectedSchoolYear}
+        />
+      )}
+
+      {/* Yard Duty Zones Modal */}
+      {showZonesModal && schoolId && (
+        <YardDutyZonesModal
+          schoolId={schoolId}
+          onClose={() => setShowZonesModal(false)}
+          onZonesChanged={fetchZones}
         />
       )}
     </div>
