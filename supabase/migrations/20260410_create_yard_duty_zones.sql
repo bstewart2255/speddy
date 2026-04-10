@@ -18,13 +18,15 @@ CREATE POLICY "Site admins can view zones"
             SELECT 1 FROM public.admin_permissions ap
             WHERE ap.admin_id = auth.uid()
             AND ap.school_id = yard_duty_zones.school_id
-            AND ap.role IN ('site_admin', 'specialist')
+            AND ap.role = 'site_admin'
         )
         OR
         EXISTS (
             SELECT 1 FROM public.admin_permissions ap
+            JOIN public.schools s ON s.id = yard_duty_zones.school_id
             WHERE ap.admin_id = auth.uid()
             AND ap.role = 'district_admin'
+            AND ap.district_id = s.district_id
         )
     );
 
