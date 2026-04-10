@@ -61,9 +61,10 @@ export async function addYardDutyAssignment(assignment: {
     throw new Error('User not authenticated');
   }
 
-  // Verify exactly one assignee
-  if (!assignment.teacher_id && !assignment.staff_id && !assignment.provider_id) {
-    throw new Error('A teacher, staff member, or provider must be assigned');
+  // Verify exactly one assignee (XOR)
+  const assigneeCount = [assignment.teacher_id, assignment.staff_id, assignment.provider_id].filter(Boolean).length;
+  if (assigneeCount !== 1) {
+    throw new Error('Exactly one of teacher, staff member, or provider must be assigned');
   }
 
   const { data, error } = await supabase

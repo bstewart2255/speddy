@@ -49,7 +49,7 @@ async function verifyAdminAccess(
   }
 
   // Check if it's a provider role
-  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention'];
+  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention', 'specialist'];
   if (!providerRoles.includes(profile.role || '')) {
     return { allowed: false, error: 'User is not a provider' };
   }
