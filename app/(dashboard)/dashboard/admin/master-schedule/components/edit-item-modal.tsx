@@ -6,7 +6,9 @@ import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../.
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { updateYardDutyAssignment, deleteYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
 import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
+import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
@@ -18,7 +20,10 @@ interface EditItemModalProps {
   availableActivityTypes?: string[];
   bellSchedules?: BellScheduleWithCreator[];
   teachers?: Teacher[];
+  staffMembers?: StaffWithHours[];
+  providers?: ProviderOption[];
   yardDutyAssignments?: YardDutyAssignment[];
+  specialActivities?: SpecialActivity[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -42,7 +47,10 @@ export function EditItemModal({
   availableActivityTypes = [],
   bellSchedules = [],
   teachers = [],
-  yardDutyAssignments = []
+  staffMembers = [],
+  providers = [],
+  yardDutyAssignments = [],
+  specialActivities = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +77,16 @@ export function EditItemModal({
   const [ydStartTime, setYdStartTime] = useState(yardDuty?.start_time || '');
   const [ydEndTime, setYdEndTime] = useState(yardDuty?.end_time || '');
 
+  // Yard duty assignee state
+  const initialAssigneeType = yardDuty?.teacher_id ? 'teacher' : yardDuty?.staff_id ? 'staff' : yardDuty?.provider_id ? 'provider' : '';
+  const [ydAssigneeType, setYdAssigneeType] = useState<'teacher' | 'staff' | 'provider' | ''>(initialAssigneeType);
+  const [ydTeacherId, setYdTeacherId] = useState<string | null>(yardDuty?.teacher_id || null);
+  const [ydTeacherName, setYdTeacherName] = useState(yardDuty?.teacher_id ? (yardDuty?.assignee_name || '') : '');
+  const [ydStaffId, setYdStaffId] = useState<string | null>(yardDuty?.staff_id || null);
+  const [ydStaffName, setYdStaffName] = useState(yardDuty?.staff_id ? (yardDuty?.assignee_name || '') : '');
+  const [ydProviderId, setYdProviderId] = useState<string | null>(yardDuty?.provider_id || null);
+  const [ydProviderName, setYdProviderName] = useState(yardDuty?.provider_id ? (yardDuty?.assignee_name || '') : '');
+
   // Get existing period/zone names for datalist suggestions
   const existingPeriodNames = useMemo(() => {
     const names = new Set<string>();
@@ -83,6 +101,56 @@ export function EditItemModal({
     });
     return Array.from(names).sort();
   }, [yardDutyAssignments]);
+
+  // Conflict detection: yard duty teacher vs their special activities
+  const ydConflictWarning = useMemo(() => {
+    if (type !== 'yard-duty' || !ydTeacherId || !ydStartTime || !ydEndTime) return null;
+
+    const normTime = (t: string) => t.substring(0, 5);
+    const start = normTime(ydStartTime);
+    const end = normTime(ydEndTime);
+    const dayOfWeek = item.day_of_week;
+
+    const conflicts = specialActivities.filter(a => {
+      if (a.teacher_id !== ydTeacherId || !a.start_time || !a.end_time) return false;
+      if (a.day_of_week !== dayOfWeek) return false;
+      const aStart = normTime(a.start_time);
+      const aEnd = normTime(a.end_time);
+      return start < aEnd && aStart < end;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c =>
+      `${c.activity_name} (${normTime(c.start_time!)}–${normTime(c.end_time!)})`
+    );
+    return `This overlaps with: ${descriptions.join(', ')}`;
+  }, [type, ydTeacherId, ydStartTime, ydEndTime, item.day_of_week, specialActivities]);
+
+  // Conflict detection: special activity teacher vs their yard duty
+  const yardDutyConflictWarning = useMemo(() => {
+    if (type !== 'activity' || !activity?.teacher_id || !startTime || !endTime) return null;
+
+    const normTime = (t: string) => t.substring(0, 5);
+    const actStart = normTime(startTime);
+    const actEnd = normTime(endTime);
+    const dayOfWeek = item.day_of_week;
+
+    const conflicts = yardDutyAssignments.filter(yd => {
+      if (yd.teacher_id !== activity.teacher_id || !yd.start_time || !yd.end_time) return false;
+      if (yd.day_of_week !== dayOfWeek) return false;
+      const ydStart = normTime(yd.start_time);
+      const ydEnd = normTime(yd.end_time);
+      return actStart < ydEnd && ydStart < actEnd;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c =>
+      `${c.period_name}${c.zone_name ? ` (${c.zone_name})` : ''} (${normTime(c.start_time)}–${normTime(c.end_time)})`
+    );
+    return `This overlaps with yard duty: ${descriptions.join(', ')}`;
+  }, [type, activity, startTime, endTime, item.day_of_week, yardDutyAssignments]);
 
   // Check if activity conflicts with a bell schedule for the teacher's grade
   const bellScheduleConflictWarning = useMemo(() => {
@@ -230,6 +298,27 @@ export function EditItemModal({
       return;
     }
 
+    if (!ydAssigneeType) {
+      setError('Please select an assignee');
+      return;
+    }
+    if (ydAssigneeType === 'teacher' && !ydTeacherId) {
+      setError('Please select a teacher');
+      return;
+    }
+    if (ydAssigneeType === 'staff' && !ydStaffId) {
+      setError('Please select a staff member');
+      return;
+    }
+    if (ydAssigneeType === 'provider' && !ydProviderId) {
+      setError('Please select a provider');
+      return;
+    }
+
+    const assigneeName = ydAssigneeType === 'teacher' ? ydTeacherName
+      : ydAssigneeType === 'staff' ? ydStaffName
+      : ydProviderName;
+
     setError(null);
     setLoading(true);
 
@@ -239,6 +328,10 @@ export function EditItemModal({
         zone_name: ydZoneName || null,
         start_time: ydStartTime,
         end_time: ydEndTime,
+        teacher_id: ydAssigneeType === 'teacher' ? ydTeacherId : null,
+        staff_id: ydAssigneeType === 'staff' ? ydStaffId : null,
+        provider_id: ydAssigneeType === 'provider' ? ydProviderId : null,
+        assignee_name: assigneeName,
       });
       onSuccess();
     } catch (err: any) {
@@ -277,7 +370,7 @@ export function EditItemModal({
             {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : type === 'yard-duty' ? 'Yard Duty' : 'Special Activity'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            {dayName} at {formatTime(item.start_time || null)}
+            {dayName} at {formatTime('start_time' in item ? (item.start_time || null) : null)}
           </p>
         </div>
 
@@ -358,12 +451,93 @@ export function EditItemModal({
 
           {type === 'yard-duty' && yardDuty && (
             <>
-              {/* Assignee (read-only) */}
+              {/* Assignee (editable) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Assigned To
                 </label>
-                <p className="text-sm text-gray-900">{yardDuty.assignee_name}</p>
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setYdAssigneeType('teacher'); setYdStaffId(null); setYdStaffName(''); setYdProviderId(null); setYdProviderName(''); }}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      ydAssigneeType === 'teacher'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Teacher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setYdAssigneeType('staff'); setYdTeacherId(null); setYdTeacherName(''); setYdProviderId(null); setYdProviderName(''); }}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      ydAssigneeType === 'staff'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Staff
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setYdAssigneeType('provider'); setYdTeacherId(null); setYdTeacherName(''); setYdStaffId(null); setYdStaffName(''); }}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      ydAssigneeType === 'provider'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Provider
+                  </button>
+                </div>
+
+                {ydAssigneeType === 'teacher' && (
+                  <TeacherAutocomplete
+                    value={ydTeacherId}
+                    teacherName={ydTeacherName}
+                    onChange={(id, name) => { setYdTeacherId(id); setYdTeacherName(name || ''); }}
+                    placeholder="Search for a teacher..."
+                  />
+                )}
+
+                {ydAssigneeType === 'staff' && (
+                  <select
+                    value={ydStaffId || ''}
+                    onChange={(e) => {
+                      const selected = staffMembers.find(s => s.id === e.target.value);
+                      setYdStaffId(e.target.value || null);
+                      setYdStaffName(selected ? `${selected.first_name} ${selected.last_name}` : '');
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select staff member...</option>
+                    {staffMembers.map(staff => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.first_name} {staff.last_name} ({staff.role === 'instructional_assistant' ? 'IA' : staff.role === 'supervisor' ? 'Supervisor' : 'Office'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {ydAssigneeType === 'provider' && (
+                  <select
+                    value={ydProviderId || ''}
+                    onChange={(e) => {
+                      const selected = providers.find(p => p.id === e.target.value);
+                      setYdProviderId(e.target.value || null);
+                      setYdProviderName(selected ? selected.full_name : '');
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select provider...</option>
+                    {providers.map(provider => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.full_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Period name (editable) */}
@@ -430,6 +604,13 @@ export function EditItemModal({
                   />
                 </div>
               </div>
+
+              {/* Yard duty conflict warning */}
+              {ydConflictWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {ydConflictWarning}
+                </div>
+              )}
             </>
           )}
 
@@ -492,6 +673,13 @@ export function EditItemModal({
               {bellScheduleConflictWarning && (
                 <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                   {bellScheduleConflictWarning}
+                </div>
+              )}
+
+              {/* Yard duty conflict warning */}
+              {yardDutyConflictWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {yardDutyConflictWarning}
                 </div>
               )}
             </>
