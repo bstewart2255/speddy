@@ -294,8 +294,12 @@ export default function MasterSchedulePage() {
     return grades.size > 0 ? grades : null;
   }, [selectedTeacherIds, teachers]);
 
+  // When only providers/staff are selected (no teachers), hide bell schedules, activities, and rotations
+  const hasAnyPersonFilter = selectedTeacherIds.size > 0 || selectedProviderIds.size > 0 || selectedStaffIds.size > 0;
+  const onlyNonTeacherSelected = hasAnyPersonFilter && selectedTeacherIds.size === 0;
+
   // Filter special activities by selected teachers, activity types, and view filter
-  const filteredActivities = (viewFilter === 'bell' || viewFilter === 'yard-duty')
+  const filteredActivities = (viewFilter === 'bell' || viewFilter === 'yard-duty' || onlyNonTeacherSelected)
     ? []
     : specialActivities.filter(activity => {
         // Filter by activity type
@@ -311,7 +315,7 @@ export default function MasterSchedulePage() {
 
   // Filter bell schedules by selected grades and view filter
   // When teachers are selected, also filter by their grade levels
-  const filteredBellSchedules = (viewFilter === 'activities' || viewFilter === 'yard-duty')
+  const filteredBellSchedules = (viewFilter === 'activities' || viewFilter === 'yard-duty' || onlyNonTeacherSelected)
     ? []
     : bellSchedules.filter(schedule => {
         if (!schedule.grade_level) return false;
@@ -334,7 +338,7 @@ export default function MasterSchedulePage() {
       });
 
   // Filter rotation pairs by selected activity types, teacher selection, and view filter
-  const filteredRotationPairs = (viewFilter === 'bell' || viewFilter === 'yard-duty')
+  const filteredRotationPairs = (viewFilter === 'bell' || viewFilter === 'yard-duty' || onlyNonTeacherSelected)
     ? []
     : rotationPairs
         .filter(pair =>
@@ -358,7 +362,6 @@ export default function MasterSchedulePage() {
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
 
   // Filter yard duty assignments by selected teachers/providers/staff and view filter
-  const hasAnyPersonFilter = selectedTeacherIds.size > 0 || selectedProviderIds.size > 0 || selectedStaffIds.size > 0;
   const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
     ? []
     : yardDutyAssignments.filter(yd => {
