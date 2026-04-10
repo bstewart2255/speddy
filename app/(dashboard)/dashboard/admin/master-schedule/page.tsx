@@ -486,23 +486,6 @@ export default function MasterSchedulePage() {
             </div>
           </div>
 
-          {/* Yard Duty Zone Settings - right-aligned under the toggle */}
-          {viewFilter === 'yard-duty' && (
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={() => setShowZonesModal(true)}
-                className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                title="Configure yard duty zones"
-              >
-                <Cog6ToothIcon className="w-4 h-4" />
-                <span>Zone Settings</span>
-                {yardDutyZones.length > 0 && (
-                  <span className="text-xs text-gray-400">({yardDutyZones.length})</span>
-                )}
-              </button>
-            </div>
-          )}
-
           {/* Secondary Filters */}
           <div className={`mt-4 pt-4 border-t border-gray-200 flex gap-6 ${
             viewFilter === 'all' ? 'flex-row flex-wrap items-center' : 'flex-col'
@@ -531,6 +514,20 @@ export default function MasterSchedulePage() {
               />
             )}
 
+            {/* Yard Duty Zone Settings - right-aligned */}
+            {viewFilter === 'yard-duty' && (
+              <button
+                onClick={() => setShowZonesModal(true)}
+                className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                title="Configure yard duty zones"
+              >
+                <Cog6ToothIcon className="w-4 h-4" />
+                <span>Zone Settings</span>
+                {yardDutyZones.length > 0 && (
+                  <span className="text-xs text-gray-400">({yardDutyZones.length})</span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
