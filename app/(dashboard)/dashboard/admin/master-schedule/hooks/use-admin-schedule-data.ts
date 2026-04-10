@@ -3,9 +3,9 @@ import { getBellSchedulesForSchool } from '../../../../../../lib/supabase/querie
 import { getSpecialActivities } from '../../../../../../lib/supabase/queries/special-activities';
 import { getTeachers } from '../../../../../../lib/supabase/queries/teachers';
 import { getYardDutyAssignments } from '../../../../../../lib/supabase/queries/yard-duty';
-import { getSchoolStaffMembers } from '../../../../../../lib/supabase/queries/staff';
+import { getSchoolStaffMembers, getSchoolProviders } from '../../../../../../lib/supabase/queries/staff';
 import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
-import type { StaffWithHours } from '../../../../../../lib/supabase/queries/staff';
+import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 
 interface UseAdminScheduleDataReturn {
@@ -14,6 +14,7 @@ interface UseAdminScheduleDataReturn {
   teachers: Teacher[];
   yardDutyAssignments: YardDutyAssignment[];
   staffMembers: StaffWithHours[];
+  providers: ProviderOption[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
@@ -25,6 +26,7 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [yardDutyAssignments, setYardDutyAssignments] = useState<YardDutyAssignment[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffWithHours[]>([]);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,20 +51,23 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       setSpecialActivities(activityData || []);
       setTeachers(teacherData || []);
 
-      // Fetch yard duty and staff separately so permission errors don't block core data
+      // Fetch yard duty, staff, and providers separately so permission errors don't block core data
       let yardDutyData: YardDutyAssignment[] = [];
       let staffData: StaffWithHours[] = [];
+      let providerData: ProviderOption[] = [];
       try {
-        [yardDutyData, staffData] = await Promise.all([
+        [yardDutyData, staffData, providerData] = await Promise.all([
           getYardDutyAssignments(schoolId, schoolYear),
           getSchoolStaffMembers(schoolId),
+          getSchoolProviders(schoolId),
         ]);
       } catch (err) {
-        console.warn('Unable to fetch yard duty/staff data:', err);
+        console.warn('Unable to fetch yard duty/staff/provider data:', err);
       }
 
       setYardDutyAssignments(yardDutyData || []);
       setStaffMembers(staffData || []);
+      setProviders(providerData || []);
     } catch (err) {
       console.error('Error fetching schedule data:', err);
       setError('Failed to load schedule data');
@@ -81,6 +86,7 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
     teachers,
     yardDutyAssignments,
     staffMembers,
+    providers,
     loading,
     error,
     refreshData: fetchData

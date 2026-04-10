@@ -198,6 +198,7 @@ export default function MasterSchedulePage() {
     teachers,
     yardDutyAssignments,
     staffMembers,
+    providers,
     loading: dataLoading,
     refreshData
   } = useAdminScheduleData(schoolId, selectedSchoolYear);
@@ -333,11 +334,17 @@ export default function MasterSchedulePage() {
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
 
   // Filter yard duty assignments by selected teachers and view filter
+  // When teachers are selected, show matching teacher assignments + all staff/provider assignments
   const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
     ? []
     : yardDutyAssignments.filter(yd => {
         if (selectedTeacherIds.size > 0) {
-          return yd.teacher_id && selectedTeacherIds.has(yd.teacher_id);
+          // Show if assigned to a selected teacher, OR if assigned to staff/provider (not a teacher)
+          if (yd.teacher_id) {
+            return selectedTeacherIds.has(yd.teacher_id);
+          }
+          // Staff/provider assignments stay visible regardless of teacher filter
+          return true;
         }
         return true;
       });
@@ -485,6 +492,7 @@ export default function MasterSchedulePage() {
               filterSelectedGrades={selectedGrades}
               teachers={teachers}
               staffMembers={staffMembers}
+              providers={providers}
               yardDutyAssignments={filteredYardDuty}
               schoolYear={selectedSchoolYear}
             />

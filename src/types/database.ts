@@ -3490,6 +3490,7 @@ export type Database = {
           end_time: string
           id: string
           period_name: string
+          provider_id: string | null
           school_id: string
           school_year: string
           staff_id: string | null
@@ -3506,6 +3507,7 @@ export type Database = {
           end_time: string
           id?: string
           period_name: string
+          provider_id?: string | null
           school_id: string
           school_year: string
           staff_id?: string | null
@@ -3522,6 +3524,7 @@ export type Database = {
           end_time?: string
           id?: string
           period_name?: string
+          provider_id?: string | null
           school_id?: string
           school_year?: string
           staff_id?: string | null
@@ -3536,6 +3539,13 @@ export type Database = {
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yard_duty_assignments_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {

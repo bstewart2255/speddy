@@ -16,6 +16,11 @@ export type TeacherOption = {
   type: 'teacher' | 'provider';
 };
 
+export type ProviderOption = {
+  id: string;
+  full_name: string;
+};
+
 export type StaffAssignment = {
   id: string;
   teacher_id: string | null;
@@ -154,6 +159,31 @@ export async function getSchoolTeacherOptions(schoolId: string): Promise<Teacher
     });
 
   return [...teachers, ...providers];
+}
+
+// ============================================================================
+// GET SCHOOL PROVIDERS (for yard duty assignment dropdown)
+// ============================================================================
+
+export async function getSchoolProviders(schoolId: string): Promise<ProviderOption[]> {
+  const supabase = createClient<Database>();
+
+  const { data, error } = await supabase
+    .from('provider_schools')
+    .select('profiles:provider_id(id, full_name)')
+    .eq('school_id', schoolId);
+
+  if (error) {
+    console.error('Error fetching providers:', error);
+    return [];
+  }
+
+  return (data || [])
+    .filter((row: any) => row.profiles)
+    .map((row: any) => ({
+      id: row.profiles.id,
+      full_name: row.profiles.full_name || 'Unknown Provider',
+    }));
 }
 
 // ============================================================================
