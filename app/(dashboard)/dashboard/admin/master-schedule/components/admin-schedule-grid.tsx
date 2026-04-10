@@ -12,6 +12,7 @@ import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
 import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
+import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { RotationPairWithGroups, RotationGroupMemberWithTeacher } from '../../../../../../lib/supabase/queries/rotation-groups';
@@ -38,6 +39,7 @@ interface AdminScheduleGridProps {
   providers?: ProviderOption[];
   yardDutyAssignments?: YardDutyAssignment[];
   allYardDutyAssignments?: YardDutyAssignment[];
+  yardDutyZones?: YardDutyZone[];
   schoolYear?: string;
 }
 
@@ -172,6 +174,7 @@ export function AdminScheduleGrid({
   providers = [],
   yardDutyAssignments = [],
   allYardDutyAssignments = [],
+  yardDutyZones = [],
   schoolYear,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
@@ -606,6 +609,7 @@ export function AdminScheduleGrid({
           providers={providers}
           yardDutyAssignments={allYardDutyAssignments}
           specialActivities={allSpecialActivities}
+          yardDutyZones={yardDutyZones}
           schoolYear={schoolYear}
         />
       )}
@@ -625,6 +629,7 @@ export function AdminScheduleGrid({
           providers={providers}
           yardDutyAssignments={allYardDutyAssignments}
           specialActivities={allSpecialActivities}
+          yardDutyZones={yardDutyZones}
         />
       )}
 

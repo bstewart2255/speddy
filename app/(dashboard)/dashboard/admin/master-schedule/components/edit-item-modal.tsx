@@ -9,6 +9,7 @@ import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../..
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
+import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
@@ -24,6 +25,7 @@ interface EditItemModalProps {
   providers?: ProviderOption[];
   yardDutyAssignments?: YardDutyAssignment[];
   specialActivities?: SpecialActivity[];
+  yardDutyZones?: YardDutyZone[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -50,7 +52,8 @@ export function EditItemModal({
   staffMembers = [],
   providers = [],
   yardDutyAssignments = [],
-  specialActivities = []
+  specialActivities = [],
+  yardDutyZones = []
 }: EditItemModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -564,19 +567,40 @@ export function EditItemModal({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Zone / Location
                 </label>
-                <input
-                  type="text"
-                  value={ydZoneName}
-                  onChange={(e) => setYdZoneName(e.target.value)}
-                  placeholder="Optional"
-                  list="edit-zone-suggestions"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-                <datalist id="edit-zone-suggestions">
-                  {existingZoneNames.map(name => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
+                {yardDutyZones.length > 0 ? (
+                  <select
+                    value={ydZoneName}
+                    onChange={(e) => setYdZoneName(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">No zone selected</option>
+                    {/* Include current value if it doesn't match a configured zone (legacy data) */}
+                    {ydZoneName && !yardDutyZones.some(z => z.zone_name === ydZoneName) && (
+                      <option value={ydZoneName}>{ydZoneName}</option>
+                    )}
+                    {yardDutyZones.map(zone => (
+                      <option key={zone.id} value={zone.zone_name}>
+                        {zone.zone_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={ydZoneName}
+                    onChange={(e) => setYdZoneName(e.target.value)}
+                    placeholder="Optional"
+                    list="edit-zone-suggestions"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                )}
+                {yardDutyZones.length === 0 && (
+                  <datalist id="edit-zone-suggestions">
+                    {existingZoneNames.map(name => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                )}
               </div>
 
               {/* Times (editable) */}
