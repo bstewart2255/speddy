@@ -14,7 +14,7 @@ interface SessionAssignmentPopupProps {
   student?: Student;
   triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
   sessionTags: Record<string, string>;
   setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onClose: () => void;
@@ -268,7 +268,8 @@ export function SessionAssignmentPopup({
                   'speech': 'Speech',
                   'ot': 'OT',
                   'counseling': 'Counseling',
-                  'specialist': 'Specialist'
+                  'specialist': 'Specialist',
+                  'intervention': 'Intervention'
                 }[specialist.role] || specialist.role;
                 
                 return (
