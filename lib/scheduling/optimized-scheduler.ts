@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
@@ -720,11 +721,11 @@ export class OptimizedScheduler {
         end_time: slot.endTime,
         service_type: this.providerRole,
         assigned_to_sea_id: this.providerRole === "sea" ? this.providerId : null,
-        assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+        assigned_to_specialist_id: isSpecialistSourceRole(this.providerRole)
           ? this.providerId : null,
         delivered_by: this.providerRole === "sea"
           ? "sea"
-          : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+          : isSpecialistSourceRole(this.providerRole)
             ? "specialist"
             : "provider",
         completed_at: null,

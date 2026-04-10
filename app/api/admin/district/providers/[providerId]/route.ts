@@ -17,7 +17,7 @@ async function verifyAdminAccess(
   supabase: SupabaseClient<Database>,
   userId: string,
   providerId: string
-): Promise<{ allowed: boolean; districtId?: string; error?: string }> {
+): Promise<{ allowed: boolean; districtId?: string; siteAdminSchoolId?: string; error?: string }> {
   // Get admin permissions (district or site)
   const { data: adminPermissions, error: permError } = await supabase
     .from('admin_permissions')
@@ -77,7 +77,7 @@ async function verifyAdminAccess(
         return { allowed: false, error: 'Provider is not at your school' };
       }
     }
-    return { allowed: true, districtId: profile.district_id || undefined };
+    return { allowed: true, districtId: profile.district_id || undefined, siteAdminSchoolId: sitePerm.school_id };
   }
 
   return { allowed: false, error: 'Access denied' };
@@ -221,7 +221,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       profileUpdates.full_name = full_name.trim();
     }
     if (role !== undefined) {
-      const validRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention'];
+      const validRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention', 'specialist'];
       if (!validRoles.includes(role)) {
         return NextResponse.json(
           { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -263,15 +263,30 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       // Also update email in profiles
-      await adminClient
+      const { error: profileEmailError } = await adminClient
         .from('profiles')
         .update({ email: trimmedEmail })
         .eq('id', providerId);
+
+      if (profileEmailError) {
+        log.error('Failed to update profile email (auth email was updated)', profileEmailError);
+      }
     }
 
     // Update school assignments if changed
     if (school_ids && primary_school_id) {
-      // Verify all schools are in admin's district
+      // Site admins can only assign to their own school
+      if (accessCheck.siteAdminSchoolId) {
+        const invalidSchools = school_ids.filter(id => id !== accessCheck.siteAdminSchoolId);
+        if (invalidSchools.length > 0) {
+          return NextResponse.json(
+            { error: 'You can only assign specialists to your own school' },
+            { status: 403 }
+          );
+        }
+      }
+
+      // Verify all schools exist and are in admin's district
       const { data: schools, error: schoolsError } = await adminClient
         .from('schools')
         .select('id, district_id, name')
@@ -281,12 +296,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'One or more schools not found' }, { status: 404 });
       }
 
-      const invalidSchools = schools.filter(s => s.district_id !== accessCheck.districtId);
-      if (invalidSchools.length > 0) {
-        return NextResponse.json(
-          { error: 'One or more schools are not in your district' },
-          { status: 403 }
-        );
+      if (accessCheck.districtId) {
+        const invalidSchools = schools.filter(s => s.district_id !== accessCheck.districtId);
+        if (invalidSchools.length > 0) {
+          return NextResponse.json(
+            { error: 'One or more schools are not in your district' },
+            { status: 403 }
+          );
+        }
       }
 
       if (!school_ids.includes(primary_school_id)) {

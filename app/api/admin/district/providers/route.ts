@@ -62,7 +62,18 @@ export async function POST(request: NextRequest) {
 
     // Use district admin permission if available, fall back to site admin
     const adminPermission = districtPerm || sitePerm!;
-    const districtId = adminPermission.district_id;
+    let districtId = adminPermission.district_id;
+
+    // For site admins without district_id, look it up from their school
+    const adminClient = createServiceClient();
+    if (!districtId && sitePerm?.school_id) {
+      const { data: schoolData } = await adminClient
+        .from('schools')
+        .select('district_id')
+        .eq('id', sitePerm.school_id)
+        .single();
+      districtId = schoolData?.district_id || null;
+    }
 
     // Parse request body
     const body: CreateProviderRequest = await request.json();
@@ -103,8 +114,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    // Use admin client for verification and operations
-    const adminClient = createServiceClient();
+    // Use admin client for verification and operations (already created above)
 
     // Verify all schools belong to admin's district or school
     const { data: schools, error: schoolsError } = await adminClient
