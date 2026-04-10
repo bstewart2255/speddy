@@ -16,14 +16,14 @@ CREATE POLICY "Site admins can view zones"
     USING (
         EXISTS (
             SELECT 1 FROM public.admin_permissions ap
-            WHERE ap.user_id = auth.uid()
+            WHERE ap.admin_id = auth.uid()
             AND ap.school_id = yard_duty_zones.school_id
             AND ap.role IN ('site_admin', 'specialist')
         )
         OR
         EXISTS (
             SELECT 1 FROM public.admin_permissions ap
-            WHERE ap.user_id = auth.uid()
+            WHERE ap.admin_id = auth.uid()
             AND ap.role = 'district_admin'
         )
     );
@@ -33,7 +33,7 @@ CREATE POLICY "Site admins can insert zones"
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM public.admin_permissions ap
-            WHERE ap.user_id = auth.uid()
+            WHERE ap.admin_id = auth.uid()
             AND ap.school_id = yard_duty_zones.school_id
             AND ap.role = 'site_admin'
         )
@@ -44,7 +44,7 @@ CREATE POLICY "Site admins can delete zones"
     USING (
         EXISTS (
             SELECT 1 FROM public.admin_permissions ap
-            WHERE ap.user_id = auth.uid()
+            WHERE ap.admin_id = auth.uid()
             AND ap.school_id = yard_duty_zones.school_id
             AND ap.role = 'site_admin'
         )
