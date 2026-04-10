@@ -387,6 +387,11 @@ export function EditItemModal({
   const handleYardDutyUpdate = async () => {
     if (type !== 'yard-duty') return;
 
+    if (!ydPeriodName.trim()) {
+      setError('Please select a duty period');
+      return;
+    }
+
     if (ydStartTime && ydEndTime && ydStartTime >= ydEndTime) {
       setError('End time must be after start time');
       return;
