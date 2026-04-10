@@ -1,6 +1,11 @@
--- Fix yard_duty_zones RLS policies:
+-- Fix yard_duty_zones:
 -- 1. Remove invalid 'specialist' role from SELECT policy
 -- 2. Scope district admin SELECT to their district
+-- 3. Add CHECK constraint to prevent blank zone names
+
+ALTER TABLE public.yard_duty_zones
+    ADD CONSTRAINT yard_duty_zones_zone_name_not_blank
+    CHECK (length(btrim(zone_name)) > 0);
 
 DROP POLICY IF EXISTS "Site admins can view zones" ON public.yard_duty_zones;
 

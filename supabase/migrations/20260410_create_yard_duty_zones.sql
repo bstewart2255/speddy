@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS public.yard_duty_zones (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     school_id text NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
-    zone_name text NOT NULL,
+    zone_name text NOT NULL CHECK (length(btrim(zone_name)) > 0),
     created_at timestamptz DEFAULT now(),
     UNIQUE(school_id, zone_name)
 );
