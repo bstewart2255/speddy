@@ -29,6 +29,28 @@ export default function MasterSchedulePage() {
   const [activityAvailability, setActivityAvailability] = useState<Map<string, FullDayAvailability>>(new Map());
   const [configuredActivityTypes, setConfiguredActivityTypes] = useState<string[]>([]);
 
+  // Provider and staff selection state (for yard duty filtering)
+  const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
+  const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
+
+  const toggleProvider = useCallback((providerId: string) => {
+    setSelectedProviderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(providerId)) next.delete(providerId);
+      else next.add(providerId);
+      return next;
+    });
+  }, []);
+
+  const toggleStaff = useCallback((staffId: string) => {
+    setSelectedStaffIds(prev => {
+      const next = new Set(prev);
+      if (next.has(staffId)) next.delete(staffId);
+      else next.add(staffId);
+      return next;
+    });
+  }, []);
+
   // School year state
   const currentYear = getCurrentSchoolYear();
   const nextYear = getNextSchoolYear();
@@ -335,14 +357,16 @@ export default function MasterSchedulePage() {
         })
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
 
-  // Filter yard duty assignments by selected teachers and view filter
+  // Filter yard duty assignments by selected teachers/providers/staff and view filter
+  const hasAnyPersonFilter = selectedTeacherIds.size > 0 || selectedProviderIds.size > 0 || selectedStaffIds.size > 0;
   const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
     ? []
     : yardDutyAssignments.filter(yd => {
-        if (selectedTeacherIds.size > 0) {
-          return yd.teacher_id && selectedTeacherIds.has(yd.teacher_id);
-        }
-        return true;
+        if (!hasAnyPersonFilter) return true;
+        if (yd.teacher_id && selectedTeacherIds.has(yd.teacher_id)) return true;
+        if (yd.provider_id && selectedProviderIds.has(yd.provider_id)) return true;
+        if (yd.staff_id && selectedStaffIds.has(yd.staff_id)) return true;
+        return false;
       });
 
   const loading = permissionsLoading || dataLoading;
@@ -517,8 +541,16 @@ export default function MasterSchedulePage() {
               onSelectAll={selectAllTeachers}
               onDeselectAll={deselectAllTeachers}
             />
-            <ProvidersPanel providers={providers} />
-            <StaffPanel staffMembers={staffMembers} />
+            <ProvidersPanel
+              providers={providers}
+              selectedProviderIds={selectedProviderIds}
+              onToggleProvider={toggleProvider}
+            />
+            <StaffPanel
+              staffMembers={staffMembers}
+              selectedStaffIds={selectedStaffIds}
+              onToggleStaff={toggleStaff}
+            />
             <RotationGroupsPanel
               rotationPairs={rotationPairs}
               onCreateGroups={handleCreateGroups}

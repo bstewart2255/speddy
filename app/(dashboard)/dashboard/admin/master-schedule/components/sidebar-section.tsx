@@ -19,10 +19,10 @@ export function SidebarSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <Card>
+    <Card padding="none">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 transition-colors rounded-lg"
       >
         <span className="text-sm font-semibold text-gray-900">
           {title}
@@ -40,7 +40,7 @@ export function SidebarSection({
         </svg>
       </button>
       {open && (
-        <CardBody className="pt-0 pb-3 px-4">
+        <CardBody className="pt-0 pb-3 px-3">
           {children}
         </CardBody>
       )}
