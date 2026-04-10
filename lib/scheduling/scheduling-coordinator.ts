@@ -10,6 +10,7 @@
  * shared caches and the scheduling context are populated.
  */
 import { createClient } from '@/lib/supabase/client';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ConstraintValidator } from './constraint-validator';
 import { SessionDistributor } from './session-distributor';
@@ -157,12 +158,12 @@ export class SchedulingCoordinator {
       provider_id: this.providerId,
       service_type: this.providerRole,
       assigned_to_sea_id: this.providerRole === 'sea' ? this.providerId : null,
-      assigned_to_specialist_id: ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+      assigned_to_specialist_id: isSpecialistSourceRole(this.providerRole)
         ? this.providerId
         : (session.assigned_to_specialist_id ?? null),
       delivered_by: this.providerRole === 'sea'
         ? 'sea' as const
-        : ['speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)
+        : isSpecialistSourceRole(this.providerRole)
           ? 'specialist' as const
           : 'provider' as const
     }));

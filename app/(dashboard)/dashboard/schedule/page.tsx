@@ -447,7 +447,7 @@ export default function SchedulePage() {
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
             showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
-            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(providerRole)}
+            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(providerRole)}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}

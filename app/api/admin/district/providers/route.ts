@@ -6,7 +6,7 @@ import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 
 const log = logger.child({ module: 'district-admin-providers' });
 
-type ProviderRole = 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist';
+type ProviderRole = 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist' | 'intervention';
 
 interface CreateProviderRequest {
   first_name: string;
@@ -35,23 +35,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify user is a district admin and get their district
-    const { data: adminPermission, error: permError } = await supabase
+    // Verify user is a district admin or site admin
+    const { data: adminPermissions, error: permError } = await supabase
       .from('admin_permissions')
-      .select('district_id, state_id')
-      .eq('admin_id', user.id)
-      .eq('role', 'district_admin')
-      .single();
+      .select('role, district_id, school_id, state_id')
+      .eq('admin_id', user.id);
 
-    if (permError || !adminPermission?.district_id) {
-      log.warn('Non-district-admin tried to create provider', { userId: user.id });
+    if (permError || !adminPermissions || adminPermissions.length === 0) {
+      log.warn('Non-admin tried to create provider', { userId: user.id });
       return NextResponse.json(
-        { error: 'Forbidden: District admin access required' },
+        { error: 'Forbidden: Admin access required' },
         { status: 403 }
       );
     }
 
-    const districtId = adminPermission.district_id;
+    const districtPerm = adminPermissions.find(p => p.role === 'district_admin' && p.district_id);
+    const sitePerm = adminPermissions.find(p => p.role === 'site_admin' && p.school_id);
+
+    if (!districtPerm && !sitePerm) {
+      log.warn('Admin without district or site role tried to create provider', { userId: user.id });
+      return NextResponse.json(
+        { error: 'Forbidden: District or site admin access required' },
+        { status: 403 }
+      );
+    }
+
+    // Use district admin permission if available, fall back to site admin
+    const adminPermission = districtPerm || sitePerm!;
+    let districtId = adminPermission.district_id;
+
+    // For site admins without district_id, look it up from their school
+    const adminClient = createServiceClient();
+    if (!districtId && sitePerm?.school_id) {
+      const { data: schoolData } = await adminClient
+        .from('schools')
+        .select('district_id')
+        .eq('id', sitePerm.school_id)
+        .single();
+      districtId = schoolData?.district_id || null;
+    }
 
     // Parse request body
     const body: CreateProviderRequest = await request.json();
@@ -66,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    const validRoles: ProviderRole[] = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'];
+    const validRoles: ProviderRole[] = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -92,10 +114,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    // Use admin client for verification and operations
-    const adminClient = createServiceClient();
+    // Use admin client for verification and operations (already created above)
 
-    // Verify all schools belong to admin's district
+    // Verify all schools belong to admin's district or school
     const { data: schools, error: schoolsError } = await adminClient
       .from('schools')
       .select('id, district_id, name')
@@ -105,16 +126,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'One or more schools not found' }, { status: 404 });
     }
 
-    const invalidSchools = schools.filter(s => s.district_id !== districtId);
-    if (invalidSchools.length > 0) {
-      log.warn('District admin tried to assign provider to school outside district', {
-        userId: user.id,
-        invalidSchools: invalidSchools.map(s => s.id),
-      });
-      return NextResponse.json(
-        { error: 'One or more schools are not in your district' },
-        { status: 403 }
-      );
+    if (districtPerm) {
+      // District admin: verify schools are in their district
+      const invalidSchools = schools.filter(s => s.district_id !== districtId);
+      if (invalidSchools.length > 0) {
+        log.warn('District admin tried to assign provider to school outside district', {
+          userId: user.id,
+          invalidSchools: invalidSchools.map(s => s.id),
+        });
+        return NextResponse.json(
+          { error: 'One or more schools are not in your district' },
+          { status: 403 }
+        );
+      }
+    } else if (sitePerm) {
+      // Site admin: verify schools match their own school
+      const invalidSchools = schools.filter(s => s.id !== sitePerm.school_id);
+      if (invalidSchools.length > 0) {
+        log.warn('Site admin tried to assign provider to another school', {
+          userId: user.id,
+          invalidSchools: invalidSchools.map(s => s.id),
+        });
+        return NextResponse.json(
+          { error: 'You can only assign specialists to your own school' },
+          { status: 403 }
+        );
+      }
     }
 
     // Validate primary_school_id is in school_ids

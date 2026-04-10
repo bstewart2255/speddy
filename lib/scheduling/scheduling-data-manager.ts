@@ -314,7 +314,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
-    if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(this.providerRole)) {
+    if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(this.providerRole)) {
       // Fetch sessions where:
       // 1. Student belongs to this user (any sessions for my students)
       // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)

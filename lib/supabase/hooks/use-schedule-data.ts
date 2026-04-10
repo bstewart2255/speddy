@@ -23,7 +23,7 @@ interface ScheduleData {
   specialActivities: SpecialActivity[];
   schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -159,7 +159,7 @@ export function useScheduleData() {
 
       // For specialist users, also fetch sessions assigned to them (even from other providers' students)
       let sessionsResult;
-      if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role)) {
+      if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(profile.role)) {
         // Fetch sessions where:
         // 1. Student belongs to this user (any sessions for my students)
         // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
@@ -216,7 +216,7 @@ export function useScheduleData() {
 
       // For specialists, also fetch students from assigned sessions
       let allStudents = studentsResult.data || [];
-      if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(profile.role) && sessionsResult.data) {
+      if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(profile.role) && sessionsResult.data) {
         // Get student IDs from assigned sessions that aren't already in our student list
         const assignedSessionStudentIds = sessionsResult.data
           .filter(session => session.assigned_to_specialist_id === user.id && session.student_id)
@@ -238,7 +238,7 @@ export function useScheduleData() {
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
-      let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' }> = [];
+      let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }> = [];
       
       if (profile?.role === 'resource') {
         try {
@@ -287,7 +287,7 @@ export function useScheduleData() {
               otherSpecialists = specialists.map(s => ({
                 id: s.id,
                 full_name: s.full_name,
-                role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention'
               }));
 
               console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
@@ -297,7 +297,7 @@ export function useScheduleData() {
             const { data: specialistsData, error: specialistsError } = await supabase
               .from('profiles')
               .select('id, full_name, role')
-              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist'])
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'])
               .neq('id', user.id)
               .eq('school_site', currentSchool.school_site)
               .eq('school_district', currentSchool.school_district)
@@ -310,7 +310,7 @@ export function useScheduleData() {
               otherSpecialists = specialistsData.map(specialist => ({
                 id: specialist.id,
                 full_name: specialist.full_name ?? '',
-                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist'
+                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention'
               }));
 
               console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
@@ -433,7 +433,7 @@ export function useScheduleData() {
     );
     
     // For specialist users, also subscribe to sessions assigned to them
-    if (['resource', 'speech', 'ot', 'counseling', 'specialist'].includes(data.providerRole)) {
+    if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(data.providerRole)) {
       channel.on(
         'postgres_changes',
         {

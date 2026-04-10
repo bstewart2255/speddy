@@ -170,7 +170,7 @@ export async function getPasswordResetRequestCount(schoolId: string): Promise<nu
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .eq('school_id', schoolId)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention'])
         .not('password_reset_requested_at', 'is', null);
       if (error) throw error;
       return count || 0;
@@ -201,7 +201,7 @@ export async function getPasswordResetRequestCount(schoolId: string): Promise<nu
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .in('id', secondaryProviderIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention'])
         .not('password_reset_requested_at', 'is', null);
 
       if (error) throw error;
@@ -271,7 +271,7 @@ export async function getSchoolStaff(schoolId: string) {
         .from('profiles')
         .select('*')
         .eq('school_id', schoolId)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention'])
         .order('full_name', { ascending: true });
       if (error) throw error;
       return data;
@@ -304,7 +304,7 @@ export async function getSchoolStaff(schoolId: string) {
         .from('profiles')
         .select('*')
         .in('id', secondaryProviderIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist'])
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention'])
         .order('full_name', { ascending: true });
 
       if (profilesError) throw profilesError;
@@ -698,7 +698,7 @@ export async function getDistrictSchools(districtId: string) {
             .from('profiles')
             .select('*', { count: 'exact', head: true })
             .eq('school_id', school.id)
-            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
+            .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention']);
           if (primaryError) throw primaryError;
 
           // Get secondary specialists from provider_schools
@@ -720,7 +720,7 @@ export async function getDistrictSchools(districtId: string) {
               .select('*', { count: 'exact', head: true })
               .in('id', secondaryProviderIds as string[])
               .neq('school_id', school.id) // Don't double-count if primary is same school
-              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
+              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention']);
             if (secError) throw secError;
             secondaryCount = count || 0;
           }
@@ -804,7 +804,7 @@ export async function getDistrictStaffCounts(districtId: string) {
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .in('school_id', schoolIds)
-        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist']);
+        .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea', 'psychologist', 'intervention']);
       if (error) throw error;
       return count || 0;
     },

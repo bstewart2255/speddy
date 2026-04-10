@@ -50,6 +50,7 @@ export async function addYardDutyAssignment(assignment: {
   end_time: string;
   teacher_id?: string | null;
   staff_id?: string | null;
+  provider_id?: string | null;
   assignee_name: string;
   school_year?: string;
 }): Promise<YardDutyAssignment> {
@@ -60,9 +61,10 @@ export async function addYardDutyAssignment(assignment: {
     throw new Error('User not authenticated');
   }
 
-  // Verify at least one assignee
-  if (!assignment.teacher_id && !assignment.staff_id) {
-    throw new Error('A teacher or staff member must be assigned');
+  // Verify exactly one assignee (XOR)
+  const assigneeCount = [assignment.teacher_id, assignment.staff_id, assignment.provider_id].filter(Boolean).length;
+  if (assigneeCount !== 1) {
+    throw new Error('Exactly one of teacher, staff member, or provider must be assigned');
   }
 
   const { data, error } = await supabase
@@ -97,6 +99,7 @@ export async function updateYardDutyAssignment(
     end_time?: string;
     teacher_id?: string | null;
     staff_id?: string | null;
+    provider_id?: string | null;
     assignee_name?: string;
   }
 ): Promise<YardDutyAssignment> {
