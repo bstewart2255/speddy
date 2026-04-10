@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Only process for provider roles
-    const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist'];
+    const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'specialist', 'intervention'];
     if (!providerRoles.includes(profile.role || '')) {
       log.info('Forgot password request for non-provider role', { email: normalizedEmail, role: profile.role });
       return NextResponse.json({ success: true });

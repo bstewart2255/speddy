@@ -15,6 +15,7 @@ const SPECIALIST_ROLES = [
   { value: 'counseling', label: 'Counselor' },
   { value: 'sea', label: 'Special Education Assistant' },
   { value: 'psychologist', label: 'School Psychologist' },
+  { value: 'intervention', label: 'Intervention Teacher' },
 ] as const;
 
 export default function CreateAccountPage() {
@@ -33,8 +34,10 @@ export default function CreateAccountPage() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [credentials, setCredentials] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
-  // District admin state
+  // Admin state
   const [isDistrictAdmin, setIsDistrictAdmin] = useState(false);
+  const [isSiteAdmin, setIsSiteAdmin] = useState(false);
+  const [siteAdminSchoolId, setSiteAdminSchoolId] = useState<string | null>(null);
   const [districtId, setDistrictId] = useState<string | null>(null);
   const [districtSchools, setDistrictSchools] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingSchools, setLoadingSchools] = useState(false);
@@ -44,7 +47,7 @@ export default function CreateAccountPage() {
     first_name: '',
     last_name: '',
     email: '',
-    role: 'resource' as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist',
+    role: 'resource' as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist' | 'intervention',
     school_ids: [] as string[],
     primary_school_id: '',
   });
@@ -59,6 +62,11 @@ export default function CreateAccountPage() {
           setIsDistrictAdmin(true);
           setDistrictId(districtPerm.district_id);
         }
+        const sitePerm = perms.find(p => p.role === 'site_admin' && p.school_id);
+        if (sitePerm && sitePerm.school_id) {
+          setIsSiteAdmin(true);
+          setSiteAdminSchoolId(sitePerm.school_id);
+        }
       } catch (err) {
         console.error('Error checking admin permissions:', err);
       }
@@ -66,9 +74,10 @@ export default function CreateAccountPage() {
     checkPermissions();
   }, []);
 
-  // Fetch district schools when specialist mode is activated
+  // Fetch district schools when specialist mode is activated (district admin)
+  // or auto-set the school for site admins
   useEffect(() => {
-    if (accountType === 'specialist' && districtId && districtSchools.length === 0) {
+    if (accountType === 'specialist' && isDistrictAdmin && districtId && districtSchools.length === 0) {
       const fetchSchools = async () => {
         setLoadingSchools(true);
         try {
@@ -82,8 +91,15 @@ export default function CreateAccountPage() {
         }
       };
       fetchSchools();
+    } else if (accountType === 'specialist' && isSiteAdmin && siteAdminSchoolId) {
+      // Site admins can only assign specialists to their own school
+      setSpecialistData(prev => ({
+        ...prev,
+        school_ids: [siteAdminSchoolId],
+        primary_school_id: siteAdminSchoolId,
+      }));
     }
-  }, [accountType, districtId, districtSchools.length]);
+  }, [accountType, isDistrictAdmin, isSiteAdmin, siteAdminSchoolId, districtId, districtSchools.length]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -296,19 +312,19 @@ export default function CreateAccountPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isDistrictAdmin) {
+                  if (isDistrictAdmin || isSiteAdmin) {
                     setAccountType('specialist');
                     setError(null);
                   } else {
-                    setError('Specialist account creation is only available for district administrators.');
+                    setError('Specialist account creation requires site admin or district admin permissions.');
                   }
                 }}
                 className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${
                   accountType === 'specialist'
                     ? 'border-green-500 bg-green-50 text-green-700'
                     : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                } ${!isDistrictAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
-                disabled={!isDistrictAdmin}
+                } ${!(isDistrictAdmin || isSiteAdmin) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={!(isDistrictAdmin || isSiteAdmin)}
               >
                 <div className="font-semibold">Specialist</div>
                 <div className="text-xs mt-1">Resource specialist or service provider</div>
@@ -492,7 +508,13 @@ export default function CreateAccountPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Assigned Schools <span className="text-red-500">*</span>
                 </label>
-                {loadingSchools ? (
+                {isSiteAdmin && !isDistrictAdmin ? (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <p className="text-sm text-gray-700">
+                      Specialist will be assigned to your school.
+                    </p>
+                  </div>
+                ) : loadingSchools ? (
                   <div className="text-sm text-gray-500">Loading schools...</div>
                 ) : districtSchools.length === 0 ? (
                   <div className="text-sm text-gray-500">No schools found in your district</div>
@@ -514,9 +536,11 @@ export default function CreateAccountPage() {
                     ))}
                   </div>
                 )}
-                <p className="mt-1 text-xs text-gray-500">
-                  Select one or more schools where this specialist will work.
-                </p>
+                {isDistrictAdmin && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select one or more schools where this specialist will work.
+                  </p>
+                )}
               </div>
 
               {/* Primary School Selection (only if multiple schools selected) */}

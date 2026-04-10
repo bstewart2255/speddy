@@ -13,29 +13,34 @@ interface RouteParams {
 /**
  * Helper to verify district admin has access to the provider
  */
-async function verifyDistrictAdminAccess(
+async function verifyAdminAccess(
   supabase: SupabaseClient<Database>,
   userId: string,
   providerId: string
 ): Promise<{ allowed: boolean; districtId?: string; error?: string }> {
-  // Get admin's district
-  const { data: adminPermission, error: permError } = await supabase
+  // Get admin permissions (district or site)
+  const { data: adminPermissions, error: permError } = await supabase
     .from('admin_permissions')
-    .select('district_id')
-    .eq('admin_id', userId)
-    .eq('role', 'district_admin')
-    .single();
+    .select('role, district_id, school_id')
+    .eq('admin_id', userId);
 
-  if (permError || !adminPermission?.district_id) {
-    return { allowed: false, error: 'District admin access required' };
+  if (permError || !adminPermissions || adminPermissions.length === 0) {
+    return { allowed: false, error: 'Admin access required' };
   }
 
-  // Use admin client to verify the provider is in the district admin's district
+  const districtPerm = adminPermissions.find(p => p.role === 'district_admin' && p.district_id);
+  const sitePerm = adminPermissions.find(p => p.role === 'site_admin' && p.school_id);
+
+  if (!districtPerm && !sitePerm) {
+    return { allowed: false, error: 'District or site admin access required' };
+  }
+
+  // Use admin client to verify the provider
   const adminClient = createServiceClient();
 
   const { data: profile, error: profileError } = await adminClient
     .from('profiles')
-    .select('district_id, role')
+    .select('district_id, school_id, role')
     .eq('id', providerId)
     .single();
 
@@ -44,16 +49,38 @@ async function verifyDistrictAdminAccess(
   }
 
   // Check if it's a provider role
-  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist'];
+  const providerRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention'];
   if (!providerRoles.includes(profile.role || '')) {
     return { allowed: false, error: 'User is not a provider' };
   }
 
-  if (profile.district_id !== adminPermission.district_id) {
-    return { allowed: false, error: 'Provider is not in your district' };
+  // District admin: verify provider is in their district
+  if (districtPerm) {
+    if (profile.district_id !== districtPerm.district_id) {
+      return { allowed: false, error: 'Provider is not in your district' };
+    }
+    return { allowed: true, districtId: districtPerm.district_id };
   }
 
-  return { allowed: true, districtId: adminPermission.district_id };
+  // Site admin: verify provider is at their school
+  if (sitePerm) {
+    if (profile.school_id !== sitePerm.school_id) {
+      // Also check provider_schools
+      const { data: ps } = await adminClient
+        .from('provider_schools')
+        .select('id')
+        .eq('provider_id', providerId)
+        .eq('school_id', sitePerm.school_id)
+        .limit(1);
+
+      if (!ps || ps.length === 0) {
+        return { allowed: false, error: 'Provider is not at your school' };
+      }
+    }
+    return { allowed: true, districtId: profile.district_id || undefined };
+  }
+
+  return { allowed: false, error: 'Access denied' };
 }
 
 /**
@@ -76,7 +103,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
     if (!accessCheck.allowed) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
@@ -166,7 +193,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for provider update', {
         userId: user.id,
@@ -177,8 +204,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { full_name, school_ids, primary_school_id } = body as {
+    const { full_name, email, role, school_ids, primary_school_id } = body as {
       full_name?: string;
+      email?: string;
+      role?: string;
       school_ids?: string[];
       primary_school_id?: string;
     };
@@ -186,11 +215,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Use admin client for updates
     const adminClient = createServiceClient();
 
-    // Update profile if name changed
+    // Build profile updates
+    const profileUpdates: Record<string, string> = {};
     if (full_name !== undefined) {
+      profileUpdates.full_name = full_name.trim();
+    }
+    if (role !== undefined) {
+      const validRoles = ['resource', 'speech', 'ot', 'counseling', 'sea', 'psychologist', 'intervention'];
+      if (!validRoles.includes(role)) {
+        return NextResponse.json(
+          { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+          { status: 400 }
+        );
+      }
+      profileUpdates.role = role;
+    }
+
+    // Update profile fields (name, role)
+    if (Object.keys(profileUpdates).length > 0) {
       const { error: updateError } = await adminClient
         .from('profiles')
-        .update({ full_name: full_name.trim() })
+        .update(profileUpdates)
         .eq('id', providerId);
 
       if (updateError) {
@@ -200,6 +245,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 500 }
         );
       }
+    }
+
+    // Update email in auth if changed
+    if (email !== undefined) {
+      const trimmedEmail = email.trim().toLowerCase();
+      const { error: emailError } = await adminClient.auth.admin.updateUserById(providerId, {
+        email: trimmedEmail,
+      });
+
+      if (emailError) {
+        log.error('Failed to update provider email', emailError);
+        return NextResponse.json(
+          { error: emailError.message || 'Failed to update email' },
+          { status: 500 }
+        );
+      }
+
+      // Also update email in profiles
+      await adminClient
+        .from('profiles')
+        .update({ email: trimmedEmail })
+        .eq('id', providerId);
     }
 
     // Update school assignments if changed
@@ -334,7 +401,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for provider removal', {
         userId: user.id,

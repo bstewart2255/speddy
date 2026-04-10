@@ -7,6 +7,7 @@ import { Card } from '@/app/components/ui/card';
 import { LongHoverTooltip } from '@/app/components/ui/long-hover-tooltip';
 import { TeacherCredentialsModal } from '@/app/components/admin/teacher-credentials-modal';
 import { ProviderScheduleModal } from '@/app/components/admin/provider-schedule-modal';
+import { ProviderEditModal } from '@/app/components/admin/provider-edit-modal';
 import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
 import { useToast } from '@/app/contexts/toast-context';
 
@@ -27,6 +28,8 @@ const roleDisplayNames: Record<string, string> = {
   counseling: 'Counselor',
   specialist: 'Specialist',
   sea: 'Special Education Assistant',
+  psychologist: 'School Psychologist',
+  intervention: 'Intervention Teacher',
 };
 
 function formatRole(role: string | null): string {
@@ -48,6 +51,7 @@ export default function ProviderDirectoryPage() {
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [scheduleModalProvider, setScheduleModalProvider] = useState<Provider | null>(null);
   const [confirmReset, setConfirmReset] = useState<{ id: string; name: string } | null>(null);
+  const [editModalProvider, setEditModalProvider] = useState<Provider | null>(null);
   const { showToast } = useToast();
 
   const fetchProviders = async () => {
@@ -290,7 +294,13 @@ export default function ProviderDirectoryPage() {
                       View
                     </button>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                    <button
+                      onClick={() => setEditModalProvider(provider)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      Edit
+                    </button>
                     <LongHoverTooltip content="Reset the password of a provider. You can share the new password with them after it's been generated.">
                       <button
                         onClick={() => handleResetPassword(provider.id, provider.full_name || 'this provider')}
@@ -324,6 +334,18 @@ export default function ProviderDirectoryPage() {
           Back to dashboard
         </Link>
       </div>
+
+      {/* Provider Edit Modal */}
+      <ProviderEditModal
+        isOpen={!!editModalProvider}
+        onClose={() => setEditModalProvider(null)}
+        onSuccess={() => {
+          setEditModalProvider(null);
+          fetchProviders();
+          showToast('Provider updated successfully', 'success');
+        }}
+        provider={editModalProvider}
+      />
 
       {/* Password Reset Credentials Modal */}
       <TeacherCredentialsModal
