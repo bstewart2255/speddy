@@ -90,12 +90,58 @@ export function EditItemModal({
   const [ydProviderId, setYdProviderId] = useState<string | null>(yardDuty?.provider_id || null);
   const [ydProviderName, setYdProviderName] = useState(yardDuty?.provider_id ? (yardDuty?.assignee_name || '') : '');
 
-  // Get existing period/zone names for datalist suggestions
-  const existingPeriodNames = useMemo(() => {
-    const names = new Set<string>();
-    yardDutyAssignments.forEach(yd => names.add(yd.period_name));
-    return Array.from(names).sort();
-  }, [yardDutyAssignments]);
+  // Build duty period options from bell schedules that overlap this item's time
+  const availableDutyPeriods = useMemo(() => {
+    if (type !== 'yard-duty') return [];
+
+    const normTime = (t: string) => t.substring(0, 5);
+    const fmtTime = (t: string) => {
+      const [h, m] = normTime(t).split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hr = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+    };
+    const start = normTime(ydStartTime);
+    const end = normTime(ydEndTime);
+    const dayOfWeek = item.day_of_week;
+    const dailyTimeNames = ['School Start', 'Dismissal', 'Early Dismissal'];
+
+    const overlapping = bellSchedules.filter(bs => {
+      if (!bs.period_name || !bs.start_time || !bs.end_time) return false;
+      if (dailyTimeNames.includes(bs.period_name)) return false;
+      if (bs.day_of_week !== dayOfWeek) return false;
+      const bsStart = normTime(bs.start_time);
+      const bsEnd = normTime(bs.end_time);
+      return start < bsEnd && bsStart < end;
+    });
+
+    const hasOverlap = overlapping.length > 0;
+    const source = hasOverlap
+      ? overlapping
+      : bellSchedules.filter(bs => bs.period_name && !dailyTimeNames.includes(bs.period_name));
+
+    const seen = new Map<string, { value: string; label: string; sortTime: string }>();
+    for (const bs of source) {
+      if (!bs.period_name || !bs.grade_level || !bs.start_time || !bs.end_time) continue;
+      const value = `${bs.grade_level} ${bs.period_name}`;
+      if (!seen.has(value)) {
+        seen.set(value, {
+          value,
+          label: `${bs.grade_level} ${bs.period_name} (${fmtTime(bs.start_time)}–${fmtTime(bs.end_time)})`,
+          sortTime: bs.start_time,
+        });
+      }
+    }
+
+    const options = Array.from(seen.values()).sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+
+    if (!hasOverlap) {
+      options.unshift({ value: 'Before School', label: 'Before School', sortTime: '00:00' });
+      options.push({ value: 'After School', label: 'After School', sortTime: '99:99' });
+    }
+
+    return options;
+  }, [type, bellSchedules, item.day_of_week, ydStartTime, ydEndTime]);
 
   const existingZoneNames = useMemo(() => {
     const names = new Set<string>();
@@ -129,6 +175,41 @@ export function EditItemModal({
     );
     return `This overlaps with: ${descriptions.join(', ')}`;
   }, [type, ydTeacherId, ydStartTime, ydEndTime, item.day_of_week, specialActivities]);
+
+  // Conflict detection: yard duty assignee vs their other yard duty assignments
+  const ydDoubleBookWarning = useMemo(() => {
+    if (type !== 'yard-duty' || !ydStartTime || !ydEndTime) return null;
+
+    const assigneeId = ydAssigneeType === 'teacher' ? ydTeacherId
+      : ydAssigneeType === 'staff' ? ydStaffId
+      : ydAssigneeType === 'provider' ? ydProviderId
+      : null;
+    if (!assigneeId) return null;
+
+    const normTime = (t: string) => t.substring(0, 5);
+    const start = normTime(ydStartTime);
+    const end = normTime(ydEndTime);
+    const dayOfWeek = item.day_of_week;
+
+    const conflicts = yardDutyAssignments.filter(yd => {
+      if (yd.id === item.id) return false; // Exclude current item
+      const matchesAssignee = (ydAssigneeType === 'teacher' && yd.teacher_id === assigneeId)
+        || (ydAssigneeType === 'staff' && yd.staff_id === assigneeId)
+        || (ydAssigneeType === 'provider' && yd.provider_id === assigneeId);
+      if (!matchesAssignee || !yd.start_time || !yd.end_time) return false;
+      if (yd.day_of_week !== dayOfWeek) return false;
+      const ydStart = normTime(yd.start_time);
+      const ydEnd = normTime(yd.end_time);
+      return start < ydEnd && ydStart < end;
+    });
+
+    if (conflicts.length === 0) return null;
+
+    const descriptions = conflicts.map(c =>
+      `${c.period_name}${c.zone_name ? ` (${c.zone_name})` : ''} (${normTime(c.start_time)}–${normTime(c.end_time)})`
+    );
+    return `This assignee already has yard duty: ${descriptions.join(', ')}`;
+  }, [type, ydAssigneeType, ydTeacherId, ydStaffId, ydProviderId, ydStartTime, ydEndTime, item.day_of_week, item.id, yardDutyAssignments]);
 
   // Conflict detection: special activity teacher vs their yard duty
   const yardDutyConflictWarning = useMemo(() => {
@@ -263,6 +344,16 @@ export function EditItemModal({
   // Check if this is a daily time marker
   const isDailyTimeMarker = bellPeriodName && DAILY_TIME_PERIOD_NAMES.includes(bellPeriodName as typeof DAILY_TIME_PERIOD_NAMES[number]);
 
+  // Count yard duty assignments matching this bell schedule's derived period name and day
+  const yardDutyCoverageCount = useMemo(() => {
+    if (type !== 'bell' || !bellSchedule?.grade_level || !bellSchedule?.period_name) return 0;
+    const derivedName = `${bellSchedule.grade_level} ${bellSchedule.period_name}`;
+    const dayOfWeek = item.day_of_week;
+    return yardDutyAssignments.filter(
+      yd => yd.period_name === derivedName && yd.day_of_week === dayOfWeek
+    ).length;
+  }, [type, bellSchedule, item.day_of_week, yardDutyAssignments]);
+
   const handleBellUpdate = async () => {
     if (type !== 'bell') return;
 
@@ -387,12 +478,19 @@ export function EditItemModal({
 
           {type === 'bell' && bellSchedule && (
             <>
-              {/* Grade Level (read-only - defines the schedule slot) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Grade Level
-                </label>
-                <p className="text-sm text-gray-900">{bellSchedule.grade_level || 'Not specified'}</p>
+              {/* Grade Level + Yard Duty Coverage */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Grade Level
+                  </label>
+                  <p className="text-sm text-gray-900">{bellSchedule.grade_level || 'Not specified'}</p>
+                </div>
+                {!isDailyTimeMarker && (
+                  <div className="text-sm text-amber-700 bg-amber-100 border border-amber-300 rounded px-3 py-1.5">
+                    Yard Duty Coverage: <span className="font-medium">{yardDutyCoverageCount}</span>
+                  </div>
+                )}
               </div>
 
               {/* Activity/Type (editable) */}
@@ -449,6 +547,7 @@ export function EditItemModal({
                   </div>
                 )}
               </div>
+
             </>
           )}
 
@@ -548,18 +647,21 @@ export function EditItemModal({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Duty Period
                 </label>
-                <input
-                  type="text"
+                <select
                   value={ydPeriodName}
                   onChange={(e) => setYdPeriodName(e.target.value)}
-                  list="edit-period-suggestions"
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-                <datalist id="edit-period-suggestions">
-                  {existingPeriodNames.map(name => (
-                    <option key={name} value={name} />
+                >
+                  <option value="">Select duty period...</option>
+                  {ydPeriodName && !availableDutyPeriods.some(o => o.value === ydPeriodName) && (
+                    <option value={ydPeriodName}>{ydPeriodName}</option>
+                  )}
+                  {availableDutyPeriods.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
-                </datalist>
+                </select>
               </div>
 
               {/* Zone name (editable) */}
@@ -629,10 +731,17 @@ export function EditItemModal({
                 </div>
               </div>
 
-              {/* Yard duty conflict warning */}
+              {/* Yard duty conflict warning (vs special activities) */}
               {ydConflictWarning && (
                 <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                   {ydConflictWarning}
+                </div>
+              )}
+
+              {/* Yard duty double-booking warning (vs other yard duty) */}
+              {ydDoubleBookWarning && (
+                <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  {ydDoubleBookWarning}
                 </div>
               )}
             </>
