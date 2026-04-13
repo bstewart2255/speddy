@@ -47,6 +47,58 @@ export async function getSchoolHours(school?: SchoolIdentifier): Promise<SchoolH
 }
 
 /**
+ * Get school hours for a school by school_id (for admin views).
+ * Returns the most recently updated set of hours per grade_level + day_of_week.
+ */
+export async function getSchoolHoursBySchoolId(schoolId: string): Promise<SchoolHour[]> {
+  const supabase = createClient<Database>();
+
+  // Try by school_id first
+  let { data, error } = await supabase
+    .from('school_hours')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('day_of_week')
+    .order('grade_level');
+
+  if (error) throw error;
+
+  // If no results by school_id, try matching by school name via the schools table
+  if (!data || data.length === 0) {
+    const { data: school } = await supabase
+      .from('schools')
+      .select('name')
+      .eq('id', schoolId)
+      .single();
+
+    if (school?.name) {
+      const { data: siteData, error: siteError } = await supabase
+        .from('school_hours')
+        .select('*')
+        .eq('school_site', school.name)
+        .order('day_of_week')
+        .order('grade_level');
+
+      if (siteError) throw siteError;
+      data = siteData;
+    }
+  }
+
+  if (!data || data.length === 0) return [];
+
+  // Deduplicate: keep only the most recently updated row per grade_level + day_of_week
+  const keyMap = new Map<string, SchoolHour>();
+  for (const row of data) {
+    const key = `${row.grade_level}:${row.day_of_week}`;
+    const existing = keyMap.get(key);
+    if (!existing || (row.updated_at && (!existing.updated_at || row.updated_at > existing.updated_at))) {
+      keyMap.set(key, row);
+    }
+  }
+  return Array.from(keyMap.values());
+}
+
+/**
  * Upsert school hours (insert or update).
  * Stores both structured and text-based school identifiers.
  */

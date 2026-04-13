@@ -254,6 +254,7 @@ export default function MasterSchedulePage() {
     yardDutyAssignments,
     staffMembers,
     providers,
+    schoolHours,
     loading: dataLoading,
     refreshData
   } = useAdminScheduleData(schoolId, selectedSchoolYear);
@@ -643,6 +644,7 @@ export default function MasterSchedulePage() {
               allYardDutyAssignments={yardDutyAssignments}
               yardDutyZones={yardDutyZones}
               schoolYear={selectedSchoolYear}
+              schoolHours={schoolHours}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">
