@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -10,6 +10,7 @@ import { RotationGroupsPanel } from './components/rotation-groups-panel';
 import { RotationGroupModal } from './components/rotation-group-modal';
 import { GradeFilter } from './components/grade-filter';
 import { ActivityTypeFilter } from './components/activity-type-filter';
+import { ZoneFilter, ZONE_OTHER } from './components/zone-filter';
 import { useAdminScheduleData } from './hooks/use-admin-schedule-data';
 import { useAdminScheduleState } from './hooks/use-admin-schedule-state';
 import { getActivityAvailabilityWithTimeRanges, getConfiguredActivityTypes, FullDayAvailability } from '../../../../../lib/supabase/queries/activity-availability';
@@ -19,6 +20,7 @@ import { checkYearActivated, activateSchoolYear, copyScheduleToNextYear } from '
 import { SchoolYearToggle } from './components/school-year-toggle';
 import { YearActivationDialog } from './components/year-activation-dialog';
 import { YardDutyZonesModal } from './components/yard-duty-zones-modal';
+import { MasterScheduleSettingsModal } from './components/master-schedule-settings-modal';
 import { getYardDutyZones, type YardDutyZone } from '../../../../../lib/supabase/queries/yard-duty-zones';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
 
@@ -65,6 +67,14 @@ export default function MasterSchedulePage() {
   // Yard duty zones state
   const [yardDutyZones, setYardDutyZones] = useState<YardDutyZone[]>([]);
   const [showZonesModal, setShowZonesModal] = useState(false);
+
+  // Settings modal state
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Zone filter state
+  const [selectedZones, setSelectedZones] = useState<Set<string>>(new Set());
+  const previousZoneKeysRef = useRef<Set<string>>(new Set());
+  const zoneSelectionInitializedRef = useRef(false);
 
   const fetchZones = useCallback(async () => {
     if (!schoolId) return;
@@ -244,6 +254,7 @@ export default function MasterSchedulePage() {
     yardDutyAssignments,
     staffMembers,
     providers,
+    schoolHours,
     loading: dataLoading,
     refreshData
   } = useAdminScheduleData(schoolId, selectedSchoolYear);
@@ -283,6 +294,66 @@ export default function MasterSchedulePage() {
     });
     return types;
   }, [specialActivities, rotationPairs]);
+
+  // Derive available zones from configured zones + zones used in assignments
+  const availableZones = useMemo(() => {
+    const zones = new Set<string>();
+    yardDutyZones.forEach(z => zones.add(z.zone_name));
+    yardDutyAssignments.forEach(yd => {
+      if (yd.zone_name) zones.add(yd.zone_name);
+    });
+    return Array.from(zones).sort();
+  }, [yardDutyZones, yardDutyAssignments]);
+
+  // Check if any yard duty assignments have no zone
+  const hasUnzonedAssignments = useMemo(() => {
+    return yardDutyAssignments.some(yd => !yd.zone_name);
+  }, [yardDutyAssignments]);
+
+  // Build the full set of zone filter keys (named zones + __other__ if applicable)
+  const allZoneKeys = useMemo(() => {
+    const keys = new Set(availableZones);
+    if (hasUnzonedAssignments) keys.add(ZONE_OTHER);
+    return keys;
+  }, [availableZones, hasUnzonedAssignments]);
+
+  // Initialize selected zones to all on first load; preserve user selection on refresh
+  useEffect(() => {
+    setSelectedZones(prev => {
+      if (!zoneSelectionInitializedRef.current) {
+        zoneSelectionInitializedRef.current = true;
+        previousZoneKeysRef.current = new Set(allZoneKeys);
+        return new Set(allZoneKeys);
+      }
+
+      // If user had all selected, keep all selected (including any new zones)
+      const hadAllSelected =
+        prev.size === previousZoneKeysRef.current.size &&
+        [...previousZoneKeysRef.current].every(zone => prev.has(zone));
+
+      previousZoneKeysRef.current = new Set(allZoneKeys);
+      return hadAllSelected
+        ? new Set(allZoneKeys)
+        : new Set([...prev].filter(zone => allZoneKeys.has(zone)));
+    });
+  }, [allZoneKeys]);
+
+  const toggleZone = useCallback((zone: string) => {
+    setSelectedZones(prev => {
+      const next = new Set(prev);
+      if (next.has(zone)) next.delete(zone);
+      else next.add(zone);
+      return next;
+    });
+  }, []);
+
+  const selectAllZones = useCallback(() => {
+    setSelectedZones(new Set(allZoneKeys));
+  }, [allZoneKeys]);
+
+  const clearZones = useCallback(() => {
+    setSelectedZones(new Set());
+  }, []);
 
   // UI state management hook
   const {
@@ -382,10 +453,19 @@ export default function MasterSchedulePage() {
         })
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
 
-  // Filter yard duty assignments by selected teachers/providers/staff and view filter
+  // Filter yard duty assignments by selected teachers/providers/staff, zones, and view filter
   const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
     ? []
     : yardDutyAssignments.filter(yd => {
+        // Filter by zone
+        if (yd.zone_name) {
+          if (!selectedZones.has(yd.zone_name)) return false;
+        } else {
+          // Unzoned assignment — check if "Other" is selected
+          if (!selectedZones.has(ZONE_OTHER)) return false;
+        }
+
+        // Filter by person
         if (!hasAnyPersonFilter) return true;
         if (yd.teacher_id && selectedTeacherIds.has(yd.teacher_id)) return true;
         if (yd.provider_id && selectedProviderIds.has(yd.provider_id)) return true;
@@ -483,6 +563,16 @@ export default function MasterSchedulePage() {
                 Yard Duty
               </button>
             </div>
+
+            {/* Settings Gear */}
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Schedule Settings"
+              aria-label="Schedule settings"
+            >
+              <Cog6ToothIcon className="w-5 h-5" />
+            </button>
             </div>
           </div>
 
@@ -514,20 +604,18 @@ export default function MasterSchedulePage() {
               />
             )}
 
-            {/* Yard Duty Zone Settings - right-aligned */}
-            {viewFilter === 'yard-duty' && (
-              <button
-                onClick={() => setShowZonesModal(true)}
-                className="ml-auto flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                title="Configure yard duty zones"
-              >
-                <Cog6ToothIcon className="w-4 h-4" />
-                <span>Zone Settings</span>
-                {yardDutyZones.length > 0 && (
-                  <span className="text-xs text-gray-400">({yardDutyZones.length})</span>
-                )}
-              </button>
+            {/* Zone Filter - for yard duty */}
+            {(viewFilter === 'yard-duty' || viewFilter === 'all') && (availableZones.length > 0 || hasUnzonedAssignments) && (
+              <ZoneFilter
+                selectedZones={selectedZones}
+                availableZones={availableZones}
+                hasUnzoned={hasUnzonedAssignments}
+                onToggleZone={toggleZone}
+                onClearAll={clearZones}
+                onSelectAll={selectAllZones}
+              />
             )}
+
           </div>
         </div>
 
@@ -556,6 +644,7 @@ export default function MasterSchedulePage() {
               allYardDutyAssignments={yardDutyAssignments}
               yardDutyZones={yardDutyZones}
               schoolYear={selectedSchoolYear}
+              schoolHours={schoolHours}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">
@@ -631,6 +720,16 @@ export default function MasterSchedulePage() {
           schoolId={schoolId}
           onClose={() => setShowZonesModal(false)}
           onZonesChanged={fetchZones}
+        />
+      )}
+
+      {/* Schedule Settings Modal */}
+      {showSettingsModal && schoolId && (
+        <MasterScheduleSettingsModal
+          schoolId={schoolId}
+          onClose={() => setShowSettingsModal(false)}
+          onZonesChanged={fetchZones}
+          onSchoolHoursChanged={refreshData}
         />
       )}
     </div>

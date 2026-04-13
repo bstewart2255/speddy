@@ -19,7 +19,7 @@ interface CreateItemModalProps {
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
-  defaultTab?: 'bell' | 'activity' | 'dailyTime' | 'yardDuty';
+  defaultTab?: 'bell' | 'activity' | 'yardDuty';
   activityAvailability?: Map<string, FullDayAvailability>;
   availableActivityTypes?: string[];
   filterSelectedGrades?: Set<string>;
@@ -37,7 +37,6 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 const GRADE_ORDER: Record<string, number> = Object.fromEntries(GRADES.map((g, i) => [g, i]));
 const sortGrades = (grades: string[]) => [...grades].sort((a, b) => (GRADE_ORDER[a] ?? 99) - (GRADE_ORDER[b] ?? 99));
-const DAILY_TIME_TYPES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
 
 /**
  * Calculate a default end time by adding offset minutes to a start time.
@@ -69,7 +68,7 @@ export function CreateItemModal({
   yardDutyZones = [],
   schoolYear
 }: CreateItemModalProps) {
-  const [tab, setTab] = useState<'bell' | 'activity' | 'dailyTime' | 'yardDuty'>(defaultTab);
+  const [tab, setTab] = useState<'bell' | 'activity' | 'yardDuty'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -83,12 +82,6 @@ export function CreateItemModal({
   const [periodName, setPeriodName] = useState('');
   const [bellStartTime, setBellStartTime] = useState(startTime);
   const [bellEndTime, setBellEndTime] = useState(() => calculateDefaultEndTime(startTime));
-
-  // Daily time form state
-  const [dailyTimeType, setDailyTimeType] = useState<string>('');
-  const [dailyTime, setDailyTime] = useState(startTime);
-  const [dailyTimeDays, setDailyTimeDays] = useState<number[]>([day]);
-  const [dailyTimeGrades, setDailyTimeGrades] = useState<string[]>(GRADES); // Default to all grades
 
   // Activity form state
   const [teacherId, setTeacherId] = useState<string | null>(null);
@@ -373,22 +366,6 @@ export function CreateItemModal({
     );
   };
 
-  const handleDailyTimeDayToggle = (dayNum: number) => {
-    setDailyTimeDays(prev =>
-      prev.includes(dayNum)
-        ? prev.filter(d => d !== dayNum)
-        : [...prev, dayNum].sort((a, b) => a - b)
-    );
-  };
-
-  const handleDailyTimeGradeToggle = (grade: string) => {
-    setDailyTimeGrades(prev =>
-      prev.includes(grade)
-        ? prev.filter(g => g !== grade)
-        : [...prev, grade]
-    );
-  };
-
   const handleTeacherChange = (newTeacherId: string | null, newTeacherName: string | null) => {
     setTeacherId(newTeacherId);
     setTeacherName(newTeacherName || '');
@@ -428,38 +405,6 @@ export function CreateItemModal({
               start_time: bellStartTime,
               end_time: bellEndTime,
               period_name: periodName,
-              school_id: schoolId,
-              ...(schoolYear ? { school_year: schoolYear } : {})
-            }, 'site_admin')
-          )
-        );
-      } else if (tab === 'dailyTime') {
-        // Validate daily time
-        if (!dailyTimeType) {
-          setError('Please select a time type');
-          return;
-        }
-        if (dailyTimeDays.length === 0) {
-          setError('Please select at least one day');
-          return;
-        }
-        if (dailyTimeGrades.length === 0) {
-          setError('Please select at least one grade');
-          return;
-        }
-
-        setLoading(true);
-        // Create a bell schedule entry for each selected day
-        // Add 1 minute to end_time to satisfy check constraint (renders as a line marker anyway)
-        const endTime = calculateDefaultEndTime(dailyTime, 1);
-        await Promise.all(
-          dailyTimeDays.map(selectedDay =>
-            addBellSchedule({
-              grade_level: sortGrades(dailyTimeGrades).join(','),
-              day_of_week: selectedDay,
-              start_time: dailyTime,
-              end_time: endTime,
-              period_name: dailyTimeType,
               school_id: schoolId,
               ...(schoolYear ? { school_year: schoolYear } : {})
             }, 'site_admin')
@@ -629,19 +574,6 @@ export function CreateItemModal({
             onClick={() => setTab('yardDuty')}
           >
             Yard Duty
-          </button>
-          <button
-            role="tab"
-            aria-selected={tab === 'dailyTime'}
-            aria-controls="dailyTime-panel"
-            className={`flex-1 px-4 py-3 text-sm font-medium ${
-              tab === 'dailyTime'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setTab('dailyTime')}
-          >
-            Daily Time
           </button>
         </div>
 
@@ -1064,98 +996,7 @@ export function CreateItemModal({
                 </div>
               </div>
             </>
-          ) : (
-            <>
-              {/* Daily Time form */}
-              {/* Time type selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Time Type
-                </label>
-                <select
-                  value={dailyTimeType}
-                  onChange={(e) => setDailyTimeType(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select type...</option>
-                  {DAILY_TIME_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Grade selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Grade Level(s)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {GRADES.map((grade) => (
-                    <button
-                      key={grade}
-                      type="button"
-                      onClick={() => handleDailyTimeGradeToggle(grade)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                        dailyTimeGrades.includes(grade)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {grade}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Select specific grades (e.g., TK/K for early dismissal)
-                </p>
-              </div>
-
-              {/* Day selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Day(s)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {DAYS.map((dayName, index) => {
-                    const dayNum = index + 1;
-                    return (
-                      <button
-                        key={dayName}
-                        type="button"
-                        onClick={() => handleDailyTimeDayToggle(dayNum)}
-                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                          dailyTimeDays.includes(dayNum)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {dayName.slice(0, 3)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Time input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Time
-                </label>
-                <input
-                  type="time"
-                  value={dailyTime}
-                  onChange={(e) => setDailyTime(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <p className="text-xs text-gray-500">
-                Daily times appear as markers on the schedule grid when "Show Daily Times" is enabled.
-              </p>
-            </>
-          )}
+          ) : null}
         </div>
 
         {/* Footer */}

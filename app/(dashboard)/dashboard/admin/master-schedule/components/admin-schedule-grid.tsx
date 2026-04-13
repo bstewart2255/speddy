@@ -10,7 +10,7 @@ import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';
@@ -41,6 +41,18 @@ interface AdminScheduleGridProps {
   allYardDutyAssignments?: YardDutyAssignment[];
   yardDutyZones?: YardDutyZone[];
   schoolYear?: string;
+  schoolHours?: SchoolHour[];
+}
+
+// Unified daily time marker (from school_hours or legacy bell_schedules)
+interface DailyMarker {
+  id: string;
+  time: string;
+  label: string;
+  periodName: string;
+  color: 'blue' | 'orange';
+  gradeLevel?: string;
+  bellSchedule?: BellScheduleWithCreator; // Present only for legacy bell schedule markers
 }
 
 // Flattened rotation item for grid rendering
@@ -176,6 +188,7 @@ export function AdminScheduleGrid({
   allYardDutyAssignments = [],
   yardDutyZones = [],
   schoolYear,
+  schoolHours = [],
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -196,27 +209,67 @@ export function AdminScheduleGrid({
   // Quick edit modal state for individual rotation schedules
   const [quickEditModal, setQuickEditModal] = useState<RotationGridItem | null>(null);
 
-  // Extract daily time markers from bell schedules (School Start, Dismissal, etc.)
+  // Derive daily time markers from school_hours (preferred) or bell_schedules (legacy fallback)
   const dailyTimeMarkers = useMemo(() => {
-    if (!showDailyTimes) return new Map<number, BellScheduleWithCreator[]>();
+    if (!showDailyTimes) return new Map<number, DailyMarker[]>();
 
-    const markers = new Map<number, BellScheduleWithCreator[]>();
+    const markers = new Map<number, DailyMarker[]>();
+    const addMarker = (day: number, marker: DailyMarker) => {
+      const list = markers.get(day) || [];
+      list.push(marker);
+      markers.set(day, list);
+    };
 
-    allBellSchedules.forEach(schedule => {
-      if (
-        schedule.period_name &&
-        DAILY_TIME_PERIOD_NAMES.includes(schedule.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]) &&
-        schedule.day_of_week &&
-        schedule.start_time
-      ) {
-        const dayMarkers = markers.get(schedule.day_of_week) || [];
-        dayMarkers.push(schedule);
-        markers.set(schedule.day_of_week, dayMarkers);
-      }
-    });
+    // Primary source: school_hours table
+    if (schoolHours.length > 0) {
+      schoolHours.forEach(sh => {
+        if (!sh.day_of_week || !sh.start_time) return;
+        // Map grade_level to a display label (e.g., "K", "TK", "default" → "1-5")
+        const gradeLabel = sh.grade_level === 'default' ? '1-5' : sh.grade_level.toUpperCase();
+        addMarker(sh.day_of_week, {
+          id: `sh-start-${sh.id}`,
+          time: sh.start_time,
+          label: 'Start',
+          periodName: 'School Start',
+          color: 'blue',
+          gradeLevel: gradeLabel,
+        });
+        if (sh.end_time) {
+          addMarker(sh.day_of_week, {
+            id: `sh-end-${sh.id}`,
+            time: sh.end_time,
+            label: 'Dismissal',
+            periodName: 'Dismissal',
+            color: 'orange',
+            gradeLevel: gradeLabel,
+          });
+        }
+      });
+    } else {
+      // Fallback: legacy bell_schedule entries with daily time period names
+      allBellSchedules.forEach(schedule => {
+        if (
+          schedule.period_name &&
+          DAILY_TIME_PERIOD_NAMES.includes(schedule.period_name as typeof DAILY_TIME_PERIOD_NAMES[number]) &&
+          schedule.day_of_week &&
+          schedule.start_time
+        ) {
+          const isStart = schedule.period_name === 'School Start';
+          addMarker(schedule.day_of_week, {
+            id: schedule.id,
+            time: schedule.start_time,
+            label: isStart ? 'Start' : schedule.period_name ?? 'Daily Time',
+            periodName: schedule.period_name,
+            color: isStart ? 'blue' : 'orange',
+            gradeLevel: schedule.grade_level || undefined,
+            bellSchedule: schedule,
+          });
+        }
+      });
+    }
 
     return markers;
-  }, [allBellSchedules, showDailyTimes]);
+  }, [allBellSchedules, schoolHours, showDailyTimes]);
 
   // Flatten rotation pairs into grid items
   const rotationGridItems = useMemo((): RotationGridItem[] => {
@@ -478,21 +531,17 @@ export function AdminScheduleGrid({
                   ))}
 
                   {/* Daily time markers (School Start, Dismissal, etc.) */}
-                  {showDailyTimes && dailyTimeMarkers.get(dayNumber)?.map((marker) => {
-                    if (!marker.start_time) return null;
-                    const isStart = marker.period_name === 'School Start';
-                    return (
-                      <DailyTimeMarker
-                        key={marker.id}
-                        time={marker.start_time}
-                        label={marker.period_name === 'School Start' ? 'Start' : marker.period_name ?? 'Daily Time'}
-                        color={isStart ? 'blue' : 'orange'}
-                        pixelPosition={timeToPixels(marker.start_time)}
-                        gradeLevel={marker.grade_level || undefined}
-                        onClick={() => handleItemClick('bell', marker)}
-                      />
-                    );
-                  })}
+                  {showDailyTimes && dailyTimeMarkers.get(dayNumber)?.map((marker) => (
+                    <DailyTimeMarker
+                      key={marker.id}
+                      time={marker.time}
+                      label={marker.label}
+                      color={marker.color}
+                      pixelPosition={timeToPixels(marker.time)}
+                      gradeLevel={marker.gradeLevel}
+                      onClick={marker.bellSchedule ? () => handleItemClick('bell', marker.bellSchedule!) : undefined}
+                    />
+                  ))}
 
                   {/* Bell schedules */}
                   {dayBellSchedules.map((schedule) => {

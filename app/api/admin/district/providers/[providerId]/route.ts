@@ -59,7 +59,7 @@ async function verifyAdminAccess(
     if (profile.district_id !== districtPerm.district_id) {
       return { allowed: false, error: 'Provider is not in your district' };
     }
-    return { allowed: true, districtId: districtPerm.district_id };
+    return { allowed: true, districtId: districtPerm.district_id ?? undefined };
   }
 
   // Site admin: verify provider is at their school
@@ -77,7 +77,7 @@ async function verifyAdminAccess(
         return { allowed: false, error: 'Provider is not at your school' };
       }
     }
-    return { allowed: true, districtId: profile.district_id || undefined, siteAdminSchoolId: sitePerm.school_id };
+    return { allowed: true, districtId: profile.district_id ?? undefined, siteAdminSchoolId: sitePerm.school_id ?? undefined };
   }
 
   return { allowed: false, error: 'Access denied' };
