@@ -59,16 +59,24 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       let staffData: StaffWithHours[] = [];
       let providerData: ProviderOption[] = [];
       let schoolHoursData: SchoolHour[] = [];
-      try {
-        [yardDutyData, staffData, providerData, schoolHoursData] = await Promise.all([
-          getYardDutyAssignments(schoolId, schoolYear),
-          getSchoolStaffMembers(schoolId),
-          getSchoolProviders(schoolId),
-          getSchoolHoursBySchoolId(schoolId),
-        ]);
-      } catch (err) {
-        console.warn('Unable to fetch yard duty/staff/provider data:', err);
-      }
+      const results = await Promise.allSettled([
+        getYardDutyAssignments(schoolId, schoolYear),
+        getSchoolStaffMembers(schoolId),
+        getSchoolProviders(schoolId),
+        getSchoolHoursBySchoolId(schoolId),
+      ]);
+
+      if (results[0].status === 'fulfilled') yardDutyData = results[0].value;
+      else console.warn('Unable to fetch yard duty assignments:', results[0].reason);
+
+      if (results[1].status === 'fulfilled') staffData = results[1].value;
+      else console.warn('Unable to fetch staff members:', results[1].reason);
+
+      if (results[2].status === 'fulfilled') providerData = results[2].value;
+      else console.warn('Unable to fetch providers:', results[2].reason);
+
+      if (results[3].status === 'fulfilled') schoolHoursData = results[3].value;
+      else console.warn('Unable to fetch school hours:', results[3].reason);
 
       setYardDutyAssignments(yardDutyData || []);
       setStaffMembers(staffData || []);
