@@ -681,6 +681,7 @@ export default function MasterSchedulePage() {
               onToggleTeacher={toggleTeacher}
               onSelectAll={selectAllTeachers}
               onDeselectAll={deselectAllTeachers}
+              yardDutyAssignments={yardDutyAssignments}
             />
             <ProvidersPanel
               providers={providers}

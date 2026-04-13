@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { SidebarSection } from './sidebar-section';
-import type { Teacher } from '@/src/types/database';
+import type { Teacher, YardDutyAssignment } from '@/src/types/database';
 
 interface TeacherPanelProps {
   teachers: Teacher[];
@@ -11,6 +11,7 @@ interface TeacherPanelProps {
   onToggleTeacher: (teacherId: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
+  yardDutyAssignments?: YardDutyAssignment[];
 }
 
 export function TeacherPanel({
@@ -18,8 +19,24 @@ export function TeacherPanel({
   selectedTeacherIds,
   onToggleTeacher,
   onSelectAll,
-  onDeselectAll
+  onDeselectAll,
+  yardDutyAssignments = []
 }: TeacherPanelProps) {
+  // Calculate total weekly yard duty minutes per teacher
+  const yardDutyMinutesByTeacher = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const yd of yardDutyAssignments) {
+      if (!yd.teacher_id) continue;
+      const [sh, sm] = yd.start_time.split(':').map(Number);
+      const [eh, em] = yd.end_time.split(':').map(Number);
+      const minutes = (eh * 60 + em) - (sh * 60 + sm);
+      if (minutes > 0) {
+        map.set(yd.teacher_id, (map.get(yd.teacher_id) || 0) + minutes);
+      }
+    }
+    return map;
+  }, [yardDutyAssignments]);
+
   const formatTeacherName = (teacher: Teacher): string => {
     if (teacher.first_name && teacher.last_name) {
       return `${teacher.first_name} ${teacher.last_name}`;
@@ -97,6 +114,11 @@ export function TeacherPanel({
                   </div>
                 )}
               </div>
+              {yardDutyMinutesByTeacher.has(teacher.id) && (
+                <span className="text-xs font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 flex-shrink-0">
+                  {yardDutyMinutesByTeacher.get(teacher.id)}
+                </span>
+              )}
             </label>
           ))
         )}
