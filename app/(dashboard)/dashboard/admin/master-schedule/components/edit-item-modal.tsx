@@ -458,7 +458,12 @@ export function EditItemModal({
       return;
     }
 
-    if (instrStartTime && instrEndTime && instrStartTime >= instrEndTime) {
+    if (!instrStartTime || !instrEndTime) {
+      setError('Please enter both a start and end time');
+      return;
+    }
+
+    if (instrStartTime >= instrEndTime) {
       setError('End time must be after start time');
       return;
     }

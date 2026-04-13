@@ -452,6 +452,10 @@ export function CreateItemModal({
           setError('Please select at least one day');
           return;
         }
+        if (!instrStartTime || !instrEndTime) {
+          setError('Please enter both a start and end time');
+          return;
+        }
         if (instrEndTime <= instrStartTime) {
           setError('End time must be after start time');
           return;
