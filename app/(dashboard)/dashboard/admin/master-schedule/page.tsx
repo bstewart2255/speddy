@@ -255,6 +255,7 @@ export default function MasterSchedulePage() {
     staffMembers,
     providers,
     schoolHours,
+    instructionSchedules,
     loading: dataLoading,
     refreshData
   } = useAdminScheduleData(schoolId, selectedSchoolYear);
@@ -319,6 +320,8 @@ export default function MasterSchedulePage() {
 
   // Initialize selected zones to all on first load; preserve user selection on refresh
   useEffect(() => {
+    if (allZoneKeys.size === 0) return;
+
     setSelectedZones(prev => {
       if (!zoneSelectionInitializedRef.current) {
         zoneSelectionInitializedRef.current = true;
@@ -452,6 +455,12 @@ export default function MasterSchedulePage() {
           return { ...pair, groups: filteredGroups };
         })
         .filter(pair => selectedTeacherIds.size === 0 || pair.groups.length > 0);
+
+  // Filter instruction schedules by selected teachers and view filter
+  // Only show when at least one teacher is selected (instruction blocks are teacher-specific)
+  const filteredInstructionSchedules = (viewFilter === 'bell' || viewFilter === 'yard-duty' || onlyNonTeacherSelected || selectedTeacherIds.size === 0)
+    ? []
+    : instructionSchedules.filter(instr => selectedTeacherIds.has(instr.teacher_id));
 
   // Filter yard duty assignments by selected teachers/providers/staff, zones, and view filter
   const filteredYardDuty = (viewFilter === 'bell' || viewFilter === 'activities')
@@ -645,6 +654,9 @@ export default function MasterSchedulePage() {
               yardDutyZones={yardDutyZones}
               schoolYear={selectedSchoolYear}
               schoolHours={schoolHours}
+              instructionSchedules={filteredInstructionSchedules}
+              allInstructionSchedules={instructionSchedules}
+              selectedTeacherIds={selectedTeacherIds}
             />
             {/* Daily Times Toggle */}
             <div className="flex items-center gap-2 mt-3">

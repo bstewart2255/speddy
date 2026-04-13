@@ -25,3 +25,19 @@ export const SPECIAL_ACTIVITY_TYPES = [
 ] as const;
 
 export type SpecialActivityType = (typeof SPECIAL_ACTIVITY_TYPES)[number];
+
+// Instruction schedule subjects (teacher instruction blocks)
+export const INSTRUCTION_SUBJECTS = [
+  'ELA',
+  'Math',
+  'Science',
+  'ELD',
+  'SEL',
+  'Social Studies',
+  'Prep',
+  'Intervention',
+  'Academy',
+  'STEM',
+] as const;
+
+export type InstructionSubject = (typeof INSTRUCTION_SUBJECTS)[number];

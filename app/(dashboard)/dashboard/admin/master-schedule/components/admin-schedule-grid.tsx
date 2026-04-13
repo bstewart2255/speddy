@@ -10,7 +10,7 @@ import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';
@@ -42,6 +42,9 @@ interface AdminScheduleGridProps {
   yardDutyZones?: YardDutyZone[];
   schoolYear?: string;
   schoolHours?: SchoolHour[];
+  instructionSchedules?: InstructionSchedule[];
+  allInstructionSchedules?: InstructionSchedule[];
+  selectedTeacherIds?: Set<string>;
 }
 
 // Unified daily time marker (from school_hours or legacy bell_schedules)
@@ -92,6 +95,7 @@ const ACTIVITY_COLOR_MAP: Record<string, string> = {
 
 const DEFAULT_ACTIVITY_COLOR = 'bg-gray-200 border-gray-400';
 const YARD_DUTY_COLOR = 'bg-amber-200 border-amber-400';
+const INSTRUCTION_COLOR = 'bg-red-100 border-red-300';
 
 // Grid configuration
 const GRID_CONFIG = {
@@ -189,6 +193,9 @@ export function AdminScheduleGrid({
   yardDutyZones = [],
   schoolYear,
   schoolHours = [],
+  instructionSchedules = [],
+  allInstructionSchedules = [],
+  selectedTeacherIds,
 }: AdminScheduleGridProps) {
   const [createModal, setCreateModal] = useState<{
     day: number;
@@ -196,8 +203,8 @@ export function AdminScheduleGrid({
   } | null>(null);
 
   const [editModal, setEditModal] = useState<{
-    type: 'bell' | 'activity' | 'yard-duty';
-    item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment;
+    type: 'bell' | 'activity' | 'yard-duty' | 'instruction';
+    item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment | InstructionSchedule;
   } | null>(null);
 
   // Context menu state for rotation items
@@ -344,7 +351,7 @@ export function AdminScheduleGrid({
   }, []);
 
   // Handle item click for edit
-  const handleItemClick = useCallback((type: 'bell' | 'activity' | 'yard-duty', item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment) => {
+  const handleItemClick = useCallback((type: 'bell' | 'activity' | 'yard-duty' | 'instruction', item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment | InstructionSchedule) => {
     setEditModal({ type, item });
   }, []);
 
@@ -468,11 +475,12 @@ export function AdminScheduleGrid({
             const dayActivities = specialActivities.filter(a => a.day_of_week === dayNumber);
             const dayRotations = rotationGridItems.filter(r => r.dayOfWeek === dayNumber);
             const dayYardDuty = yardDutyAssignments.filter(yd => yd.day_of_week === dayNumber);
+            const dayInstructions = instructionSchedules.filter(i => i.day_of_week === dayNumber);
 
             // Calculate overlaps for this day
             const bellOverlaps = calculateOverlaps(dayBellSchedules);
 
-            // Combine activities, rotations, and yard duty for overlap calculation
+            // Combine activities, rotations, yard duty, and instruction for overlap calculation
             const allActivityItems = [
               ...dayActivities.map(a => ({
                 id: a.id,
@@ -491,6 +499,12 @@ export function AdminScheduleGrid({
                 start_time: yd.start_time,
                 end_time: yd.end_time,
                 type: 'yard-duty' as const,
+              })),
+              ...dayInstructions.map(instr => ({
+                id: instr.id,
+                start_time: instr.start_time,
+                end_time: instr.end_time,
+                type: 'instruction' as const,
               })),
             ];
             const combinedOverlaps = calculateOverlaps(allActivityItems);
@@ -633,6 +647,29 @@ export function AdminScheduleGrid({
                       />
                     );
                   })}
+
+                  {/* Instruction schedules */}
+                  {dayInstructions.map((instr) => {
+                    if (!instr.start_time || !instr.end_time) return null;
+                    const top = timeToPixels(instr.start_time);
+                    const height = calculateHeight(instr.start_time, instr.end_time);
+                    const overlap = combinedOverlaps.get(instr.id);
+
+                    return (
+                      <ScheduleItem
+                        key={instr.id}
+                        type="activity"
+                        label={instr.subject}
+                        sublabel={instr.teacher_name}
+                        top={top}
+                        height={height}
+                        colorClass={INSTRUCTION_COLOR}
+                        onClick={() => handleItemClick('instruction', instr)}
+                        overlapIndex={overlap?.index}
+                        overlapTotal={overlap?.total}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -660,6 +697,7 @@ export function AdminScheduleGrid({
           specialActivities={allSpecialActivities}
           yardDutyZones={yardDutyZones}
           schoolYear={schoolYear}
+          selectedTeacherIds={selectedTeacherIds}
         />
       )}
 

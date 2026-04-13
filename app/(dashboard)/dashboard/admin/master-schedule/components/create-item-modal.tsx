@@ -5,7 +5,8 @@ import { Button } from '../../../../../components/ui/button';
 import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { addYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
-import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
+import { addInstructionSchedule } from '../../../../../../lib/supabase/queries/instruction-schedules';
+import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES, INSTRUCTION_SUBJECTS } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { Teacher, YardDutyAssignment, SpecialActivity } from '@/src/types/database';
@@ -31,6 +32,7 @@ interface CreateItemModalProps {
   specialActivities?: SpecialActivity[];
   yardDutyZones?: YardDutyZone[];
   schoolYear?: string;
+  selectedTeacherIds?: Set<string>;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -66,9 +68,10 @@ export function CreateItemModal({
   yardDutyAssignments = [],
   specialActivities = [],
   yardDutyZones = [],
-  schoolYear
+  schoolYear,
+  selectedTeacherIds
 }: CreateItemModalProps) {
-  const [tab, setTab] = useState<'bell' | 'activity' | 'yardDuty'>(defaultTab);
+  const [tab, setTab] = useState<'bell' | 'activity' | 'yardDuty' | 'instruction'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -104,6 +107,31 @@ export function CreateItemModal({
   const [ydStaffName, setYdStaffName] = useState('');
   const [ydProviderId, setYdProviderId] = useState<string | null>(null);
   const [ydProviderName, setYdProviderName] = useState('');
+
+  // Instruction form state
+  const singleSelectedTeacher = useMemo(() => {
+    if (!selectedTeacherIds || selectedTeacherIds.size !== 1) return null;
+    const teacherId = Array.from(selectedTeacherIds)[0];
+    return teachers.find(t => t.id === teacherId) || null;
+  }, [selectedTeacherIds, teachers]);
+
+  const [instrSubject, setInstrSubject] = useState('');
+  const [instrDays, setInstrDays] = useState<number[]>([day]);
+  const [instrStartTime, setInstrStartTime] = useState(startTime);
+  const [instrEndTime, setInstrEndTime] = useState(() => calculateDefaultEndTime(startTime, 45));
+
+  const handleInstrDayToggle = (dayNum: number) => {
+    setInstrDays(prev =>
+      prev.includes(dayNum)
+        ? prev.filter(d => d !== dayNum)
+        : [...prev, dayNum].sort((a, b) => a - b)
+    );
+  };
+
+  const handleInstrStartTimeChange = (newStartTime: string) => {
+    setInstrStartTime(newStartTime);
+    setInstrEndTime(calculateDefaultEndTime(newStartTime, 45));
+  };
 
   // Build duty period options from bell schedules that overlap selected time/days
   const availableDutyPeriods = useMemo(() => {
@@ -410,6 +438,46 @@ export function CreateItemModal({
             }, 'site_admin')
           )
         );
+      } else if (tab === 'instruction') {
+        // Validate instruction
+        if (!singleSelectedTeacher) {
+          setError('A single teacher must be selected from the sidebar');
+          return;
+        }
+        if (!instrSubject) {
+          setError('Please select a subject');
+          return;
+        }
+        if (instrDays.length === 0) {
+          setError('Please select at least one day');
+          return;
+        }
+        if (!instrStartTime || !instrEndTime) {
+          setError('Please enter both a start and end time');
+          return;
+        }
+        if (instrEndTime <= instrStartTime) {
+          setError('End time must be after start time');
+          return;
+        }
+
+        const teacherFullName = `${singleSelectedTeacher.first_name || ''} ${singleSelectedTeacher.last_name || ''}`.trim();
+
+        setLoading(true);
+        await Promise.all(
+          instrDays.map(selectedDay =>
+            addInstructionSchedule({
+              school_id: schoolId,
+              teacher_id: singleSelectedTeacher.id,
+              teacher_name: teacherFullName,
+              subject: instrSubject,
+              day_of_week: selectedDay,
+              start_time: instrStartTime,
+              end_time: instrEndTime,
+              ...(schoolYear ? { school_year: schoolYear } : {})
+            })
+          )
+        );
       } else if (tab === 'yardDuty') {
         // Validate yard duty
         if (!ydPeriodName.trim()) {
@@ -575,6 +643,21 @@ export function CreateItemModal({
           >
             Yard Duty
           </button>
+          {singleSelectedTeacher && (
+            <button
+              role="tab"
+              aria-selected={tab === 'instruction'}
+              aria-controls="instruction-panel"
+              className={`flex-1 px-4 py-3 text-sm font-medium ${
+                tab === 'instruction'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setTab('instruction')}
+            >
+              Instruction
+            </button>
+          )}
         </div>
 
         {/* Form */}
@@ -991,6 +1074,89 @@ export function CreateItemModal({
                     type="time"
                     value={activityEndTime}
                     onChange={(e) => setActivityEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </>
+          ) : tab === 'instruction' && singleSelectedTeacher ? (
+            <>
+              {/* Teacher (read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Teacher
+                </label>
+                <p className="text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                  {singleSelectedTeacher.first_name} {singleSelectedTeacher.last_name}
+                </p>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Subject
+                </label>
+                <select
+                  value={instrSubject}
+                  onChange={(e) => setInstrSubject(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select subject...</option>
+                  {INSTRUCTION_SUBJECTS.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Day selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Day(s)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.map((dayName, index) => {
+                    const dayNum = index + 1;
+                    return (
+                      <button
+                        key={dayName}
+                        type="button"
+                        onClick={() => handleInstrDayToggle(dayNum)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                          instrDays.includes(dayNum)
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {dayName.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={instrStartTime}
+                    onChange={(e) => handleInstrStartTimeChange(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={instrEndTime}
+                    onChange={(e) => setInstrEndTime(e.target.value)}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>

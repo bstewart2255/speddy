@@ -5,7 +5,8 @@ import { getTeachers } from '../../../../../../lib/supabase/queries/teachers';
 import { getYardDutyAssignments } from '../../../../../../lib/supabase/queries/yard-duty';
 import { getSchoolStaffMembers, getSchoolProviders } from '../../../../../../lib/supabase/queries/staff';
 import { getSchoolHoursBySchoolId } from '../../../../../../lib/supabase/queries/school-hours';
-import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour } from '@/src/types/database';
+import { getInstructionSchedules } from '../../../../../../lib/supabase/queries/instruction-schedules';
+import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 
@@ -17,6 +18,7 @@ interface UseAdminScheduleDataReturn {
   staffMembers: StaffWithHours[];
   providers: ProviderOption[];
   schoolHours: SchoolHour[];
+  instructionSchedules: InstructionSchedule[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
@@ -30,6 +32,7 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
   const [staffMembers, setStaffMembers] = useState<StaffWithHours[]>([]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [schoolHours, setSchoolHours] = useState<SchoolHour[]>([]);
+  const [instructionSchedules, setInstructionSchedules] = useState<InstructionSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,11 +62,13 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       let staffData: StaffWithHours[] = [];
       let providerData: ProviderOption[] = [];
       let schoolHoursData: SchoolHour[] = [];
+      let instructionData: InstructionSchedule[] = [];
       const results = await Promise.allSettled([
         getYardDutyAssignments(schoolId, schoolYear),
         getSchoolStaffMembers(schoolId),
         getSchoolProviders(schoolId),
         getSchoolHoursBySchoolId(schoolId),
+        getInstructionSchedules(schoolId, schoolYear),
       ]);
 
       if (results[0].status === 'fulfilled') yardDutyData = results[0].value;
@@ -78,10 +83,14 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
       if (results[3].status === 'fulfilled') schoolHoursData = results[3].value;
       else console.warn('Unable to fetch school hours:', results[3].reason);
 
+      if (results[4].status === 'fulfilled') instructionData = results[4].value;
+      else console.warn('Unable to fetch instruction schedules:', results[4].reason);
+
       setYardDutyAssignments(yardDutyData || []);
       setStaffMembers(staffData || []);
       setProviders(providerData || []);
       setSchoolHours(schoolHoursData || []);
+      setInstructionSchedules(instructionData || []);
     } catch (err) {
       console.error('Error fetching schedule data:', err);
       setError('Failed to load schedule data');
@@ -102,6 +111,7 @@ export function useAdminScheduleData(schoolId: string | null, schoolYear?: strin
     staffMembers,
     providers,
     schoolHours,
+    instructionSchedules,
     loading,
     error,
     refreshData: fetchData

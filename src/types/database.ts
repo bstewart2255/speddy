@@ -1339,6 +1339,66 @@ export type Database = {
           },
         ]
       }
+      instruction_schedules: {
+        Row: {
+          created_at: string | null
+          created_by_id: string
+          day_of_week: number
+          end_time: string
+          id: string
+          school_id: string
+          school_year: string
+          start_time: string
+          subject: string
+          teacher_id: string
+          teacher_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_id: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          school_id: string
+          school_year: string
+          start_time: string
+          subject: string
+          teacher_id: string
+          teacher_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by_id?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          school_id?: string
+          school_year?: string
+          start_time?: string
+          subject?: string
+          teacher_id?: string
+          teacher_name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instruction_schedules_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instruction_schedules_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_adjustment_queue: {
         Row: {
           adjustment_details: Json
@@ -3535,17 +3595,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "yard_duty_assignments_school_id_fkey"
-            columns: ["school_id"]
-            isOneToOne: false
-            referencedRelation: "schools"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "yard_duty_assignments_provider_id_fkey"
             columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yard_duty_assignments_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
             referencedColumns: ["id"]
           },
           {
@@ -3560,6 +3620,35 @@ export type Database = {
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yard_duty_zones: {
+        Row: {
+          created_at: string | null
+          id: string
+          school_id: string
+          zone_name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          school_id: string
+          zone_name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          school_id?: string
+          zone_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yard_duty_zones_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
             referencedColumns: ["id"]
           },
         ]
@@ -4272,6 +4361,7 @@ export type Teacher = Database['public']['Tables']['teachers']['Row'];
 export type Staff = Database['public']['Tables']['staff']['Row'];
 export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
 export type YardDutyAssignment = Database['public']['Tables']['yard_duty_assignments']['Row'];
+export type InstructionSchedule = Database['public']['Tables']['instruction_schedules']['Row'];
 
 // CARE module types
 export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];
