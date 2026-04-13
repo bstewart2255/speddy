@@ -687,11 +687,13 @@ export default function MasterSchedulePage() {
               providers={providers}
               selectedProviderIds={selectedProviderIds}
               onToggleProvider={toggleProvider}
+              yardDutyAssignments={yardDutyAssignments}
             />
             <StaffPanel
               staffMembers={staffMembers}
               selectedStaffIds={selectedStaffIds}
               onToggleStaff={toggleStaff}
+              yardDutyAssignments={yardDutyAssignments}
             />
             <RotationGroupsPanel
               rotationPairs={rotationPairs}
