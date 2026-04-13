@@ -33,6 +33,14 @@ BEGIN
     WHERE school_id = p_school_id AND school_year = p_to_year AND deleted_at IS NULL
     LIMIT 1
   ) OR EXISTS (
+    SELECT 1 FROM activity_type_availability
+    WHERE school_id = p_school_id AND school_year = p_to_year
+    LIMIT 1
+  ) OR EXISTS (
+    SELECT 1 FROM rotation_activity_pairs
+    WHERE school_id = p_school_id AND school_year = p_to_year
+    LIMIT 1
+  ) OR EXISTS (
     SELECT 1 FROM yard_duty_assignments
     WHERE school_id = p_school_id AND school_year = p_to_year
     LIMIT 1
