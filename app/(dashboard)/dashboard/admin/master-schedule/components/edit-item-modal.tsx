@@ -5,16 +5,17 @@ import { Button } from '../../../../../components/ui/button';
 import { deleteBellScheduleAsAdmin, updateBellScheduleAsAdmin } from '../../../../../../lib/supabase/queries/bell-schedules';
 import { deleteSpecialActivityAsAdmin, updateSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { updateYardDutyAssignment, deleteYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
-import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES } from '../../../../../../lib/constants/activity-types';
+import { updateInstructionSchedule, deleteInstructionSchedule } from '../../../../../../lib/supabase/queries/instruction-schedules';
+import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES, INSTRUCTION_SUBJECTS } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
-import type { SpecialActivity, Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, InstructionSchedule } from '@/src/types/database';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';
 
 interface EditItemModalProps {
-  type: 'bell' | 'activity' | 'yard-duty';
-  item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment;
+  type: 'bell' | 'activity' | 'yard-duty' | 'instruction';
+  item: BellScheduleWithCreator | SpecialActivity | YardDutyAssignment | InstructionSchedule;
   schoolId: string;
   onClose: () => void;
   onSuccess: () => void;
@@ -72,6 +73,12 @@ export function EditItemModal({
   const [bellPeriodName, setBellPeriodName] = useState(bellSchedule?.period_name || '');
   const [bellStartTime, setBellStartTime] = useState(bellSchedule?.start_time || '');
   const [bellEndTime, setBellEndTime] = useState(bellSchedule?.end_time || '');
+
+  // Form state for instruction schedules
+  const instruction = type === 'instruction' ? item as InstructionSchedule : null;
+  const [instrSubject, setInstrSubject] = useState(instruction?.subject || '');
+  const [instrStartTime, setInstrStartTime] = useState(instruction?.start_time || '');
+  const [instrEndTime, setInstrEndTime] = useState(instruction?.end_time || '');
 
   // Form state for yard duty
   const yardDuty = type === 'yard-duty' ? item as YardDutyAssignment : null;
@@ -301,6 +308,8 @@ export function EditItemModal({
         await deleteBellScheduleAsAdmin(item.id, schoolId);
       } else if (type === 'yard-duty') {
         await deleteYardDutyAssignment(item.id, schoolId);
+      } else if (type === 'instruction') {
+        await deleteInstructionSchedule(item.id, schoolId);
       } else {
         await deleteSpecialActivityAsAdmin(item.id, schoolId);
       }
@@ -441,6 +450,37 @@ export function EditItemModal({
     }
   };
 
+  const handleInstructionUpdate = async () => {
+    if (type !== 'instruction') return;
+
+    if (!instrSubject) {
+      setError('Please select a subject');
+      return;
+    }
+
+    if (instrStartTime && instrEndTime && instrStartTime >= instrEndTime) {
+      setError('End time must be after start time');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      await updateInstructionSchedule(item.id, schoolId, {
+        subject: instrSubject,
+        start_time: instrStartTime,
+        end_time: instrEndTime,
+      });
+      onSuccess();
+    } catch (err: any) {
+      console.error('Error updating instruction schedule:', err);
+      setError(err.message || 'Failed to update instruction schedule');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatTime = (time: string | null): string => {
     if (!time) return '';
     const [hours, minutes] = time.split(':').map(Number);
@@ -466,7 +506,7 @@ export function EditItemModal({
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
           <h2 id={headingId} className="text-lg font-semibold text-gray-900">
-            {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : type === 'yard-duty' ? 'Yard Duty' : 'Special Activity'}
+            {type === 'bell' ? (isDailyTimeMarker ? 'Daily Time' : 'Bell Schedule') : type === 'yard-duty' ? 'Yard Duty' : type === 'instruction' ? 'Instruction' : 'Special Activity'}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
             {dayName} at {formatTime('start_time' in item ? (item.start_time || null) : null)}
@@ -823,15 +863,74 @@ export function EditItemModal({
             </>
           )}
 
+          {type === 'instruction' && instruction && (
+            <>
+              {/* Teacher (read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Teacher
+                </label>
+                <p className="text-sm text-gray-900">{instruction.teacher_name}</p>
+              </div>
+
+              {/* Subject (editable) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Subject
+                </label>
+                <select
+                  value={instrSubject}
+                  onChange={(e) => setInstrSubject(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select subject...</option>
+                  {INSTRUCTION_SUBJECTS.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Times (editable) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={instrStartTime}
+                    onChange={(e) => setInstrStartTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={instrEndTime}
+                    onChange={(e) => setInstrEndTime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Delete confirmation */}
           {confirmDelete && (
             <div className="bg-red-50 border border-red-200 rounded p-3">
               <p className="text-sm text-red-700">
-                Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : type === 'yard-duty' ? 'yard duty assignment' : 'activity'}?
+                Are you sure you want to delete this {type === 'bell' ? 'bell schedule' : type === 'yard-duty' ? 'yard duty assignment' : type === 'instruction' ? 'instruction block' : 'activity'}?
                 {type === 'bell'
                   ? ' This action cannot be undone.'
                   : type === 'yard-duty'
                   ? ' This will remove the assignment from the schedule.'
+                  : type === 'instruction'
+                  ? ' This will remove the instruction block from the schedule.'
                   : ' This will remove the activity from the schedule.'}
               </p>
             </div>
@@ -864,6 +963,11 @@ export function EditItemModal({
             )}
             {type === 'yard-duty' && (
               <Button variant="primary" onClick={handleYardDutyUpdate} disabled={loading}>
+                {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
+              </Button>
+            )}
+            {type === 'instruction' && (
+              <Button variant="primary" onClick={handleInstructionUpdate} disabled={loading}>
                 {loading && !confirmDelete ? 'Saving...' : 'Save Changes'}
               </Button>
             )}

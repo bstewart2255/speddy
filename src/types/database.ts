@@ -4273,6 +4273,22 @@ export type Staff = Database['public']['Tables']['staff']['Row'];
 export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
 export type YardDutyAssignment = Database['public']['Tables']['yard_duty_assignments']['Row'];
 
+// Instruction schedule type (manual until gen types is run after migration)
+export interface InstructionSchedule {
+  id: string;
+  school_id: string;
+  school_year: string;
+  teacher_id: string;
+  teacher_name: string;
+  subject: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  created_by_id: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
 // CARE module types
 export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];
 export type CareCase = Database['public']['Tables']['care_cases']['Row'];
