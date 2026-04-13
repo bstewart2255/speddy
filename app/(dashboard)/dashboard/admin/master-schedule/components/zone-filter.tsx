@@ -39,6 +39,7 @@ export function ZoneFilter({
             <button
               key={zone}
               onClick={() => onToggleZone(zone)}
+              aria-pressed={isSelected}
               className={`
                 px-2 py-0.5 text-xs font-medium rounded transition-all
                 ${isSelected
@@ -55,6 +56,7 @@ export function ZoneFilter({
         {hasUnzoned && (
           <button
             onClick={() => onToggleZone(ZONE_OTHER)}
+            aria-pressed={selectedZones.has(ZONE_OTHER)}
             className={`
               px-2 py-0.5 text-xs font-medium rounded italic transition-all
               ${selectedZones.has(ZONE_OTHER)

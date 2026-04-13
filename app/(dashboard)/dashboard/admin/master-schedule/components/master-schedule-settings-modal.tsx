@@ -23,6 +23,7 @@ export function MasterScheduleSettingsModal({
   const [tab, setTab] = useState<SettingsTab>('daily-times');
   const [zoneCount, setZoneCount] = useState(0);
   const modalRef = useRef<HTMLDivElement>(null);
+  const headingId = 'master-schedule-settings-heading';
 
   // Fetch zone count for badge
   useEffect(() => {
@@ -30,6 +31,11 @@ export function MasterScheduleSettingsModal({
       .then((zones) => setZoneCount(zones.length))
       .catch(() => {});
   }, [schoolId]);
+
+  // Focus the modal on mount
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
 
   // Close on escape
   useEffect(() => {
@@ -54,18 +60,23 @@ export function MasterScheduleSettingsModal({
     >
       <div
         ref={modalRef}
-        className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        tabIndex={-1}
+        className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col outline-none"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <Cog6ToothIcon className="w-5 h-5 text-gray-500" />
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 id={headingId} className="text-lg font-semibold text-gray-900">
               Schedule Settings
             </h2>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close schedule settings"
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <XMarkIcon className="w-5 h-5" />

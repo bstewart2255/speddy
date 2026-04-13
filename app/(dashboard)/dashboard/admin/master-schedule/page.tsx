@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { getCurrentAdminPermissions } from '../../../../../lib/supabase/queries/admin-accounts';
 import { AdminScheduleGrid } from './components/admin-schedule-grid';
 import { TeacherPanel } from './components/teacher-panel';
@@ -73,6 +73,8 @@ export default function MasterSchedulePage() {
 
   // Zone filter state
   const [selectedZones, setSelectedZones] = useState<Set<string>>(new Set());
+  const previousZoneKeysRef = useRef<Set<string>>(new Set());
+  const zoneSelectionInitializedRef = useRef(false);
 
   const fetchZones = useCallback(async () => {
     if (!schoolId) return;
@@ -314,9 +316,25 @@ export default function MasterSchedulePage() {
     return keys;
   }, [availableZones, hasUnzonedAssignments]);
 
-  // Initialize selected zones to all when available zones change
+  // Initialize selected zones to all on first load; preserve user selection on refresh
   useEffect(() => {
-    setSelectedZones(new Set(allZoneKeys));
+    setSelectedZones(prev => {
+      if (!zoneSelectionInitializedRef.current) {
+        zoneSelectionInitializedRef.current = true;
+        previousZoneKeysRef.current = new Set(allZoneKeys);
+        return new Set(allZoneKeys);
+      }
+
+      // If user had all selected, keep all selected (including any new zones)
+      const hadAllSelected =
+        prev.size === previousZoneKeysRef.current.size &&
+        [...previousZoneKeysRef.current].every(zone => prev.has(zone));
+
+      previousZoneKeysRef.current = new Set(allZoneKeys);
+      return hadAllSelected
+        ? new Set(allZoneKeys)
+        : new Set([...prev].filter(zone => allZoneKeys.has(zone)));
+    });
   }, [allZoneKeys]);
 
   const toggleZone = useCallback((zone: string) => {
@@ -550,6 +568,7 @@ export default function MasterSchedulePage() {
               onClick={() => setShowSettingsModal(true)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="Schedule Settings"
+              aria-label="Schedule settings"
             >
               <Cog6ToothIcon className="w-5 h-5" />
             </button>
