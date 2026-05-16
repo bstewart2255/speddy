@@ -63,6 +63,12 @@ export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: A
   const isPrivateSchool = referralSource === 'private_school';
   const teacherRequired = referralSource !== '' && !isPrivateSchool;
 
+  // Teacher users may only file discussion-lane referrals; compliance-lane
+  // sources (written requests, private-school referrals) are office-handled.
+  const availableSources = lockedTeacher
+    ? CARE_REFERRAL_SOURCES.filter((s) => !COMPLIANCE_LANE_SOURCES.includes(s.value))
+    : CARE_REFERRAL_SOURCES;
+
   const apDueHint =
     isComplianceLane && requestReceivedDate
       ? formatDueHint(requestReceivedDate, CARE_AP_DUE_DAYS)
@@ -178,7 +184,7 @@ export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: A
             disabled={loading}
           >
             <option value="">Select referral source...</option>
-            {CARE_REFERRAL_SOURCES.map((s) => (
+            {availableSources.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
