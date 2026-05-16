@@ -189,6 +189,10 @@ export async function addCareReferral(
     // Ignore unique-constraint violations (a concurrent request created the case).
     if (caseError && caseError.code !== '23505') {
       console.error('Error creating case for compliance-lane referral:', caseError);
+      // Roll back the orphaned referral -- an 'initial' referral with no case
+      // would be unopenable and have no compliance timeline.
+      await supabase.from('care_referrals').delete().eq('id', data.id);
+      throw new Error('Could not create the case for this referral. Please try again.');
     }
 
     const { data: withCase } = await supabase
