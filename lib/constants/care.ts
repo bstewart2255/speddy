@@ -85,6 +85,9 @@ export const COMPLIANCE_LANE_SOURCES: CareReferralSource[] = [
   'private_school',
 ];
 
+// Days from request received to Assessment Plan due (California Ed. Code 56321)
+export const CARE_AP_DUE_DAYS = 15;
+
 // Eligibility determination outcome (result of the compliance-lane process)
 export const ELIGIBILITY_OUTCOMES = [
   { value: 'eligible', label: 'Eligible' },

@@ -8,8 +8,9 @@ import {
   updateReferralStatus,
   softDeleteReferral,
   CareReferral,
+  NewReferralInput,
 } from '../queries/care-referrals';
-import type { CareCategory, CareStatus } from '@/lib/constants/care';
+import type { CareStatus } from '@/lib/constants/care';
 
 interface CareDataState {
   referrals: {
@@ -30,12 +31,7 @@ interface UseCareDataOptions {
 }
 
 interface UseCareDataReturn extends CareDataState {
-  addReferral: (data: {
-    student_name: string;
-    grade: string;
-    referral_reason: string;
-    category?: CareCategory;
-  }) => Promise<CareReferral>;
+  addReferral: (data: NewReferralInput) => Promise<CareReferral>;
   updateStatus: (referralId: string, status: CareStatus) => Promise<void>;
   deleteReferral: (referralId: string) => Promise<void>;
   refreshData: () => Promise<void>;
@@ -109,14 +105,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
   }, [fetchData]);
 
   const addReferral = useCallback(
-    async (data: {
-      student_name: string;
-      grade: string;
-      teacher_id?: string;
-      teacher_name?: string;
-      referral_reason: string;
-      category?: CareCategory;
-    }): Promise<CareReferral> => {
+    async (data: NewReferralInput): Promise<CareReferral> => {
       if (!currentSchool?.school_id) {
         throw new Error('No school selected');
       }
@@ -129,15 +118,24 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
         state_id: currentSchool.state_id || undefined,
       });
 
-      // Update state only after successful API call
-      setState(prev => ({
-        ...prev,
-        referrals: {
-          ...prev.referrals,
-          pending: [referral, ...prev.referrals.pending],
-          all: [referral, ...prev.referrals.all],
-        },
-      }));
+      // Update state only after successful API call. Compliance-lane referrals
+      // are born into the 'initial' stage; all others start as 'pending'.
+      setState(prev => {
+        const bornInitial = referral.status === 'initial';
+        return {
+          ...prev,
+          referrals: {
+            ...prev.referrals,
+            pending: bornInitial
+              ? prev.referrals.pending
+              : [referral, ...prev.referrals.pending],
+            initial: bornInitial
+              ? [referral, ...prev.referrals.initial]
+              : prev.referrals.initial,
+            all: [referral, ...prev.referrals.all],
+          },
+        };
+      });
 
       return referral;
     },

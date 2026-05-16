@@ -6,7 +6,7 @@ import { useSchool } from '@/app/components/providers/school-context';
 import { useCareData } from '@/lib/supabase/hooks/use-care-data';
 import { AddReferralModal } from '@/app/components/care/add-referral-modal';
 import { ReferralList } from '@/app/components/care/referral-list';
-import { CareReferral, getTeacherByAccountId } from '@/lib/supabase/queries/care-referrals';
+import { CareReferral, NewReferralInput, getTeacherByAccountId } from '@/lib/supabase/queries/care-referrals';
 import { getAssignableUsers, updateCase, AssignableUser } from '@/lib/supabase/queries/care-cases';
 import { createClient } from '@/lib/supabase/client';
 import type { CareStatus } from '@/lib/constants/care';
@@ -107,15 +107,10 @@ export default function CareDashboardPage() {
   }, [currentSchool?.school_id]);
 
   const handleAddReferral = useCallback(
-    async (data: {
-      student_name: string;
-      grade: string;
-      referral_reason: string;
-      category?: string;
-    }) => {
+    async (data: NewReferralInput) => {
       setActionError(null);
       try {
-        await addReferral(data as Parameters<typeof addReferral>[0]);
+        await addReferral(data);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : 'Failed to add referral');
         throw err; // Re-throw so the modal knows it failed
