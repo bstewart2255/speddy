@@ -133,6 +133,10 @@ export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: A
       setError('Date request received is required');
       return;
     }
+    if (isComplianceLane && requestReceivedDate > todayISO()) {
+      setError('Date request received cannot be in the future');
+      return;
+    }
     if (!referralReason.trim()) {
       setError('Referral reason is required');
       return;
@@ -292,6 +296,7 @@ export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: A
                 id="requestReceivedDate"
                 value={requestReceivedDate}
                 onChange={(e) => setRequestReceivedDate(e.target.value)}
+                max={todayISO()}
                 className={inputClass}
                 disabled={loading}
               />
