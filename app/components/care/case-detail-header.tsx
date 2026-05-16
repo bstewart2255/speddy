@@ -6,12 +6,23 @@ import {
   CARE_STATUS_COLORS,
   CARE_CATEGORY_COLORS,
   CARE_CATEGORIES,
+  CARE_REFERRAL_SOURCES,
   type CareStatus,
   type CareCategory,
 } from '@/lib/constants/care';
 
 interface CaseDetailHeaderProps {
   caseData: CareCaseWithDetails;
+}
+
+/** Format a YYYY-MM-DD date string for display (parsed in local time). */
+function formatDateOnly(d: string): string {
+  const [y, m, day] = d.split('-').map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
@@ -32,6 +43,10 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
   });
 
   const referrerName = referral.referring_user?.full_name || 'Unknown';
+
+  const sourceLabel = CARE_REFERRAL_SOURCES.find(
+    (s) => s.value === referral.referral_source
+  )?.label;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -62,6 +77,11 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
               {categoryLabel}
             </span>
           )}
+          {sourceLabel && (
+            <span className="px-3 py-1 text-sm font-medium rounded-full bg-indigo-100 text-indigo-800">
+              {sourceLabel}
+            </span>
+          )}
         </div>
       </div>
 
@@ -78,6 +98,22 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
         {referral.teacher_name && (
           <div>
             <span className="font-medium">Teacher:</span> {referral.teacher_name}
+          </div>
+        )}
+        {referral.private_school_name && (
+          <div>
+            <span className="font-medium">Private school:</span> {referral.private_school_name}
+          </div>
+        )}
+        {referral.requested_by && (
+          <div>
+            <span className="font-medium">Requested by:</span> {referral.requested_by}
+          </div>
+        )}
+        {referral.request_received_date && (
+          <div>
+            <span className="font-medium">Request received:</span>{' '}
+            {formatDateOnly(referral.request_received_date)}
           </div>
         )}
         <div>

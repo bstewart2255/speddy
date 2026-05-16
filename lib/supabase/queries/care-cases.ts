@@ -1,5 +1,10 @@
 import { createClient } from '@/lib/supabase/client';
-import type { CareDisposition } from '@/lib/constants/care';
+import type {
+  CareDisposition,
+  CareReferralSource,
+  EligibilityOutcome,
+  EligibilityCategory,
+} from '@/lib/constants/care';
 
 export interface CareCaseWithDetails {
   id: string;
@@ -25,6 +30,14 @@ export interface CareCaseWithDetails {
   // SST scheduling fields
   sst_scheduled_date: string | null;
   sst_notes_link: string | null;
+  // Lane B compliance fields
+  ap_sent_date: string | null;
+  ap_due_date: string | null;
+  ap_due_date_note: string | null;
+  iep_due_date_note: string | null;
+  eligibility_meeting_date: string | null;
+  eligibility_outcome: EligibilityOutcome | null;
+  eligibility_category: EligibilityCategory | null;
   // Joined referral data
   care_referrals: {
     id: string;
@@ -37,6 +50,10 @@ export interface CareCaseWithDetails {
     status: string;
     submitted_at: string;
     school_id: string | null;
+    referral_source: CareReferralSource;
+    request_received_date: string | null;
+    requested_by: string | null;
+    private_school_name: string | null;
     referring_user: {
       id: string;
       full_name: string | null;
@@ -118,6 +135,10 @@ export async function getCaseWithDetails(caseId: string): Promise<CareCaseWithDe
         status,
         submitted_at,
         school_id,
+        referral_source,
+        request_received_date,
+        requested_by,
+        private_school_name,
         referring_user:profiles!referring_user_id(id, full_name)
       ),
       assigned_user:profiles!assigned_to(id, full_name),
@@ -171,6 +192,10 @@ export async function getCaseByReferralId(referralId: string): Promise<CareCaseW
         status,
         submitted_at,
         school_id,
+        referral_source,
+        request_received_date,
+        requested_by,
+        private_school_name,
         referring_user:profiles!referring_user_id(id, full_name)
       ),
       assigned_user:profiles!assigned_to(id, full_name),
@@ -209,6 +234,13 @@ export async function updateCase(
     follow_up_date?: string | null;
     sst_scheduled_date?: string | null;
     sst_notes_link?: string | null;
+    ap_sent_date?: string | null;
+    ap_due_date?: string | null;
+    ap_due_date_note?: string | null;
+    iep_due_date_note?: string | null;
+    eligibility_meeting_date?: string | null;
+    eligibility_outcome?: EligibilityOutcome | null;
+    eligibility_category?: EligibilityCategory | null;
   }
 ): Promise<void> {
   const supabase = createClient();
