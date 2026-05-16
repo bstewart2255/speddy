@@ -89,7 +89,8 @@
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__list_issue_labels",
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__save_project",
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__create_issue_label",
-      "mcp__52287d5e-942b-4bb1-a760-a897e4851102__save_issue"
+      "mcp__52287d5e-942b-4bb1-a760-a897e4851102__save_issue",
+      "Bash(mkdir -p .claude/hooks)"
     ],
     "deny": []
   },
