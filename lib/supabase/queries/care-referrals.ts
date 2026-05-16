@@ -1,5 +1,11 @@
 import { createClient } from '@/lib/supabase/client';
-import type { CareCategory, CareStatus, CareDisposition } from '@/lib/constants/care';
+import type {
+  CareCategory,
+  CareStatus,
+  CareDisposition,
+  CareReferralSource,
+} from '@/lib/constants/care';
+import { COMPLIANCE_LANE_SOURCES, CARE_AP_DUE_DAYS } from '@/lib/constants/care';
 
 export interface CareReferral {
   id: string;
@@ -10,6 +16,10 @@ export interface CareReferral {
   referring_user_id: string;
   referral_reason: string;
   category: CareCategory | null;
+  referral_source: CareReferralSource;
+  request_received_date: string | null;
+  requested_by: string | null;
+  private_school_name: string | null;
   school_id: string | null;
   district_id: string | null;
   state_id: string | null;
@@ -91,19 +101,44 @@ export async function getCareReferrals(
 }
 
 /**
- * Add a new CARE referral
+ * Input shape for creating a new CARE referral, before school context is attached.
  */
-export async function addCareReferral(referral: {
+export interface NewReferralInput {
   student_name: string;
   grade: string;
   teacher_id?: string;
   teacher_name?: string;
   referral_reason: string;
   category?: CareCategory;
-  school_id: string;
-  district_id?: string;
-  state_id?: string;
-}): Promise<CareReferral> {
+  referral_source: CareReferralSource;
+  request_received_date?: string;
+  requested_by?: string;
+  private_school_name?: string;
+}
+
+/** Add N days to an ISO date string (YYYY-MM-DD), returning a YYYY-MM-DD string. */
+function addDaysToISODate(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Add a new CARE referral.
+ *
+ * Compliance-lane sources (written evaluation requests, private-school
+ * referrals) are born directly into the 'initial' stage with a case created
+ * immediately so the timeline can be tracked. All other sources start as
+ * 'pending' in the discussion lane.
+ */
+export async function addCareReferral(
+  referral: NewReferralInput & {
+    school_id: string;
+    district_id?: string;
+    state_id?: string;
+  }
+): Promise<CareReferral> {
   const supabase = createClient();
 
   // Verify auth
@@ -112,12 +147,15 @@ export async function addCareReferral(referral: {
     throw new Error('User not authenticated');
   }
 
+  const isComplianceLane = COMPLIANCE_LANE_SOURCES.includes(referral.referral_source);
+  const status: CareStatus = isComplianceLane ? 'initial' : 'pending';
+
   const { data, error } = await supabase
     .from('care_referrals')
     .insert({
       ...referral,
       referring_user_id: user.id,
-      status: 'pending',
+      status,
     })
     .select(`
       *,
@@ -132,6 +170,47 @@ export async function addCareReferral(referral: {
   if (error) {
     console.error('Error adding CARE referral:', error);
     throw error;
+  }
+
+  // Lane B referrals need a case immediately so the compliance timeline is
+  // tracked. ap_due_date is pre-filled from the request date and is editable later.
+  if (isComplianceLane) {
+    const apDueDate = referral.request_received_date
+      ? addDaysToISODate(referral.request_received_date, CARE_AP_DUE_DAYS)
+      : null;
+
+    const { error: caseError } = await supabase
+      .from('care_cases')
+      .insert({
+        referral_id: data.id,
+        ap_due_date: apDueDate,
+      });
+
+    // Ignore unique-constraint violations (a concurrent request created the case).
+    if (caseError && caseError.code !== '23505') {
+      console.error('Error creating case for compliance-lane referral:', caseError);
+      // Roll back the orphaned referral -- an 'initial' referral with no case
+      // would be unopenable and have no compliance timeline.
+      await supabase.from('care_referrals').delete().eq('id', data.id);
+      throw new Error('Could not create the case for this referral. Please try again.');
+    }
+
+    const { data: withCase } = await supabase
+      .from('care_referrals')
+      .select(`
+        *,
+        referring_user:profiles!referring_user_id(id, full_name),
+        care_cases(
+          *,
+          assigned_user:profiles!assigned_to(id, full_name)
+        )
+      `)
+      .eq('id', data.id)
+      .single();
+
+    if (withCase) {
+      return withCase as CareReferral;
+    }
   }
 
   return data as CareReferral;

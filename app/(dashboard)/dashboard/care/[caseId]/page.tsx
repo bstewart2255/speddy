@@ -22,6 +22,8 @@ import { InitialAssessmentTracker } from '@/app/components/care/initial-assessme
 import { CaseNotesSection } from '@/app/components/care/case-notes-section';
 import { CaseActionsSection } from '@/app/components/care/case-actions-section';
 import { SstScheduleSection } from '@/app/components/care/sst-schedule-section';
+import { ComplianceTimelineSection } from '@/app/components/care/compliance-timeline-section';
+import { EligibilitySection } from '@/app/components/care/eligibility-section';
 import type { CareDisposition } from '@/lib/constants/care';
 
 export default function CaseDetailPage() {
@@ -303,6 +305,19 @@ export default function CaseDetailPage() {
   // Read-only mode for district admins viewing cases
   const readOnly = isDistrictAdmin;
 
+  // Lane / status helpers. status = 'initial' is the compliance lane.
+  const status = caseData.care_referrals.status;
+  const complianceReadOnly = isDistrictAdmin || status === 'closed';
+  const complianceDisabled = isTeacher || complianceReadOnly;
+  const hasComplianceData = !!(
+    caseData.ap_sent_date ||
+    caseData.ap_due_date ||
+    caseData.ap_received_date ||
+    caseData.eligibility_outcome
+  );
+  const showComplianceLayout =
+    status === 'initial' || (status === 'closed' && hasComplianceData);
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
       {/* District admin read-only notice */}
@@ -337,52 +352,90 @@ export default function CaseDetailPage() {
       {/* Header with student info */}
       <CaseDetailHeader caseData={caseData} />
 
-      {/* Initial Assessment Tracking - only show when in 'initial' stage */}
-      {caseData.care_referrals.status === 'initial' && (
-        <InitialAssessmentTracker
-          caseId={caseId}
-          initialData={{
-            ap_received_date: caseData.ap_received_date,
-            iep_due_date: caseData.iep_due_date,
-            academic_testing_completed: caseData.academic_testing_completed ?? false,
-            academic_testing_date: caseData.academic_testing_date,
-            speech_testing_needed: caseData.speech_testing_needed ?? false,
-            speech_testing_completed: caseData.speech_testing_completed ?? false,
-            speech_testing_date: caseData.speech_testing_date,
-            psych_testing_completed: caseData.psych_testing_completed ?? false,
-            psych_testing_date: caseData.psych_testing_date,
-            ot_testing_needed: caseData.ot_testing_needed ?? false,
-            ot_testing_completed: caseData.ot_testing_completed ?? false,
-            ot_testing_date: caseData.ot_testing_date,
-          }}
-          disabled={isTeacher || readOnly}
-          onUpdate={fetchCase}
-        />
+      {/* Discussion lane (active): disposition selector + SST scheduling */}
+      {status === 'active' && (
+        <>
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <DispositionSelector
+              value={caseData.current_disposition}
+              onChange={handleDispositionChange}
+              onMoveToInitials={() => setShowMoveToInitialsModal(true)}
+              showMoveToInitials={!readOnly}
+              onCloseCase={() => setShowCloseCaseModal(true)}
+              showCloseCase={!readOnly}
+              disabled={isTeacher || readOnly}
+            />
+            <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
+          </div>
+
+          {caseData.current_disposition === 'schedule_sst' && (
+            <SstScheduleSection
+              initialDate={caseData.sst_scheduled_date}
+              initialLink={caseData.sst_notes_link}
+              onUpdate={handleSstUpdate}
+              onRemove={handleSstRemove}
+              disabled={isTeacher || readOnly}
+            />
+          )}
+        </>
       )}
 
-      {/* Status selector with history - read-only for teachers and district admins */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <DispositionSelector
-          value={caseData.current_disposition}
-          onChange={handleDispositionChange}
-          onMoveToInitials={() => setShowMoveToInitialsModal(true)}
-          showMoveToInitials={caseData.care_referrals.status === 'active' && !readOnly}
-          onCloseCase={() => setShowCloseCaseModal(true)}
-          showCloseCase={(caseData.care_referrals.status === 'active' || caseData.care_referrals.status === 'initial') && !readOnly}
-          disabled={isTeacher || readOnly}
-        />
-        <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
-      </div>
+      {/* Compliance lane (initial / closed-with-data): timeline, assessment, eligibility */}
+      {showComplianceLayout && (
+        <>
+          <ComplianceTimelineSection
+            caseId={caseId}
+            caseData={caseData}
+            disabled={complianceDisabled}
+            onUpdate={fetchCase}
+          />
 
-      {/* SST Schedule section - only show when disposition is 'schedule_sst' */}
-      {caseData.current_disposition === 'schedule_sst' && (
-        <SstScheduleSection
-          initialDate={caseData.sst_scheduled_date}
-          initialLink={caseData.sst_notes_link}
-          onUpdate={handleSstUpdate}
-          onRemove={handleSstRemove}
-          disabled={isTeacher || readOnly}
-        />
+          <InitialAssessmentTracker
+            caseId={caseId}
+            initialData={{
+              ap_received_date: caseData.ap_received_date,
+              iep_due_date: caseData.iep_due_date,
+              academic_testing_completed: caseData.academic_testing_completed ?? false,
+              academic_testing_date: caseData.academic_testing_date,
+              speech_testing_needed: caseData.speech_testing_needed ?? false,
+              speech_testing_completed: caseData.speech_testing_completed ?? false,
+              speech_testing_date: caseData.speech_testing_date,
+              psych_testing_completed: caseData.psych_testing_completed ?? false,
+              psych_testing_date: caseData.psych_testing_date,
+              ot_testing_needed: caseData.ot_testing_needed ?? false,
+              ot_testing_completed: caseData.ot_testing_completed ?? false,
+              ot_testing_date: caseData.ot_testing_date,
+            }}
+            disabled={complianceDisabled}
+            onUpdate={fetchCase}
+          />
+
+          <EligibilitySection
+            caseId={caseId}
+            caseData={caseData}
+            disabled={complianceDisabled}
+            onUpdate={fetchCase}
+          />
+        </>
+      )}
+
+      {/* Close action for initial-stage cases */}
+      {status === 'initial' && !isTeacher && !isDistrictAdmin && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 flex justify-end">
+          <button
+            onClick={() => setShowCloseCaseModal(true)}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Close Referral
+          </button>
+        </div>
+      )}
+
+      {/* Status history - shown for compliance-lane and closed cases */}
+      {status !== 'active' && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <StatusHistoryLog caseId={caseId} refreshTrigger={historyRefresh} />
+        </div>
       )}
 
       {/* Move to Initials confirmation modal */}

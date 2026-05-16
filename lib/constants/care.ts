@@ -65,3 +65,53 @@ export const GRADE_OPTIONS = [
 ] as const;
 
 export type Grade = (typeof GRADE_OPTIONS)[number];
+
+// Referral source -- how the referral came in; drives intake form and entry lane
+export const CARE_REFERRAL_SOURCES = [
+  { value: 'teacher_concern', label: 'Teacher Concern' },
+  { value: 'parent_concern', label: 'Parent Concern' },
+  { value: 'staff_concern', label: 'Staff Concern' },
+  { value: 'parent_written_request', label: 'Parent Written Request for Evaluation' },
+  { value: 'private_school', label: 'Private School Referral' },
+] as const;
+
+export type CareReferralSource = (typeof CARE_REFERRAL_SOURCES)[number]['value'];
+
+// Sources that enter the compliance lane (Lane B) directly at intake,
+// with a timeline already running. Other sources start in the discussion
+// lane (Lane A) and may be promoted later.
+export const COMPLIANCE_LANE_SOURCES: CareReferralSource[] = [
+  'parent_written_request',
+  'private_school',
+];
+
+// Days from request received to Assessment Plan due (California Ed. Code 56321)
+export const CARE_AP_DUE_DAYS = 15;
+
+// Eligibility determination outcome (result of the compliance-lane process)
+export const ELIGIBILITY_OUTCOMES = [
+  { value: 'eligible', label: 'Eligible' },
+  { value: 'not_eligible', label: 'Not Eligible' },
+  { value: 'eligible_504_only', label: 'Eligible — 504 Only' },
+] as const;
+
+export type EligibilityOutcome = (typeof ELIGIBILITY_OUTCOMES)[number]['value'];
+
+// The 13 federal IDEA disability categories (34 CFR 300.8)
+export const ELIGIBILITY_CATEGORIES = [
+  { value: 'autism', label: 'Autism' },
+  { value: 'deaf_blindness', label: 'Deaf-Blindness' },
+  { value: 'deafness', label: 'Deafness' },
+  { value: 'emotional_disturbance', label: 'Emotional Disturbance' },
+  { value: 'hearing_impairment', label: 'Hearing Impairment' },
+  { value: 'intellectual_disability', label: 'Intellectual Disability' },
+  { value: 'multiple_disabilities', label: 'Multiple Disabilities' },
+  { value: 'orthopedic_impairment', label: 'Orthopedic Impairment' },
+  { value: 'other_health_impairment', label: 'Other Health Impairment' },
+  { value: 'specific_learning_disability', label: 'Specific Learning Disability' },
+  { value: 'speech_language_impairment', label: 'Speech or Language Impairment' },
+  { value: 'traumatic_brain_injury', label: 'Traumatic Brain Injury' },
+  { value: 'visual_impairment', label: 'Visual Impairment' },
+] as const;
+
+export type EligibilityCategory = (typeof ELIGIBILITY_CATEGORIES)[number]['value'];
