@@ -48,6 +48,8 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
     (s) => s.value === referral.referral_source
   )?.label;
 
+  const showSstBadge = caseData.current_disposition === 'schedule_sst';
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
       {/* Back link */}
@@ -80,6 +82,11 @@ export function CaseDetailHeader({ caseData }: CaseDetailHeaderProps) {
           {sourceLabel && (
             <span className="px-3 py-1 text-sm font-medium rounded-full bg-indigo-100 text-indigo-800">
               {sourceLabel}
+            </span>
+          )}
+          {showSstBadge && (
+            <span className="px-3 py-1 text-sm font-medium rounded-full bg-cyan-100 text-cyan-800">
+              SST
             </span>
           )}
         </div>

@@ -52,6 +52,7 @@ export function ReferralCard({
 
   const currentAssignee = caseData?.assigned_user?.full_name || null;
   const currentAssigneeId = caseData?.assigned_to || '';
+  const showSstBadge = caseData?.current_disposition === 'schedule_sst';
 
   const handleAssignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
@@ -127,6 +128,11 @@ export function ReferralCard({
           {categoryLabel && categoryColor && (
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${categoryColor}`}>
               {categoryLabel}
+            </span>
+          )}
+          {showSstBadge && (
+            <span className="px-2 py-1 text-xs font-medium rounded-full bg-cyan-100 text-cyan-800">
+              SST
             </span>
           )}
         </div>
