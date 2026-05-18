@@ -126,7 +126,7 @@ export function SstScheduleSection({
         <div className="flex-shrink-0">
           <label htmlFor="sst-date" className="block text-sm font-medium text-gray-700 mb-1">
             Scheduled Date
-            {!scheduledDate && (
+            {!disabled && !scheduledDate && (
               <span className="ml-2 text-xs font-semibold text-red-600">
                 * scheduling required
               </span>
