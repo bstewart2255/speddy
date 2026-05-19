@@ -90,7 +90,9 @@
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__save_project",
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__create_issue_label",
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__save_issue",
-      "Bash(mkdir -p .claude/hooks)"
+      "Bash(mkdir -p .claude/hooks)",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_navigate"
     ],
     "deny": []
   },

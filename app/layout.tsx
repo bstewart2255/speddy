@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Pacifico } from "next/font/google";
+import { Inter, Pacifico, DM_Sans } from "next/font/google";
 import Script from 'next/script';
 import "./globals.css";
 import { AuthProvider } from "./components/providers/auth-provider";
@@ -10,10 +10,16 @@ const inter = Inter({
   display: 'swap',
 });
 
-const pacifico = Pacifico({ 
+const pacifico = Pacifico({
   subsets: ["latin"],
   weight: "400",
   variable: '--font-logo',
+  display: 'swap',
+});
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: '--font-dm-sans',
   display: 'swap',
 });
 
@@ -28,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${pacifico.variable}`}>
+    <html lang="en" className={`${inter.variable} ${pacifico.variable} ${dmSans.variable}`}>
       <body className={`${inter.className || 'font-sans'}`}>
         <AuthProvider>
           {children}
