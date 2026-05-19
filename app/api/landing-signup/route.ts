@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Linear-time email sanity check. Avoids a single regex over user input,
+// which can backtrack quadratically (ReDoS) when segments overlap.
+function isLikelyEmail(value: string): boolean {
+  if (value.length < 3 || value.length > 254) return false;
+  if (/\s/.test(value)) return false;
+  const at = value.indexOf('@');
+  if (at <= 0 || at !== value.lastIndexOf('@') || at === value.length - 1) return false;
+  const domain = value.slice(at + 1);
+  const dot = domain.indexOf('.');
+  return dot > 0 && dot < domain.length - 1;
+}
 
 // Receives email captures from the marketing landing page and stores them in
 // the landing_signups table. Writes use the service-role key so the table can
@@ -19,7 +29,7 @@ export async function POST(request: NextRequest) {
   const audience =
     raw.audience === 'provider' || raw.audience === 'admin' ? raw.audience : null;
 
-  if (!EMAIL_RE.test(email) || email.length > 254) {
+  if (!isLikelyEmail(email)) {
     return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
   }
 

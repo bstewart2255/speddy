@@ -65,8 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Only check session if we're not on a public route
-    const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+    // Only check session if we're not on a public route. '/' is the marketing
+    // landing page and is matched exactly (startsWith('/') would match all).
+    const isPublicRoute =
+      pathname === '/' || PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
 
     if (!isPublicRoute && !initialized) {
       checkSession();

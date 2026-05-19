@@ -80,6 +80,8 @@ export function AudienceToggle({
         return (
           <button
             key={t.key}
+            type="button"
+            aria-pressed={active}
             onClick={() => onChange(t.key)}
             style={{
               border: 0,
@@ -123,6 +125,8 @@ export function EmailSignup({
   if (status === 'done') {
     return (
       <div
+        role="status"
+        aria-live="polite"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -253,7 +257,10 @@ export function EmailSignup({
         </button>
       </form>
       {status === 'error' && error && (
-        <div style={{ marginTop: 8, fontSize: 13, color: '#DC2626', textAlign: 'left' }}>
+        <div
+          role="alert"
+          style={{ marginTop: 8, fontSize: 13, color: '#DC2626', textAlign: 'left' }}
+        >
           {error}
         </div>
       )}

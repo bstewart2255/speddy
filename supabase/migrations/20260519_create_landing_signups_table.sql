@@ -6,7 +6,9 @@ create table if not exists public.landing_signups (
   id uuid primary key default gen_random_uuid(),
   email text not null,
   audience text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint landing_signups_email_not_blank check (length(trim(email)) > 0),
+  constraint landing_signups_audience_check check (audience is null or audience in ('provider', 'admin'))
 );
 
 alter table public.landing_signups enable row level security;
