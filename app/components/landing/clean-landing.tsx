@@ -1,6 +1,8 @@
 'use client';
 
 // Speddy landing page — "Clean (B)" design direction.
+// Responsive: clamp() handles type/spacing, flex-wrap handles rows, and a
+// small media-query block collapses the two-column grids on narrow screens.
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -31,6 +33,17 @@ const ADMIN_COPY = {
   placeholder: 'admin@district.edu',
 };
 
+const SECTION_X = 'clamp(20px, 5vw, 64px)';
+
+const RESPONSIVE_CSS = `
+.sp-hero-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
+.sp-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.sp-feature-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: clamp(24px, 4vw, 48px); align-items: center; }
+@media (max-width: 768px) {
+  .sp-hero-grid, .sp-2col, .sp-feature-grid { grid-template-columns: 1fr; }
+}
+`;
+
 export default function CleanLanding() {
   const [audience, setAudience] = useState<Audience>('provider');
   const copy = audience === 'provider' ? PROVIDER_COPY : ADMIN_COPY;
@@ -44,16 +57,18 @@ export default function CleanLanding() {
         background: '#F3F5F8',
         minHeight: '100%',
         width: '100%',
-        overflow: 'hidden',
+        overflowX: 'hidden',
       }}
     >
+      <style>{RESPONSIVE_CSS}</style>
+
       {/* Nav */}
       <nav
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '24px 64px',
+          padding: `clamp(16px, 4vw, 24px) ${SECTION_X}`,
           background: '#FFF',
           borderBottom: '1px solid rgba(15,23,42,0.06)',
         }}
@@ -73,7 +88,13 @@ export default function CleanLanding() {
       </nav>
 
       {/* Hero */}
-      <section style={{ padding: '72px 64px 56px', textAlign: 'center', background: '#FFF' }}>
+      <section
+        style={{
+          padding: `clamp(40px, 7vw, 72px) ${SECTION_X} clamp(36px, 6vw, 56px)`,
+          textAlign: 'center',
+          background: '#FFF',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <AudienceToggle value={audience} onChange={setAudience} />
         </div>
@@ -90,7 +111,7 @@ export default function CleanLanding() {
         </div>
         <h1
           style={{
-            fontSize: 64,
+            fontSize: 'clamp(34px, 7vw, 64px)',
             lineHeight: 1.05,
             fontWeight: 700,
             letterSpacing: '-0.03em',
@@ -106,7 +127,7 @@ export default function CleanLanding() {
         </h1>
         <p
           style={{
-            fontSize: 19,
+            fontSize: 'clamp(16px, 2.2vw, 19px)',
             lineHeight: 1.5,
             margin: '24px auto 36px',
             color: 'rgba(15,23,42,0.65)',
@@ -116,13 +137,14 @@ export default function CleanLanding() {
           {copy.sub}
         </p>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <EmailSignup cta={copy.cta} placeholder={copy.placeholder} />
+          <EmailSignup cta={copy.cta} placeholder={copy.placeholder} audience={audience} />
         </div>
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             justifyContent: 'center',
-            gap: 24,
+            gap: '8px 24px',
             marginTop: 20,
             fontSize: 13,
             color: 'rgba(15,23,42,0.55)',
@@ -185,14 +207,8 @@ export default function CleanLanding() {
               </div>
             </div>
             <div
-              style={{
-                background: '#F3F5F8',
-                padding: 24,
-                display: 'grid',
-                gridTemplateColumns: '1.4fr 1fr',
-                gap: 20,
-                alignItems: 'start',
-              }}
+              className="sp-hero-grid"
+              style={{ background: '#F3F5F8', padding: 'clamp(14px, 3vw, 24px)' }}
             >
               {isAdmin ? (
                 <MockMasterScheduleCard width="100%" />
@@ -206,7 +222,7 @@ export default function CleanLanding() {
       </section>
 
       {/* Pain points */}
-      <section style={{ padding: '96px 64px' }}>
+      <section style={{ padding: `clamp(56px, 9vw, 96px) ${SECTION_X}` }}>
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
           <div
             style={{
@@ -221,7 +237,7 @@ export default function CleanLanding() {
           </div>
           <h2
             style={{
-              fontSize: 44,
+              fontSize: 'clamp(26px, 5vw, 44px)',
               fontWeight: 700,
               letterSpacing: '-0.025em',
               margin: '12px 0 0',
@@ -234,22 +250,14 @@ export default function CleanLanding() {
           </h2>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 24,
-            maxWidth: 1080,
-            margin: '0 auto',
-          }}
-        >
+        <div className="sp-2col" style={{ maxWidth: 1080, margin: '0 auto' }}>
           {/* Before */}
           <div
             style={{
               background: '#FFF',
               border: '1px solid rgba(15,23,42,0.08)',
               borderRadius: 16,
-              padding: 32,
+              padding: 'clamp(22px, 4vw, 32px)',
             }}
           >
             <div
@@ -316,7 +324,7 @@ export default function CleanLanding() {
               background: '#FFF',
               border: '1px solid #2452F5',
               borderRadius: 16,
-              padding: 32,
+              padding: 'clamp(22px, 4vw, 32px)',
               boxShadow: '0 20px 40px -20px rgba(36,82,245,0.18)',
             }}
           >
@@ -382,7 +390,7 @@ export default function CleanLanding() {
       {/* Feature grid */}
       <section
         style={{
-          padding: '96px 64px',
+          padding: `clamp(56px, 9vw, 96px) ${SECTION_X}`,
           background: '#FFF',
           borderTop: '1px solid rgba(15,23,42,0.06)',
         }}
@@ -390,7 +398,7 @@ export default function CleanLanding() {
         <div style={{ maxWidth: 720, margin: '0 auto 64px', textAlign: 'center' }}>
           <h2
             style={{
-              fontSize: 44,
+              fontSize: 'clamp(26px, 5vw, 44px)',
               fontWeight: 700,
               letterSpacing: '-0.025em',
               margin: 0,
@@ -405,15 +413,12 @@ export default function CleanLanding() {
 
         <div style={{ maxWidth: 1180, margin: '0 auto' }}>
           <div
+            className="sp-feature-grid"
             style={{
               background: '#F3F5F8',
               border: '1px solid rgba(15,23,42,0.06)',
               borderRadius: 20,
-              padding: 40,
-              display: 'grid',
-              gridTemplateColumns: '0.9fr 1.1fr',
-              gap: 48,
-              alignItems: 'center',
+              padding: 'clamp(22px, 4vw, 40px)',
             }}
           >
             <div>
@@ -440,7 +445,7 @@ export default function CleanLanding() {
               </div>
               <h3
                 style={{
-                  fontSize: 32,
+                  fontSize: 'clamp(24px, 3.5vw, 32px)',
                   fontWeight: 700,
                   margin: '0 0 16px',
                   letterSpacing: '-0.02em',
@@ -554,19 +559,35 @@ export default function CleanLanding() {
 
       {/* Final CTA */}
       <section
-        style={{ padding: '96px 64px', background: '#0F172A', color: '#FFF', textAlign: 'center' }}
+        style={{
+          padding: `clamp(56px, 9vw, 96px) ${SECTION_X}`,
+          background: '#0F172A',
+          color: '#FFF',
+          textAlign: 'center',
+        }}
       >
         <h2
-          style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 12px' }}
+          style={{
+            fontSize: 'clamp(30px, 6vw, 48px)',
+            fontWeight: 700,
+            letterSpacing: '-0.025em',
+            margin: '0 0 12px',
+          }}
         >
           Make your SpEd life easier.
         </h2>
-        <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', margin: '0 0 36px' }}>
+        <p
+          style={{
+            fontSize: 'clamp(15px, 2vw, 18px)',
+            color: 'rgba(255,255,255,0.7)',
+            margin: '0 0 36px',
+          }}
+        >
           Set up in an afternoon. Designed alongside real SpEd providers.
         </p>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <div style={{ background: '#FFF', padding: 8, borderRadius: 14, maxWidth: 580, width: '100%' }}>
-            <EmailSignup cta="Get started" />
+            <EmailSignup cta="Get started" audience={audience} />
           </div>
         </div>
       </section>
@@ -574,10 +595,12 @@ export default function CleanLanding() {
       {/* Footer */}
       <footer
         style={{
-          padding: '32px 64px',
+          padding: `clamp(24px, 4vw, 32px) ${SECTION_X}`,
           background: '#0F172A',
           borderTop: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
+          flexWrap: 'wrap',
+          gap: 16,
           justifyContent: 'space-between',
           alignItems: 'center',
         }}
@@ -591,6 +614,7 @@ export default function CleanLanding() {
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             gap: 24,
             fontSize: 13,
             color: 'rgba(255,255,255,0.55)',

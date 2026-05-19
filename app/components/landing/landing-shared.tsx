@@ -105,18 +105,22 @@ export function AudienceToggle({
   );
 }
 
-// Email-only signup (clean theme). Shows an inline thank-you on submit.
+// Email-only signup (clean theme). Posts to /api/landing-signup and shows an
+// inline thank-you on success.
 export function EmailSignup({
   placeholder = 'you@school.edu',
   cta = 'Get started',
+  audience,
 }: {
   placeholder?: string;
   cta?: string;
+  audience?: Audience;
 }) {
   const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [error, setError] = useState('');
 
-  if (submitted) {
+  if (status === 'done') {
     return (
       <div
         style={{
@@ -169,56 +173,91 @@ export function EmailSignup({
     );
   }
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!email.includes('@')) return;
-    setSubmitted(true);
+    if (status === 'loading') return;
+    if (!email.includes('@')) {
+      setError('Please enter a valid email address.');
+      setStatus('error');
+      return;
+    }
+    setStatus('loading');
+    setError('');
+    try {
+      const res = await fetch('/api/landing-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, audience }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error || 'Something went wrong. Please try again.');
+        setStatus('error');
+        return;
+      }
+      setStatus('done');
+    } catch {
+      setError('Network error. Please try again.');
+      setStatus('error');
+    }
   };
 
+  const loading = status === 'loading';
+
   return (
-    <form
-      onSubmit={onSubmit}
-      style={{ display: 'flex', flexDirection: 'row', gap: 8, maxWidth: 560, width: '100%' }}
-    >
-      <input
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: '14px 18px',
-          fontSize: 16,
-          fontFamily: 'inherit',
-          background: '#FFF',
-          border: '1.5px solid #D8DEE8',
-          borderRadius: 12,
-          outline: 'none',
-          color: '#0F172A',
-        }}
-        onFocus={(e) => (e.target.style.borderColor = '#2452F5')}
-        onBlur={(e) => (e.target.style.borderColor = '#D8DEE8')}
-      />
-      <button
-        type="submit"
-        style={{
-          border: 0,
-          padding: '14px 22px',
-          fontSize: 16,
-          fontWeight: 700,
-          fontFamily: 'inherit',
-          background: '#2452F5',
-          color: '#FFF',
-          borderRadius: 12,
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-        }}
+    <div style={{ maxWidth: 560, width: '100%' }}>
+      <form
+        onSubmit={onSubmit}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%' }}
       >
-        {cta} →
-      </button>
-    </form>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={placeholder}
+          style={{
+            flex: '1 1 200px',
+            minWidth: 0,
+            padding: '14px 18px',
+            fontSize: 16,
+            fontFamily: 'inherit',
+            background: '#FFF',
+            border: '1.5px solid #D8DEE8',
+            borderRadius: 12,
+            outline: 'none',
+            color: '#0F172A',
+          }}
+          onFocus={(e) => (e.target.style.borderColor = '#2452F5')}
+          onBlur={(e) => (e.target.style.borderColor = '#D8DEE8')}
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            flex: '1 1 140px',
+            border: 0,
+            padding: '14px 22px',
+            fontSize: 16,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            background: '#2452F5',
+            color: '#FFF',
+            borderRadius: 12,
+            cursor: loading ? 'default' : 'pointer',
+            opacity: loading ? 0.7 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {loading ? 'Sending…' : `${cta} →`}
+        </button>
+      </form>
+      {status === 'error' && error && (
+        <div style={{ marginTop: 8, fontSize: 13, color: '#DC2626', textAlign: 'left' }}>
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -303,7 +342,7 @@ export function MockScheduleCard({ width = 520 }: { width?: string | number }) {
             This week
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {GRADE_LIST.map((g) => (
             <span
               key={g.l}
