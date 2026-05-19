@@ -15,17 +15,25 @@ export function OnboardingNotifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check if user has dismissed banners (stored in localStorage)
+      // Setup banner dismissal still lives in localStorage; only the
+      // multi-school banner has been migrated to durable per-user storage.
       const dismissedSetup = localStorage.getItem(`dismissed-setup-banner-${user.id}`);
-      const dismissedMultiSchool = localStorage.getItem(`dismissed-multi-school-banner-${user.id}`);
 
-      // Check if user works at multiple schools
-      const { data: providerSchools } = await supabase
-        .from('provider_schools')
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('works_at_multiple_schools, multi_school_banner_dismissed')
+        .eq('id', user.id)
+        .single();
+
+      // If the user has saved any per-site work schedule rows, treat the
+      // multi-school banner's call to action as complete and hide it.
+      const { data: siteSchedules } = await supabase
+        .from('user_site_schedules')
         .select('id')
-        .eq('provider_id', user.id);
+        .eq('user_id', user.id)
+        .limit(1);
 
-      const worksAtMultipleSchools = providerSchools && providerSchools.length > 1;
+      const hasSiteSchedule = !!siteSchedules && siteSchedules.length > 0;
 
       // Check if user has students
       const { data: students } = await supabase
@@ -49,8 +57,8 @@ export function OnboardingNotifications() {
         .limit(1);
 
       // Determine if user needs setup (no students, bell schedules, or special activities)
-      const needsSetup = (!students || students.length === 0) || 
-                        (!bellSchedules || bellSchedules.length === 0) || 
+      const needsSetup = (!students || students.length === 0) ||
+                        (!bellSchedules || bellSchedules.length === 0) ||
                         (!specialActivities || specialActivities.length === 0);
 
       // Show setup banner if needed and not dismissed
@@ -58,8 +66,11 @@ export function OnboardingNotifications() {
         setShowSetupBanner(true);
       }
 
-      // Show multi-school banner if applicable and not dismissed
-      if (worksAtMultipleSchools && !dismissedMultiSchool) {
+      if (
+        profile?.works_at_multiple_schools &&
+        !profile.multi_school_banner_dismissed &&
+        !hasSiteSchedule
+      ) {
         setShowMultiSchoolBanner(true);
       }
     } catch (error) {
@@ -68,7 +79,7 @@ export function OnboardingNotifications() {
       setLoading(false);
     }
   }, [supabase]);
-  
+
   useEffect(() => {
     checkOnboardingStatus();
   }, [checkOnboardingStatus]);
@@ -83,9 +94,18 @@ export function OnboardingNotifications() {
 
   const handleDismissMultiSchoolBanner = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      localStorage.setItem(`dismissed-multi-school-banner-${user.id}`, 'true');
-      setShowMultiSchoolBanner(false);
+    if (!user) return;
+
+    setShowMultiSchoolBanner(false);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ multi_school_banner_dismissed: true })
+      .eq('id', user.id);
+
+    if (error) {
+      console.error('Error persisting multi-school banner dismissal:', error);
+      setShowMultiSchoolBanner(true);
     }
   };
 
