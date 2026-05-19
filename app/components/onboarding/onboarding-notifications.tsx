@@ -15,13 +15,9 @@ export function OnboardingNotifications() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Setup banner dismissal still lives in localStorage; only the
-      // multi-school banner has been migrated to durable per-user storage.
-      const dismissedSetup = localStorage.getItem(`dismissed-setup-banner-${user.id}`);
-
       const { data: profile } = await supabase
         .from('profiles')
-        .select('works_at_multiple_schools, multi_school_banner_dismissed')
+        .select('works_at_multiple_schools, multi_school_banner_dismissed, setup_banner_dismissed')
         .eq('id', user.id)
         .single();
 
@@ -61,8 +57,7 @@ export function OnboardingNotifications() {
                         (!bellSchedules || bellSchedules.length === 0) ||
                         (!specialActivities || specialActivities.length === 0);
 
-      // Show setup banner if needed and not dismissed
-      if (needsSetup && !dismissedSetup) {
+      if (needsSetup && !profile?.setup_banner_dismissed) {
         setShowSetupBanner(true);
       }
 
@@ -86,9 +81,18 @@ export function OnboardingNotifications() {
 
   const handleDismissSetupBanner = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      localStorage.setItem(`dismissed-setup-banner-${user.id}`, 'true');
-      setShowSetupBanner(false);
+    if (!user) return;
+
+    setShowSetupBanner(false);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ setup_banner_dismissed: true })
+      .eq('id', user.id);
+
+    if (error) {
+      console.error('Error persisting setup banner dismissal:', error);
+      setShowSetupBanner(true);
     }
   };
 

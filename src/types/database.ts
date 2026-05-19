@@ -1773,6 +1773,7 @@ export type Database = {
           school_site: string
           school_site_original: string | null
           selected_curriculums: string[] | null
+          setup_banner_dismissed: boolean
           shared_at_school: boolean | null
           state: string | null
           state_id: string | null
@@ -1798,6 +1799,7 @@ export type Database = {
           school_site: string
           school_site_original?: string | null
           selected_curriculums?: string[] | null
+          setup_banner_dismissed?: boolean
           shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
@@ -1823,6 +1825,7 @@ export type Database = {
           school_site?: string
           school_site_original?: string | null
           selected_curriculums?: string[] | null
+          setup_banner_dismissed?: boolean
           shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
