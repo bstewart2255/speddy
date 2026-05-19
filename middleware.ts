@@ -6,19 +6,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Define public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/terms', '/privacy', '/ferpa']
+  // '/' is the marketing landing page and is open to everyone.
+  const publicRoutes = ['/', '/login', '/signup', '/terms', '/privacy', '/ferpa']
   const isPublicRoute = publicRoutes.some(route => pathname === route)
 
   // Routes allowed for users who must change their password
   const passwordChangeRoutes = ['/change-password']
   const isPasswordChangeRoute = passwordChangeRoutes.some(route => pathname === route)
-
-  // If at root, redirect to login
-  if (pathname === '/') {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
-    return NextResponse.redirect(redirectUrl)
-  }
 
   // Allow public routes
   if (isPublicRoute) {
