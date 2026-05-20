@@ -141,7 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         (!emailDomain.includes(".edu") &&
           !emailDomain.includes(".org") &&
           !emailDomain.includes(".k12.") &&
-          !emailDomain.includes(".gov"))
+          !emailDomain.includes(".gov") &&
+          !emailDomain.endsWith(".us"))
       ) {
         throw new Error("Please use your district email address");
       }
