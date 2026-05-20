@@ -59,7 +59,6 @@ export interface SchoolInfo {
     name?: string;
     district_name?: string;
     state_name?: string;
-    nces_id?: string;
   };
 }
 
@@ -113,7 +112,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .from('schools')
           .select(`
             name,
-            nces_id,
             districts!inner(
               name,
               states!inner(
@@ -135,7 +133,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               name: schoolDetails.name,
               district_name: district.name,
               state_name: state.name,
-              nces_id: schoolDetails.nces_id,
             };
 
             // Update display name with richer data (use short state name)
