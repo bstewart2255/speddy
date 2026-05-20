@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
 
   // Define public routes that don't require authentication
   // '/' is the marketing landing page and is open to everyone.
-  const publicRoutes = ['/', '/login', '/signup', '/terms', '/privacy', '/ferpa']
+  const publicRoutes = ['/', '/how-it-works', '/login', '/signup', '/terms', '/privacy', '/ferpa']
   const isPublicRoute = publicRoutes.some(route => pathname === route)
 
   // Routes allowed for users who must change their password

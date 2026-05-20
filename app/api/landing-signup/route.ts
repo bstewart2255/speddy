@@ -27,7 +27,9 @@ export async function POST(request: NextRequest) {
   const raw = (body as { email?: unknown; audience?: unknown }) ?? {};
   const email = typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : '';
   const audience =
-    raw.audience === 'provider' || raw.audience === 'admin' ? raw.audience : null;
+    raw.audience === 'provider' || raw.audience === 'admin' || raw.audience === 'district'
+      ? raw.audience
+      : null;
 
   if (!isLikelyEmail(email)) {
     return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });

@@ -74,17 +74,30 @@ export default function CleanLanding() {
         }}
       >
         <SpeddyMark size={34} />
-        <Link
-          href="/login"
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            color: '#0F172A',
-            textDecoration: 'none',
-          }}
-        >
-          Sign in
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          <Link
+            href="/how-it-works"
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#0F172A',
+              textDecoration: 'none',
+            }}
+          >
+            How it works
+          </Link>
+          <Link
+            href="/login"
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#0F172A',
+              textDecoration: 'none',
+            }}
+          >
+            Sign in
+          </Link>
+        </div>
       </nav>
 
       {/* Hero */}
