@@ -24,7 +24,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">3. Account Registration</h2>
             <p className="text-gray-700 mb-4">To use Speddy, you must:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li>Register using your official school district email address (.edu, .org, .k12, .gov, or .us domains)</li>
+              <li>Register using your official school district email address (.edu, .org, .k12., .gov, or .us domains)</li>
               <li>Provide accurate, complete, and current information about your professional role and credentials</li>
               <li>Maintain the security of your password and login credentials</li>
               <li>Accept responsibility for all activities under your account</li>

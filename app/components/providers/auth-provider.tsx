@@ -138,10 +138,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const emailDomain = email.split("@")[1];
       if (
         !emailDomain ||
-        (!emailDomain.includes(".edu") &&
-          !emailDomain.includes(".org") &&
+        (!emailDomain.endsWith(".edu") &&
+          !emailDomain.endsWith(".org") &&
           !emailDomain.includes(".k12.") &&
-          !emailDomain.includes(".gov") &&
+          !emailDomain.endsWith(".gov") &&
           !emailDomain.endsWith(".us"))
       ) {
         throw new Error("Please use your district email address");

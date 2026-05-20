@@ -128,8 +128,15 @@ async function deleteExisting(email: string) {
   if (!existingId) return;
 
   console.log(`  removing existing ${email} (${existingId})`);
-  await admin.from('admin_permissions').delete().eq('admin_id', existingId);
-  await admin.from('profiles').delete().eq('id', existingId);
+  const { error: permsErr } = await admin
+    .from('admin_permissions')
+    .delete()
+    .eq('admin_id', existingId);
+  if (permsErr) throw new Error(`admin_permissions delete failed for ${email}: ${permsErr.message}`);
+
+  const { error: profileErr } = await admin.from('profiles').delete().eq('id', existingId);
+  if (profileErr) throw new Error(`profiles delete failed for ${email}: ${profileErr.message}`);
+
   const { error: delErr } = await admin.auth.admin.deleteUser(existingId);
   if (delErr) throw new Error(`deleteUser failed for ${email}: ${delErr.message}`);
 }
