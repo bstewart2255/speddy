@@ -497,8 +497,8 @@ export default function CalendarPage() {
 
             {currentView === 'day' && (
               <ToastProvider>
-                <CalendarDayView 
-                  sessions={sessions} 
+                <CalendarDayView
+                  sessions={sessions}
                   students={students}
                   onSessionClick={handleSessionClick}
                   currentDate={currentDate}
@@ -506,6 +506,7 @@ export default function CalendarPage() {
                   calendarEvents={calendarEvents}
                   onAddEvent={handleAddEvent}
                   onEventClick={handleEventClick}
+                  onUpdate={fetchData}
                 />
               </ToastProvider>
             )}

@@ -150,72 +150,13 @@ export function CalendarWeekView({
   type ViewMode = 'my-sessions' | 'all-sessions' | 'specialist' | 'sea' | 'assigned-to-me';
   const [viewMode, setViewMode] = useState<ViewMode>('my-sessions');
 
-  // Sync sessionsState with sessions prop when parent refreshes
-  // Apply week date, view mode, and school filtering to match the internal fetch behavior
-  useEffect(() => {
-    const syncSessions = async () => {
-      // Skip if we don't have user context yet
-      if (!currentUser) return;
-
-      // Get current week's date range
-      const weekStartStr = weekDates.length > 0 ? toLocalDateKey(weekDates[0]) : null;
-      const weekEndStr = weekDates.length > 0 ? toLocalDateKey(weekDates[weekDates.length - 1]) : null;
-
-      let filteredSessions = sessions;
-
-      // Filter by current week's date range first
-      if (weekStartStr && weekEndStr) {
-        filteredSessions = filteredSessions.filter(s =>
-          s.session_date &&
-          s.session_date >= weekStartStr &&
-          s.session_date <= weekEndStr
-        );
-      }
-
-      // Apply view mode filter (same logic as internal fetch)
-      const userId = currentUser.id;
-      if (viewMode === 'my-sessions') {
-        filteredSessions = filteredSessions.filter(s =>
-          (s.provider_id === userId && !s.assigned_to_specialist_id && !s.assigned_to_sea_id) ||
-          s.assigned_to_specialist_id === userId ||
-          s.assigned_to_sea_id === userId
-        );
-      } else if (viewMode === 'all-sessions') {
-        filteredSessions = filteredSessions.filter(s =>
-          s.provider_id === userId ||
-          s.assigned_to_specialist_id === userId ||
-          s.assigned_to_sea_id === userId
-        );
-      } else if (viewMode === 'specialist') {
-        filteredSessions = filteredSessions.filter(s =>
-          s.provider_id === userId &&
-          s.assigned_to_specialist_id !== null &&
-          s.assigned_to_specialist_id !== userId
-        );
-      } else if (viewMode === 'sea') {
-        filteredSessions = filteredSessions.filter(s =>
-          s.provider_id === userId &&
-          s.assigned_to_sea_id !== null &&
-          s.assigned_to_sea_id !== userId
-        );
-      } else if (viewMode === 'assigned-to-me') {
-        filteredSessions = filteredSessions.filter(s =>
-          s.assigned_to_specialist_id === userId &&
-          s.provider_id !== userId
-        );
-      }
-
-      // Then apply school filtering if user works at multiple schools and has a current school selected
-      if (currentSchool && worksAtMultipleSchools && currentSchool.school_id) {
-        const supabase = createClient<Database>();
-        filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as SessionWithCurriculum[];
-      }
-
-      setSessionsState(filteredSessions);
-    };
-
-    syncSessions();
-  }, [sessions, currentSchool, worksAtMultipleSchools, weekDates, viewMode, currentUser]);
+  // The internal loadSessions effect below is the single source of truth for
+  // sessionsState. It pulls fresh data from SessionGenerator on every relevant
+  // change. We previously had a second effect that synced from the `sessions`
+  // prop in parallel, which raced with the internal fetch and could revert to
+  // stale parent data right after a local mutation. Now we only listen to the
+  // prop as a signal that the parent refetched, and re-run the internal fetch
+  // (see the deps array on the loadSessions useEffect below).
 
   // Keep selectedGroupSessions in sync when sessions refresh
   useEffect(() => {
@@ -444,8 +385,12 @@ export function CalendarWeekView({
     };
 
     loadSessions();
+    // `sessions` is included so a parent refetch (e.g. after a Day-tab group
+    // change calls Plan page's fetchData) causes the week view to pull fresh
+    // data from the DB. The prop itself is not consumed, only used as a
+    // refresh signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset, viewMode, currentSchool]);
+  }, [weekOffset, viewMode, currentSchool, sessions]);
 
   // Fetch student data for assigned sessions (students that aren't in the prop)
   React.useEffect(() => {
