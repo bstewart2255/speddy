@@ -111,17 +111,26 @@ async function upsertDistrictAndSchool() {
   console.log(`  school:   ${SCHOOL.id} (${SCHOOL.name})`);
 }
 
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  const target = email.toLowerCase();
+  const perPage = 1000;
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error(`listUsers failed: ${error.message}`);
+    const match = data.users.find((u) => u.email?.toLowerCase() === target);
+    if (match) return match.id;
+    if (data.users.length < perPage) return null;
+  }
+}
+
 async function deleteExisting(email: string) {
-  const { data, error } = await admin.auth.admin.listUsers();
-  if (error) throw new Error(`listUsers failed: ${error.message}`);
+  const existingId = await findUserIdByEmail(email);
+  if (!existingId) return;
 
-  const existing = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-  if (!existing) return;
-
-  console.log(`  removing existing ${email} (${existing.id})`);
-  await admin.from('admin_permissions').delete().eq('admin_id', existing.id);
-  await admin.from('profiles').delete().eq('id', existing.id);
-  const { error: delErr } = await admin.auth.admin.deleteUser(existing.id);
+  console.log(`  removing existing ${email} (${existingId})`);
+  await admin.from('admin_permissions').delete().eq('admin_id', existingId);
+  await admin.from('profiles').delete().eq('id', existingId);
+  const { error: delErr } = await admin.auth.admin.deleteUser(existingId);
   if (delErr) throw new Error(`deleteUser failed for ${email}: ${delErr.message}`);
 }
 
