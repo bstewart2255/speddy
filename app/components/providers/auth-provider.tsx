@@ -134,14 +134,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const dbRole = roleMap[metadata.role] || metadata.role;
 
-      // Validate district email domain
-      const emailDomain = email.split("@")[1];
+      // Validate district email domain (case-insensitive)
+      const emailDomain = email.split("@")[1]?.toLowerCase();
       if (
         !emailDomain ||
-        (!emailDomain.includes(".edu") &&
-          !emailDomain.includes(".org") &&
+        (!emailDomain.endsWith(".edu") &&
+          !emailDomain.endsWith(".org") &&
           !emailDomain.includes(".k12.") &&
-          !emailDomain.includes(".gov"))
+          !emailDomain.endsWith(".gov") &&
+          !emailDomain.endsWith(".us"))
       ) {
         throw new Error("Please use your district email address");
       }

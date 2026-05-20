@@ -416,7 +416,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           placeholder="you@school.edu"
         />
         <p className="mt-1 text-xs text-gray-500">
-          Use your school or organization email (.edu, .org, etc.)
+          Use your school or district email (.edu, .org, .k12., .gov, or .us)
         </p>
       </div>
 

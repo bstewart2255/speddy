@@ -34,15 +34,16 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     );
   }
 
-    // Validate email domain
-    const emailDomain = email.split('@')[1];
-    if (!emailDomain || 
-        (!emailDomain.endsWith('.edu') && 
-         !emailDomain.endsWith('.org') && 
-         !emailDomain.includes('.k12.') && 
-         !emailDomain.endsWith('.gov'))) {
+    // Validate email domain (case-insensitive)
+    const emailDomain = email.split('@')[1]?.toLowerCase();
+    if (!emailDomain ||
+        (!emailDomain.endsWith('.edu') &&
+         !emailDomain.endsWith('.org') &&
+         !emailDomain.includes('.k12.') &&
+         !emailDomain.endsWith('.gov') &&
+         !emailDomain.endsWith('.us'))) {
       return NextResponse.json(
-        { error: 'Email must be from an educational institution (.edu, .org, .k12., or .gov)' },
+        { error: 'Email must be from an educational institution (.edu, .org, .k12., .gov, or .us)' },
         { status: 400 }
       );
     }
