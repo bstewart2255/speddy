@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 
-export type Audience = 'provider' | 'admin';
+export type Audience = 'provider' | 'admin' | 'district';
 
 export const GRADE_COLORS = {
   tk: '#F472B6',

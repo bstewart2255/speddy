@@ -38,7 +38,7 @@ interface SignUpMetadata {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Define public routes that don't need auth
-const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/how-it-works'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
