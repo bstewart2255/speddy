@@ -648,10 +648,6 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
     return today;
   }, []); // Empty dependency array since we only calculate this once
 
-  // Morning and afternoon time slots
-  const MORNING_SLOTS = ["8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM"];
-  const AFTERNOON_SLOTS = ["12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM"];
-
   React.useEffect(() => {
     let displayedCount = 0;
 
@@ -734,6 +730,163 @@ return (
           // Skip weekends
           if (dayIndex < 0 || dayIndex > 4) return null;
 
+          const holidayCheck = isHoliday(currentDate);
+          const dateStr = format(currentDate, 'yyyy-MM-dd');
+
+          // Aggregate the entire day's sessions into blocks once, then split by
+          // earliest start time so a group whose sessions straddle noon
+          // renders as a single block (not duplicated into both halves with
+          // partial metadata).
+          const daySessions: SessionWithCurriculum[] = [];
+          TIME_SLOTS.forEach((_, timeIndex) => {
+            const sessionsInSlot = sessionsByDayTime[`${dayIndex}-${timeIndex}`] || [];
+            daySessions.push(...sessionsInSlot);
+          });
+          const scheduledDaySessions = daySessions.filter(isScheduledSession);
+          const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledDaySessions);
+
+          const dayBlocks: SessionBlock[] = [];
+          groups.forEach((groupSessions, groupId) => {
+            const firstSession = groupSessions[0];
+            if (firstSession && firstSession.start_time && firstSession.end_time) {
+              const { earliestStart, latestEnd } = getGroupTimeRange(groupSessions);
+              dayBlocks.push({
+                type: 'group',
+                data: {
+                  groupId,
+                  groupName: firstSession.group_name || 'Unnamed Group',
+                  sessions: groupSessions,
+                  earliestStart,
+                  latestEnd
+                }
+              });
+            }
+          });
+          ungroupedSessions.forEach(session => {
+            dayBlocks.push({ type: 'session', data: { session } });
+          });
+          dayBlocks.sort((a, b) => {
+            const aTime = a.type === 'group' ? a.data.earliestStart : a.data.session.start_time;
+            const bTime = b.type === 'group' ? b.data.earliestStart : b.data.session.start_time;
+            return (aTime || '').localeCompare(bTime || '');
+          });
+
+          const NOON = '12:00:00';
+          const blockStart = (b: SessionBlock) =>
+            b.type === 'group' ? b.data.earliestStart : (b.data.session.start_time || '');
+          const morningBlocks = dayBlocks.filter(b => blockStart(b) < NOON);
+          const afternoonBlocks = dayBlocks.filter(b => blockStart(b) >= NOON);
+
+          const renderBlock = (block: SessionBlock, idx: number) => {
+            if (block.type === 'group') {
+              const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
+              const studentInitials = getUniqueStudentInitials(groupSessions);
+              const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
+              const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
+              const groupIsActive = isGroupActive(groupSessions, currentDate);
+
+              return (
+                <button
+                  key={`group-${groupId}-${idx}`}
+                  type="button"
+                  onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
+                  className={cn(
+                    'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                    groupIsActive
+                      ? 'border-red-500 ring-2 ring-red-200'
+                      : 'border-blue-300 hover:border-blue-400',
+                    getGroupColor(groupSessions)
+                  )}
+                  aria-label={`Open group ${groupName} details`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                    <div className="flex items-center gap-1">
+                      {groupIndicators[`${groupId}|${dateStr}`]?.hasNotes && (
+                        <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                      )}
+                      {groupIndicators[`${groupId}|${dateStr}`]?.hasDocuments && (
+                        <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-medium text-gray-900">
+                    {formatTime(earliestStart)} - {formatTime(latestEnd)}
+                  </div>
+                  <div className="text-gray-700 mt-1">
+                    {studentInitials}
+                  </div>
+                  {groupCurriculum && (
+                    <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                      {formatCurriculumBadge(groupCurriculum)}
+                    </span>
+                  )}
+                </button>
+              );
+            }
+
+            const session = block.data.session;
+            const studentData = {
+              id: session.student_id || '',
+              initials: session.student_id ? students[session.student_id]?.initials || '?' : '?',
+              grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
+              teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
+            };
+            const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
+            const sessionIsActive = isSessionActive(session.start_time, session.end_time, currentDate);
+
+            return (
+              <button
+                key={`session-${session.id}`}
+                type="button"
+                onClick={() => handleOpenSessionModal(session, studentData)}
+                className={cn(
+                  'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
+                  sessionIsActive
+                    ? 'border-red-500 ring-2 ring-red-200'
+                    : 'border-blue-300 hover:border-blue-400',
+                  getSessionColor(session)
+                )}
+                aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-medium text-gray-900">
+                    {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {sessionIndicators[`${session.id}|${session.session_date}`]?.hasNotes && (
+                      <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
+                    )}
+                    {sessionIndicators[`${session.id}|${session.session_date}`]?.hasDocuments && (
+                      <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
+                    )}
+                  </div>
+                </div>
+                <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
+                  {studentData.initials}
+                  {session.delivered_by === 'sea' && (
+                    <span className="ml-1 text-xs">(SEA)</span>
+                  )}
+                </div>
+                {sessionCurriculum && (
+                  <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                    {formatCurriculumBadge(sessionCurriculum)}
+                  </span>
+                )}
+              </button>
+            );
+          };
+
+          const renderColumn = (blocks: SessionBlock[]) => {
+            if (holidayCheck.isHoliday) {
+              return <div className="text-center text-red-600 font-medium text-sm py-4">Holiday - {holidayCheck.name}</div>;
+            }
+            if (blocks.length === 0) {
+              return <div className="text-center text-gray-400 text-sm py-4">No sessions</div>;
+            }
+            return blocks.map(renderBlock);
+          };
+
           return (
             <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400' : 'border-gray-200'}`}>
               <div className="px-3 py-2 font-medium text-sm bg-gray-50 rounded-t-lg">
@@ -744,338 +897,13 @@ return (
                 {/* Morning */}
                 <div className="p-2 space-y-2">
                   <div className="text-xs font-medium text-gray-600 mb-2">Morning</div>
-                  {(() => {
-                    const holidayCheck = isHoliday(currentDate);
-                    if (holidayCheck.isHoliday) {
-                      return <div className="text-center text-red-600 font-medium text-sm py-4">Holiday - {holidayCheck.name}</div>;
-                    }
-
-                    // Get all morning sessions for this day
-                    const morningSessions: SessionWithCurriculum[] = [];
-                    MORNING_SLOTS.forEach((time) => {
-                      const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
-                      const sessionKey = `${dayIndex}-${timeIndex}`;
-                      const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
-                      morningSessions.push(...sessionsInSlot);
-                    });
-
-                    // Filter to only scheduled sessions
-                    const scheduledMorningSessions = morningSessions.filter(isScheduledSession);
-
-                    if (scheduledMorningSessions.length === 0) {
-                      return <div className="text-center text-gray-400 text-sm py-4">No sessions</div>;
-                    }
-
-                    // Aggregate into groups and individual sessions
-                    const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledMorningSessions);
-                    const allBlocks: SessionBlock[] = [];
-
-                    // Add groups
-                    groups.forEach((groupSessions, groupId) => {
-                      const firstSession = groupSessions[0];
-                      if (firstSession && firstSession.start_time && firstSession.end_time) {
-                        const { earliestStart, latestEnd } = getGroupTimeRange(groupSessions);
-                        allBlocks.push({
-                          type: 'group',
-                          data: {
-                            groupId,
-                            groupName: firstSession.group_name || 'Unnamed Group',
-                            sessions: groupSessions,
-                            earliestStart,
-                            latestEnd
-                          }
-                        });
-                      }
-                    });
-
-                    // Add ungrouped sessions
-                    ungroupedSessions.forEach(session => {
-                      allBlocks.push({ type: 'session', data: { session } });
-                    });
-
-                    // Sort by start time
-                    allBlocks.sort((a, b) => {
-                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.session.start_time;
-                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.session.start_time;
-                      return (aTime || '').localeCompare(bTime || '');
-                    });
-
-                    return allBlocks.map((block, idx) => {
-                      if (block.type === 'group') {
-                        const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
-                        const studentInitials = getUniqueStudentInitials(groupSessions);
-                        // Check if any session in the group has curriculum tracking
-                        const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
-                        const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
-                        // Check if group is currently active
-                        const groupIsActive = isGroupActive(groupSessions, currentDate);
-
-                        return (
-                          <button
-                            key={`group-${groupId}-${idx}`}
-                            type="button"
-                            onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={cn(
-                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
-                              groupIsActive
-                                ? 'border-red-500 ring-2 ring-red-200'
-                                : 'border-blue-300 hover:border-blue-400',
-                              getGroupColor(groupSessions)
-                            )}
-                            aria-label={`Open group ${groupName} details`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="font-semibold text-blue-900">📚 {groupName}</div>
-                              {/* Notes and documents indicators */}
-                              <div className="flex items-center gap-1">
-                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasNotes && (
-                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasDocuments && (
-                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="font-medium text-gray-900">
-                              {formatTime(earliestStart)} - {formatTime(latestEnd)}
-                            </div>
-                            <div className="text-gray-700 mt-1">
-                              {studentInitials}
-                            </div>
-                            {/* Curriculum badge for group */}
-                            {groupCurriculum && (
-                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(groupCurriculum)}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      } else {
-                        const session = block.data.session;
-                        const studentData = {
-                          id: session.student_id || '',
-                          initials: session.student_id ? students[session.student_id]?.initials || '?' : '?',
-                          grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
-                          teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
-                        };
-
-                        const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
-                        // Check if session is currently active
-                        const sessionIsActive = isSessionActive(session.start_time, session.end_time, currentDate);
-
-                        return (
-                          <button
-                            key={`session-${session.id}`}
-                            type="button"
-                            onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={cn(
-                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
-                              sessionIsActive
-                                ? 'border-red-500 ring-2 ring-red-200'
-                                : 'border-blue-300 hover:border-blue-400',
-                              getSessionColor(session)
-                            )}
-                            aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium text-gray-900">
-                                {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                              </div>
-                              {/* Notes and documents indicators */}
-                              <div className="flex items-center gap-1">
-                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasNotes && (
-                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasDocuments && (
-                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                              </div>
-                            </div>
-                            <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
-                              {studentData.initials}
-                              {session.delivered_by === 'sea' && (
-                                <span className="ml-1 text-xs">(SEA)</span>
-                              )}
-                            </div>
-                            {/* Curriculum badge */}
-                            {sessionCurriculum && (
-                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(sessionCurriculum)}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      }
-                    });
-                  })()}
+                  {renderColumn(morningBlocks)}
                 </div>
 
                 {/* Afternoon */}
                 <div className="p-2 space-y-2">
                   <div className="text-xs font-medium text-gray-600 mb-2">Afternoon</div>
-                  {(() => {
-                    const holidayCheck = isHoliday(currentDate);
-                    if (holidayCheck.isHoliday) {
-                      return <div className="text-center text-red-600 font-medium text-sm py-4">Holiday - {holidayCheck.name}</div>;
-                    }
-
-                    // Get all afternoon sessions for this day
-                    const afternoonSessions: SessionWithCurriculum[] = [];
-                    AFTERNOON_SLOTS.forEach((time) => {
-                      const timeIndex = TIME_SLOTS.findIndex(slot => slot === time);
-                      const sessionKey = `${dayIndex}-${timeIndex}`;
-                      const sessionsInSlot = sessionsByDayTime[sessionKey] || [];
-                      afternoonSessions.push(...sessionsInSlot);
-                    });
-
-                    // Filter to only scheduled sessions
-                    const scheduledAfternoonSessions = afternoonSessions.filter(isScheduledSession);
-
-                    if (scheduledAfternoonSessions.length === 0) {
-                      return <div className="text-center text-gray-400 text-sm py-4">No sessions</div>;
-                    }
-
-                    // Aggregate into groups and individual sessions
-                    const { groups, ungroupedSessions } = aggregateSessionsForDisplay(scheduledAfternoonSessions);
-                    const allBlocks: SessionBlock[] = [];
-
-                    // Add groups
-                    groups.forEach((groupSessions, groupId) => {
-                      const firstSession = groupSessions[0];
-                      if (firstSession && firstSession.start_time && firstSession.end_time) {
-                        const { earliestStart, latestEnd } = getGroupTimeRange(groupSessions);
-                        allBlocks.push({
-                          type: 'group',
-                          data: {
-                            groupId,
-                            groupName: firstSession.group_name || 'Unnamed Group',
-                            sessions: groupSessions,
-                            earliestStart,
-                            latestEnd
-                          }
-                        });
-                      }
-                    });
-
-                    // Add ungrouped sessions
-                    ungroupedSessions.forEach(session => {
-                      allBlocks.push({ type: 'session', data: { session } });
-                    });
-
-                    // Sort by start time
-                    allBlocks.sort((a, b) => {
-                      const aTime = a.type === 'group' ? a.data.earliestStart : a.data.session.start_time;
-                      const bTime = b.type === 'group' ? b.data.earliestStart : b.data.session.start_time;
-                      return (aTime || '').localeCompare(bTime || '');
-                    });
-
-                    return allBlocks.map((block, idx) => {
-                      if (block.type === 'group') {
-                        const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
-                        const studentInitials = getUniqueStudentInitials(groupSessions);
-                        // Check if any session in the group has curriculum tracking
-                        const groupCurriculumSession = groupSessions.find(s => s.curriculum_tracking && s.curriculum_tracking.length > 0);
-                        const groupCurriculum = groupCurriculumSession ? getFirstCurriculum(groupCurriculumSession.curriculum_tracking) : null;
-                        // Check if group is currently active
-                        const groupIsActive = isGroupActive(groupSessions, currentDate);
-
-                        return (
-                          <button
-                            key={`group-${groupId}-${idx}`}
-                            type="button"
-                            onClick={() => handleOpenGroupModal(groupId, groupName, groupSessions)}
-                            className={cn(
-                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
-                              groupIsActive
-                                ? 'border-red-500 ring-2 ring-red-200'
-                                : 'border-blue-300 hover:border-blue-400',
-                              getGroupColor(groupSessions)
-                            )}
-                            aria-label={`Open group ${groupName} details`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="font-semibold text-blue-900">📚 {groupName}</div>
-                              {/* Notes and documents indicators */}
-                              <div className="flex items-center gap-1">
-                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasNotes && (
-                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                                {groupIndicators[`${groupId}|${format(currentDate, 'yyyy-MM-dd')}`]?.hasDocuments && (
-                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="font-medium text-gray-900">
-                              {formatTime(earliestStart)} - {formatTime(latestEnd)}
-                            </div>
-                            <div className="text-gray-700 mt-1">
-                              {studentInitials}
-                            </div>
-                            {/* Curriculum badge for group */}
-                            {groupCurriculum && (
-                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(groupCurriculum)}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      } else {
-                        const session = block.data.session;
-                        const studentData = {
-                          id: session.student_id || '',
-                          initials: session.student_id ? students[session.student_id]?.initials || '?' : '?',
-                          grade_level: session.student_id ? students[session.student_id]?.grade_level || '' : '',
-                          teacher_name: session.student_id ? students[session.student_id]?.teacher_name : undefined
-                        };
-                        const sessionCurriculum = getFirstCurriculum(session.curriculum_tracking);
-                        // Check if session is currently active
-                        const sessionIsActive = isSessionActive(session.start_time, session.end_time, currentDate);
-
-                        return (
-                          <button
-                            key={`session-${session.id}`}
-                            type="button"
-                            onClick={() => handleOpenSessionModal(session, studentData)}
-                            className={cn(
-                              'w-full text-left border-2 rounded-lg p-2 text-xs transition-colors relative',
-                              sessionIsActive
-                                ? 'border-red-500 ring-2 ring-red-200'
-                                : 'border-blue-300 hover:border-blue-400',
-                              getSessionColor(session)
-                            )}
-                            aria-label={`Open session for ${studentData.initials} at ${formatTime(session.start_time)}`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium text-gray-900">
-                                {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                              </div>
-                              {/* Notes and documents indicators */}
-                              <div className="flex items-center gap-1">
-                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasNotes && (
-                                  <span title="Has notes"><FileText className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                                {sessionIndicators[`${session.id}|${session.session_date}`]?.hasDocuments && (
-                                  <span title="Has documents"><Paperclip className="w-3 h-3 text-blue-600" /></span>
-                                )}
-                              </div>
-                            </div>
-                            <div className={session.delivered_by === 'sea' ? 'text-green-600 font-medium' : 'text-gray-700'}>
-                              {studentData.initials}
-                              {session.delivered_by === 'sea' && (
-                                <span className="ml-1 text-xs">(SEA)</span>
-                              )}
-                            </div>
-                            {/* Curriculum badge */}
-                            {sessionCurriculum && (
-                              <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
-                                {formatCurriculumBadge(sessionCurriculum)}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      }
-                    });
-                  })()}
+                  {renderColumn(afternoonBlocks)}
                 </div>
               </div>
             </div>
