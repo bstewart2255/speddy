@@ -158,11 +158,13 @@ export function AvailabilityModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={headingId}
+      onClick={loading ? undefined : onClose}
     >
       <div
         ref={modalRef}
         className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4"
         tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">

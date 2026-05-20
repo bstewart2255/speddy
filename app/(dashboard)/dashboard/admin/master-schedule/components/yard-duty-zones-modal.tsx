@@ -105,11 +105,13 @@ export function YardDutyZonesModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="zones-modal-heading"
+      onClick={onClose}
     >
       <div
         ref={modalRef}
         className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
         tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="border-b border-gray-200 px-6 py-4">
