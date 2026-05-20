@@ -26,6 +26,7 @@ interface CalendarDayViewProps {
   calendarEvents?: CalendarEvent[];
   onAddEvent?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
+  onUpdate?: () => void;
 }
 
 export function CalendarDayView({
@@ -36,7 +37,8 @@ export function CalendarDayView({
   holidays = [],
   calendarEvents = [],
   onAddEvent,
-  onEventClick
+  onEventClick,
+  onUpdate
 }: CalendarDayViewProps) {
   const { showToast } = useToast();
   const { currentSchool } = useSchool();
@@ -635,6 +637,7 @@ export function CalendarDayView({
       setSelectedSessionIds(new Set());
       setGroupNameInput('');
       setSelectedGroupColor(0);
+      onUpdate?.();
     } catch (error) {
       log.error('Error creating group', {
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -739,7 +742,17 @@ export function CalendarDayView({
 
       setSessionsState(filteredSessions);
 
+      // Clear any selection that referenced the ungrouped session so a stale
+      // checkbox state can't poison the next group-creation attempt.
+      setSelectedSessionIds(prev => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+
       showToast('Session removed from group', 'success');
+      onUpdate?.();
     } catch (error) {
       log.error('Error ungrouping session', error);
       showToast(error instanceof Error ? error.message : 'Failed to ungroup session', 'error');
