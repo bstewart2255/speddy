@@ -1763,6 +1763,7 @@ export type Database = {
           full_name: string
           id: string
           is_speddy_admin: boolean | null
+          multi_school_banner_dismissed: boolean
           must_change_password: boolean | null
           password_reset_requested_at: string | null
           role: string
@@ -1772,6 +1773,7 @@ export type Database = {
           school_site: string
           school_site_original: string | null
           selected_curriculums: string[] | null
+          setup_banner_dismissed: boolean
           shared_at_school: boolean | null
           state: string | null
           state_id: string | null
@@ -1787,6 +1789,7 @@ export type Database = {
           full_name: string
           id: string
           is_speddy_admin?: boolean | null
+          multi_school_banner_dismissed?: boolean
           must_change_password?: boolean | null
           password_reset_requested_at?: string | null
           role: string
@@ -1796,6 +1799,7 @@ export type Database = {
           school_site: string
           school_site_original?: string | null
           selected_curriculums?: string[] | null
+          setup_banner_dismissed?: boolean
           shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
@@ -1811,6 +1815,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_speddy_admin?: boolean | null
+          multi_school_banner_dismissed?: boolean
           must_change_password?: boolean | null
           password_reset_requested_at?: string | null
           role?: string
@@ -1820,6 +1825,7 @@ export type Database = {
           school_site?: string
           school_site_original?: string | null
           selected_curriculums?: string[] | null
+          setup_banner_dismissed?: boolean
           shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
