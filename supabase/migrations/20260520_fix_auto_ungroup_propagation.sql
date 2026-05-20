@@ -15,9 +15,13 @@
 -- trigger that propagates the ungrouping to matching instances and runs the
 -- same orphan-cleanup check that the ungroup API performs.
 
--- Update the BEFORE trigger to also clear group_color on the template row
+-- Update the BEFORE trigger to also clear group_color on the template row.
+-- search_path is pinned to satisfy the function_search_path_mutable advisor.
 CREATE OR REPLACE FUNCTION auto_ungroup_on_delivered_by_change()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
   IF NEW.session_date IS NULL
      AND OLD.delivered_by IS DISTINCT FROM NEW.delivered_by
@@ -33,7 +37,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- New AFTER trigger: propagate the ungroup to matching instances and clean up
 -- any single-session groups that result.
@@ -112,6 +116,12 @@ BEGIN
   RETURN NULL;
 END;
 $$;
+
+-- Lock down the SECURITY DEFINER function so it is not exposed via PostgREST.
+-- The trigger machinery does not require an explicit grant.
+REVOKE EXECUTE ON FUNCTION propagate_ungroup_after_delivered_by_change() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION propagate_ungroup_after_delivered_by_change() FROM anon;
+REVOKE EXECUTE ON FUNCTION propagate_ungroup_after_delivered_by_change() FROM authenticated;
 
 DROP TRIGGER IF EXISTS trigger_propagate_ungroup_after_delivered_by_change
   ON schedule_sessions;
