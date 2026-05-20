@@ -198,6 +198,7 @@ export async function createInstancesFromTemplate(
       manually_placed: templateSession.manually_placed,
       group_id: templateSession.group_id,
       group_name: templateSession.group_name,
+      group_color: templateSession.group_color,
       status: templateSession.status,
       student_absent: false,
       outside_schedule_conflict: false,
