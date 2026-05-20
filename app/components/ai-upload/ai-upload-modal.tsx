@@ -447,8 +447,14 @@ export default function AIUploadModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+    <div
+      className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+      onClick={showExamples ? undefined : handleClose}
+    >
+      <div
+        className="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium">
             AI Upload - {uploadTypeLabels[uploadType]}
