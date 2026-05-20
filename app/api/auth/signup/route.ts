@@ -34,8 +34,8 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     );
   }
 
-    // Validate email domain
-    const emailDomain = email.split('@')[1];
+    // Validate email domain (case-insensitive)
+    const emailDomain = email.split('@')[1]?.toLowerCase();
     if (!emailDomain ||
         (!emailDomain.endsWith('.edu') &&
          !emailDomain.endsWith('.org') &&
