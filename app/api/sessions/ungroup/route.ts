@@ -217,7 +217,23 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     if (updatedSessions && updatedSessions.length > 0) {
       const templates = updatedSessions.filter(s => s.session_date == null);
 
+      // Need provider_id for instance scoping; the SELECT above on
+      // `updatedSessions` only includes id/student_id/day_of_week/start_time/
+      // session_date. Look it up from the original existingSessions fetch.
+      const providerIdByTemplateId = new Map(
+        existingSessions?.map(s => [s.id, s.provider_id]) || []
+      );
+
       for (const template of templates) {
+        const templateProviderId = providerIdByTemplateId.get(template.id);
+        if (!templateProviderId) {
+          log.warn('Missing provider_id for template during instance cleanup', {
+            userId,
+            templateId: template.id
+          });
+          continue;
+        }
+
         const { error: instanceError } = await supabase
           .from('schedule_sessions')
           .update({
@@ -226,6 +242,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             group_color: null,
             updated_at: new Date().toISOString()
           })
+          .eq('provider_id', templateProviderId)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)

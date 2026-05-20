@@ -164,7 +164,9 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
     // This ensures existing date-specific instances get the group info too
     if (updatedSessions && updatedSessions.length > 0) {
       for (const template of updatedSessions) {
-        // Update all instances that match this template
+        // Update all instances that match this template. provider_id is part
+        // of the match so we never touch instances owned by a different
+        // provider that happen to share student/day/time.
         const { error: instanceError } = await supabase
           .from('schedule_sessions')
           .update({
@@ -173,6 +175,7 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
             group_color: validatedGroupColor,
             updated_at: new Date().toISOString()
           })
+          .eq('provider_id', template.provider_id)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
