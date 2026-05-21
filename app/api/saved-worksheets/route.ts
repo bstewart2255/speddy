@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { log } from '@/lib/monitoring/logger';
 
 // GET: Fetch user's saved worksheets
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+export const GET = withRoute({}, async ({ userId }) => {
   try {
     const supabase = await createClient();
 
@@ -43,7 +43,7 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
 });
 
 // POST: Upload and save new worksheet
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
     const formData = await request.formData();
