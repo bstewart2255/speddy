@@ -1,34 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createServiceClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 
-interface AttendanceRecord {
-  student_id: string;
-  present: boolean;
-  absence_reason?: string | null;
-}
+const getQuerySchema = z.object({
+  session_date: z.string().optional(),
+});
 
-interface AttendancePayload {
-  session_date: string;
-  attendance: AttendanceRecord[];
-}
+const attendanceRecordSchema = z
+  .object({
+    student_id: z.string(),
+    present: z.boolean(),
+    absence_reason: z.string().nullish(),
+  })
+  .passthrough();
 
-export async function GET(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
-  const params = await props.params;
-  const { sessionId } = params;
+const postSchema = z
+  .object({
+    session_date: z.string().min(1),
+    attendance: z.array(attendanceRecordSchema),
+  })
+  .passthrough();
 
-  const searchParams = request.nextUrl.searchParams;
-  const sessionDate = searchParams.get('session_date');
+const putSchema = z
+  .object({
+    student_id: z.string().min(1),
+    session_date: z.string().min(1),
+    present: z.boolean(),
+    absence_reason: z.string().nullish(),
+  })
+  .passthrough();
 
-  try {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const GET = withRoute<{ sessionId: string }, undefined, z.infer<typeof getQuerySchema>>(
+  { query: getQuerySchema },
+  async ({ userId, query, params }) => {
+    const { sessionId } = params;
+    const sessionDate = query.session_date;
 
     if (sessionId.startsWith('temp-')) {
       return NextResponse.json({ attendance: [] });
@@ -50,9 +57,9 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const hasAccess = session.provider_id === user.id ||
-      session.assigned_to_specialist_id === user.id ||
-      session.assigned_to_sea_id === user.id;
+    const hasAccess = session.provider_id === userId ||
+      session.assigned_to_specialist_id === userId ||
+      session.assigned_to_sea_id === userId;
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -70,42 +77,19 @@ export async function GET(
     }
 
     return NextResponse.json({ attendance: attendance || [] });
-  } catch (error) {
-    console.error('Error in attendance GET:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+);
 
-export async function POST(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
-  const params = await props.params;
-  const { sessionId } = params;
-
-  try {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const POST = withRoute<{ sessionId: string }, z.infer<typeof postSchema>>(
+  { body: postSchema },
+  async ({ userId, body, params }) => {
+    const { sessionId } = params;
 
     if (sessionId.startsWith('temp-')) {
       return NextResponse.json({ error: 'Cannot save attendance for temporary sessions' }, { status: 400 });
     }
 
-    const body: AttendancePayload = await request.json();
     const { session_date, attendance } = body;
-
-    if (!session_date) {
-      return NextResponse.json({ error: 'session_date is required' }, { status: 400 });
-    }
-
-    if (!attendance || !Array.isArray(attendance)) {
-      return NextResponse.json({ error: 'attendance array is required' }, { status: 400 });
-    }
-
     const serviceClient = createServiceClient();
 
     const { data: session, error: sessionError } = await serviceClient
@@ -118,9 +102,9 @@ export async function POST(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const hasAccess = session.provider_id === user.id ||
-      session.assigned_to_specialist_id === user.id ||
-      session.assigned_to_sea_id === user.id;
+    const hasAccess = session.provider_id === userId ||
+      session.assigned_to_specialist_id === userId ||
+      session.assigned_to_sea_id === userId;
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -132,7 +116,7 @@ export async function POST(
       session_date: session_date,
       present: record.present,
       absence_reason: record.present ? null : (record.absence_reason || null),
-      marked_by: user.id
+      marked_by: userId
     }));
 
     const { data: savedAttendance, error: upsertError } = await serviceClient
@@ -152,39 +136,20 @@ export async function POST(
       attendance: savedAttendance,
       message: 'Attendance saved successfully'
     });
-  } catch (error) {
-    console.error('Error in attendance POST:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+);
 
 // PUT handler for quick-marking a single student's attendance
-export async function PUT(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
-  const params = await props.params;
-  const { sessionId } = params;
-
-  try {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const PUT = withRoute<{ sessionId: string }, z.infer<typeof putSchema>>(
+  { body: putSchema },
+  async ({ userId, body, params }) => {
+    const { sessionId } = params;
 
     if (sessionId.startsWith('temp-')) {
       return NextResponse.json({ error: 'Cannot save attendance for temporary sessions' }, { status: 400 });
     }
 
-    const body = await request.json();
     const { student_id, session_date, present, absence_reason } = body;
-
-    if (!student_id || !session_date || typeof present !== 'boolean') {
-      return NextResponse.json({ error: 'student_id, session_date, and present (boolean) are required' }, { status: 400 });
-    }
-
     const serviceClient = createServiceClient();
 
     const { data: session, error: sessionError } = await serviceClient
@@ -197,9 +162,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    const hasAccess = session.provider_id === user.id ||
-      session.assigned_to_specialist_id === user.id ||
-      session.assigned_to_sea_id === user.id;
+    const hasAccess = session.provider_id === userId ||
+      session.assigned_to_specialist_id === userId ||
+      session.assigned_to_sea_id === userId;
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -213,7 +178,7 @@ export async function PUT(
         session_date,
         present,
         absence_reason: present ? null : (absence_reason?.trim() || null),
-        marked_by: user.id
+        marked_by: userId
       }, {
         onConflict: 'session_id,student_id,session_date'
       })
@@ -230,8 +195,5 @@ export async function PUT(
       attendance: savedAttendance,
       message: `Marked as ${present ? 'present' : 'absent'}`
     });
-  } catch (error) {
-    console.error('Error in attendance PUT:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+);

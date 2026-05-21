@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createInstancesFromTemplate, getSchoolYearEndDate, InstanceGenerationOptions } from '@/lib/services/session-instance-generator';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
 import type { Database } from '@/src/types/database';
+import { withRoute } from '@/lib/api/with-route';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 
@@ -17,28 +19,26 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
  *   untilDate?: string             // Optional: specific end date (YYYY-MM-DD)
  * }
  */
-export async function POST(request: NextRequest) {
+const bodySchema = z
+  .object({
+    sessionId: z.string().min(1),
+    weeksAhead: z.number().nullish(),
+    useSchoolYearEnd: z.boolean().default(true),
+    untilDate: z.string().nullish(),
+  })
+  .passthrough();
+
+export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => {
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { sessionId, weeksAhead, useSchoolYearEnd = true, untilDate } = body;
-
-    if (!sessionId) {
-      return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
-    }
+    const { sessionId, weeksAhead, useSchoolYearEnd, untilDate } = body;
 
     // Build options from request body
     const options: InstanceGenerationOptions = {};
     if (untilDate) {
       options.untilDate = new Date(untilDate);
-    } else if (weeksAhead !== undefined) {
+    } else if (weeksAhead != null) {
       options.weeksAhead = weeksAhead;
     } else {
       options.useSchoolYearEnd = useSchoolYearEnd;
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const endDateStr = formatDateLocal(endDate);
 
     log.info('[GenerateInstances] Generating instances for session', {
-      userId: user.id,
+      userId,
       sessionId,
       endDate: endDateStr,
       options
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     log.info('[GenerateInstances] Instances generated successfully', {
-      userId: user.id,
+      userId,
       sessionId,
       instancesCreated: result.instancesCreated,
       endDate: endDateStr
@@ -109,4 +109,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
