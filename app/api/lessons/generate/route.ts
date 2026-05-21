@@ -1,12 +1,12 @@
 // Unified API endpoint for JSON-first lesson generation
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { lessonGenerator } from '@/lib/lessons/generator';
 import {
   LessonRequest,
   StudentProfile,
   isValidTeacherRole
 } from '@/lib/lessons/schema';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { createClient } from '@/lib/supabase/server';
 
@@ -30,8 +30,9 @@ const CAPTURE_FULL_PROMPTS = process.env.CAPTURE_FULL_PROMPTS === 'true';
 const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
 const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withRoute(
+  { rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/generate' } },
+  async ({ req, userId }) => {
     try {
       // Create supabase client for database operations
       const supabase = await createClient();
@@ -361,8 +362,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  }
+);
 
 /**
  * Validates the incoming request
