@@ -13,7 +13,7 @@ interface QuestionResult {
 const submitResultsSchema = z
   .object({
     progress_check_id: z.string().min(1),
-    results: z.array(z.any()).min(1),
+    results: z.array(z.object({}).passthrough()).min(1),
   })
   .passthrough();
 
