@@ -2,6 +2,57 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import type { Database } from '../../../src/types/database';
+import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+
+/**
+ * Removes a schedule_sessions row while preserving instance history.
+ *
+ * - A dated instance the user explicitly removed is hard-deleted.
+ * - A template that has >=1 dated instance is soft-deleted (deleted_at set), so
+ *   those instances keep a valid template_id and completed history survives.
+ * - A template with no instances is hard-deleted (nothing to preserve).
+ *
+ * Template reads must filter `.is('deleted_at', null)` so archived templates stay
+ * out of the schedule grid, count math, conflict checks, and instance generation.
+ */
+export async function deleteOrArchiveTemplate(
+  supabase: SupabaseClient<Database>,
+  sessionId: string
+): Promise<{ archived: boolean; error: PostgrestError | Error | null }> {
+  const { data: row, error: fetchError } = await supabase
+    .from('schedule_sessions')
+    .select('id, session_date')
+    .eq('id', sessionId)
+    .maybeSingle();
+
+  if (fetchError) return { archived: false, error: fetchError };
+  if (!row) return { archived: false, error: new Error(`Session ${sessionId} not found`) };
+
+  // A dated instance is removed outright; history preservation is about template lineage.
+  if (row.session_date !== null) {
+    const { error } = await supabase.from('schedule_sessions').delete().eq('id', sessionId);
+    return { archived: false, error };
+  }
+
+  // Template: archive only if it has instances worth keeping.
+  const { count, error: countError } = await supabase
+    .from('schedule_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('template_id', sessionId);
+
+  if (countError) return { archived: false, error: countError };
+
+  if ((count ?? 0) > 0) {
+    const { error } = await supabase
+      .from('schedule_sessions')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', sessionId);
+    return { archived: true, error };
+  }
+
+  const { error } = await supabase.from('schedule_sessions').delete().eq('id', sessionId);
+  return { archived: false, error };
+}
 
 /**
  * Calculate how many sessions still need to be scheduled this week.
@@ -97,6 +148,7 @@ export async function getUnscheduledSessionsCount(
         .select('id')
         .in('student_id', studentIds)
         .is('session_date', null) // Only templates/unscheduled, not dated instances
+        .is('deleted_at', null)
         .is('day_of_week', null)
         .is('start_time', null)
         .is('end_time', null);

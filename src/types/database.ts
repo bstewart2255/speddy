@@ -2388,6 +2388,7 @@ export type Database = {
           conflict_reason: string | null
           created_at: string | null
           day_of_week: number | null
+          deleted_at: string | null
           delivered_by: string | null
           end_time: string | null
           group_color: number | null
@@ -2418,6 +2419,7 @@ export type Database = {
           conflict_reason?: string | null
           created_at?: string | null
           day_of_week?: number | null
+          deleted_at?: string | null
           delivered_by?: string | null
           end_time?: string | null
           group_color?: number | null
@@ -2448,6 +2450,7 @@ export type Database = {
           conflict_reason?: string | null
           created_at?: string | null
           day_of_week?: number | null
+          deleted_at?: string | null
           delivered_by?: string | null
           end_time?: string | null
           group_color?: number | null

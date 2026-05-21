@@ -92,6 +92,7 @@ export class SessionGenerator {
       .from('schedule_sessions')
       .select('*')
       .is('session_date', null)
+      .is('deleted_at', null)
       .in('day_of_week', Array.from(neededDays));
 
     // Include templates assigned to this user based on their role

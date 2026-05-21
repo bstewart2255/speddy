@@ -169,6 +169,7 @@ export function useScheduleData() {
             .select('*')
             .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${user.id}`)
             .is('session_date', null)
+            .is('deleted_at', null)
             .limit(10000);
         } else {
           // No students, only fetch assigned sessions
@@ -177,6 +178,7 @@ export function useScheduleData() {
             .select('*')
             .eq('assigned_to_specialist_id', user.id)
             .is('session_date', null)
+            .is('deleted_at', null)
             .limit(10000);
         }
 
@@ -211,6 +213,7 @@ export function useScheduleData() {
           .in('student_id', studentIds)
           .eq('provider_id', user.id)
           .is('session_date', null)
+          .is('deleted_at', null)
           .limit(10000);
       }
 

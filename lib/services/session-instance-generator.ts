@@ -273,6 +273,7 @@ export async function generateInstancesForAllTemplates(
         .from('schedule_sessions')
         .select('*')
         .is('session_date', null)
+        .is('deleted_at', null)
         .not('day_of_week', 'is', null)
         .not('start_time', 'is', null)
         .not('end_time', 'is', null)

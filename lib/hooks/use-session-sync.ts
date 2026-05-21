@@ -78,6 +78,13 @@ export function useSessionSync({
             break;
 
           case 'UPDATE':
+            // A soft-deleted template arrives as an UPDATE (deleted_at set), not a
+            // DELETE event. Treat it as a removal so it leaves the live view.
+            if (session.deleted_at) {
+              updatedSessions = updatedSessions.filter(s => s.id !== session.id);
+              optimisticUpdatesRef.current.delete(session.id);
+              break;
+            }
             const updateIndex = updatedSessions.findIndex(s => s.id === session.id);
             if (updateIndex !== -1) {
               const localSession = updatedSessions[updateIndex];

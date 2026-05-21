@@ -491,6 +491,7 @@ export class SessionUpdateService {
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
       .is('session_date', null) // Only check template sessions
+      .is('deleted_at', null)
       .not('start_time', 'is', null) // Only check scheduled sessions
       .not('end_time', 'is', null);
 
@@ -547,6 +548,7 @@ export class SessionUpdateService {
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
       .is('session_date', null) // Only check template sessions
+      .is('deleted_at', null)
       .not('start_time', 'is', null) // Only check scheduled sessions
       .not('end_time', 'is', null)
       .order('start_time');
@@ -599,6 +601,7 @@ export class SessionUpdateService {
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
       .is('session_date', null) // Only check template sessions
+      .is('deleted_at', null)
       .not('start_time', 'is', null) // Only check scheduled sessions
       .not('end_time', 'is', null)
       .order('start_time');
@@ -652,6 +655,7 @@ export class SessionUpdateService {
       .eq('day_of_week', day)
       .neq('id', excludeSessionId)
       .is('session_date', null) // Only check template sessions
+      .is('deleted_at', null)
       .not('start_time', 'is', null) // Only check scheduled sessions
       .not('end_time', 'is', null);
 
@@ -721,7 +725,8 @@ export class SessionUpdateService {
         .eq('provider_id', providerId)
         .eq('day_of_week', day)
         .eq('has_conflict', true)
-        .is('session_date', null); // Only templates
+        .is('session_date', null) // Only templates
+        .is('deleted_at', null);
 
       if (fetchError || !flaggedSessions || flaggedSessions.length === 0) {
         return;
@@ -735,6 +740,7 @@ export class SessionUpdateService {
         .eq('provider_id', providerId)
         .eq('day_of_week', day)
         .is('session_date', null)
+        .is('deleted_at', null)
         .not('start_time', 'is', null)
         .not('end_time', 'is', null);
 
