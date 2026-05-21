@@ -2,21 +2,12 @@ import { createClient } from '@/lib/supabase/client';
 import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types/database';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
-};
-
-/**
- * Format a Date object as a local YYYY-MM-DD string
- */
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const addMinutesToTime = (time: string, minutesToAdd: number): string => {
@@ -204,7 +195,7 @@ export class SessionUpdateService {
         const timeChanged = session.start_time !== newStartTime || session.day_of_week !== newDay;
 
         if (timeChanged && session.start_time && session.day_of_week !== null) {
-          const today = formatLocalDate(new Date());
+          const today = formatDateLocal(new Date());
 
           console.log('Cleaning up orphaned instances:', {
             studentId: session.student_id,
@@ -334,78 +325,35 @@ export class SessionUpdateService {
       }
     }
 
-    // Check bell schedule conflicts
-    const bellScheduleConflict = await this.checkBellScheduleConflicts(
-      providerId,
-      studentId,
-      targetDay,
-      targetStartTime,
-      targetEndTime
-    );
-    if (bellScheduleConflict) {
-      conflicts.push(bellScheduleConflict);
-    }
+    // Run the independent conflict checks concurrently. Promise.all preserves array
+    // order, so conflict priority (and the conflicts[0] surfaced as `error`) is unchanged.
+    const [
+      bellScheduleConflict,
+      specialActivityConflict,
+      concurrentConflict,
+      consecutiveConflict,
+      breakConflict,
+      overlapConflict
+    ] = await Promise.all([
+      this.checkBellScheduleConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
+      this.checkSpecialActivityConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
+      this.checkConcurrentSessionLimit(providerId, targetDay, targetStartTime, targetEndTime, session.id),
+      this.checkConsecutiveSessionRules(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
+      this.checkBreakRequirements(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
+      this.checkStudentSessionOverlap(studentId, targetDay, targetStartTime, targetEndTime, session.id)
+    ]);
 
-    // Check special activity conflicts
-    const specialActivityConflict = await this.checkSpecialActivityConflicts(
-      providerId,
-      studentId,
-      targetDay,
-      targetStartTime,
-      targetEndTime
-    );
-    if (specialActivityConflict) {
-      conflicts.push(specialActivityConflict);
-    }
-
-    // Check concurrent session limits
-    const concurrentConflict = await this.checkConcurrentSessionLimit(
-      providerId,
-      targetDay,
-      targetStartTime,
-      targetEndTime,
-      session.id
-    );
-    if (concurrentConflict) {
-      conflicts.push(concurrentConflict);
-    }
-
-    // Check consecutive session rules
-    const consecutiveConflict = await this.checkConsecutiveSessionRules(
-      providerId,
-      studentId,
-      targetDay,
-      targetStartTime,
-      targetEndTime,
-      session.id
-    );
-    if (consecutiveConflict) {
-      conflicts.push(consecutiveConflict);
-    }
-
-    // Check break requirements
-    const breakConflict = await this.checkBreakRequirements(
-      providerId,
-      studentId,
-      targetDay,
-      targetStartTime,
-      targetEndTime,
-      session.id
-    );
-    if (breakConflict) {
-      conflicts.push(breakConflict);
-    }
-
-    // Check for overlapping sessions for the same student
-    const overlapConflict = await this.checkStudentSessionOverlap(
-      studentId,
-      targetDay,
-      targetStartTime,
-      targetEndTime,
-      session.id
-    );
-    if (overlapConflict) {
-      conflicts.push(overlapConflict);
+    for (const conflict of [
+      bellScheduleConflict,
+      specialActivityConflict,
+      concurrentConflict,
+      consecutiveConflict,
+      breakConflict,
+      overlapConflict
+    ]) {
+      if (conflict) {
+        conflicts.push(conflict);
+      }
     }
 
     if (conflicts.length > 0) {
