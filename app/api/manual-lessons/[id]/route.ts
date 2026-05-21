@@ -1,18 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 // PUT - Update existing lesson
-export async function PUT(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const PUT = withRoute<{ id: string }>({}, async ({ req, userId, params }) => {
     const perf = measurePerformanceWithAlerts('update_manual_lesson', 'api');
-    const params = await context.params;
     const lessonId = params.id;
   
     
@@ -187,17 +182,11 @@ export async function PUT(
       { status: 500 }
     );
   }
-  })(request);
-}
+  });
 
 // DELETE - Delete lesson
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const DELETE = withRoute<{ id: string }>({}, async ({ userId, params }) => {
     const perf = measurePerformanceWithAlerts('delete_manual_lesson', 'api');
-    const params = await context.params;
     const lessonId = params.id;
   
     try {
@@ -317,5 +306,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-  })(request);
-}
+  });

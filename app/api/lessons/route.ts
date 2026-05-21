@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { log } from '@/lib/monitoring/logger';
 
 // GET: Fetch user's saved lessons
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+export const GET = withRoute({}, async ({ userId }) => {
   try {
     const supabase = await createClient();
     
@@ -54,29 +55,36 @@ export const GET = withAuth(async (request: NextRequest, userId: string) => {
   }
 });
 
+const saveLessonSchema = z
+  .object({
+    title: z.string().min(1),
+    subject: z.string().min(1),
+    grade: z.string().min(1),
+    content: z.any().refine(v => v !== undefined && v !== null && v !== '', 'content is required'),
+    time_duration: z.string().optional(),
+  })
+  .passthrough();
+
 // POST: Save new lesson (for manual lesson creation)
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({ body: saveLessonSchema }, async ({ userId, body }) => {
   try {
     const supabase = await createClient();
-    const body = await request.json();
-    
     const { title, subject, grade, time_duration, content } = body;
-    
-    // Validate required fields
-    if (!title || !subject || !grade || !content) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
 
     // Parse duration from string format (e.g., "15 minutes" -> 15)
     const durationMatch = time_duration?.match(/(\d+)/);
     const duration = durationMatch ? parseInt(durationMatch[1]) : null;
 
     // Create content structure
-    const lessonContent = typeof content === 'string' ? JSON.parse(content) : content;
-    
+    let lessonContent = content;
+    if (typeof content === 'string') {
+      try {
+        lessonContent = JSON.parse(content);
+      } catch {
+        return NextResponse.json({ error: 'content must be valid JSON' }, { status: 400 });
+      }
+    }
+
     const { data: lesson, error } = await supabase
       .from('lessons')
       .insert({

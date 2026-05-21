@@ -8,9 +8,9 @@ interface WithRouteConfig<TBody, TQuery> {
   /** Require an authenticated user (default true). When false, `userId` is ''. */
   auth?: boolean;
   /** Zod schema for the JSON request body. */
-  body?: ZodType<TBody>;
+  body?: ZodType<TBody, any, any>;
   /** Zod schema for the URL search params (validated as a flat string record). */
-  query?: ZodType<TQuery>;
+  query?: ZodType<TQuery, any, any>;
   /** Per-user rate limit. Applied only on authenticated routes. */
   rateLimit?: RateLimitRule & { name?: string };
 }
