@@ -9,7 +9,10 @@ import { withRoute } from '@/lib/api/with-route';
 // POST - Group sessions together
 const groupSessionsSchema = z
   .object({
-    sessionIds: z.array(z.string()).min(2),
+    sessionIds: z
+      .array(z.string())
+      .min(2)
+      .refine(ids => new Set(ids).size >= 2, 'At least 2 distinct sessions are required'),
     groupName: z.string().refine(s => s.trim().length > 0, 'Group name is required'),
     groupId: z.string().nullish(),
     groupColor: z.any().optional(),
