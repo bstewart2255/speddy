@@ -1,36 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
+
+const createManualLessonSchema = z
+  .object({
+    title: z.string().refine(s => s.trim().length > 0, 'Title is required'),
+    lesson_date: z.string().min(1),
+    subject: z.any().optional(),
+    grade_levels: z.any().optional(),
+    duration_minutes: z.any().optional(),
+    objectives: z.any().optional(),
+    materials: z.any().optional(),
+    activities: z.any().optional(),
+    assessment: z.any().optional(),
+    notes: z.any().optional(),
+    school_id: z.any().optional(),
+    district_id: z.any().optional(),
+    state_id: z.any().optional(),
+  })
+  .passthrough();
 
 // POST - Create new manual lesson
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({ body: createManualLessonSchema }, async ({ userId, body: lessonData }) => {
   const perf = measurePerformanceWithAlerts('create_manual_lesson', 'api');
-  
+
   try {
     const supabase = await createClient();
 
-    const lessonData = await request.json();
-    
-    // Validate required fields
-    if (!lessonData.title?.trim()) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'Title is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!lessonData.lesson_date) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'Lesson date is required' },
-        { status: 400 }
-      );
-    }
-    
     log.info('Creating manual lesson', {
       userId,
       title: lessonData.title,
@@ -141,26 +141,19 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
   }
 });
 
+const fetchManualLessonsQuerySchema = z.object({
+  start_date: z.string().min(1),
+  end_date: z.string().min(1),
+});
+
 // GET - Fetch lessons for date range
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+export const GET = withRoute({ query: fetchManualLessonsQuerySchema }, async ({ userId, query }) => {
   const perf = measurePerformanceWithAlerts('fetch_manual_lessons', 'api');
-  
+
   try {
     const supabase = await createClient();
-    const { searchParams } = new URL(request.url);
-    
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
-    
-    // Validate date parameters
-    if (!startDate || !endDate) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'start_date and end_date are required' },
-        { status: 400 }
-      );
-    }
-    
+    const { start_date: startDate, end_date: endDate } = query;
+
     log.info('Fetching manual lessons', {
       userId,
       startDate,

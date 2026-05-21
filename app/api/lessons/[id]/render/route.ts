@@ -1,35 +1,38 @@
 // API endpoint to render lesson worksheets
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { worksheetRenderer } from '@/lib/lessons/renderer';
 import { LessonResponse, isValidLessonResponse } from '@/lib/lessons/schema';
+import { withRoute } from '@/lib/api/with-route';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const searchParams = request.nextUrl.searchParams;
-  const renderType = searchParams.get('type') || 'plan'; // plan, worksheet, answer
-  
-  try {
-    const supabase = await createClient();
+const querySchema = z.object({
+  type: z.string().optional(),
+  studentId: z.string().optional(),
+});
+
+// Public (no auth) by design — access is gated by RLS on the lessons table.
+// TODO: revisit whether this should require auth + an explicit ownership check.
+export const GET = withRoute<{ id: string }, undefined, z.infer<typeof querySchema>>(
+  { auth: false, query: querySchema },
+  async ({ query, params }) => {
     const lessonId = params.id;
-    const studentId = searchParams.get('studentId');
-    
+    const renderType = query.type || 'plan'; // plan, worksheet, answer
+    const studentId = query.studentId ?? null;
+
+    const supabase = await createClient();
+
     // Fetch lesson from database
     const { data: lessonData, error } = await supabase
       .from('lessons')
       .select('*')
       .eq('id', lessonId)
       .single();
-    
+
     if (error || !lessonData) {
-      return NextResponse.json(
-        { error: 'Lesson not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
     }
-    
+
     // Validate and extract lesson content
     let lesson: LessonResponse | null = null;
     if (lessonData?.content) {
@@ -42,17 +45,14 @@ export async function GET(
         // ignore parse failure
       }
     }
-    
+
     if (!lesson || !isValidLessonResponse(lesson)) {
-      return NextResponse.json(
-        { error: 'Invalid or missing lesson content' },
-        { status: 422 }
-      );
+      return NextResponse.json({ error: 'Invalid or missing lesson content' }, { status: 422 });
     }
-    
+
     // Render based on type
     let html: string;
-    
+
     switch (renderType) {
       case 'worksheet': {
         if (!studentId) {
@@ -61,31 +61,31 @@ export async function GET(
             { status: 400 }
           );
         }
-        
+
         // Find the student's material
         const studentMaterial = lesson.studentMaterials.find(
           m => m.studentId === studentId
         );
-        
+
         if (!studentMaterial) {
           return NextResponse.json(
             { error: 'No worksheet found for this student' },
             { status: 404 }
           );
         }
-        
+
         // Get student name and grade from database
         const { data: student } = await supabase
           .from('students')
           .select('first_name, last_name, initials, grade_level')
           .eq('id', studentId)
           .single();
-        
+
         const studentName =
           student?.first_name || student?.last_name
             ? `${student.first_name ?? ''} ${student.last_name ?? ''}`.trim()
             : (student?.initials ?? 'Student');
-        
+
         // Add grade level to the student material for proper display
         if (student?.grade_level && studentMaterial) {
           // Parse grade level (handle "K" for kindergarten as 0)
@@ -102,7 +102,7 @@ export async function GET(
             studentMaterial.worksheet.grade = gradeNum;
           }
         }
-        
+
         // Generate QR code for worksheet (using existing system)
         let qrCodeUrl: string | undefined;
         try {
@@ -113,14 +113,14 @@ export async function GET(
             .eq('lesson_id', lessonId)
             .eq('student_id', studentId)
             .single();
-          
+
           if (worksheetRecord?.qr_code) {
             qrCodeUrl = worksheetRecord.qr_code;
           }
         } catch (qrError) {
           console.log('QR code not available for this worksheet');
         }
-        
+
         html = worksheetRenderer.renderStudentWorksheet(
           studentMaterial,
           studentName,
@@ -128,19 +128,19 @@ export async function GET(
         );
         break;
       }
-      
+
       case 'answer': {
         html = worksheetRenderer.renderAnswerKey(lesson);
         break;
       }
-      
+
       case 'plan':
       default: {
         html = worksheetRenderer.renderLessonPlan(lesson);
         break;
       }
     }
-    
+
     // Return HTML response with security headers to prevent caching of PII
     return new NextResponse(html, {
       headers: {
@@ -151,27 +151,5 @@ export async function GET(
         'Referrer-Policy': 'no-referrer',
       },
     });
-    
-  } catch (error) {
-    // Log error with context but don't expose details to client
-    console.error('[Render API] Error rendering lesson:', {
-      lessonId: params.id,
-      renderType: renderType,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    
-    // Return generic error message to client
-    return NextResponse.json(
-      { 
-        error: 'Failed to render lesson', 
-        message: 'An error occurred while rendering the lesson. Please try again.'
-      },
-      { 
-        status: 500,
-        headers: {
-          'Cache-Control': 'no-store'
-        }
-      }
-    );
   }
-}
+);

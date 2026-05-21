@@ -1,24 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+const studentSchema = z
+  .object({
+    id: z.string(),
+    initials: z.string().optional(),
+    grade_level: z.string().optional(),
+    teacher_name: z.string().optional(),
+  })
+  .passthrough();
+
+const saveLessonSchema = z
+  .object({
+    timeSlot: z.string(),
+    students: z.array(studentSchema),
+    content: z.any().optional(),
+    lessonDate: z.string().optional(),
+    schoolSite: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .passthrough();
+
+export const POST = withRoute({ body: saveLessonSchema }, async ({ userId, body }) => {
   const perf = measurePerformanceWithAlerts('save_lesson', 'api');
-  
+
   try {
     const supabase = await createClient();
 
-    const { 
-      timeSlot, 
-      students, 
-      content, 
-      lessonDate,
-      schoolSite,
-      notes 
-    } = await request.json();
+    const { timeSlot, students, content, lessonDate, schoolSite, notes } = body;
     
     log.info('Saving lesson', {
       userId,
@@ -210,16 +224,18 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
   }
 });
 
-export const GET = withAuth(async (request: NextRequest, userId: string) => {
+const getLessonsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).default(10),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const GET = withRoute({ query: getLessonsQuerySchema }, async ({ userId, query }) => {
   const perf = measurePerformanceWithAlerts('get_lessons', 'api');
-  
+
   try {
     const supabase = await createClient();
 
-    // Get query parameters
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const { limit, offset } = query;
     
     log.info('Fetching lessons', {
       userId,
