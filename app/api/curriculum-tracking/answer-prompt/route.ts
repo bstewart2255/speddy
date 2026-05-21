@@ -1,60 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withRoute } from '@/lib/api/with-route';
+
+const answerPromptSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    answer: z.enum(['yes', 'no']),
+    previousLesson: z.number().int().min(1),
+    curriculumType: z.string().min(1),
+    curriculumLevel: z.string().min(1),
+  })
+  .passthrough();
 
 // POST - Handle lesson completion prompt answer (Yes/No)
-export async function POST(request: NextRequest) {
+export const POST = withRoute({ body: answerPromptSchema }, async ({ userId, body }) => {
   const perf = measurePerformanceWithAlerts('answer_curriculum_prompt', 'api');
-  let userId: string | undefined;
+  const { sessionId, answer, previousLesson, curriculumType, curriculumLevel } = body;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    const body = await request.json();
-    const {
-      sessionId,
-      answer,
-      previousLesson,
-      curriculumType,
-      curriculumLevel
-    } = body;
-
-    // Validate required fields
-    if (!sessionId || !answer || !curriculumType || !curriculumLevel) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'sessionId, answer, curriculumType, and curriculumLevel are required' },
-        { status: 400 }
-      );
-    }
-
-    // Validate previousLesson is a positive integer
-    if (typeof previousLesson !== 'number' || !Number.isInteger(previousLesson) || previousLesson < 1) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'previousLesson must be a positive integer' },
-        { status: 400 }
-      );
-    }
-
-    // Validate answer value
-    if (answer !== 'yes' && answer !== 'no') {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'answer must be "yes" or "no"' },
-        { status: 400 }
-      );
-    }
 
     log.info('Answering curriculum prompt', {
       userId,
@@ -75,15 +43,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (accessError || !session) {
-      log.warn('User does not have access to session', {
-        userId,
-        sessionId
-      });
+      log.warn('User does not have access to session', { userId, sessionId });
       perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Calculate new lesson number
@@ -137,11 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
-      log.error('Error saving curriculum prompt answer', error, {
-        userId,
-        sessionId,
-        answer
-      });
+      log.error('Error saving curriculum prompt answer', error, { userId, sessionId, answer });
       perf.end({ success: false });
       return NextResponse.json(
         { error: 'Failed to save curriculum tracking', details: error.message },
@@ -150,15 +108,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (!data) {
-      log.error('No data returned from curriculum tracking save', {
-        userId,
-        sessionId
-      });
+      log.error('No data returned from curriculum tracking save', { userId, sessionId });
       perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Curriculum tracking save returned no data' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Curriculum tracking save returned no data' }, { status: 500 });
     }
 
     log.info('Curriculum prompt answered successfully', {
@@ -185,9 +137,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     log.error('Error in answer-curriculum-prompt route', error, { userId });
     perf.end({ success: false });
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
