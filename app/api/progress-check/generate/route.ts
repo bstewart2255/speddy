@@ -1,10 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withRoute } from '@/lib/api/with-route';
 import { createClient } from '@/lib/supabase/server';
 import { generateProgressCheck, type AssessmentItem, type IEPGoalAssessment } from '@/lib/progress-checks/generator';
 
 // Extended timeout for AI generation
 export const maxDuration = 300; // 5 minutes
+
+const generateProgressCheckSchema = z
+  .object({
+    studentIds: z.array(z.string()).min(1).max(10),
+  })
+  .passthrough();
 
 interface Worksheet {
   studentId: string;
@@ -13,30 +20,15 @@ interface Worksheet {
   iepGoals: IEPGoalAssessment[];
 }
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withRoute(
+  {
+    body: generateProgressCheckSchema,
+    rateLimit: { requests: 30, windowSeconds: 3600, name: 'progress-check/generate' },
+  },
+  async ({ userId, body }) => {
     try {
       const supabase = await createClient();
-      const body = await req.json();
-
-      // Validate request
-      const validation = validateRequest(body);
-      if (!validation.isValid) {
-        return NextResponse.json(
-          { error: 'Invalid request', details: validation.errors },
-          { status: 400 }
-        );
-      }
-
       const { studentIds } = body;
-
-      // Enforce max 10 students limit
-      if (studentIds.length > 10) {
-        return NextResponse.json(
-          { error: 'Too many students', details: 'Maximum 10 students allowed per batch' },
-          { status: 400 }
-        );
-      }
 
       // Get user's role to determine filtering
       const { data: profile, error: profileError } = await supabase
@@ -256,22 +248,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
-
-function validateRequest(body: any): { isValid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!body.studentIds || !Array.isArray(body.studentIds) || body.studentIds.length === 0) {
-    errors.push('studentIds array is required and must not be empty');
   }
+);
 
-  if (body.studentIds && body.studentIds.length > 10) {
-    errors.push('Maximum 10 students allowed per batch');
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-}

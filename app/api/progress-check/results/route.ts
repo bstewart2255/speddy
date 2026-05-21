@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 interface QuestionResult {
   iep_goal_index: number;
@@ -9,30 +10,28 @@ interface QuestionResult {
   notes?: string;
 }
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+const submitResultsSchema = z
+  .object({
+    progress_check_id: z.string().min(1),
+    results: z.array(z.object({}).passthrough()).min(1),
+  })
+  .passthrough();
+
+const getResultsQuerySchema = z.object({
+  student_id: z.string().optional(),
+  school_id: z.string().optional(),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const POST = withRoute({ body: submitResultsSchema }, async ({ userId, body }) => {
     try {
       const supabase = await createClient();
-      const body = await req.json();
-      const { progress_check_id, results } = body as {
+      const { progress_check_id, results } = body as unknown as {
         progress_check_id: string;
         results: QuestionResult[];
       };
-
-      // Validate required fields
-      if (!progress_check_id) {
-        return NextResponse.json(
-          { error: 'Progress check ID is required' },
-          { status: 400 }
-        );
-      }
-
-      if (!results || !Array.isArray(results) || results.length === 0) {
-        return NextResponse.json(
-          { error: 'Results array is required' },
-          { status: 400 }
-        );
-      }
 
       // Validate each result
       for (const result of results) {
@@ -149,19 +148,12 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  });
 
-export async function GET(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: queryParams }) => {
     try {
       const supabase = await createClient();
-      const { searchParams } = new URL(req.url);
-      const studentId = searchParams.get('student_id');
-      const schoolId = searchParams.get('school_id');
-      const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
-      const limit = parseInt(searchParams.get('limit') || '50', 10);
-      const offset = parseInt(searchParams.get('offset') || '0', 10);
+      const { student_id: studentId, school_id: schoolId, status, limit, offset } = queryParams;
 
       // If filtering by school, get the student IDs for that school first
       let schoolStudentIds: string[] | null = null;
@@ -270,5 +262,4 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  });
