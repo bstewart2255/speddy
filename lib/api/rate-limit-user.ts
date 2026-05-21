@@ -37,7 +37,8 @@ export async function checkUserRateLimit(
     const supabase = createServiceClient();
     const windowStart = new Date(Date.now() - rule.windowSeconds * 1000).toISOString();
 
-    // Drop this key's expired rows so the table stays bounded.
+    // Prune this key's expired rows (keeps active keys bounded; abandoned keys
+    // are purged by a separate scheduled job).
     await supabase
       .from('api_rate_limits')
       .delete()
@@ -62,7 +63,13 @@ export async function checkUserRateLimit(
       return { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds };
     }
 
-    await supabase.from('api_rate_limits').insert({ user_id: userId, endpoint });
+    const { error: insertError } = await supabase
+      .from('api_rate_limits')
+      .insert({ user_id: userId, endpoint });
+    if (insertError) {
+      log.error('Rate limit insert failed; allowing request', insertError, { userId, endpoint });
+      return allow();
+    }
     return allow(rule.requests - used - 1);
   } catch (err) {
     log.error('Rate limit check threw; allowing request', err, { userId, endpoint });
