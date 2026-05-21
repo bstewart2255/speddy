@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 
 function formatTime12hr(time: string | null): string {
   if (!time) return '';
@@ -10,26 +12,19 @@ function formatTime12hr(time: string | null): string {
   return `${hour12}:${minutes} ${ampm}`;
 }
 
-export async function GET(
-  request: NextRequest,
-  props: { params: Promise<{ studentId: string }> }
-) {
-  const params = await props.params;
-  const { studentId } = params;
+const querySchema = z.object({
+  // Invalid/missing/out-of-range values fall back to 50 (matches prior behavior).
+  limit: z.coerce.number().int().positive().max(500).catch(50),
+});
 
-  const supabase = await createClient();
+export const GET = withRoute<{ studentId: string }, undefined, z.infer<typeof querySchema>>(
+  { query: querySchema },
+  async ({ query, params }) => {
+    const { studentId } = params;
+    const { limit } = query;
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+    const supabase = await createClient();
 
-  const { searchParams } = new URL(request.url);
-  const limitParam = searchParams.get('limit');
-  const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
-  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
-
-  try {
     // First, get summary counts from ALL records (not limited)
     const { data: allRecords, error: countError } = await supabase
       .from('attendance')
@@ -120,8 +115,5 @@ export async function GET(
       },
       records
     });
-  } catch (error) {
-    console.error('Error fetching student attendance:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+);

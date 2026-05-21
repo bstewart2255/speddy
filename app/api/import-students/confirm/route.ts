@@ -3,9 +3,9 @@
  * Creates student records from bulk import after user review
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -41,7 +41,7 @@ interface ImportResult {
   error?: string;
 }
 
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_students_confirm', 'api');
 
   try {

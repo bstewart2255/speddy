@@ -7,9 +7,9 @@
  * Returns preview data for user review before creating/updating students
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { parseDeliveriesCSV, DeliveryRecord } from '@/lib/parsers/deliveries-parser';
@@ -475,7 +475,7 @@ async function handleDeliveriesOrClassListOnly(
   });
 }
 
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_students_preview', 'api');
 
   try {
