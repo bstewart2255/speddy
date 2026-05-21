@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 interface IndicatorResult {
   hasNotes: boolean;
@@ -21,90 +22,27 @@ const MAX_SESSIONS = 500;
 const MAX_GROUPS = 100;
 const MAX_DATES = 7;
 
-function isValidSessionInfo(value: unknown): value is SessionInfo {
-  if (!value || typeof value !== 'object') return false;
-  const session = value as Partial<SessionInfo>;
-  return (
-    typeof session.id === 'string' &&
-    typeof session.timeSlot === 'string' &&
-    typeof session.sessionDate === 'string'
-  );
-}
+const sessionInfoSchema = z
+  .object({
+    id: z.string(),
+    timeSlot: z.string(),
+    sessionDate: z.string(),
+  })
+  .passthrough();
+
+const indicatorsSchema = z
+  .object({
+    sessions: z.array(sessionInfoSchema).max(MAX_SESSIONS).default([]),
+    groupIds: z.array(z.string()).max(MAX_GROUPS).default([]),
+    weekDates: z.array(z.string()).max(MAX_DATES).default([]),
+  })
+  .passthrough();
 
 // POST - Get indicators for sessions and groups (has notes, has documents)
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({ body: indicatorsSchema }, async ({ userId, body }) => {
   try {
     const supabase = await createClient();
-    const body = await request.json();
-
-    const rawSessions = (body as Record<string, unknown>).sessions;
-    const rawGroupIds = (body as Record<string, unknown>).groupIds;
-    const rawWeekDates = (body as Record<string, unknown>).weekDates;
-
-    // Validate sessions array
-    if (rawSessions !== undefined && !Array.isArray(rawSessions)) {
-      return NextResponse.json(
-        { error: 'Invalid request: sessions must be an array' },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawSessions) && rawSessions.length > MAX_SESSIONS) {
-      return NextResponse.json(
-        { error: `Too many sessions (max ${MAX_SESSIONS})` },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawSessions) && !rawSessions.every(isValidSessionInfo)) {
-      return NextResponse.json(
-        { error: 'Invalid request: each session must have id, timeSlot, and sessionDate as strings' },
-        { status: 400 }
-      );
-    }
-
-    // Validate groupIds array
-    if (rawGroupIds !== undefined && !Array.isArray(rawGroupIds)) {
-      return NextResponse.json(
-        { error: 'Invalid request: groupIds must be an array' },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawGroupIds) && rawGroupIds.length > MAX_GROUPS) {
-      return NextResponse.json(
-        { error: `Too many groups (max ${MAX_GROUPS})` },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawGroupIds) && !rawGroupIds.every(id => typeof id === 'string')) {
-      return NextResponse.json(
-        { error: 'Invalid request: each groupId must be a string' },
-        { status: 400 }
-      );
-    }
-
-    // Validate weekDates array
-    if (rawWeekDates !== undefined && !Array.isArray(rawWeekDates)) {
-      return NextResponse.json(
-        { error: 'Invalid request: weekDates must be an array' },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawWeekDates) && rawWeekDates.length > MAX_DATES) {
-      return NextResponse.json(
-        { error: `Too many dates (max ${MAX_DATES})` },
-        { status: 400 }
-      );
-    }
-    if (Array.isArray(rawWeekDates) && !rawWeekDates.every(d => typeof d === 'string')) {
-      return NextResponse.json(
-        { error: 'Invalid request: each weekDate must be a string' },
-        { status: 400 }
-      );
-    }
-
-    // Cast validated inputs
-    const sessions: SessionInfo[] = Array.isArray(rawSessions) ? rawSessions : [];
-    const groupIds: string[] = Array.isArray(rawGroupIds) ? rawGroupIds : [];
-    const weekDates: string[] = Array.isArray(rawWeekDates) ? rawWeekDates : [];
+    const { sessions, groupIds, weekDates } = body;
 
     log.info('Fetching session indicators', {
       userId,

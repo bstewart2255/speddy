@@ -1,28 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 // POST - Remove sessions from their group
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+const ungroupSessionsSchema = z
+  .object({
+    sessionIds: z.array(z.string()).min(1),
+  })
+  .passthrough();
+
+export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, body }) => {
   const perf = measurePerformanceWithAlerts('ungroup_sessions', 'api');
 
   try {
     const supabase = await createClient();
-    const body = await request.json();
-
     const { sessionIds } = body;
-
-    // Validate required fields
-    if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'At least one session ID is required' },
-        { status: 400 }
-      );
-    }
 
     // Validate that all session IDs are valid UUIDs (not temp IDs)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

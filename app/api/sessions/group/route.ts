@@ -1,36 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 // POST - Group sessions together
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+const groupSessionsSchema = z
+  .object({
+    sessionIds: z.array(z.string()).min(2),
+    groupName: z.string().refine(s => s.trim().length > 0, 'Group name is required'),
+    groupId: z.string().nullish(),
+    groupColor: z.any().optional(),
+  })
+  .passthrough();
+
+export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, body }) => {
   const perf = measurePerformanceWithAlerts('group_sessions', 'api');
 
   try {
     const supabase = await createClient();
-    const body = await request.json();
-
     const { sessionIds, groupName, groupId, groupColor } = body;
-
-    // Validate required fields
-    if (!Array.isArray(sessionIds) || sessionIds.length < 2) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'At least 2 session IDs are required to create a group' },
-        { status: 400 }
-      );
-    }
-
-    if (!groupName || typeof groupName !== 'string' || !groupName.trim()) {
-      perf.end({ success: false, error: 'validation' });
-      return NextResponse.json(
-        { error: 'Group name is required' },
-        { status: 400 }
-      );
-    }
 
     // Validate group color if provided (must be integer 0-4)
     const validatedGroupColor = typeof groupColor === 'number' && Number.isInteger(groupColor) && groupColor >= 0 && groupColor <= 4
