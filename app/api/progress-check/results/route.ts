@@ -28,7 +28,7 @@ const getResultsQuerySchema = z.object({
 export const POST = withRoute({ body: submitResultsSchema }, async ({ userId, body }) => {
     try {
       const supabase = await createClient();
-      const { progress_check_id, results } = body as {
+      const { progress_check_id, results } = body as unknown as {
         progress_check_id: string;
         results: QuestionResult[];
       };
