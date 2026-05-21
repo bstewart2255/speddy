@@ -148,7 +148,8 @@ export const POST = withAuth(async (request: NextRequest, userId: string) => {
         .from('schedule_sessions')
         .select('id')
         .eq('group_id', groupId)
-        .is('session_date', null); // Only count templates
+        .is('session_date', null) // Only count templates
+        .is('deleted_at', null);
 
       if (countError) {
         log.warn('Failed to count remaining sessions in group', {

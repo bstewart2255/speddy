@@ -8,6 +8,7 @@
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { deleteOrArchiveTemplate } from '@/lib/supabase/queries/schedule-sessions';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type SessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];
@@ -58,6 +59,7 @@ export async function updateExistingSessionsForStudent(
       .from('schedule_sessions')
       .select('*')
       .eq('student_id', studentId)
+      .is('deleted_at', null)
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true });
 
@@ -144,7 +146,7 @@ export async function updateExistingSessionsForStudent(
       // Templates are the "master" sessions that define the weekly schedule
       // Dated instances are generated from templates for specific weeks
       const templateSessionCount = existingSessions.filter(
-        s => s.session_date === null && !s.is_completed
+        s => s.session_date === null && !s.deleted_at && !s.is_completed
       ).length;
 
       await adjustSessionCount(
@@ -194,6 +196,7 @@ async function resetSessionsToActive(
       conflict_reason: null,
     })
     .eq('student_id', studentId)
+    .is('deleted_at', null)
     .neq('status', 'active'); // Only update non-active sessions
 
   if (error) {
@@ -264,7 +267,8 @@ async function adjustSessionCount(
       .from('schedule_sessions')
       .select('id, day_of_week, start_time, created_at, is_completed, session_date')
       .eq('student_id', studentId)
-      .is('session_date', null);
+      .is('session_date', null)
+      .is('deleted_at', null);
 
     if (listErr) {
       throw new Error(`Failed to fetch sessions for count adjustment: ${listErr.message}`);
@@ -348,17 +352,21 @@ async function adjustSessionCount(
     }
 
     if (sessionsToDelete.length > 0) {
-      const deleteIds = sessionsToDelete.map(s => s.id);
-      const { error: delErr } = await supabase
-        .from('schedule_sessions')
-        .delete()
-        .in('id', deleteIds);
-
-      if (delErr) {
-        throw new Error(`Failed to delete excess sessions: ${delErr.message}`);
+      // Soft-delete templates that have dated instances (preserving history) and
+      // hard-delete the rest. Caseload reductions are small, so a per-row pass is fine.
+      const errors: string[] = [];
+      for (const session of sessionsToDelete) {
+        const { error } = await deleteOrArchiveTemplate(supabase, session.id);
+        if (error) {
+          errors.push(error.message);
+        }
       }
 
-      console.log(`Successfully deleted ${sessionsToDelete.length} excess sessions`);
+      if (errors.length > 0) {
+        throw new Error(`Failed to remove excess sessions: ${errors.join('; ')}`);
+      }
+
+      console.log(`Successfully removed ${sessionsToDelete.length} excess sessions`);
     }
   } else {
     // Need to create additional unscheduled sessions
@@ -412,7 +420,8 @@ async function detectSessionConflicts(
         teacher_name
       )
     `)
-    .eq('student_id', studentId);
+    .eq('student_id', studentId)
+    .is('deleted_at', null);
 
   if (error || !sessions) {
     console.error('Error fetching sessions for conflict detection:', error);

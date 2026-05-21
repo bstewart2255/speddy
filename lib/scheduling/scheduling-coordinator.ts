@@ -620,6 +620,7 @@ export class SchedulingCoordinator {
         status: session.status || 'active',
         has_conflict: session.has_conflict || false,
         conflict_reason: session.conflict_reason || null,
+        deleted_at: session.deleted_at ?? null,
         template_id: session.template_id || null,
         is_template: session.is_template ?? true
       });

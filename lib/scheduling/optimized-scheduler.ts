@@ -742,6 +742,7 @@ export class OptimizedScheduler {
         status: 'active' as const,
         has_conflict: false,
         conflict_reason: null,
+        deleted_at: null,
         template_id: null,
         is_template: true
       });
@@ -1239,6 +1240,7 @@ export class OptimizedScheduler {
         status: session.status || 'active',
         has_conflict: session.has_conflict || false,
         conflict_reason: session.conflict_reason || null,
+        deleted_at: session.deleted_at ?? null,
         template_id: session.template_id || null,
         is_template: session.is_template ?? true
       });

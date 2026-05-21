@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
@@ -25,17 +26,6 @@ interface SupabaseQueryBuilder {
   eq: (column: string, value: string) => SupabaseQueryBuilder;
 }
 
-
-/**
- * Format a Date object as a local YYYY-MM-DD string
- * Avoids timezone issues with toISOString() which uses UTC
- */
-function formatLocalDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 export class SessionGenerator {
   private supabase = createClient();
@@ -73,8 +63,8 @@ export class SessionGenerator {
     let instancesQuery = this.supabase
       .from('schedule_sessions')
       .select('*')
-      .gte('session_date', formatLocalDate(startDate))
-      .lte('session_date', formatLocalDate(endDate))
+      .gte('session_date', formatDateLocal(startDate))
+      .lte('session_date', formatDateLocal(endDate))
       .not('session_date', 'is', null);
 
     // Include sessions assigned to this user based on their role
@@ -102,6 +92,7 @@ export class SessionGenerator {
       .from('schedule_sessions')
       .select('*')
       .is('session_date', null)
+      .is('deleted_at', null)
       .in('day_of_week', Array.from(neededDays));
 
     // Include templates assigned to this user based on their role
@@ -124,7 +115,7 @@ export class SessionGenerator {
     // An instance is orphaned if its start_time doesn't match any template for that student+day
     const orphanedInstanceIds: string[] = [];
     const validInstances: SessionWithCurriculum[] = [];
-    const today = formatLocalDate(new Date());
+    const today = formatDateLocal(new Date());
 
     for (const instance of (instances || [])) {
       // Skip completed instances and past instances - preserve history
@@ -178,7 +169,7 @@ export class SessionGenerator {
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.getDay() || 7; // Convert Sunday to 7
-      const dateStr = formatLocalDate(currentDate);
+      const dateStr = formatDateLocal(currentDate);
 
       // Find templates for this day
       const dayTemplates = templates.filter(t => t.day_of_week === dayOfWeek);

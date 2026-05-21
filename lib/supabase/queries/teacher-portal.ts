@@ -490,6 +490,7 @@ export async function getTodayStudentSessions() {
         .in('student_id', studentIds)
         .eq('day_of_week', dayOfWeek)
         .is('session_date', null)
+        .is('deleted_at', null)
         .not('start_time', 'is', null)
         .not('end_time', 'is', null)
         .order('start_time', { ascending: true });

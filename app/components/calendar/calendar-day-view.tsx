@@ -534,6 +534,7 @@ export function CalendarDayView({
           .eq('day_of_week', session.day_of_week)
           .eq('start_time', session.start_time)
           .is('session_date', null)
+          .is('deleted_at', null)
           .limit(1);
 
         if (templateError) {
@@ -686,6 +687,7 @@ export function CalendarDayView({
         .eq('day_of_week', session.day_of_week)
         .eq('start_time', session.start_time)
         .is('session_date', null)
+        .is('deleted_at', null)
         .limit(1);
 
       let targetSessionId: string;

@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '../../services/session-update-service';
+import { deleteOrArchiveTemplate } from '../queries/schedule-sessions';
 import type { Database, ScheduleSession } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -118,10 +119,7 @@ export function useScheduleOperations() {
     }
 
     try {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .delete()
-        .eq('id', sessionId);
+      const { error } = await deleteOrArchiveTemplate(supabase, sessionId);
 
       if (error) {
         alert('Failed to delete session: ' + error.message);

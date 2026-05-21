@@ -514,6 +514,7 @@ export class SchedulingEngine {
       status: 'active' as const,
       has_conflict: false,
       conflict_reason: null,
+      deleted_at: null,
       template_id: null,
       is_template: true
     }));
