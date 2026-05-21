@@ -11,7 +11,7 @@ const createManualLessonSchema = z
     title: z.string().refine(s => s.trim().length > 0, 'Title is required'),
     lesson_date: z.string().min(1),
     subject: z.any().optional(),
-    grade_levels: z.any().optional(),
+    grade_levels: z.union([z.string(), z.array(z.any())]).nullish(),
     duration_minutes: z.any().optional(),
     objectives: z.any().optional(),
     materials: z.any().optional(),

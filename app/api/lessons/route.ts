@@ -76,8 +76,15 @@ export const POST = withRoute({ body: saveLessonSchema }, async ({ userId, body 
     const duration = durationMatch ? parseInt(durationMatch[1]) : null;
 
     // Create content structure
-    const lessonContent = typeof content === 'string' ? JSON.parse(content) : content;
-    
+    let lessonContent = content;
+    if (typeof content === 'string') {
+      try {
+        lessonContent = JSON.parse(content);
+      } catch {
+        return NextResponse.json({ error: 'content must be valid JSON' }, { status: 400 });
+      }
+    }
+
     const { data: lesson, error } = await supabase
       .from('lessons')
       .insert({
