@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { withRoute } from '@/lib/api/with-route';
 
 // Cost factor for bcrypt (10 is standard, provides ~100ms hash time)
 const BCRYPT_ROUNDS = 10;
@@ -23,19 +25,14 @@ export async function verifyApiKey(key: string, hash: string): Promise<boolean> 
 }
 
 // GET - List user's API keys (prefix only, not full key)
-export async function GET() {
+export const GET = withRoute({}, async ({ userId }) => {
   try {
     const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     const { data: keys, error } = await supabase
       .from('api_keys')
       .select('id, key_prefix, name, created_at, last_used_at, revoked_at')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .is('revoked_at', null)
       .order('created_at', { ascending: false });
 
@@ -49,17 +46,12 @@ export async function GET() {
     console.error('API keys GET error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 // POST - Generate a new API key
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // Parse optional name from request body
     let name = 'Chrome Extension';
@@ -81,7 +73,7 @@ export async function POST(request: NextRequest) {
     const { data: newKey, error } = await supabase
       .from('api_keys')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         key_hash: keyHash,
         key_prefix: keyPrefix,
         name,
@@ -106,31 +98,24 @@ export async function POST(request: NextRequest) {
     console.error('API keys POST error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
+
+const deleteQuerySchema = z.object({
+  id: z.string().min(1),
+});
 
 // DELETE - Revoke an API key
-export async function DELETE(request: NextRequest) {
+export const DELETE = withRoute({ query: deleteQuerySchema }, async ({ userId, query }) => {
   try {
     const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const keyId = searchParams.get('id');
-
-    if (!keyId) {
-      return NextResponse.json({ error: 'Key ID required' }, { status: 400 });
-    }
+    const keyId = query.id;
 
     // Revoke the key (soft delete)
     const { error } = await supabase
       .from('api_keys')
       .update({ revoked_at: new Date().toISOString() })
       .eq('id', keyId)
-      .eq('user_id', user.id); // Ensure user owns this key
+      .eq('user_id', userId); // Ensure user owns this key
 
     if (error) {
       console.error('Error revoking API key:', error);
@@ -142,4 +127,4 @@ export async function DELETE(request: NextRequest) {
     console.error('API keys DELETE error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
