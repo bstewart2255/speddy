@@ -2,7 +2,7 @@
  * Role mapping utilities for normalizing user roles to delivered_by values
  *
  * This ensures consistency across the application when determining who delivers a service.
- * The mapping aligns with how scheduling-coordinator.ts assigns delivered_by values.
+ * The mapping aligns with how the scheduler assigns delivered_by values.
  */
 
 export type DeliveredByRole = 'provider' | 'sea' | 'specialist';
