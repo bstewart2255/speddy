@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 interface ProblemResult {
   problem_index: number;
@@ -8,30 +9,28 @@ interface ProblemResult {
   notes?: string;
 }
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+const submitResultsSchema = z
+  .object({
+    exit_ticket_id: z.string().min(1),
+    results: z.array(z.any()).min(1),
+  })
+  .passthrough();
+
+const getResultsQuerySchema = z.object({
+  student_id: z.string().optional(),
+  school_id: z.string().optional(),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const POST = withRoute({ body: submitResultsSchema }, async ({ userId, body }) => {
     try {
       const supabase = await createClient();
-      const body = await req.json();
       const { exit_ticket_id, results } = body as {
         exit_ticket_id: string;
         results: ProblemResult[];
       };
-
-      // Validate required fields
-      if (!exit_ticket_id) {
-        return NextResponse.json(
-          { error: 'Exit ticket ID is required' },
-          { status: 400 }
-        );
-      }
-
-      if (!results || !Array.isArray(results) || results.length === 0) {
-        return NextResponse.json(
-          { error: 'Results array is required' },
-          { status: 400 }
-        );
-      }
 
       // Validate each result
       for (const result of results) {
@@ -146,19 +145,12 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  });
 
-export async function GET(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: queryParams }) => {
     try {
       const supabase = await createClient();
-      const { searchParams } = new URL(req.url);
-      const studentId = searchParams.get('student_id');
-      const schoolId = searchParams.get('school_id');
-      const status = searchParams.get('status'); // 'graded', 'needs_grading', 'discarded', or 'all'
-      const limit = parseInt(searchParams.get('limit') || '50', 10);
-      const offset = parseInt(searchParams.get('offset') || '0', 10);
+      const { student_id: studentId, school_id: schoolId, status, limit, offset } = queryParams;
 
       // If filtering by school, get the student IDs for that school first
       let schoolStudentIds: string[] | null = null;
@@ -270,5 +262,4 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  });

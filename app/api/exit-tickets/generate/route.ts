@@ -1,30 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { generateExitTicket, type ExitTicketContent } from '@/lib/exit-tickets/generator';
 
 export const maxDuration = 60; // 1 minute timeout for generation
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+const generateExitTicketsSchema = z
+  .object({
+    studentIds: z.array(z.string()).min(1).max(7),
+  })
+  .passthrough();
+
+export const POST = withRoute(
+  {
+    body: generateExitTicketsSchema,
+    rateLimit: { requests: 30, windowSeconds: 3600, name: 'exit-tickets/generate' },
+  },
+  async ({ userId, body }) => {
     try {
       const supabase = await createClient();
-      const body = await req.json();
       const { studentIds } = body;
-
-      if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
-        return NextResponse.json(
-          { error: 'Student IDs are required' },
-          { status: 400 }
-        );
-      }
-
-      if (studentIds.length > 7) {
-        return NextResponse.json(
-          { error: 'Maximum 7 students allowed per batch' },
-          { status: 400 }
-        );
-      }
 
       // Get user's profile for context
       const { data: profile, error: profileError } = await supabase
@@ -221,5 +217,5 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  })(request);
-}
+  }
+);
