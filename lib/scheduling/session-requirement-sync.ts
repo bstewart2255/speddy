@@ -59,6 +59,7 @@ export async function updateExistingSessionsForStudent(
       .from('schedule_sessions')
       .select('*')
       .eq('student_id', studentId)
+      .is('deleted_at', null)
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true });
 
@@ -195,6 +196,7 @@ async function resetSessionsToActive(
       conflict_reason: null,
     })
     .eq('student_id', studentId)
+    .is('deleted_at', null)
     .neq('status', 'active'); // Only update non-active sessions
 
   if (error) {
@@ -418,7 +420,8 @@ async function detectSessionConflicts(
         teacher_name
       )
     `)
-    .eq('student_id', studentId);
+    .eq('student_id', studentId)
+    .is('deleted_at', null);
 
   if (error || !sessions) {
     console.error('Error fetching sessions for conflict detection:', error);
