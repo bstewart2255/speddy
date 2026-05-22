@@ -1,37 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'internal-create-school' });
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
-    // Get current user to verify they're a speddy admin
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Admin (service-role) client; also used to verify the caller is a speddy admin.
+    const adminClient = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     // Verify the user is a speddy admin
-    const { data: profile, error: profileError } = (await supabase
+    const { data: profile, error: profileError } = (await adminClient
       .from('profiles')
       .select('is_speddy_admin')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single()) as unknown as { data: { is_speddy_admin: boolean } | null; error: Error | null };
 
     if (profileError || !profile?.is_speddy_admin) {
-      log.warn('Non-speddy-admin tried to create school', { userId: user.id });
+      log.warn('Non-speddy-admin tried to create school', { userId });
       return NextResponse.json({ error: 'Forbidden: Speddy admin access required' }, { status: 403 });
     }
 
@@ -66,12 +58,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields: name, districtId' }, { status: 400 });
     }
 
-    // Use admin client for insert
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
     // Verify district exists
     const { data: district, error: districtError } = await adminClient
       .from('districts')
@@ -90,7 +76,7 @@ export async function POST(request: NextRequest) {
       schoolId,
       name,
       districtId,
-      createdBy: user.id,
+      createdBy: userId,
     });
 
     // Insert the school
@@ -117,7 +103,7 @@ export async function POST(request: NextRequest) {
       schoolId,
       name,
       districtId,
-      createdBy: user.id,
+      createdBy: userId,
     });
 
     return NextResponse.json({
@@ -130,4 +116,4 @@ export async function POST(request: NextRequest) {
     log.error('Unexpected error in create-school', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

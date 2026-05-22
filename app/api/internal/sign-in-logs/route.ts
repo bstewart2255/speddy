@@ -1,32 +1,23 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'internal-sign-in-logs' });
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute({}, async ({ req: request, userId }) => {
   try {
-    // Get current user to verify they're a speddy admin
     const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
 
     // Verify the user is a speddy admin
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('is_speddy_admin')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (profileError || !profile?.is_speddy_admin) {
-      log.warn('Non-speddy-admin tried to access sign-in logs', { userId: user.id });
+      log.warn('Non-speddy-admin tried to access sign-in logs', { userId: userId });
       return NextResponse.json(
         { error: 'Forbidden: Speddy admin access required' },
         { status: 403 }
@@ -106,7 +97,7 @@ export async function GET(request: NextRequest) {
       timestamp: event.created_at,
     })) || [];
 
-    log.info('Sign-in logs fetched', { count: signInLogs.length, requestedBy: user.id });
+    log.info('Sign-in logs fetched', { count: signInLogs.length, requestedBy: userId });
 
     return NextResponse.json({
       logs: signInLogs,
@@ -124,4 +115,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
