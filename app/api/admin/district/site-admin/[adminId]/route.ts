@@ -1,14 +1,11 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'district-admin-site-admin' });
-
-interface RouteParams {
-  params: { adminId: string };
-}
 
 /**
  * Helper to verify district admin has access to manage site admin
@@ -55,26 +52,16 @@ async function verifyDistrictAdminAccess(
  * DELETE /api/admin/district/site-admin/[adminId]
  * Remove site admin permission (keeps the account)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withRoute<{ adminId: string }>({}, async ({ userId, params }) => {
   try {
     const { adminId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, adminId);
+    const accessCheck = await verifyDistrictAdminAccess(supabase, userId, adminId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for site admin removal', {
-        userId: user.id,
+        userId,
         adminId,
         reason: accessCheck.error,
       });
@@ -95,7 +82,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     log.info('District admin removing site admin permission', {
       siteAdminId: adminId,
       schoolId: siteAdminInfo?.school_id,
-      removedBy: user.id,
+      removedBy: userId,
     });
 
     // Delete the admin_permissions record (NOT the auth user)
@@ -115,7 +102,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     log.info('Site admin permission removed successfully', {
       siteAdminId: adminId,
-      removedBy: user.id,
+      removedBy: userId,
     });
 
     return NextResponse.json({
@@ -126,29 +113,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error in site admin removal', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 /**
  * GET /api/admin/district/site-admin/[adminId]
  * Get site admin details
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export const GET = withRoute<{ adminId: string }>({}, async ({ userId, params }) => {
   try {
     const { adminId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, adminId);
+    const accessCheck = await verifyDistrictAdminAccess(supabase, userId, adminId);
     if (!accessCheck.allowed) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
@@ -195,4 +172,4 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error fetching site admin', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
