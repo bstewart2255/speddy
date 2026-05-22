@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { log } from '@/lib/monitoring/logger';
+import { withRoute } from '@/lib/api/with-route';
 
 /**
  * Admin API endpoint to reset a user's password
@@ -14,18 +15,10 @@ import { log } from '@/lib/monitoring/logger';
  * 3. Updates the user's password via Supabase Admin API
  * 4. Returns the generated password to display to admin (once only)
  */
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId: adminId }) => {
   try {
-    // Authenticate the requesting user
+    // Used for the site-admin permission check below
     const supabase = await createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized - You must be logged in' },
-        { status: 401 }
-      );
-    }
 
     // Parse request body
     const body = await request.json();
@@ -48,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     if (profileError || !targetProfile) {
       log.warn('Password reset attempted for non-existent user', {
-        adminId: user.id,
+        adminId: adminId,
         targetUserId: userId,
       });
       return NextResponse.json(
@@ -61,14 +54,14 @@ export async function POST(request: NextRequest) {
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
       .select('role, school_id')
-      .eq('admin_id', user.id)
+      .eq('admin_id', adminId)
       .eq('school_id', targetProfile.school_id)
       .eq('role', 'site_admin')
       .maybeSingle();
 
     if (permError || !adminPermission) {
       log.warn('Unauthorized password reset attempt', {
-        adminId: user.id,
+        adminId: adminId,
         targetUserId: userId,
         targetSchoolId: targetProfile.school_id,
       });
@@ -79,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prevent admins from resetting their own password via this endpoint
-    if (userId === user.id) {
+    if (userId === adminId) {
       return NextResponse.json(
         { error: 'You cannot reset your own password through this endpoint. Use the account settings instead.' },
         { status: 400 }
@@ -114,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       log.error('Failed to reset password via admin API', updateError, {
-        adminId: user.id,
+        adminId: adminId,
         targetUserId: userId,
       });
       return NextResponse.json(
@@ -132,7 +125,7 @@ export async function POST(request: NextRequest) {
     if (profileUpdateError) {
       // Log but don't fail - password was already reset successfully
       log.warn('Failed to update must_change_password flag', {
-        adminId: user.id,
+        adminId: adminId,
         targetUserId: userId,
         error: profileUpdateError.message,
       });
@@ -140,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     // Log the successful password reset (excluding PII for GDPR/CCPA compliance)
     log.info('Password reset by admin', {
-      adminId: user.id,
+      adminId: adminId,
       targetUserId: userId,
       targetRole: targetProfile.role,
       targetSchoolId: targetProfile.school_id,
@@ -162,4 +155,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

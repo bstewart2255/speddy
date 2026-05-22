@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
+import { withRoute } from '@/lib/api/with-route';
 
 /**
  * Admin API endpoint to create a teacher account with login credentials
@@ -15,18 +16,10 @@ import { generateTemporaryPassword } from '@/lib/utils/password-generator';
  * 5. Creates a teacher record linked to the profile
  * 6. Returns the generated password to display to admin (once only)
  */
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
-    // Authenticate the requesting user
+    // Used for the site-admin permission check below
     const supabase = await createServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized - You must be logged in' },
-        { status: 401 }
-      );
-    }
 
     // Parse request body
     const body = await request.json();
@@ -75,7 +68,7 @@ export async function POST(request: NextRequest) {
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
       .select('role, school_id')
-      .eq('admin_id', user.id)
+      .eq('admin_id', userId)
       .eq('school_id', school_id)
       .eq('role', 'site_admin')
       .single();
@@ -220,4 +213,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
