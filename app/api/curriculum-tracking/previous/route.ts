@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withRoute } from '@/lib/api/with-route';
 
 // Type for curriculum tracking with joined session data
 interface CurriculumWithSession {
@@ -24,50 +26,27 @@ interface CurriculumWithSession {
   } | null;
 }
 
+const previousQuerySchema = z.object({
+  sessionId: z.string().optional(),
+  groupId: z.string().optional(),
+  sessionDate: z.string().min(1),
+});
+
 // GET - Fetch curriculum tracking from previous instance of same recurring session
-export async function GET(request: NextRequest) {
+export const GET = withRoute({ query: previousQuerySchema }, async ({ userId, query }) => {
   const perf = measurePerformanceWithAlerts('get_previous_curriculum', 'api');
-  let userId: string | undefined;
+  const { sessionId, groupId, sessionDate } = query;
 
   try {
     const supabase = await createClient();
-    const searchParams = request.nextUrl.searchParams;
-    const sessionId = searchParams.get('sessionId');
-    const groupId = searchParams.get('groupId');
-    const sessionDate = searchParams.get('sessionDate');
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    // Validate required parameters
     // sessionId is required for individual sessions, but optional for group sessions (groupId provided)
-    if (!sessionDate) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'sessionDate is required' },
-        { status: 400 }
-      );
-    }
-
     if (!sessionId && !groupId) {
       perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'Either sessionId or groupId is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Either sessionId or groupId is required' }, { status: 400 });
     }
 
-    log.info('Fetching previous curriculum tracking', {
-      userId,
-      sessionId,
-      groupId,
-      sessionDate
-    });
+    log.info('Fetching previous curriculum tracking', { userId, sessionId, groupId, sessionDate });
 
     let previousCurriculum: CurriculumWithSession | null = null;
 
@@ -105,16 +84,9 @@ export async function GET(request: NextRequest) {
       });
 
       if (error) {
-        log.error('Error fetching previous curriculum for group', error, {
-          userId,
-          groupId,
-          sessionDate
-        });
+        log.error('Error fetching previous curriculum for group', error, { userId, groupId, sessionDate });
         perf.end({ success: false });
-        return NextResponse.json(
-          { error: 'Failed to fetch previous curriculum' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to fetch previous curriculum' }, { status: 500 });
       }
       previousCurriculum = data;
     } else {
@@ -127,15 +99,9 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (sessionError || !currentSession) {
-        log.error('Error fetching current session', sessionError, {
-          userId,
-          sessionId
-        });
+        log.error('Error fetching current session', sessionError, { userId, sessionId });
         perf.end({ success: false });
-        return NextResponse.json(
-          { error: 'Failed to fetch session details' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to fetch session details' }, { status: 500 });
       }
 
       // Find previous session with same characteristics
@@ -162,16 +128,9 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       if (error) {
-        log.error('Error fetching previous curriculum for individual', error, {
-          userId,
-          sessionId,
-          sessionDate
-        });
+        log.error('Error fetching previous curriculum for individual', error, { userId, sessionId, sessionDate });
         perf.end({ success: false });
-        return NextResponse.json(
-          { error: 'Failed to fetch previous curriculum' },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to fetch previous curriculum' }, { status: 500 });
       }
       previousCurriculum = data;
     }
@@ -227,9 +186,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     log.error('Error in get-previous-curriculum route', error, { userId });
     perf.end({ success: false });
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
