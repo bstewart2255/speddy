@@ -15,7 +15,7 @@ const saveCurriculumSchema = z
     sessionId: z.string().min(1),
     curriculumType: z.string().min(1),
     curriculumLevel: z.string().min(1),
-    currentLesson: z.number(),
+    currentLesson: z.number().int().min(1),
     promptAnswered: z.boolean().optional(),
   })
   .passthrough();
