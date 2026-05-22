@@ -1,34 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
+import { withRoute } from '@/lib/api/with-route';
+
+const sessionDocsQuerySchema = z.object({
+  session_date: z.string().optional(),
+});
 
 // GET - Fetch all documents for a session
-export async function GET(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
+export const GET = withRoute<{ sessionId: string }, undefined, z.infer<typeof sessionDocsQuerySchema>>({ query: sessionDocsQuerySchema }, async ({ userId, query, params }) => {
   const perf = measurePerformanceWithAlerts('get_session_documents', 'api');
-  const params = await props.params;
   const { sessionId } = params;
-  let userId: string | undefined;
-
-  // Get session_date from query params (optional - if provided, filter documents for specific date)
-  const searchParams = request.nextUrl.searchParams;
-  const sessionDate = searchParams.get('session_date');
+  const sessionDate = query.session_date;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     // Handle temporary session IDs (unsaved sessions)
     if (sessionId.startsWith('temp-')) {
@@ -167,28 +157,15 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
 
 // POST - Create a new document for a session
-export async function POST(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
+export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, userId, params }) => {
   const perf = measurePerformanceWithAlerts('create_session_document', 'api');
-  const params = await props.params;
   const { sessionId } = params;
-  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     // Handle temporary session IDs (unsaved sessions)
     if (sessionId.startsWith('temp-')) {
@@ -479,28 +456,15 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE - Delete a document
-export async function DELETE(
-  request: NextRequest,
-  props: { params: Promise<{ sessionId: string }> }
-) {
+export const DELETE = withRoute<{ sessionId: string }>({}, async ({ req: request, userId, params }) => {
   const perf = measurePerformanceWithAlerts('delete_session_document', 'api');
-  const params = await props.params;
   const { sessionId } = params;
-  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     // Handle temporary session IDs (unsaved sessions)
     if (sessionId.startsWith('temp-')) {
@@ -578,4 +542,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+});
