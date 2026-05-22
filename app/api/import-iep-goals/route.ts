@@ -3,9 +3,9 @@
  * Handles Excel file upload, parsing, student matching, and PII scrubbing
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
@@ -31,7 +31,7 @@ interface ProcessedMatch {
   }>;
 }
 
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_iep_goals', 'api');
 
   try {

@@ -1,12 +1,12 @@
 // app/api/ai-upload/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 // Force Node.js runtime for file processing
 export const runtime = "nodejs";
@@ -24,7 +24,7 @@ const SUPPORTED_TYPES = [
   "text/rtf",
 ];
 
-export const POST = withAuth(async (request: NextRequest, userId: string) => {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('ai_upload', 'api');
   
   try {
