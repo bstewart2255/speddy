@@ -1,6 +1,8 @@
 // app/api/ai-upload/confirm/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 import { 
   dedupeSpecialActivities, 
   dedupeBellSchedules,
@@ -11,27 +13,24 @@ import {
   type ImportSummary
 } from '@/lib/utils/dedupe-helpers';
 
-export async function POST(request: NextRequest) {
+const confirmSchema = z
+  .object({
+    uploadType: z.string().min(1),
+    confirmedData: z.array(z.any()),
+  })
+  .passthrough();
+
+export const POST = withRoute({ body: confirmSchema }, async ({ userId, body }) => {
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { uploadType, confirmedData } = await request.json();
-
-    if (!uploadType || !confirmedData || !Array.isArray(confirmedData)) {
-      return NextResponse.json({ error: 'Invalid request data' }, { status: 400 });
-    }
+    const { uploadType, confirmedData } = body;
 
     // Get user's school information including school_id
     const { data: profile } = await supabase
       .from('profiles')
       .select('school_site, school_district, school_id')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     const summary = createImportSummary();
@@ -44,7 +43,7 @@ export async function POST(request: NextRequest) {
           const { error } = await supabase
             .from('students')
             .insert({
-              provider_id: user.id,
+              provider_id: userId,
               initials: student.initials.toUpperCase(),
               grade_level: student.grade_level.toUpperCase(),
               teacher_id: student.teacher_id || null,
@@ -94,7 +93,7 @@ export async function POST(request: NextRequest) {
       const { data: existingSchedules } = await supabase
         .from('bell_schedules')
         .select('*')
-        .eq('provider_id', user.id)
+        .eq('provider_id', userId)
         .eq('school_id', profile?.school_id);
       
       // Create a map of existing schedules by normalized key
@@ -110,7 +109,7 @@ export async function POST(request: NextRequest) {
       for (const schedule of dedupedSchedules) {
         try {
           const scheduleData = {
-            provider_id: user.id,
+            provider_id: userId,
             grade_level: schedule.grade_level,
             period_name: schedule.period_name,
             day_of_week: schedule.day_of_week,
@@ -167,7 +166,7 @@ export async function POST(request: NextRequest) {
       const { data: existingActivities } = await supabase
         .from('special_activities')
         .select('*')
-        .eq('provider_id', user.id)
+        .eq('provider_id', userId)
         .eq('school_id', profile?.school_id);
       
       // Create a map of existing activities by normalized key
@@ -183,7 +182,7 @@ export async function POST(request: NextRequest) {
       for (const activity of dedupedActivities) {
         try {
           const activityData = {
-            provider_id: user.id,
+            provider_id: userId,
             teacher_id: activity.teacher_id || null,
             teacher_name: activity.teacher_name || null,
             activity_name: activity.activity_name,
@@ -246,4 +245,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
