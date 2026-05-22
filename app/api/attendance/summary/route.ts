@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 
 interface AttendanceRecord {
   id: string;
@@ -19,24 +21,16 @@ function formatTime12hr(time: string | null): string {
   return `${hour12}:${minutes} ${ampm}`;
 }
 
-export async function GET(request: NextRequest) {
+const querySchema = z.object({
+  start_date: z.string().min(1),
+  end_date: z.string().min(1),
+  school_id: z.string().optional(),
+  limit: z.coerce.number().int().min(1).optional(),
+});
+
+export const GET = withRoute({ query: querySchema }, async ({ userId, query }) => {
   const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const startDate = searchParams.get('start_date');
-  const endDate = searchParams.get('end_date');
-  const schoolId = searchParams.get('school_id');
-  const limitParam = searchParams.get('limit');
-  const limit = limitParam ? parseInt(limitParam, 10) : null;
-
-  if (!startDate || !endDate) {
-    return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
-  }
+  const { start_date: startDate, end_date: endDate, school_id: schoolId, limit } = query;
 
   // Get today's date for filtering unmarked sessions (don't show future sessions as unmarked)
   // Use local date format to match session_date storage format
@@ -52,7 +46,7 @@ export async function GET(request: NextRequest) {
         end_time,
         student_id
       `)
-      .or(`provider_id.eq.${user.id},assigned_to_specialist_id.eq.${user.id},assigned_to_sea_id.eq.${user.id}`)
+      .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
       .eq('is_template', false)
       .gte('session_date', startDate)
       .lte('session_date', endDate);
@@ -246,4 +240,4 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching attendance summary:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

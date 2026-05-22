@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 import { generateInstancesForAllTemplates, getSchoolYearEndDate, InstanceGenerationOptions } from '@/lib/services/session-instance-generator';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
@@ -15,25 +16,19 @@ import { formatDateLocal } from '@/lib/utils/date-helpers';
  *   untilDate?: string             // Optional: specific end date (YYYY-MM-DD)
  * }
  */
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // Check if user is an admin (optional security check)
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (!profile || profile.role !== 'admin') {
-      log.warn('[Migration] Non-admin user attempted to run migration', { userId: user.id });
+      log.warn('[Migration] Non-admin user attempted to run migration', { userId: userId });
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -64,7 +59,7 @@ export async function POST(request: NextRequest) {
     const endDateStr = formatDateLocal(endDate);
 
     log.info('[Migration] Starting instance generation for all templates', {
-      userId: user.id,
+      userId: userId,
       endDate: endDateStr,
       options
     });
@@ -73,7 +68,7 @@ export async function POST(request: NextRequest) {
     const result = await generateInstancesForAllTemplates(options);
 
     log.info('[Migration] Instance generation completed', {
-      userId: user.id,
+      userId: userId,
       total: result.total,
       created: result.created,
       endDate: result.endDate,
@@ -98,21 +93,15 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * GET endpoint to check migration status
  * Returns count of templates and instances, plus school year end info
  */
-export async function GET() {
+export const GET = withRoute({}, async () => {
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // Count templates (session_date = NULL)
     const { count: templateCount, error: templateError } = await supabase
@@ -177,4 +166,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+});

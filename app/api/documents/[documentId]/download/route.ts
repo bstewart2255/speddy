@@ -1,29 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { withRoute } from '@/lib/api/with-route';
 
 // GET - Generate download URL for a document
-export async function GET(
-  request: NextRequest,
-  props: { params: Promise<{ documentId: string }> }
-) {
+export const GET = withRoute<{ documentId: string }>({}, async ({ userId, params }) => {
   const perf = measurePerformanceWithAlerts('download_document', 'api');
-  const params = await props.params;
   const { documentId } = params;
-  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     log.info('Fetching document for download', {
       userId,
@@ -198,4 +186,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
