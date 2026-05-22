@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { generateV2Worksheet } from '@/lib/lessons/v2-generator';
 import type { V2GenerationRequest } from '@/lib/lessons/v2-generator';
 import { generateLessonPlan } from '@/lib/lessons/lesson-plan-generator';
@@ -6,13 +6,14 @@ import type { LessonPlanRequest } from '@/lib/lessons/lesson-plan-generator';
 import { createClient } from '@/lib/supabase/server';
 import type { Student } from '@/lib/lessons/ability-detector';
 import { determineContentLevel, hasMatchingGoals } from '@/lib/lessons/ability-detector';
-import { withAuth } from '@/lib/api/with-auth';
+import { withRoute } from '@/lib/api/with-route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
-  return withAuth(async (req: NextRequest, userId: string) => {
+export const POST = withRoute(
+  { rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/v2/generate' } },
+  async ({ req, userId }) => {
   try {
     // Parse request body
     const body = await req.json();
@@ -408,5 +409,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-  })(request);
-}
+  }
+);
