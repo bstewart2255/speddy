@@ -1,14 +1,11 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'district-admin-provider' });
-
-interface RouteParams {
-  params: { providerId: string };
-}
 
 /**
  * Helper to verify district admin has access to the provider
@@ -87,23 +84,13 @@ async function verifyAdminAccess(
  * GET /api/admin/district/providers/[providerId]
  * Get provider details including deletability check
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export const GET = withRoute<{ providerId: string }>({}, async ({ userId, params }) => {
   try {
     const { providerId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, userId, providerId);
     if (!accessCheck.allowed) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
@@ -171,32 +158,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error fetching provider', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 /**
  * PATCH /api/admin/district/providers/[providerId]
  * Update provider profile and school assignments
  */
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request, userId, params }) => {
   try {
     const { providerId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, userId, providerId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for provider update', {
-        userId: user.id,
+        userId,
         providerId,
         reason: accessCheck.error,
       });
@@ -385,7 +362,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     log.info('Provider updated successfully', {
       providerId,
-      updatedBy: user.id,
+      updatedBy: userId,
     });
 
     return NextResponse.json({
@@ -396,32 +373,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error in provider update', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 /**
  * DELETE /api/admin/district/providers/[providerId]
  * Remove provider (soft delete - removes permissions and deactivates)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, params }) => {
   try {
     const { providerId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyAdminAccess(supabase, user.id, providerId);
+    const accessCheck = await verifyAdminAccess(supabase, userId, providerId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for provider removal', {
-        userId: user.id,
+        userId,
         providerId,
         reason: accessCheck.error,
       });
@@ -467,7 +434,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     log.info('District admin removing provider', {
       providerId,
-      removedBy: user.id,
+      removedBy: userId,
     });
 
     // Delete provider_schools entries
@@ -487,7 +454,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     log.info('Provider removed successfully', {
       providerId,
-      removedBy: user.id,
+      removedBy: userId,
     });
 
     return NextResponse.json({
@@ -498,4 +465,4 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error in provider removal', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
