@@ -1,6 +1,7 @@
 // app/api/submit-worksheet/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withRoute } from '@/lib/api/with-route';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkRateLimit, recordUpload } from '@/lib/rate-limit';
 import { extractQRCodeForSubmission, verifyQRCodeMatch } from '@/lib/qr-verification';
@@ -20,7 +21,9 @@ interface AnalysisResult {
   confidenceLevel?: string;
 }
 
-export async function POST(request: NextRequest) {
+// Public endpoint: QR-scan uploads are unauthenticated (auth is enforced
+// in-handler only for non-QR direct uploads), and it has its own IP rate limit.
+export const POST = withRoute({ auth: false }, async ({ req: request }) => {
   const startTime = Date.now();
   let imageSize = 0;
   let source: string | undefined;
@@ -461,7 +464,7 @@ export async function POST(request: NextRequest) {
     });
     
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to process worksheet',
         details: 'An unexpected error occurred while processing your worksheet. Please try again.',
         retryable: true
@@ -469,7 +472,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 
 function extractSkillsAssessed(worksheet: any, analysis: any): any {
