@@ -1,38 +1,30 @@
 import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { logger } from '@/lib/logger';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'internal-create-admin' });
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
-    // Get current user to verify they're a speddy admin
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    // Admin (service-role) client; also used to verify the caller is a speddy admin.
+    const adminClient = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     // Verify the user is a speddy admin
     // Note: is_speddy_admin column added via migration, cast to bypass type check until types regenerated
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await adminClient
       .from('profiles')
       .select('is_speddy_admin')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single() as unknown as { data: { is_speddy_admin: boolean } | null; error: Error | null };
 
     if (profileError || !profile?.is_speddy_admin) {
-      log.warn('Non-speddy-admin tried to create admin account', { userId: user.id });
+      log.warn('Non-speddy-admin tried to create admin account', { userId });
       return NextResponse.json(
         { error: 'Forbidden: Speddy admin access required' },
         { status: 403 }
@@ -85,11 +77,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email already exists
-    const adminClient = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
     const { data: existingProfile } = await adminClient
       .from('profiles')
       .select('id')
@@ -128,7 +115,7 @@ export async function POST(request: NextRequest) {
       adminType,
       districtId,
       schoolId,
-      createdBy: user.id
+      createdBy: userId
     });
 
     // Create auth user using admin API (this skips email confirmation)
@@ -199,7 +186,7 @@ export async function POST(request: NextRequest) {
           state_id: stateId,
           district_id: districtId,
           school_id: adminType === 'site_admin' ? schoolId : null,
-          granted_by: user.id,
+          granted_by: userId,
         });
 
       if (permissionsError) {
@@ -210,7 +197,7 @@ export async function POST(request: NextRequest) {
         newUserId,
         email: normalizedEmail,
         adminType,
-        createdBy: user.id
+        createdBy: userId
       });
 
       return NextResponse.json({
@@ -246,4 +233,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
