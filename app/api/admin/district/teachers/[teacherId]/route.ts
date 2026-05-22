@@ -1,14 +1,11 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'district-admin-teacher' });
-
-interface RouteParams {
-  params: { teacherId: string };
-}
 
 /**
  * Helper to verify district admin has access to the teacher
@@ -56,23 +53,13 @@ async function verifyDistrictAdminAccess(
  * GET /api/admin/district/teachers/[teacherId]
  * Get teacher details including deletability check
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export const GET = withRoute<{ teacherId: string }>({}, async ({ userId, params }) => {
   try {
     const { teacherId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, teacherId);
+    const accessCheck = await verifyDistrictAdminAccess(supabase, userId, teacherId);
     if (!accessCheck.allowed) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
@@ -126,32 +113,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error fetching teacher', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 /**
  * PATCH /api/admin/district/teachers/[teacherId]
  * Update teacher information
  */
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export const PATCH = withRoute<{ teacherId: string }>({}, async ({ req: request, userId, params }) => {
   try {
     const { teacherId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, teacherId);
+    const accessCheck = await verifyDistrictAdminAccess(supabase, userId, teacherId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for teacher update', {
-        userId: user.id,
+        userId,
         teacherId,
         reason: accessCheck.error,
       });
@@ -203,7 +180,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     log.info('District admin updating teacher', {
       teacherId,
       updates: Object.keys(updates),
-      updatedBy: user.id,
+      updatedBy: userId,
     });
 
     const { data: updatedTeacher, error: updateError } = await adminClient
@@ -232,7 +209,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     log.info('Teacher updated successfully', {
       teacherId,
-      updatedBy: user.id,
+      updatedBy: userId,
     });
 
     return NextResponse.json({
@@ -243,32 +220,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error in teacher update', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 /**
  * DELETE /api/admin/district/teachers/[teacherId]
  * Delete a teacher (only if no dependencies)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withRoute<{ teacherId: string }>({}, async ({ userId, params }) => {
   try {
     const { teacherId } = params;
     const supabase = await createClient();
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Verify access
-    const accessCheck = await verifyDistrictAdminAccess(supabase, user.id, teacherId);
+    const accessCheck = await verifyDistrictAdminAccess(supabase, userId, teacherId);
     if (!accessCheck.allowed) {
       log.warn('District admin access denied for teacher delete', {
-        userId: user.id,
+        userId,
         teacherId,
         reason: accessCheck.error,
       });
@@ -316,7 +283,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     log.info('District admin deleting teacher', {
       teacherId,
-      deletedBy: user.id,
+      deletedBy: userId,
     });
 
     // Delete the teacher record
@@ -335,7 +302,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     log.info('Teacher deleted successfully', {
       teacherId,
-      deletedBy: user.id,
+      deletedBy: userId,
     });
 
     return NextResponse.json({
@@ -346,4 +313,4 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     log.error('Unexpected error in teacher delete', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
