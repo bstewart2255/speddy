@@ -228,7 +228,7 @@ export const DELETE = withRoute<{ schoolId: string }>({}, async ({ userId, param
 });
 
 /**
- * GET /api/admin/district/schools/[schoolId]/deletable
+ * GET /api/admin/district/schools/[schoolId]
  * Check if a school can be deleted (used by frontend before showing delete modal)
  */
 export const GET = withRoute<{ schoolId: string }>({}, async ({ userId, params }) => {
