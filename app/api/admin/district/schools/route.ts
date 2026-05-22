@@ -1,8 +1,9 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'district-admin-schools' });
 
@@ -10,30 +11,20 @@ const log = logger.child({ module: 'district-admin-schools' });
  * POST /api/admin/district/schools
  * Create a new school in the district admin's district
  */
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // Verify user is a district admin and get their district
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
       .select('district_id, state_id')
-      .eq('admin_id', user.id)
+      .eq('admin_id', userId)
       .eq('role', 'district_admin')
       .single();
 
     if (permError || !adminPermission?.district_id) {
-      log.warn('Non-district-admin tried to create school', { userId: user.id });
+      log.warn('Non-district-admin tried to create school', { userId });
       return NextResponse.json(
         { error: 'Forbidden: District admin access required' },
         { status: 403 }
@@ -70,7 +61,7 @@ export async function POST(request: NextRequest) {
       schoolId,
       name,
       districtId,
-      createdBy: user.id,
+      createdBy: userId,
     });
 
     // Insert the school
@@ -103,7 +94,7 @@ export async function POST(request: NextRequest) {
       schoolId,
       name,
       districtId,
-      createdBy: user.id,
+      createdBy: userId,
     });
 
     return NextResponse.json({
@@ -114,4 +105,4 @@ export async function POST(request: NextRequest) {
     log.error('Unexpected error in district admin create-school', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
