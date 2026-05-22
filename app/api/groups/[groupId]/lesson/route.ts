@@ -149,12 +149,18 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
       }
 
       // Check if a lesson already exists for this group AND date
-      const { data: existingLesson } = await supabase
+      const { data: existingLesson, error: existingLessonError } = await supabase
         .from('lessons')
         .select('id, lesson_date')
         .eq('group_id', groupId)
         .eq('lesson_date', lessonDate)
         .maybeSingle();
+
+      if (existingLessonError) {
+        log.error('Error checking for existing group lesson', existingLessonError, { userId, groupId, lessonDate });
+        perf.end({ success: false });
+        return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
+      }
 
       let data;
       let error;
