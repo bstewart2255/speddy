@@ -1,8 +1,9 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Database } from '@/src/types/database';
 import { logger } from '@/lib/logger';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
+import { withRoute } from '@/lib/api/with-route';
 
 const log = logger.child({ module: 'district-admin-providers' });
 
@@ -21,28 +22,18 @@ interface CreateProviderRequest {
  * POST /api/admin/district/providers
  * Create a new provider account for schools in the district admin's district
  */
-export async function POST(request: NextRequest) {
+export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // Verify user is a district admin or site admin
     const { data: adminPermissions, error: permError } = await supabase
       .from('admin_permissions')
       .select('role, district_id, school_id, state_id')
-      .eq('admin_id', user.id);
+      .eq('admin_id', userId);
 
     if (permError || !adminPermissions || adminPermissions.length === 0) {
-      log.warn('Non-admin tried to create provider', { userId: user.id });
+      log.warn('Non-admin tried to create provider', { userId });
       return NextResponse.json(
         { error: 'Forbidden: Admin access required' },
         { status: 403 }
@@ -53,7 +44,7 @@ export async function POST(request: NextRequest) {
     const sitePerm = adminPermissions.find(p => p.role === 'site_admin' && p.school_id);
 
     if (!districtPerm && !sitePerm) {
-      log.warn('Admin without district or site role tried to create provider', { userId: user.id });
+      log.warn('Admin without district or site role tried to create provider', { userId });
       return NextResponse.json(
         { error: 'Forbidden: District or site admin access required' },
         { status: 403 }
@@ -131,7 +122,7 @@ export async function POST(request: NextRequest) {
       const invalidSchools = schools.filter(s => s.district_id !== districtId);
       if (invalidSchools.length > 0) {
         log.warn('District admin tried to assign provider to school outside district', {
-          userId: user.id,
+          userId,
           invalidSchools: invalidSchools.map(s => s.id),
         });
         return NextResponse.json(
@@ -144,7 +135,7 @@ export async function POST(request: NextRequest) {
       const invalidSchools = schools.filter(s => s.id !== sitePerm.school_id);
       if (invalidSchools.length > 0) {
         log.warn('Site admin tried to assign provider to another school', {
-          userId: user.id,
+          userId,
           invalidSchools: invalidSchools.map(s => s.id),
         });
         return NextResponse.json(
@@ -185,7 +176,7 @@ export async function POST(request: NextRequest) {
       role,
       schoolIds: school_ids,
       primarySchoolId: primary_school_id,
-      createdBy: user.id,
+      createdBy: userId,
     });
 
     // Create auth user
@@ -269,7 +260,7 @@ export async function POST(request: NextRequest) {
         email: trimmedEmail,
         role,
         schoolCount: school_ids.length,
-        createdBy: user.id,
+        createdBy: userId,
       });
 
       return NextResponse.json({
@@ -302,4 +293,4 @@ export async function POST(request: NextRequest) {
     log.error('Unexpected error in create provider', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
