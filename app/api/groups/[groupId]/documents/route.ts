@@ -1,34 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
+import { withRoute } from '@/lib/api/with-route';
+
+const sessionDateQuerySchema = z.object({
+  session_date: z.string().optional(),
+});
+
+const documentIdQuerySchema = z.object({
+  documentId: z.string().min(1),
+});
+
+const updateDocSchema = z
+  .object({
+    documentId: z.string().min(1),
+    title: z.any().optional(),
+    content: z.any().optional(),
+    url: z.any().optional(),
+    file_path: z.any().optional(),
+  })
+  .passthrough();
 
 // GET - Fetch all documents for a group
-export async function GET(
-  request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
-) {
+export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof sessionDateQuerySchema>>({ query: sessionDateQuerySchema }, async ({ userId, query, params }) => {
   const perf = measurePerformanceWithAlerts('get_group_documents', 'api');
-  const params = await props.params;
   const { groupId } = params;
-  let userId: string | undefined;
-
-  // Get session_date from query params (optional - if provided, filter documents for specific date)
-  const searchParams = request.nextUrl.searchParams;
-  const sessionDate = searchParams.get('session_date');
+  const sessionDate = query.session_date;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     log.info('Fetching group documents', {
       userId,
@@ -107,28 +111,15 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
 
 // POST - Create a new document for a group
-export async function POST(
-  request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
-) {
+export const POST = withRoute<{ groupId: string }>({}, async ({ req: request, userId, params }) => {
   const perf = measurePerformanceWithAlerts('create_group_document', 'api');
-  const params = await props.params;
   const { groupId } = params;
-  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
 
     // Verify user has access to this group BEFORE processing any file uploads
     const { data: groupSessions, error: accessError } = await supabase
@@ -356,39 +347,17 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});
 
 // PUT - Update an existing document
-export async function PUT(
-  request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
-) {
+export const PUT = withRoute<{ groupId: string }, z.infer<typeof updateDocSchema>>({ body: updateDocSchema }, async ({ userId, body, params }) => {
   const perf = measurePerformanceWithAlerts('update_group_document', 'api');
-  const params = await props.params;
   const { groupId } = params;
-  let userId: string | undefined;
 
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    const body = await request.json();
     const { documentId, title, content, url, file_path } = body;
-
-    if (!documentId) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'documentId is required' },
-        { status: 400 }
-      );
-    }
 
     log.info('Updating group document', {
       userId,
@@ -472,39 +441,16 @@ export async function PUT(
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE - Delete a document
-export async function DELETE(
-  request: NextRequest,
-  props: { params: Promise<{ groupId: string }> }
-) {
+export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof documentIdQuerySchema>>({ query: documentIdQuerySchema }, async ({ userId, query, params }) => {
   const perf = measurePerformanceWithAlerts('delete_group_document', 'api');
-  const params = await props.params;
   const { groupId } = params;
-  let userId: string | undefined;
+  const documentId = query.documentId;
 
   try {
     const supabase = await createClient();
-
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      perf.end({ success: false });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    userId = user.id;
-
-    const searchParams = request.nextUrl.searchParams;
-    const documentId = searchParams.get('documentId');
-
-    if (!documentId) {
-      perf.end({ success: false });
-      return NextResponse.json(
-        { error: 'documentId query parameter is required' },
-        { status: 400 }
-      );
-    }
 
     log.info('Deleting group document', {
       userId,
@@ -558,4 +504,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+});
