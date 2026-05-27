@@ -645,14 +645,8 @@ export function CalendarWeekView({
           .lte('lesson_date', endDate);
 
         // Add school filter if available
-        // For Mt Diablo Elementary, the school_id should be '062271002458'
         if (currentSchool?.school_id) {
-          console.log('[DEBUG] Filtering by school_id:', currentSchool.school_id);
           query = query.eq('school_id', currentSchool.school_id);
-        } else if (currentSchool?.school_site === 'Mt Diablo Elementary') {
-          // Fallback for Mt Diablo Elementary if school_id is not set yet
-          console.log('[DEBUG] Using fallback for Mt Diablo Elementary');
-          query = query.eq('school_id', '062271002458');
         } else {
           // No school_id available - filter to NULL to avoid cross-school data leakage
           console.warn('[DEBUG] No school_id available; filtering to NULL school_id to avoid cross-school leakage');
@@ -1742,9 +1736,6 @@ export function CalendarWeekView({
 
           if (currentSchool?.school_id) {
             query = query.eq('school_id', currentSchool.school_id);
-          } else if (currentSchool?.school_site === 'Mt Diablo Elementary') {
-            // Fallback for Mt Diablo Elementary if school_id is not set yet
-            query = query.eq('school_id', '062271002458');
           } else {
             query = query.is('school_id', null);
           }

@@ -124,15 +124,12 @@ export function StudentDetailsModal({
   const handleSave = async () => {
     setLoading(true);
     try {
-      console.log('Saving student details:', details);
-
       // Save student details
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
 
       // Update student info if changed
       if (onUpdateStudent) {
-        console.log('Updating student info:', studentInfo);
         // Convert teacherName to teacher_name for database compatibility
         const updates = {
           initials: studentInfo.initials,

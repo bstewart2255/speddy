@@ -75,7 +75,6 @@ GH,4,Garcia,3,30`;
         skipEmptyLines: true,
         transformHeader: (header) => header.trim().toLowerCase(),
         complete: async (results) => {
-          console.log('Parsed data:', results.data);
           try {
             if (!validateColumns(results.data)) {
               throw new Error('CSV missing required columns. Required: Initials, Grade, Teacher. Optional: Sessions Per Week, Minutes Per Session');
@@ -103,8 +102,6 @@ GH,4,Garcia,3,30`;
 
                 return student;
               });
-
-            console.log('Students to insert:', students);
 
             if (students.length > 0) {
               const { data: insertedStudents, error: insertError } = await supabase
