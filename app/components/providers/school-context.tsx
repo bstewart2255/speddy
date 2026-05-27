@@ -224,10 +224,12 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .eq('provider_id', user.id)
           .order('is_primary', { ascending: false });
 
-        // If no schools in provider_schools table, create mock data for testing
+        // A provider is always created with a school, so an empty provider_schools
+        // set indicates a data-integrity gap. Fall back to the provider's primary
+        // school from their profile (real data) rather than injecting mock schools.
         let schoolsToEnrich = schools;
         if (!schools || schools.length === 0) {
-          console.log('[SchoolContext] No schools in provider_schools, using mock data for testing');
+          console.warn('[SchoolContext] No rows in provider_schools; falling back to profile primary school');
           schoolsToEnrich = [
             {
               school_site: profile.school_site,
@@ -237,24 +239,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               district_id: profile.district_id,
               state_id: profile.state_id,
               display_name: `${profile.school_site} (${profile.school_district})`
-            },
-            {
-              school_site: 'Lincoln Elementary',
-              school_district: profile.school_district,
-              is_primary: false,
-              school_id: 'MOCK_SCH_002',
-              district_id: profile.district_id,
-              state_id: profile.state_id,
-              display_name: `Lincoln Elementary (${profile.school_district})`
-            },
-            {
-              school_site: 'Washington Middle School',
-              school_district: profile.school_district,
-              is_primary: false,
-              school_id: 'MOCK_SCH_003',
-              district_id: profile.district_id,
-              state_id: profile.state_id,
-              display_name: `Washington Middle School (${profile.school_district})`
             }
           ];
         }
