@@ -1,11 +1,21 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import { Printer, Edit, Trash2, X } from 'lucide-react';
 import type { Database } from '@/src/types/database';
 import type { LessonContent } from '@/lib/types/lesson';
 
 type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 interface ManualLessonViewModalProps {
   isOpen: boolean;
@@ -101,14 +111,17 @@ export function ManualLessonViewModal({
       </style>
     `;
 
+    const safeTitle = escapeHtml(lesson.title ?? '');
+    const safeBody = DOMPurify.sanitize(printContent.innerHTML);
+
     printWindow.document.write(`
       <html>
         <head>
-          <title>${lesson.title} - Lesson Plan</title>
+          <title>${safeTitle} - Lesson Plan</title>
           ${styles}
         </head>
         <body>
-          ${printContent.innerHTML}
+          ${safeBody}
         </body>
       </html>
     `);
