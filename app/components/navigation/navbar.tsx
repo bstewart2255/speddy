@@ -126,7 +126,7 @@ export default function Navbar() {
       ];
 
     } else if (role === 'resource') {
-      // Resource Specialists see everything including team management and CARE
+      // Resource Specialists see everything including CARE
       return [
         { name: 'Dashboard', href: '/dashboard' },
         { name: 'Students', href: '/dashboard/students' },
