@@ -34,6 +34,16 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     );
   }
 
+  // SEA (Special Education Assistant) accounts are provisioned only by
+  // district/site admins, never through public self-signup. Enforce this on
+  // the server so a direct POST can't bypass the (client-side) role list.
+  if (String(metadata.role).trim().toLowerCase() === 'sea') {
+    return NextResponse.json(
+      { error: 'This role cannot be self-registered. Please ask your district or site administrator to create your account.' },
+      { status: 403 }
+    );
+  }
+
     // Validate email domain (case-insensitive)
     const emailDomain = email.split('@')[1]?.toLowerCase();
     if (!emailDomain ||
