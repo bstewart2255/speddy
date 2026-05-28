@@ -39,7 +39,6 @@ const PROVIDER_ROLES = [
   { value: "occupational_therapist", label: "Occupational Therapist" },
   { value: "counselor", label: "Counselor" },
   { value: "program_specialist", label: "Program Specialist" },
-  { value: "sea", label: "Special Education Assistant" },
   { value: "other", label: "Other Special Education Provider" },
 ];
 
@@ -118,7 +117,6 @@ export function SignupForm({ onComplete }: SignupFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const { signUp } = useAuth();
-  const [isSEARole, setIsSEARole] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
   
@@ -276,7 +274,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       occupational_therapist: "ot",
       counselor: "counseling",
       program_specialist: "specialist",
-      sea: "sea",
       other: "resource", // Default to resource for "other"
     };
 
@@ -347,11 +344,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       ...prev,
       [name]: value,
     }));
-
-    // Track if SEA role is selected
-    if (name === 'role') {
-      setIsSEARole(value === 'sea');
-    }
   };
 
   if (success) {
@@ -363,11 +355,6 @@ const handleSubmit = async (e: React.FormEvent) => {
             Check your email to verify your account before signing in.
           </p>
         </div>
-        {isSEARole && (
-          <p className="text-sm text-gray-600">
-            As a Special Education Assistant, you have free access to Speddy!
-          </p>
-        )}
       </div>
     );
   }
@@ -442,11 +429,6 @@ const handleSubmit = async (e: React.FormEvent) => {
             </option>
           ))}
         </select>
-        {formData.role === 'sea' && (
-          <p className="mt-1 text-xs text-green-600">
-            Special Education Assistants get free access to Speddy!
-          </p>
-        )}
       </div>
 
       <div>
@@ -848,7 +830,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           disabled={loading}
           className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Creating account..." : isSEARole ? "Create Free Account" : "Create account"}
+          {loading ? "Creating account..." : "Create account"}
         </button>
       </div>
 

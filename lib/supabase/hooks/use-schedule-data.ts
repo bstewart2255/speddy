@@ -254,7 +254,7 @@ export function useScheduleData() {
             p_school_id: currentSchool.school_id || null,
             p_school_site: currentSchool.school_id ? null : currentSchool.school_site,
             p_school_district: currentSchool.school_id ? null : currentSchool.school_district
-          }) as { data: Array<{ id: string; full_name: string; supervising_provider_id: string | null }> | null; error: { message: string; code?: string; details?: string; hint?: string } | null };
+          }) as { data: Array<{ id: string; full_name: string }> | null; error: { message: string; code?: string; details?: string; hint?: string } | null };
 
           if (error) {
             console.error('[useScheduleData] Error fetching SEA profiles:', error);

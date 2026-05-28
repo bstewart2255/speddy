@@ -1774,10 +1774,8 @@ export type Database = {
           school_site_original: string | null
           selected_curriculums: string[] | null
           setup_banner_dismissed: boolean
-          shared_at_school: boolean | null
           state: string | null
           state_id: string | null
-          supervising_provider_id: string | null
           updated_at: string | null
           works_at_multiple_schools: boolean | null
         }
@@ -1800,10 +1798,8 @@ export type Database = {
           school_site_original?: string | null
           selected_curriculums?: string[] | null
           setup_banner_dismissed?: boolean
-          shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
-          supervising_provider_id?: string | null
           updated_at?: string | null
           works_at_multiple_schools?: boolean | null
         }
@@ -1826,10 +1822,8 @@ export type Database = {
           school_site_original?: string | null
           selected_curriculums?: string[] | null
           setup_banner_dismissed?: boolean
-          shared_at_school?: boolean | null
           state?: string | null
           state_id?: string | null
-          supervising_provider_id?: string | null
           updated_at?: string | null
           works_at_multiple_schools?: boolean | null
         }
@@ -1853,13 +1847,6 @@ export type Database = {
             columns: ["state_id"]
             isOneToOne: false
             referencedRelation: "states"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profiles_supervising_provider_id_fkey"
-            columns: ["supervising_provider_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -3916,14 +3903,6 @@ export type Database = {
         }[]
       }
       generate_referral_code: { Args: never; Returns: string }
-      get_available_seas: {
-        Args: { current_user_id: string; target_school_id?: string }
-        Returns: {
-          full_name: string
-          id: string
-          supervising_provider_id: string
-        }[]
-      }
       get_available_specialists:
         | {
             Args: { current_user_id: string }
@@ -4001,7 +3980,6 @@ export type Database = {
         Returns: {
           full_name: string
           id: string
-          supervising_provider_id: string
         }[]
       }
       get_school_site_admins: {

@@ -34,6 +34,16 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     );
   }
 
+  // SEA (Special Education Assistant) accounts are provisioned only by
+  // district/site admins, never through public self-signup. Enforce this on
+  // the server so a direct POST can't bypass the (client-side) role list.
+  if (String(metadata.role).trim().toLowerCase() === 'sea') {
+    return NextResponse.json(
+      { error: 'This role cannot be self-registered. Please ask your district or site administrator to create your account.' },
+      { status: 403 }
+    );
+  }
+
     // Validate email domain (case-insensitive)
     const emailDomain = email.split('@')[1]?.toLowerCase();
     if (!emailDomain ||
@@ -134,30 +144,7 @@ export const POST = asyncHandler(async (request: NextRequest) => {
       );
     }
 
-    // For SEA roles, verify that school IDs were populated (use admin to bypass RLS)
-    if (metadata.role === 'sea') {
-      const { data: profile, error: profileCheckError } = await adminClient
-        .from('profiles')
-        .select('school_id, district_id, state_id')
-        .eq('id', signUpData.user.id)
-        .single();
-
-      if (!profileCheckError && profile) {
-        if (!profile.school_id || !profile.district_id || !profile.state_id) {
-          requestLogger.warn('SEA profile created without complete school IDs', {
-            userId: signUpData.user.id,
-            hasSchoolId: !!profile.school_id,
-            hasDistrictId: !!profile.district_id,
-            hasStateId: !!profile.state_id,
-            state: metadata.state,
-            district: metadata.school_district,
-            school: metadata.school_site
-          });
-        }
-      }
-    }
-
-    requestLogger.info('Signup completed successfully', { 
+    requestLogger.info('Signup completed successfully', {
       userId: signUpData.user.id,
       email: signUpData.user.email,
       role: metadata.role
