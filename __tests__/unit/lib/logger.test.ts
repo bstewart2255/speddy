@@ -36,7 +36,12 @@ describe('Logger', () => {
     })
 
     afterEach(() => {
-      process.env.NODE_ENV = originalEnv
+      // Restore precisely; assigning a missing original would set the string "undefined".
+      if (originalEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = originalEnv
+      }
     })
 
     it('logs error with message and error object', () => {
