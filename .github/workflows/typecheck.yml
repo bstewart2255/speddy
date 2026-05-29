@@ -1,6 +1,5 @@
-permissions:
-  contents: read
 name: TypeScript Check
+
 permissions:
   contents: read
 

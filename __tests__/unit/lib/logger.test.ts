@@ -27,6 +27,23 @@ describe('Logger', () => {
   })
 
   describe('log.error', () => {
+    // log.error only emits the structured object in development; the plain
+    // string is always logged first (for the Next.js console interceptor).
+    const originalEnv = process.env.NODE_ENV
+
+    beforeEach(() => {
+      process.env.NODE_ENV = 'development'
+    })
+
+    afterEach(() => {
+      // Restore precisely; assigning a missing original would set the string "undefined".
+      if (originalEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = originalEnv
+      }
+    })
+
     it('logs error with message and error object', () => {
       const error = new Error('Test error')
       const context = { userId: 'user123', school: 'Test School' }

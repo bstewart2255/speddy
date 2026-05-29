@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "jest __tests__ lib",
+    "test:watch": "jest __tests__ lib --watch",
     "test:basic": "node tests/simple-node-test.js",
     "deploy:replit": "./deploy.sh",
     "import:ca-manual": "tsx scripts/import-ca-schools-manual.ts",

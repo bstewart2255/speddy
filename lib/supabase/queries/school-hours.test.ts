@@ -1,83 +1,97 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as schoolHoursModule from './school-hours';
 
-// Mock the Supabase client
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: vi.fn(() => ({
-    auth: {
-      getUser: vi.fn(() => Promise.resolve({
-        data: { user: { id: 'test-user-id' } }
-      }))
+// Mock the Supabase client. The query builder is chainable (`delete().eq().eq()`)
+// and awaitable (resolves `{ error: null }`). The `from`/`delete`/`eq` spies are
+// shared so we can assert which grade levels were deleted — `cleanup*` calls
+// `deleteSchoolHours` directly, so spying that export wouldn't intercept the
+// internal call under babel-jest; asserting on the DB layer is both reliable and
+// closer to the real behavior.
+jest.mock('@/lib/supabase/client', () => {
+  const mockEq = jest.fn();
+  const mockDelete = jest.fn();
+  const builder: any = {
+    delete: (...args: any[]) => {
+      mockDelete(...args);
+      return builder;
     },
-    from: vi.fn(() => ({
-      delete: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          eq: vi.fn(() => Promise.resolve({ error: null }))
-        }))
-      }))
-    }))
-  }))
-}));
+    eq: (...args: any[]) => {
+      mockEq(...args);
+      return builder;
+    },
+    then: (resolve: (value: { error: null }) => void) => resolve({ error: null }),
+  };
+  const mockFrom = jest.fn(() => builder);
+  const createClient = jest.fn(() => ({
+    auth: {
+      getUser: jest.fn(() =>
+        Promise.resolve({ data: { user: { id: 'test-user-id' } } })
+      ),
+    },
+    from: mockFrom,
+  }));
+  return { createClient, __queryMock: { mockEq, mockDelete, mockFrom } };
+});
 
 // Mock performance monitoring
-vi.mock('@/lib/monitoring/performance-alerts', () => ({
-  measurePerformanceWithAlerts: vi.fn(() => ({
-    end: vi.fn()
-  }))
+jest.mock('@/lib/monitoring/performance-alerts', () => ({
+  measurePerformanceWithAlerts: jest.fn(() => ({ end: jest.fn() })),
 }));
+
+const { mockEq, mockDelete, mockFrom } = (
+  jest.requireMock('@/lib/supabase/client') as any
+).__queryMock;
 
 describe('School Hours Cleanup Functions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   describe('cleanupKindergartenSchedules', () => {
     it('should delete K, K-AM, and K-PM schedules', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
-      
       await schoolHoursModule.cleanupKindergartenSchedules({ school_site: 'test-school' });
-      
-      // Should be called 3 times for K, K-AM, K-PM
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K', { school_site: 'test-school' });
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K-AM', { school_site: 'test-school' });
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K-PM', { school_site: 'test-school' });
+
+      // One delete per grade level
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+      expect(mockFrom).toHaveBeenCalledWith('school_hours');
+      expect(mockDelete).toHaveBeenCalledTimes(3);
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K-AM');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K-PM');
+      expect(mockEq).toHaveBeenCalledWith('school_site', 'test-school');
     });
 
     it('should handle cleanup without school identifier', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
-      
       await schoolHoursModule.cleanupKindergartenSchedules();
-      
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K', undefined);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K-AM', undefined);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('K-PM', undefined);
+
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K-AM');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'K-PM');
+      expect(mockEq).not.toHaveBeenCalledWith('school_site', expect.anything());
     });
   });
 
   describe('cleanupTKSchedules', () => {
     it('should delete TK, TK-AM, and TK-PM schedules', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
-      
       await schoolHoursModule.cleanupTKSchedules({ school_site: 'test-school' });
-      
-      // Should be called 3 times for TK, TK-AM, TK-PM
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK', { school_site: 'test-school' });
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK-AM', { school_site: 'test-school' });
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK-PM', { school_site: 'test-school' });
+
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+      expect(mockFrom).toHaveBeenCalledWith('school_hours');
+      expect(mockDelete).toHaveBeenCalledTimes(3);
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK-AM');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK-PM');
+      expect(mockEq).toHaveBeenCalledWith('school_site', 'test-school');
     });
 
     it('should handle cleanup without school identifier', async () => {
-      const deleteSchoolHoursSpy = vi.spyOn(schoolHoursModule, 'deleteSchoolHours').mockResolvedValue(undefined);
-      
       await schoolHoursModule.cleanupTKSchedules();
-      
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledTimes(3);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK', undefined);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK-AM', undefined);
-      expect(deleteSchoolHoursSpy).toHaveBeenCalledWith('TK-PM', undefined);
+
+      expect(mockFrom).toHaveBeenCalledTimes(3);
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK-AM');
+      expect(mockEq).toHaveBeenCalledWith('grade_level', 'TK-PM');
+      expect(mockEq).not.toHaveBeenCalledWith('school_site', expect.anything());
     });
   });
 
@@ -88,12 +102,12 @@ describe('School Hours Cleanup Functions', () => {
       // 1. Default showK to false
       // 2. Only save K schedules when showK is true
       // 3. Call cleanupKindergartenSchedules when showK is false
-      
+
       const formState = {
         showK: false, // Should default to false
-        showTK: false
+        showTK: false,
       };
-      
+
       // When showK is false, no K schedules should be saved
       expect(formState.showK).toBe(false);
     });
@@ -102,11 +116,11 @@ describe('School Hours Cleanup Functions', () => {
       // When user unchecks the K checkbox:
       // 1. cleanupKindergartenSchedules should be called
       // 2. All K, K-AM, K-PM schedules should be deleted
-      
+
       const shouldCleanup = (previousShowK: boolean, currentShowK: boolean) => {
         return previousShowK === true && currentShowK === false;
       };
-      
+
       expect(shouldCleanup(true, false)).toBe(true);
       expect(shouldCleanup(false, false)).toBe(false);
       expect(shouldCleanup(false, true)).toBe(false);

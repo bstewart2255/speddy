@@ -5,10 +5,12 @@
 import { renderHook, act } from '@testing-library/react';
 import { useActivityTracker } from '../../../../lib/hooks/use-activity-tracker';
 
-// Mock BroadcastChannel
+// Mock BroadcastChannel. postMessage is a shared mock so assertions can target
+// it directly — instance fields are not visible on the class prototype.
+const mockPostMessage = jest.fn();
 class MockBroadcastChannel {
   constructor(public name: string) {}
-  postMessage = jest.fn();
+  postMessage = mockPostMessage;
   addEventListener = jest.fn();
   removeEventListener = jest.fn();
   close = jest.fn();
@@ -149,7 +151,7 @@ describe('useActivityTracker', () => {
     });
     
     // Check that BroadcastChannel was used
-    expect(MockBroadcastChannel.prototype.postMessage).toHaveBeenCalledWith({
+    expect(mockPostMessage).toHaveBeenCalledWith({
       type: 'activity',
       timestamp: expect.any(Number),
       activityType: 'test-activity'
