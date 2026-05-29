@@ -1,0 +1,15 @@
+-- SPE-12: Drop the broad public SELECT (listing) policy on the
+-- worksheet-submissions storage bucket (advisor: public_bucket_allows_listing).
+--
+-- The "Public read access" policy granted SELECT on every object in the
+-- worksheet-submissions bucket to the public role, which lets any client
+-- enumerate/list all files. The bucket holds student work (PII), so listing is
+-- a privacy concern.
+--
+-- This is safe to remove:
+--   * The bucket is public, so objects stay reachable via their public CDN URL
+--     (/storage/v1/object/public/...), which does not consult this policy.
+--   * App code only uploads (INSERT policy) and reads via getPublicUrl; there
+--     are no .list()/.download()/createSignedUrl calls against this bucket.
+--   * The owner-scoped INSERT/UPDATE/DELETE policies on the bucket are untouched.
+DROP POLICY IF EXISTS "Public read access" ON storage.objects;
