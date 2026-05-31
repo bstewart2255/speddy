@@ -1,0 +1,14 @@
+-- SPE-9: Disable pg_graphql.
+--
+-- The app uses PostgREST (REST) + RPC exclusively — there is no `graphql`
+-- dependency in package.json and no GraphQL call/import anywhere in the codebase.
+-- Meanwhile pg_graphql exposes every anon/authenticated-SELECTable table's name,
+-- columns, relationships and generated mutations through /graphql/v1 introspection
+-- (advisors pg_graphql_anon_table_exposed / pg_graphql_authenticated_table_exposed,
+-- 70 each). RLS protects rows, not schema visibility, so this is an unnecessary
+-- discovery surface.
+--
+-- Dropping the extension removes the GraphQL surface entirely and clears both
+-- lints (per Supabase's own remediation for lint 0026/0027). REST, RPC and RLS are
+-- unaffected. Reversible: CREATE EXTENSION pg_graphql;
+DROP EXTENSION IF EXISTS pg_graphql;
