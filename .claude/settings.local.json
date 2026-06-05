@@ -95,7 +95,9 @@
       "mcp__playwright__browser_navigate",
       "mcp__context7__query-docs",
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__list_issue_statuses",
-      "mcp__52287d5e-942b-4bb1-a760-a897e4851102__get_issue"
+      "mcp__52287d5e-942b-4bb1-a760-a897e4851102__get_issue",
+      "mcp__Linear__save_issue",
+      "mcp__Linear__save_project"
     ],
     "deny": []
   },
