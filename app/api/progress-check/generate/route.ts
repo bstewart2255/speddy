@@ -23,7 +23,7 @@ interface Worksheet {
 export const POST = withRoute(
   {
     body: generateProgressCheckSchema,
-    rateLimit: { requests: 30, windowSeconds: 3600, name: 'progress-check/generate' },
+    rateLimit: { requests: 30, windowSeconds: 3600, name: 'progress-check/generate', failClosed: true },
   },
   async ({ userId, body }) => {
     try {

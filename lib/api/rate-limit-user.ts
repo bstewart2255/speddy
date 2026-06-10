@@ -6,6 +6,13 @@ export interface RateLimitRule {
   requests: number;
   /** Window length in seconds. */
   windowSeconds: number;
+  /**
+   * When the limiter itself errors (DB unavailable, etc.), deny the request
+   * instead of allowing it. Use for expensive endpoints (paid AI/third-party
+   * calls) where fail-open turns a DB hiccup into uncapped spend. Defaults to
+   * false (fail open) to preserve availability on cheap endpoints.
+   */
+  failClosed?: boolean;
 }
 
 export interface RateLimitOutcome {
@@ -33,6 +40,13 @@ export async function checkUserRateLimit(
     resetSeconds: rule.windowSeconds,
   });
 
+  // On a limiter error, fail closed for endpoints that opt in (deny), otherwise
+  // fail open (allow) so a transient DB issue doesn't block cheap traffic.
+  const onError = (): RateLimitOutcome =>
+    rule.failClosed
+      ? { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds }
+      : allow();
+
   try {
     const supabase = createServiceClient();
     const windowStart = new Date(Date.now() - rule.windowSeconds * 1000).toISOString();
@@ -54,8 +68,8 @@ export async function checkUserRateLimit(
       .gte('created_at', windowStart);
 
     if (error) {
-      log.error('Rate limit check failed; allowing request', error, { userId, endpoint });
-      return allow();
+      log.error('Rate limit check failed', error, { userId, endpoint, failClosed: !!rule.failClosed });
+      return onError();
     }
 
     const used = count ?? 0;
@@ -67,12 +81,12 @@ export async function checkUserRateLimit(
       .from('api_rate_limits')
       .insert({ user_id: userId, endpoint });
     if (insertError) {
-      log.error('Rate limit insert failed; allowing request', insertError, { userId, endpoint });
-      return allow();
+      log.error('Rate limit insert failed', insertError, { userId, endpoint, failClosed: !!rule.failClosed });
+      return onError();
     }
     return allow(rule.requests - used - 1);
   } catch (err) {
-    log.error('Rate limit check threw; allowing request', err, { userId, endpoint });
-    return allow();
+    log.error('Rate limit check threw', err, { userId, endpoint, failClosed: !!rule.failClosed });
+    return onError();
   }
 }
