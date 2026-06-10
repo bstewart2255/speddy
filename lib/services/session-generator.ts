@@ -90,7 +90,7 @@ export class SessionGenerator {
     // Only fetch templates for days we actually need (performance optimization)
     let templatesQuery = this.supabase
       .from('schedule_sessions')
-      .select('*')
+      .select('*', { count: 'exact' })
       .is('session_date', null)
       .is('deleted_at', null)
       .in('day_of_week', Array.from(neededDays));
@@ -98,12 +98,19 @@ export class SessionGenerator {
     // Include templates assigned to this user based on their role
     templatesQuery = this.applyRoleFilter(templatesQuery, providerId, normalizedRole);
 
-    const { data: templates, error: templatesError } = await templatesQuery;
+    const { data: templates, error: templatesError, count: templateCount } = await templatesQuery;
 
     if (templatesError) {
       console.error('[SessionGenerator] Failed to fetch templates:', templatesError);
       return instances || [];
     }
+
+    // If the returned template set is shorter than the exact total, the fetch
+    // was truncated (PostgREST's 1000-row cap). We can't reliably tell orphans
+    // from valid instances against a partial set, so suppress nothing in that
+    // case — better to show a stale row than to hide a valid future session.
+    const templatesIncomplete =
+      typeof templateCount === 'number' && (templates?.length ?? 0) < templateCount;
 
     if (!templates || templates.length === 0) {
       // No templates found - return all instances as-is
@@ -124,6 +131,13 @@ export class SessionGenerator {
     const today = formatDateLocal(new Date());
 
     for (const instance of (instances || [])) {
+      // If the template fetch was truncated, we can't trust "no match" to mean
+      // orphaned — keep every instance rather than risk hiding valid sessions.
+      if (templatesIncomplete) {
+        validInstances.push(instance);
+        continue;
+      }
+
       // Skip completed instances and past instances - preserve history
       if (instance.completed_at || (instance.session_date && instance.session_date < today)) {
         validInstances.push(instance);

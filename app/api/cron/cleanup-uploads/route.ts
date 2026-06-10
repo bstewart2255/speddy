@@ -5,9 +5,15 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // Check for authentication token
-    const token = request.nextUrl.searchParams.get('token') ||
-                  request.headers.get('x-cron-secret');
+    // Read the cron secret from a header only — never the query string, which
+    // leaks into access logs, monitoring dashboards, and copied links. This
+    // endpoint gates service-role deletes, so accept the `x-cron-secret` header
+    // or the standard `Authorization: Bearer <secret>` form (e.g. Vercel Cron).
+    const authHeader = request.headers.get('authorization');
+    const bearerToken = authHeader?.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : null;
+    const token = request.headers.get('x-cron-secret') || bearerToken;
 
     const expectedToken = process.env.CRON_SECRET;
 
