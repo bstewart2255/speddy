@@ -20,19 +20,15 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
 
-    // This endpoint generates instances across ALL providers' templates, so it
-    // is restricted to Speddy admins (internal operators), matching the
-    // /internal routes. The previous check tested `role !== 'admin'`, but
-    // 'admin' is not a valid role, so the endpoint was unreachable; gate on
-    // is_speddy_admin instead.
+    // Check if user is an admin (optional security check)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_speddy_admin')
+      .select('role')
       .eq('id', userId)
       .single();
 
-    if (!profile?.is_speddy_admin) {
-      log.warn('[Migration] Non-speddy-admin user attempted to run migration', { userId: userId });
+    if (!profile || profile.role !== 'admin') {
+      log.warn('[Migration] Non-admin user attempted to run migration', { userId: userId });
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -103,20 +99,9 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
  * GET endpoint to check migration status
  * Returns count of templates and instances, plus school year end info
  */
-export const GET = withRoute({}, async ({ userId }) => {
+export const GET = withRoute({}, async () => {
   try {
     const supabase = await createClient();
-
-    // Restrict to Speddy admins — this returns global, cross-provider counts.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_speddy_admin')
-      .eq('id', userId)
-      .single();
-
-    if (!profile?.is_speddy_admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
 
     // Count templates (session_date = NULL)
     const { count: templateCount, error: templateError } = await supabase
