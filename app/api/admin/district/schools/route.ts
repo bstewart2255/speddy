@@ -8,6 +8,20 @@ import { withRoute } from '@/lib/api/with-route';
 const log = logger.child({ module: 'district-admin-schools' });
 
 /**
+ * Build a 500 response. Outside production (preview/local) include the real
+ * error detail to aid debugging; in production stay opaque so raw Supabase/
+ * Postgres error text is never leaked to clients.
+ */
+function errorResponse(
+  error: { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null | undefined,
+  fallback: string
+) {
+  const expose = process.env.VERCEL_ENV !== 'production';
+  const detail = [error?.message, error?.code, error?.details, error?.hint].filter(Boolean).join(' | ');
+  return NextResponse.json({ error: expose && detail ? detail : fallback }, { status: 500 });
+}
+
+/**
  * POST /api/admin/district/schools
  * Create a new school in the district admin's district
  */
@@ -50,6 +64,19 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       return NextResponse.json({ error: 'School name is required' }, { status: 400 });
     }
 
+    // TEMP diagnostic (non-production only): if the service-role key is missing,
+    // report which Supabase-related env vars the runtime actually sees — names
+    // only, never values — to pinpoint a missing/mis-named/mis-scoped key.
+    // Remove once the env config is confirmed.
+    if (process.env.VERCEL_ENV !== 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const present = Object.keys(process.env)
+        .filter((k) => /SUPABASE|SERVICE_ROLE|POSTGRES/i.test(k))
+        .sort();
+      const diag = `Service client unavailable | VERCEL_ENV=${process.env.VERCEL_ENV ?? '(unset)'} | hasUrl=${!!process.env.NEXT_PUBLIC_SUPABASE_URL} | hasServiceKey=false | present=[${present.join(', ') || 'none'}]`;
+      console.error('[district-admin-schools]', diag);
+      return NextResponse.json({ error: diag }, { status: 500 });
+    }
+
     // Use admin client for insert (bypass RLS)
     const adminClient = createServiceClient();
 
@@ -82,10 +109,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     if (insertError) {
       log.error('Failed to create school', insertError);
-      return NextResponse.json(
-        { error: insertError.message || 'Failed to create school' },
-        { status: 500 }
-      );
+      return errorResponse(insertError, 'Failed to create school');
     }
 
     log.info('School created successfully by district admin', {
@@ -110,12 +134,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       hint: err?.hint,
       stack: err?.stack,
     });
-    // Surface the real cause outside production to aid debugging; production stays opaque.
-    const expose = process.env.VERCEL_ENV !== 'production';
-    const detail = [err?.message, err?.code, err?.details, err?.hint].filter(Boolean).join(' | ');
-    return NextResponse.json(
-      { error: expose && detail ? detail : 'Internal server error' },
-      { status: 500 }
-    );
+    return errorResponse(err, 'Internal server error');
   }
 });
