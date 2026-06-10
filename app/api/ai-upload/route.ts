@@ -24,7 +24,11 @@ const SUPPORTED_TYPES = [
   "text/rtf",
 ];
 
-export const POST = withRoute({}, async ({ req: request, userId }) => {
+// Each request runs a paid external conversion (PDF.co) plus an Anthropic
+// completion, so cap how often a single user can invoke it.
+export const POST = withRoute(
+  { rateLimit: { requests: 20, windowSeconds: 3600, name: 'ai-upload' } },
+  async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('ai_upload', 'api');
   
   try {
