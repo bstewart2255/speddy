@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { buildSchoolFilter, getSchoolDisplayName, isUserMigrated, getSchoolKey } from '@/lib/school-helpers';
+import { buildSchoolFilter, getSchoolDisplayName, isUserMigrated, getSchoolKey, getSchoolLevel, type SchoolLevel } from '@/lib/school-helpers';
 import { getCurrentDayOfWeek } from '@/lib/helpers/day-of-week';
 import { getSchoolsForDay } from '@/lib/supabase/queries/user-site-schedules';
 
@@ -53,7 +53,11 @@ export interface SchoolInfo {
   
   // Performance hints
   query_performance: 'fast' | 'normal';
-  
+
+  // School-level inputs (drive the secondary / middle-high experience)
+  school_type?: string | null;
+  grade_span_low?: string | null;
+
   // Additional metadata
   school_details?: {
     name?: string;
@@ -69,6 +73,10 @@ interface SchoolContextType {
   loading: boolean;
   worksAtMultipleSchools: boolean;
   
+  // Secondary (middle / high) experience, derived from the ACTIVE school
+  isSecondary: boolean;
+  schoolLevel: SchoolLevel;
+
   // Enhanced methods
   getSchoolFilter: () => any;
   isCurrentSchoolMigrated: () => boolean;
@@ -112,6 +120,8 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           .from('schools')
           .select(`
             name,
+            school_type,
+            grade_span_low,
             districts!inner(
               name,
               states!inner(
@@ -122,7 +132,13 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           `)
           .eq('id', school.school_id)
           .single();
-        
+
+        // Capture the school-level inputs even if the district relation is absent.
+        if (schoolDetails) {
+          enrichedSchool.school_type = schoolDetails.school_type;
+          enrichedSchool.grade_span_low = schoolDetails.grade_span_low;
+        }
+
         if (schoolDetails && schoolDetails.districts) {
           // Supabase returns foreign key relations as arrays
           const districtsArray = schoolDetails.districts as SchoolDistrictRelation[];
@@ -369,6 +385,14 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     await fetchProviderSchools();
   }, [schoolCache, fetchProviderSchools]);
 
+  // Derive the secondary (middle/high) experience from the ACTIVE school, so
+  // itinerant providers get the right UX per site as they switch schools.
+  const schoolLevel = useMemo<SchoolLevel>(
+    () => getSchoolLevel(currentSchool),
+    [currentSchool]
+  );
+  const isSecondary = schoolLevel === 'secondary';
+
   // Call fetchProviderSchools on mount
   useEffect(() => {
     fetchProviderSchools();
@@ -392,9 +416,11 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
     <SchoolContext.Provider value={{ 
       currentSchool, 
       availableSchools, 
-      setCurrentSchool, 
+      setCurrentSchool,
       loading,
       worksAtMultipleSchools,
+      isSecondary,
+      schoolLevel,
       getSchoolFilter,
       isCurrentSchoolMigrated,
       refreshSchoolData,
