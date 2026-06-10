@@ -12,6 +12,7 @@ import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
 import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
+import { useSchool } from '../providers/school-context';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -62,6 +63,11 @@ export function StudentDetailsModal({
   const [importData, setImportData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'attendance' | 'accommodations'>('current');
   const [matchingRoles, setMatchingRoles] = useState<string[]>([]);
+
+  // On secondary (middle/high) sites the elementary scheduling surfaces are
+  // hidden: the "Current Information" (service-minutes) and Attendance tabs.
+  // This is purely subtractive — the underlying data is untouched.
+  const { isSecondary } = useSchool();
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -120,6 +126,15 @@ export function StudentDetailsModal({
       loadData();
     }
   }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_id, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
+
+  // Secondary mode hides the "current" and "attendance" tabs — if the active
+  // tab is one of those, snap to a visible tab so the modal never lands on a
+  // hidden tab (e.g. on open, where it defaults to "current").
+  useEffect(() => {
+    if (isSecondary && (activeTab === 'current' || activeTab === 'attendance')) {
+      setActiveTab('iep');
+    }
+  }, [isSecondary, activeTab]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -215,16 +230,18 @@ export function StudentDetailsModal({
           {/* Tabs */}
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px px-6">
-              <button
-                onClick={() => setActiveTab('current')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'current'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Current Information
-              </button>
+              {!isSecondary && (
+                <button
+                  onClick={() => setActiveTab('current')}
+                  className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === 'current'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Current Information
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('iep')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
@@ -255,16 +272,18 @@ export function StudentDetailsModal({
               >
                 Progress
               </button>
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'attendance'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Attendance
-              </button>
+              {!isSecondary && (
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === 'attendance'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Attendance
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('accommodations')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
@@ -281,7 +300,7 @@ export function StudentDetailsModal({
           {/* Content */}
           <div className="p-6 overflow-y-auto" style={{ maxHeight: '70vh' }}>
             {/* Current Information Tab */}
-            {activeTab === 'current' && (
+            {!isSecondary && activeTab === 'current' && (
             <div className="space-y-4">
               <h3 className="font-medium text-gray-900">Current Information</h3>
 
@@ -596,7 +615,7 @@ export function StudentDetailsModal({
             )}
 
             {/* Attendance Tab */}
-            {activeTab === 'attendance' && (
+            {!isSecondary && activeTab === 'attendance' && (
               <StudentAttendanceTab studentId={student.id} />
             )}
 
