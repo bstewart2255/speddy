@@ -264,11 +264,21 @@ export function generatePrintableWorksheet(
   student: { initials: string; grade_level: string },
   qrCodeDataUrl: string
 ): string {
+  // Escape all interpolated text fields. title/instructions originate from
+  // AI-generated lesson content and initials/grade from the DB, and the result
+  // is written into a print window via document.write — unescaped values would
+  // allow HTML/script injection. (qrCodeDataUrl is a generated base64 data URI
+  // with no quotes, so it is safe in the src attribute as-is.)
+  const safeTitle = escapeHtml(worksheet.title);
+  const safeInitials = escapeHtml(student.initials);
+  const safeGrade = escapeHtml(student.grade_level);
+  const safeInstructions = escapeHtml(worksheet.instructions);
+
   return `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>${worksheet.title} - ${student.initials}</title>
+      <title>${safeTitle} - ${safeInitials}</title>
       <style>
         @page { margin: 0.75in; }
         body { 
@@ -332,16 +342,16 @@ export function generatePrintableWorksheet(
     <body>
       <div class="header">
         <div class="student-info">
-          <h1>${worksheet.title}</h1>
-          <p><strong>Name:</strong> ${student.initials} &nbsp;&nbsp;&nbsp; 
-             <strong>Grade:</strong> ${student.grade_level} &nbsp;&nbsp;&nbsp;
+          <h1>${safeTitle}</h1>
+          <p><strong>Name:</strong> ${safeInitials} &nbsp;&nbsp;&nbsp;
+             <strong>Grade:</strong> ${safeGrade} &nbsp;&nbsp;&nbsp;
              <strong>Date:</strong> ________________</p>
         </div>
         <img src="${qrCodeDataUrl}" alt="QR Code" class="qr-code" />
       </div>
 
       <div class="instructions">
-        <strong>Instructions:</strong> ${worksheet.instructions}
+        <strong>Instructions:</strong> ${safeInstructions}
       </div>
 
       ${worksheet.questions.map((q, index) => {
