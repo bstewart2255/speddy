@@ -5,11 +5,12 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Get current rate limit stats
+    // Get current rate limit stats. The upload_rate_limits timestamp column is
+    // `uploaded_at` (not `created_at`).
     const { data: rateLimitStats, error: rateLimitError } = await supabase
       .from('upload_rate_limits')
-      .select('created_at')
-      .order('created_at', { ascending: false })
+      .select('uploaded_at')
+      .order('uploaded_at', { ascending: false })
       .limit(1);
     
     // Get analytics stats if enabled
@@ -31,19 +32,19 @@ export async function GET(request: NextRequest) {
     // Calculate age of oldest rate limit record
     const { data: oldestRecord } = await supabase
       .from('upload_rate_limits')
-      .select('created_at')
-      .order('created_at', { ascending: true })
+      .select('uploaded_at')
+      .order('uploaded_at', { ascending: true })
       .limit(1);
-    
-    const oldestAge = oldestRecord?.[0]?.created_at 
-      ? Math.floor((Date.now() - new Date(oldestRecord[0].created_at).getTime()) / (1000 * 60 * 60 * 24))
+
+    const oldestAge = oldestRecord?.[0]?.uploaded_at
+      ? Math.floor((Date.now() - new Date(oldestRecord[0].uploaded_at).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
     
     return NextResponse.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       rateLimits: {
-        lastRecord: rateLimitStats?.[0]?.created_at || null,
+        lastRecord: rateLimitStats?.[0]?.uploaded_at || null,
         oldestRecordAgeDays: oldestAge,
         needsCleanup: oldestAge > 7
       },
