@@ -111,9 +111,15 @@ export class SessionGenerator {
       return instances || [];
     }
 
-    // AUTO-CLEANUP: Detect and remove orphaned instances
-    // An instance is orphaned if its start_time doesn't match any template for that student+day
-    const orphanedInstanceIds: string[] = [];
+    // Detect orphaned instances (whose start_time no longer matches any template
+    // for that student+day) and exclude them from the rendered set.
+    //
+    // NOTE: we intentionally do NOT delete here. This runs on a read path with a
+    // possibly-partial template set (PostgREST's 1000-row cap, a transient error,
+    // or a role-filter mismatch), so deleting "orphans" from the client risked
+    // permanently destroying valid future sessions. Hiding them is reversible;
+    // any real cleanup must run server-side against the complete template set.
+    // See SPE-130 / SPE-133.
     const validInstances: SessionWithCurriculum[] = [];
     const today = formatDateLocal(new Date());
 
@@ -135,9 +141,8 @@ export class SessionGenerator {
       if (hasMatchingTemplate) {
         validInstances.push(instance);
       } else {
-        // This is an orphaned instance - mark for deletion
-        orphanedInstanceIds.push(instance.id);
-        console.log('[SessionGenerator] Detected orphaned instance:', {
+        // Orphaned for display only — hidden this render, never deleted.
+        console.log('[SessionGenerator] Hiding orphaned instance (not deleting):', {
           id: instance.id,
           student_id: instance.student_id,
           session_date: instance.session_date,
@@ -145,22 +150,6 @@ export class SessionGenerator {
           day_of_week: instance.day_of_week
         });
       }
-    }
-
-    // Delete orphaned instances asynchronously
-    if (orphanedInstanceIds.length > 0) {
-      console.log('[SessionGenerator] Cleaning up', orphanedInstanceIds.length, 'orphaned instances');
-      this.supabase
-        .from('schedule_sessions')
-        .delete()
-        .in('id', orphanedInstanceIds)
-        .then(({ error }) => {
-          if (error) {
-            console.error('[SessionGenerator] Error deleting orphaned instances:', error);
-          } else {
-            console.log('[SessionGenerator] Successfully deleted orphaned instances');
-          }
-        });
     }
 
     // For each day in range, check if we need to create instances
