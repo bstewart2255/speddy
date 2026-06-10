@@ -176,10 +176,10 @@ async function processWorksheetSubmission(
     throw uploadError;
   }
 
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from('worksheet-submissions')
-    .getPublicUrl(fileName);
+  // The worksheet-submissions bucket is private (holds student work / PII).
+  // Store the object path, not a permanent public URL — readers generate a
+  // short-lived signed URL on demand.
+  const storagePath = uploadData?.path ?? fileName;
 
   // TODO: Add AI vision analysis here if you have Claude/GPT-4 Vision API
   // For now, we'll simulate with random accuracy
@@ -191,7 +191,7 @@ async function processWorksheetSubmission(
     .insert({
       worksheet_id: worksheet.id,
       submitted_by: worksheet.students.provider_id,
-      image_url: publicUrl,
+      image_url: storagePath,
       accuracy_percentage: mockAccuracy,
       skills_assessed: [{
         skill: worksheet.worksheet_type,
