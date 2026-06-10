@@ -22,6 +22,12 @@ interface ErrorWithDetails {
 // self-hosted (unlimited). Falls back to platform limits on free/hobby tiers (e.g., 10s on Vercel Hobby)
 export const maxDuration = 300; // 5 minutes
 
+// Upper bound on lesson groups per batch request. A batch is built from a
+// single day's time slots (see calendar-week-view), so legitimate batches are
+// well under this; the cap stops a crafted request from fanning out into
+// thousands of parallel AI calls and defeating the per-request rate limit.
+const MAX_LESSON_BATCH_SIZE = 50;
+
 // Debug logging only in development
 const DEBUG = process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
 
@@ -50,6 +56,14 @@ export const POST = withRoute(
       
       // Check if this is a batch request
       if (body.batch && Array.isArray(body.batch)) {
+        // Reject oversized batches before doing any work or AI calls.
+        if (body.batch.length > MAX_LESSON_BATCH_SIZE) {
+          return NextResponse.json(
+            { error: `Too many lesson groups in one request (max ${MAX_LESSON_BATCH_SIZE}).` },
+            { status: 400 }
+          );
+        }
+
         // Handle batch lesson generation
         if (DEBUG) {
           console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups`);

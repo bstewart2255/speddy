@@ -261,10 +261,10 @@ export const POST = withRoute({ auth: false }, async ({ req: request }) => {
       );
     }
 
-    // Get public URL for the uploaded image
-    const { data: { publicUrl } } = supabase.storage
-      .from('worksheet-submissions')
-      .getPublicUrl(fileName);
+    // The worksheet-submissions bucket is private (holds student work / PII).
+    // Store the object path, not a permanent public URL — readers generate a
+    // short-lived signed URL on demand (see documents/saved-worksheets).
+    const storagePath = uploadData?.path ?? fileName;
 
     // Use Claude Vision API to analyze the worksheet (if API key exists)
     let analysisResult: AnalysisResult | null = null;
@@ -356,7 +356,7 @@ export const POST = withRoute({ auth: false }, async ({ req: request }) => {
         submitted_by: Array.isArray(finalWorksheet.students)
           ? finalWorksheet.students[0]?.provider_id
           : finalWorksheet.students?.provider_id,
-        image_url: publicUrl,
+        image_url: storagePath,
         student_responses: analysisResult?.responses || null,
         accuracy_percentage: analysisResult?.accuracy ? analysisResult.accuracy * 100 : null,
         skills_assessed: extractSkillsAssessed(finalWorksheet, analysisResult),
