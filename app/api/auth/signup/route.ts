@@ -6,6 +6,18 @@ import { Database } from '@/src/types/database';
 import { asyncHandler, ErrorFactory } from '@/lib/error-handler';
 import { logger } from '@/lib/logger';
 
+// Roles a user is allowed to assign themselves through public self-signup.
+// These are the provider roles offered by the signup form. Elevated roles
+// (site_admin, district_admin), teacher, and sea accounts are provisioned only
+// by an administrator via the admin flow, so they must never be self-assigned.
+const SELF_REGISTERABLE_ROLES = new Set([
+  'resource',
+  'speech',
+  'ot',
+  'counseling',
+  'specialist',
+]);
+
 export const POST = asyncHandler(async (request: NextRequest) => {
   const requestLogger = logger.child({ 
     endpoint: '/api/auth/signup',
@@ -34,15 +46,22 @@ export const POST = asyncHandler(async (request: NextRequest) => {
     );
   }
 
-  // SEA (Special Education Assistant) accounts are provisioned only by
-  // district/site admins, never through public self-signup. Enforce this on
-  // the server so a direct POST can't bypass the (client-side) role list.
-  if (String(metadata.role).trim().toLowerCase() === 'sea') {
+  // Enforce a server-side allow-list of self-registerable roles. The role from
+  // the request body flows into both the `handle_new_user` trigger and the
+  // `create_profile_for_new_user` RPC, so an unvalidated value would let a
+  // direct POST self-assign an elevated role (e.g. site_admin/district_admin).
+  // Validate here, before the auth user is created, so neither path can be
+  // reached with a disallowed role. Admin-provisioned roles (sea, teacher,
+  // site_admin, district_admin, etc.) are created through the admin flow only.
+  const requestedRole = String(metadata.role).trim().toLowerCase();
+  if (!SELF_REGISTERABLE_ROLES.has(requestedRole)) {
     return NextResponse.json(
       { error: 'This role cannot be self-registered. Please ask your district or site administrator to create your account.' },
       { status: 403 }
     );
   }
+  // Use the normalized role from here on so the stored value is canonical.
+  metadata.role = requestedRole;
 
     // Validate email domain (case-insensitive)
     const emailDomain = email.split('@')[1]?.toLowerCase();
