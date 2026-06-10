@@ -101,6 +101,21 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     });
   } catch (error) {
     log.error('Unexpected error in district admin create-school', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const err = error as { message?: string; code?: string; details?: string; hint?: string; stack?: string };
+    // Emit structured detail to the platform logs so the cause is diagnosable.
+    console.error('[district-admin-schools] create failed', {
+      message: err?.message,
+      code: err?.code,
+      details: err?.details,
+      hint: err?.hint,
+      stack: err?.stack,
+    });
+    // Surface the real cause outside production to aid debugging; production stays opaque.
+    const expose = process.env.VERCEL_ENV !== 'production';
+    const detail = [err?.message, err?.code, err?.details, err?.hint].filter(Boolean).join(' | ');
+    return NextResponse.json(
+      { error: expose && detail ? detail : 'Internal server error' },
+      { status: 500 }
+    );
   }
 });
