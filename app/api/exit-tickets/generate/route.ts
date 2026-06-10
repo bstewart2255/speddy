@@ -15,7 +15,7 @@ const generateExitTicketsSchema = z
 export const POST = withRoute(
   {
     body: generateExitTicketsSchema,
-    rateLimit: { requests: 30, windowSeconds: 3600, name: 'exit-tickets/generate' },
+    rateLimit: { requests: 30, windowSeconds: 3600, name: 'exit-tickets/generate', failClosed: true },
   },
   async ({ userId, body }) => {
     try {

@@ -46,8 +46,10 @@ export async function checkRateLimit(
 
     if (ipError) {
       console.error('Error checking IP rate limit:', ipError);
-      // On error, be conservative and allow the upload
-      return { allowed: true, reason: 'Rate limit check failed' };
+      // Fail closed: this endpoint is unauthenticated and each accepted upload
+      // triggers a paid AI vision call, so a broken limiter must not allow
+      // uncapped uploads. Reject and let the caller retry shortly.
+      return { allowed: false, reason: 'Upload temporarily unavailable. Please try again shortly.' };
     }
 
     const ipUploadCount = ipUploads?.length || 0;
@@ -74,8 +76,8 @@ export async function checkRateLimit(
 
   } catch (error) {
     console.error('Error in rate limit check:', error);
-    // On unexpected error, allow the upload to avoid blocking legitimate users
-    return { allowed: true, reason: 'Rate limit check error' };
+    // Fail closed (paid AI on an unauthenticated path; see above).
+    return { allowed: false, reason: 'Upload temporarily unavailable. Please try again shortly.' };
   }
 }
 
@@ -96,7 +98,8 @@ async function checkWorksheetLimit(
 
   if (worksheetError) {
     console.error('Error checking worksheet rate limit:', worksheetError);
-    return { allowed: true, reason: 'Worksheet limit check failed' };
+    // Fail closed (paid AI on an unauthenticated path; see checkRateLimit).
+    return { allowed: false, reason: 'Upload temporarily unavailable. Please try again shortly.' };
   }
 
   const worksheetUploadCount = worksheetUploads?.length || 0;
