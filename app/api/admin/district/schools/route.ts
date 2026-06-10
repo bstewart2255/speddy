@@ -18,7 +18,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // Verify user is a district admin and get their district
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
-      .select('district_id, state_id')
+      .select('district_id')
       .eq('admin_id', userId)
       .eq('role', 'district_admin')
       .single();
@@ -32,7 +32,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     }
 
     const districtId = adminPermission.district_id;
-    const stateId = adminPermission.state_id;
 
     // Parse request body
     const body = await request.json();
@@ -71,7 +70,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         id: schoolId,
         name: name.trim(),
         district_id: districtId,
-        state_id: stateId,
         city: city?.trim() || null,
         school_type: schoolType || null,
         grade_span_low: gradeSpanLow || null,
