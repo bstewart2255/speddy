@@ -11,6 +11,11 @@ import { withRoute } from '@/lib/api/with-route';
 // Force Node.js runtime for file processing
 export const runtime = "nodejs";
 
+// This route does a two-step PDF.co conversion plus an 8k-token Anthropic call,
+// which far exceeds the platform default (~10-15s). Requires platform support
+// (Vercel Pro = 300s); falls back to the platform cap on lower tiers.
+export const maxDuration = 300; // 5 minutes
+
 // Supported file types - expanded list
 const SUPPORTED_TYPES = [
   "application/pdf",

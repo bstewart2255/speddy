@@ -8,6 +8,10 @@ import { extractQRCodeForSubmission, verifyQRCodeMatch } from '@/lib/qr-verifica
 import { validateImageBuffer } from '@/lib/image-utils';
 import { trackEvent } from '@/lib/analytics';
 
+// Decodes an image (up to 10MB) with Jimp and runs a Claude Vision call, which
+// can exceed the platform default timeout. Requires platform support.
+export const maxDuration = 60;
+
 // Interface for analysis result
 interface AnalysisResult {
   accuracy: number;
