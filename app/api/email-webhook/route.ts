@@ -5,8 +5,21 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env['RESEND_API_KEY']);
 
+// SPE-128: The inbound email -> worksheet flow is not live, and this endpoint
+// had NO sender verification — an unauthenticated POST could trigger outbound
+// emails (open relay via our sending domain) and paid AI vision calls. Keep it
+// disabled by default until the feature is actually wired up.
+//
+// Re-enabling REQUIRES implementing sender verification first (the provider's
+// webhook signature, e.g. Svix for Resend) — do not just flip this flag.
+const EMAIL_WEBHOOK_ENABLED = process.env.EMAIL_WEBHOOK_ENABLED === 'true';
+
 // This endpoint receives forwarded emails from Resend
 export async function POST(request: NextRequest) {
+  if (!EMAIL_WEBHOOK_ENABLED) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   try {
     const payload = await request.json();
 

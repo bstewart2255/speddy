@@ -355,6 +355,16 @@ function formatTime(time: string): string {
   return `${displayHour}:${minutes.toString().padStart(2, '0')} ${ampm}`;
 }
 
+// Escape text interpolated into the printed HTML (written via document.write).
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Helper function to render initials with shapes based on assignment type
 // Only applies shapes in "all-sessions" view
 function renderInitialsWithShape(
@@ -362,18 +372,20 @@ function renderInitialsWithShape(
   session: ScheduleSession,
   viewMode: ViewMode
 ): string {
+  const safeInitials = escapeHtml(initials);
+
   // Only apply shapes in all-sessions view
   if (viewMode !== 'all-sessions') {
-    return initials;
+    return safeInitials;
   }
 
   if (session.assigned_to_sea_id) {
     // Square shape for sessions assigned to SEA
-    return `<span class="shape-square">${initials}</span>`;
+    return `<span class="shape-square">${safeInitials}</span>`;
   } else if (session.assigned_to_specialist_id) {
     // Circle shape for sessions assigned to Specialist
-    return `<span class="shape-circle">${initials}</span>`;
+    return `<span class="shape-circle">${safeInitials}</span>`;
   }
   // Plain text for sessions I own and deliver (no assignment)
-  return initials;
+  return safeInitials;
 }
