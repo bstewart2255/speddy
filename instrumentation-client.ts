@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from '@sentry/nextjs';
+import { scrubSentryEvent, scrubSentryLog } from '@/lib/monitoring/sentry-scrub';
 
 // Only initialize Sentry in production
 if (process.env.NODE_ENV === 'production') {
@@ -38,18 +39,22 @@ if (process.env.NODE_ENV === 'production') {
       if (process.env.NODE_ENV === 'development') {
         return null;
       }
-      
+
       // Filter out specific errors you don't want to track
       const error = hint.originalException;
       if (error && error instanceof Error) {
         // Don't track network errors that are expected
-        if (error.message?.includes('NetworkError') || 
+        if (error.message?.includes('NetworkError') ||
             error.message?.includes('Failed to fetch')) {
           return null;
         }
       }
-      
-      return event;
+
+      // Redact PII (e.g. emails) before the event leaves the browser.
+      return scrubSentryEvent(event);
+    },
+    beforeSendLog(log) {
+      return scrubSentryLog(log);
     },
   });
 }
