@@ -74,7 +74,13 @@ class Logger {
         },
       });
     } else {
-      Sentry.captureMessage(message, 'error');
+      // No Error instance to capture. Record the value's *type* only — never the
+      // value itself, which can carry student PII — so Sentry can distinguish a
+      // missing error from a non-Error rejection reason (SPE-167).
+      Sentry.captureMessage(message, {
+        level: 'error',
+        extra: { errorType: typeof error },
+      });
     }
   }
 
