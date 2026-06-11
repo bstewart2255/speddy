@@ -617,8 +617,8 @@ export default function StudentsPage() {
                   .sort((a, b) => {
                     if (!sortByGrade) return 0;
 
-                    // Define grade order (TK comes first, then K, then 1-5)
-                    const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5'];
+                    // Define grade order (TK comes first, then K, then 1-12)
+                    const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
                     const aIndex = gradeOrder.indexOf(a.grade_level);
                     const bIndex = gradeOrder.indexOf(b.grade_level);
 
