@@ -485,16 +485,16 @@ export default function AIUploadModal({
                 Upload a file containing {uploadTypeLabels[uploadType].toLowerCase()} data
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Supported: CSV, Excel (.xlsx, .xls), Word (.docx, .doc), PDF, Text files
+                Supported: CSV, Excel (.xlsx, .xls), Word (.docx, .doc), Text files
               </p>
               <div className="mt-2 text-xs text-gray-400 space-y-1">
                 <p>• Excel: All sheets will be processed</p>
-                <p>• PDF/Word: Tables and lists will be extracted</p>
+                <p>• Word: Tables and lists will be extracted</p>
                 <p>• Can handle various formats - structured or unstructured</p>
               </div>
               <input
                 type="file"
-                accept=".csv,.txt,.doc,.docx,.xls,.xlsx,.pdf"
+                accept=".csv,.txt,.doc,.docx,.xls,.xlsx"
                 onChange={handleFileSelect}
                 className="hidden"
                 id="ai-file-upload"

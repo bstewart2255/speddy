@@ -26,7 +26,7 @@ Mike Wilson,5,Davis,1,45`
         },
         {
           icon: <FileText className="h-5 w-5 text-blue-500" />,
-          name: 'Word/PDF Format',
+          name: 'Word Format',
           example: `Class Roster - Smith - Grade 3
 Students:
 - John Doe (2 sessions/week, 30 min each)
