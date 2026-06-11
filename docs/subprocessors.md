@@ -57,11 +57,11 @@ executed — SPE-163.**
 
 | Service | Status |
 |---|---|
-| **PDF.co** | Removed (SPE-164). No `api.pdf.co` reference remains in the codebase. |
+| **PDF.co** | Removed (SPE-164). No **runtime / app-code** references to `api.pdf.co` remain (docs-only mentions — like this file — may reference it). |
 | **Stripe** | Payment system removed (`supabase/migrations/20251208_remove_subscription_tables.sql`); env vars cleaned up. |
-| **SendGrid** | Never used in app code (only a commented-out Supabase SMTP example); env var removed. |
+| **SendGrid** | Not used by app code — `SENDGRID_API_KEY` / `sendgrid` appear only in a **commented-out** SMTP example in `supabase/config.toml`. Removed from `.env.example`. |
 | **Replit** | Hosting migrated to Vercel; dormant repo access to be revoked (SPE-166). Source-code access only — **not** a data subprocessor. |
-| **nodemailer** | Unused dependency (never imported). |
+| **nodemailer** | Never imported in code, but **still present in `package.json` / `package-lock.json`** (pending a separate dependency-removal decision). |
 
 ## Related tickets
 
