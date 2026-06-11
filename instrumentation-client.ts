@@ -9,30 +9,25 @@ import { scrubSentryEvent, scrubSentryLog } from '@/lib/monitoring/sentry-scrub'
 if (process.env.NODE_ENV === 'production') {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
-    
+
     // Adjust this value in production, or use tracesSampler for greater control
     tracesSampleRate: 1.0,
-    
-    // Enable logs to be sent to Sentry
-    enableLogs: true,
-    
+
+    // Never attach default request PII (cookies, headers, IP, bodies) to events.
+    // Explicit per SPE-167 even though the SDK default is already false.
+    sendDefaultPii: false,
+
+    // Sentry Logs disabled (SPE-167): forwarded console output can carry student
+    // context. During the district pilot we keep Sentry to exception capture only.
+    enableLogs: false,
+
     // Setting this option to true will print useful information to the console while you're setting up Sentry.
     debug: false,
-    
-    // Replays are disabled by default
-    replaysOnErrorSampleRate: 1.0,
-    
-    // You can remove this option if you're not planning to use the Sentry Session Replay feature
-    replaysSessionSampleRate: 0.1,
-    
-    integrations: [
-      Sentry.replayIntegration({
-        // Mask all text and inputs by default
-        maskAllText: true,
-        maskAllInputs: true,
-      }),
-    ],
-    
+
+    // Session Replay intentionally disabled (SPE-167): even with text/input
+    // masking it is a session-capture feature we don't want recording
+    // special-ed / IEP workflows during the district pilot.
+
     // Filter out specific errors
     beforeSend(event, hint) {
       // Don't send errors in development
