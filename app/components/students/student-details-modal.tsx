@@ -337,6 +337,10 @@ export function StudentDetailsModal({
                     <option value="6">6th Grade</option>
                     <option value="7">7th Grade</option>
                     <option value="8">8th Grade</option>
+                    <option value="9">9th Grade</option>
+                    <option value="10">10th Grade</option>
+                    <option value="11">11th Grade</option>
+                    <option value="12">12th Grade</option>
                   </select>
                 </FormGroup>
 
