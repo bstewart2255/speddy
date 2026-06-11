@@ -66,7 +66,7 @@ export default function StudentsPage() {
   const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = useMemo(() => createClient(), []);
-  const { currentSchool, loading: schoolLoading } = useSchool();
+  const { currentSchool, loading: schoolLoading, isSecondary } = useSchool();
   const router = useRouter();
 
   // Check if user has view-only access (SEA role)
@@ -396,8 +396,8 @@ export default function StudentsPage() {
           />
         )}
 
-        {/* Unscheduled Sessions Notification */}
-        {unscheduledCount > 0 && (
+        {/* Unscheduled Sessions Notification — scheduling doesn't apply on secondary sites */}
+        {!isSecondary && unscheduledCount > 0 && (
           <div className="mb-8 bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-center">
               <svg className="h-5 w-5 text-amber-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -465,6 +465,13 @@ export default function StudentsPage() {
                       <option value="3">3</option>
                       <option value="4">4</option>
                       <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="7">7</option>
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                      <option value="11">11</option>
+                      <option value="12">12</option>
                     </select>
                   </div>
 
@@ -610,8 +617,8 @@ export default function StudentsPage() {
                   .sort((a, b) => {
                     if (!sortByGrade) return 0;
 
-                    // Define grade order (TK comes first, then K, then 1-5)
-                    const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5'];
+                    // Define grade order (TK comes first, then K, then 1-12)
+                    const gradeOrder = ['TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
                     const aIndex = gradeOrder.indexOf(a.grade_level);
                     const bIndex = gradeOrder.indexOf(b.grade_level);
 

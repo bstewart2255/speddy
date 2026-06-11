@@ -12,12 +12,14 @@ import { WeeklyView } from '../../components/weekly-view';
 import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
 import { AttendanceWidget } from '../../components/dashboard/attendance-widget';
 import { ToastProvider } from '../../contexts/toast-context';
+import { useSchool } from '../../components/providers/school-context';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>("");
   const router = useRouter();
   const supabase = createClient();
+  const { isSecondary } = useSchool();
 
   useEffect(() => {
     const checkUserRole = async () => {
@@ -87,10 +89,11 @@ export default function DashboardPage() {
           
           {/* Main Content Area */}
           <div className="space-y-4">
-            <WeeklyView viewMode="provider" />
+            {/* Scheduling & attendance views don't apply on secondary (middle/high) sites */}
+            {!isSecondary && <WeeklyView viewMode="provider" />}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <AttendanceWidget />
+            <div className={`grid grid-cols-1 gap-4 ${isSecondary ? '' : 'lg:grid-cols-2'}`}>
+              {!isSecondary && <AttendanceWidget />}
               <TodoWidget />
             </div>
           </div>

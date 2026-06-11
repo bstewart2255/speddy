@@ -127,11 +127,11 @@ export function StudentDetailsModal({
     }
   }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_id, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
 
-  // Secondary mode hides the "current" and "attendance" tabs — if the active
-  // tab is one of those, snap to a visible tab so the modal never lands on a
-  // hidden tab (e.g. on open, where it defaults to "current").
+  // Secondary mode hides only the Attendance tab; if it's active, snap to a
+  // visible tab. Current Information stays visible so grade/teacher/IEP dates
+  // remain editable — just the service-minutes fields within it are hidden.
   useEffect(() => {
-    if (isSecondary && (activeTab === 'current' || activeTab === 'attendance')) {
+    if (isSecondary && activeTab === 'attendance') {
       setActiveTab('iep');
     }
   }, [isSecondary, activeTab]);
@@ -230,18 +230,16 @@ export function StudentDetailsModal({
           {/* Tabs */}
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px px-6">
-              {!isSecondary && (
-                <button
-                  onClick={() => setActiveTab('current')}
-                  className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === 'current'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Current Information
-                </button>
-              )}
+              <button
+                onClick={() => setActiveTab('current')}
+                className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'current'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Current Information
+              </button>
               <button
                 onClick={() => setActiveTab('iep')}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
@@ -300,7 +298,7 @@ export function StudentDetailsModal({
           {/* Content */}
           <div className="p-6 overflow-y-auto" style={{ maxHeight: '70vh' }}>
             {/* Current Information Tab */}
-            {!isSecondary && activeTab === 'current' && (
+            {activeTab === 'current' && (
             <div className="space-y-4">
               <h3 className="font-medium text-gray-900">Current Information</h3>
 
@@ -337,6 +335,10 @@ export function StudentDetailsModal({
                     <option value="6">6th Grade</option>
                     <option value="7">7th Grade</option>
                     <option value="8">8th Grade</option>
+                    <option value="9">9th Grade</option>
+                    <option value="10">10th Grade</option>
+                    <option value="11">11th Grade</option>
+                    <option value="12">12th Grade</option>
                   </select>
                 </FormGroup>
 
@@ -353,6 +355,8 @@ export function StudentDetailsModal({
                 </FormGroup>
               </div>
 
+              {/* Service minutes are elementary scheduling — hidden on secondary sites */}
+              {!isSecondary && (
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>
                   <Label htmlFor="sessions_per_week">Sessions per Week</Label>
@@ -393,6 +397,7 @@ export function StudentDetailsModal({
                   </select>
                 </FormGroup>
               </div>
+              )}
 
               {/* Additional Details */}
               <div className="space-y-4 mt-6">
