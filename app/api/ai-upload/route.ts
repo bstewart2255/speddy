@@ -76,7 +76,7 @@ export const POST = withRoute(
       return NextResponse.json(
         {
           error:
-            "Unsupported file type. Please upload PDF, Word, Excel, CSV, or text files.",
+            "Unsupported file type. Please upload Word, Excel, CSV, or text files.",
         },
         { status: 400 },
       );
