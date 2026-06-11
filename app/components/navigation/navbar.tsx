@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
+import { useSchool } from '../providers/school-context';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { getPasswordResetRequestCount, getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 
@@ -25,6 +26,17 @@ type NavigationItem = {
   subItems?: NavigationItem[];
 };
 
+// Scheduling-centric surfaces that don't apply on secondary (middle/high) sites.
+// Hiding these top-level items also removes their sub-items (e.g. Bell Schedules,
+// Special Activities live under Schedule). Admin nav (Master Schedule) is unaffected.
+const SECONDARY_HIDDEN_HREFS = new Set([
+  '/dashboard/schedule',
+  '/dashboard/bell-schedules',
+  '/dashboard/special-activities',
+  '/dashboard/plan',
+  '/dashboard/teacher/special-activities',
+]);
+
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -32,6 +44,7 @@ export default function Navbar() {
   const supabase = createClient();
   const [userRole, setUserRole] = useState<string>("");
   const [passwordResetRequestCount, setPasswordResetRequestCount] = useState<number>(0);
+  const { isSecondary } = useSchool();
 
   useEffect(() => {
     const getUser = async () => {
@@ -177,7 +190,11 @@ export default function Navbar() {
     }
   };
 
-  const navigation = getNavigationForRole(userRole);
+  // On secondary sites, drop scheduling-centric items (Schedule, Bell Schedules,
+  // Special Activities, Plan) for providers/teachers; admin nav is unaffected.
+  const navigation = getNavigationForRole(userRole).filter(
+    (item) => !isSecondary || !SECONDARY_HIDDEN_HREFS.has(item.href)
+  );
 
   return (
     <nav className="bg-white border-b border-gray-200">
