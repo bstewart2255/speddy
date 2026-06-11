@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export const POST = withRoute(
-  { rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/v2/generate', failClosed: true } },
+  { aiGated: true, rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/v2/generate', failClosed: true } },
   async ({ req, userId }) => {
   try {
     // Parse request body

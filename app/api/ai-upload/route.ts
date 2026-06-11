@@ -32,7 +32,7 @@ const SUPPORTED_TYPES = [
 // Each request runs a paid external conversion (PDF.co) plus an Anthropic
 // completion, so cap how often a single user can invoke it.
 export const POST = withRoute(
-  { rateLimit: { requests: 20, windowSeconds: 3600, name: 'ai-upload', failClosed: true } },
+  { aiGated: true, rateLimit: { requests: 20, windowSeconds: 3600, name: 'ai-upload', failClosed: true } },
   async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('ai_upload', 'api');
   

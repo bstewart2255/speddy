@@ -27,7 +27,7 @@ interface AnalysisResult {
 
 // Public endpoint: QR-scan uploads are unauthenticated (auth is enforced
 // in-handler only for non-QR direct uploads), and it has its own IP rate limit.
-export const POST = withRoute({ auth: false }, async ({ req: request }) => {
+export const POST = withRoute({ auth: false, aiGated: true }, async ({ req: request }) => {
   const startTime = Date.now();
   let imageSize = 0;
   let source: string | undefined;

@@ -22,6 +22,7 @@ interface Worksheet {
 
 export const POST = withRoute(
   {
+    aiGated: true,
     body: generateProgressCheckSchema,
     rateLimit: { requests: 30, windowSeconds: 3600, name: 'progress-check/generate', failClosed: true },
   },

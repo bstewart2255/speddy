@@ -37,7 +37,7 @@ const CAPTURE_AI_RAW = process.env.CAPTURE_AI_RAW === 'true';
 const SHOULD_CAPTURE_METADATA = CAPTURE_FULL_PROMPTS || CAPTURE_AI_RAW;
 
 export const POST = withRoute(
-  { rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/generate', failClosed: true } },
+  { aiGated: true, rateLimit: { requests: 30, windowSeconds: 3600, name: 'lessons/generate', failClosed: true } },
   async ({ req, userId }) => {
     try {
       // Create supabase client for database operations

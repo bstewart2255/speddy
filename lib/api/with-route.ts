@@ -4,6 +4,12 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { checkUserRateLimit, type RateLimitRule } from './rate-limit-user';
 
+// Server-side AI kill-switch. AI features are disabled by default; any route
+// that reaches an external LLM / document-processing provider opts in via
+// `aiGated` (see below) and 404s unless AI_FEATURES_ENABLED === 'true'. The flag
+// is read per request (not cached at module load) so a change takes effect on
+// the next request rather than requiring a fresh process.
+
 interface WithRouteConfig<TBody, TQuery> {
   /** Require an authenticated user (default true). When false, `userId` is ''. */
   auth?: boolean;
@@ -13,6 +19,13 @@ interface WithRouteConfig<TBody, TQuery> {
   query?: ZodType<TQuery, any, any>;
   /** Per-user rate limit. Applied only on authenticated routes. */
   rateLimit?: RateLimitRule & { name?: string };
+  /**
+   * Gate this route behind the AI feature kill-switch. When AI is disabled
+   * (AI_FEATURES_ENABLED !== 'true'), the route 404s before any handler logic
+   * runs — so no external LLM/provider call is made. Apply to routes that reach
+   * OpenAI / Anthropic / document-processing providers.
+   */
+  aiGated?: boolean;
 }
 
 interface RouteHandlerArgs<TBody, TQuery, TParams> {
@@ -50,6 +63,13 @@ export function withRoute<
 ) {
   return async (req: NextRequest, context?: NextContext<TParams>): Promise<NextResponse> => {
     try {
+      // AI kill-switch: gated routes do not exist while AI features are off.
+      // Checked before auth so the feature is fully hidden and makes no
+      // provider calls regardless of who calls it.
+      if (config.aiGated && process.env.AI_FEATURES_ENABLED !== 'true') {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+
       let userId = '';
       if (config.auth !== false) {
         const supabase = await createClient();
