@@ -18,7 +18,6 @@ export const maxDuration = 300; // 5 minutes
 
 // Supported file types - expanded list
 const SUPPORTED_TYPES = [
-  "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
@@ -57,6 +56,20 @@ export const POST = withRoute(
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    // Reject PDFs up front, before reading the file. PDF text extraction is
+    // intentionally not supported: the prior path uploaded the raw PDF to an
+    // external service (PDF.co) that is not a disclosed subprocessor for student
+    // data; removed in SPE-164. When PDF parsing is needed again, prefer an
+    // in-house parser (pdfjs-dist, already a dependency) or a disclosed
+    // subprocessor before re-enabling.
+    if (file.type === 'application/pdf') {
+      log.info('Rejected unsupported PDF upload', { userId, fileName: file.name });
+      return NextResponse.json(
+        { error: 'PDF upload is not currently supported. Please upload a Word, Excel, CSV, or text file.' },
+        { status: 400 }
+      );
+    }
+
     // Check if file type is supported
     if (
       !SUPPORTED_TYPES.includes(file.type) &&
@@ -90,18 +103,7 @@ export const POST = withRoute(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    if (file.type === 'application/pdf') {
-      // PDF text extraction is intentionally not supported. The prior path
-      // uploaded the raw PDF to an external service (PDF.co) that is not a
-      // disclosed subprocessor for student data; removed in SPE-164. When PDF
-      // parsing is needed again, prefer an in-house parser (pdfjs-dist, already
-      // a dependency) or a disclosed subprocessor before re-enabling.
-      log.info('Rejected unsupported PDF upload', { userId, fileName: file.name });
-      return NextResponse.json(
-        { error: 'PDF upload is not currently supported. Please upload a Word, Excel, CSV, or text file.' },
-        { status: 400 }
-      );
-    } else if (file.type.includes("sheet") || file.type.includes("excel")) {
+    if (file.type.includes("sheet") || file.type.includes("excel")) {
       // Process Excel files
       extractionMethod = "Excel";
 
@@ -159,7 +161,7 @@ export const POST = withRoute(
             fileName: file.name
           });
           return NextResponse.json(
-            { error: "Failed to process Word document. Please try converting to PDF or text." },
+            { error: "Failed to process Word document. Please try converting to text." },
             { status: 500 }
           );
         }
