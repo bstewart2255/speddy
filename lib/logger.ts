@@ -18,16 +18,18 @@ class Logger {
 
   setContext(context: LogContext) {
     this.context = { ...this.context, ...context };
-    Sentry.setContext('logger', this.context);
+    // Context is retained for console output (Vercel logs) only. It is
+    // intentionally NOT pushed to Sentry (no Sentry.setContext): a LogContext
+    // is free-form and can carry student PII. See SPE-167.
   }
 
   private formatMessage(level: LogLevel, message: string, meta?: any): string {
     const timestamp = new Date().toISOString();
-    const contextStr = Object.keys(this.context).length 
-      ? ` [${JSON.stringify(this.context)}]` 
+    const contextStr = Object.keys(this.context).length
+      ? ` [${JSON.stringify(this.context)}]`
       : '';
     const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
-    
+
     return `[${timestamp}] [${level.toUpperCase()}]${contextStr} ${message}${metaStr}`;
   }
 
@@ -39,41 +41,40 @@ class Logger {
 
   info(message: string, meta?: any) {
     console.info(this.formatMessage(LogLevel.INFO, message, meta));
-    
-    // Send important info logs to Sentry as breadcrumbs
+
+    // Breadcrumb trail to Sentry uses the developer-authored `message` only —
+    // never `meta`, which can carry student PII (SPE-167).
     Sentry.addBreadcrumb({
       message,
       level: 'info',
-      data: meta,
     });
   }
 
   warn(message: string, meta?: any) {
     console.warn(this.formatMessage(LogLevel.WARN, message, meta));
-    
-    // Send warnings to Sentry as breadcrumbs
+
+    // Breadcrumb trail to Sentry uses the developer-authored `message` only —
+    // never `meta`, which can carry student PII (SPE-167).
     Sentry.addBreadcrumb({
       message,
       level: 'warning',
-      data: meta,
     });
   }
 
   error(message: string, error?: unknown, meta?: any) {
-    const formattedMessage = this.formatMessage(LogLevel.ERROR, message, meta);
-    console.error(formattedMessage, error);
-    
-    // Send errors to Sentry
+    // Full message + meta + context go to the console (Vercel logs) only.
+    console.error(this.formatMessage(LogLevel.ERROR, message, meta), error);
+
+    // To Sentry we send the exception (stack trace) and the developer-authored
+    // `message` only — never `meta`/`context`, which can carry student PII (SPE-167).
     if (error instanceof Error) {
       Sentry.captureException(error, {
         extra: {
           message,
-          ...meta,
-          context: this.context,
         },
       });
     } else {
-      Sentry.captureMessage(formattedMessage, 'error');
+      Sentry.captureMessage(message, 'error');
     }
   }
 
