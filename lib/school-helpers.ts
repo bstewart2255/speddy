@@ -150,6 +150,96 @@ export async function fetchTeamMembers(
   }
 }
 
+export type SchoolLevel = 'elementary' | 'secondary';
+
+/**
+ * Subset of school fields used to decide the elementary vs. secondary experience.
+ */
+export interface SchoolLevelInput {
+  school_type?: string | null;
+  grade_span_low?: string | null;
+}
+
+/**
+ * Parse a grade-span code into a comparable numeric grade.
+ * Pre-K / TK / Kindergarten map to 0; "1".."12" map to their number.
+ * Returns null when the value can't be interpreted.
+ */
+export function parseGradeLevel(grade?: string | null): number | null {
+  if (grade === null || grade === undefined) return null;
+  const g = String(grade).trim().toUpperCase();
+  if (g === '') return null;
+  if (g === 'PK' || g === 'PREK' || g === 'PRE-K' || g === 'P') return 0;
+  if (g === 'TK') return 0;
+  if (g === 'K' || g === 'KG' || g === 'KN' || g === 'KINDERGARTEN') return 0;
+  const n = parseInt(g, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Classify a school_type label as secondary (true), elementary (false), or
+ * unknown (null, so the caller can fall back to grade span).
+ *
+ * Combined sites (K-8 / K-12) are treated as elementary by product decision —
+ * they still run elementary-style scheduling for their lower grades.
+ */
+function classifyByType(schoolType?: string | null): boolean | null {
+  if (!schoolType) return null;
+  const t = schoolType.toLowerCase();
+
+  // Combined / elementary labels → elementary experience.
+  if (
+    t.includes('k-12') || t.includes('k12') ||
+    t.includes('k-8') || t.includes('k8') ||
+    t.includes('elementary') || t.includes('primary')
+  ) {
+    return false;
+  }
+
+  // Secondary labels.
+  if (
+    t.includes('middle') || t.includes('junior') ||
+    t.includes('high') || t.includes('senior') ||
+    t.includes('secondary')
+  ) {
+    return true;
+  }
+
+  // 'Other' / unrecognized → defer to grade span.
+  return null;
+}
+
+/**
+ * Determine whether a school should use the secondary (middle/high) experience.
+ *
+ * Authority order (SPE-146):
+ *   1. Explicit school_type selection (Elementary / Middle / High / K-8 / K-12).
+ *   2. Fallback to grade span: grade_span_low >= grade 6 = secondary.
+ *   3. Default to elementary (the app is elementary-first) when neither is set.
+ *
+ * The explicit selection always wins over the derived grade span so an admin's
+ * intent is never silently overridden by a field whose primary job is the valid
+ * grade range for student entry.
+ */
+export function isSecondarySchool(school?: SchoolLevelInput | null): boolean {
+  if (!school) return false;
+
+  const byType = classifyByType(school.school_type);
+  if (byType !== null) return byType;
+
+  const low = parseGradeLevel(school.grade_span_low);
+  if (low !== null) return low >= 6;
+
+  return false;
+}
+
+/**
+ * Convenience wrapper returning the level label for the given school.
+ */
+export function getSchoolLevel(school?: SchoolLevelInput | null): SchoolLevel {
+  return isSecondarySchool(school) ? 'secondary' : 'elementary';
+}
+
 /**
  * Merge duplicate team members that might appear due to migration
  * (e.g., same person appearing with both ID and text matching)

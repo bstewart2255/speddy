@@ -8,6 +8,22 @@ import { withRoute } from '@/lib/api/with-route';
 const log = logger.child({ module: 'district-admin-schools' });
 
 /**
+ * Build a 500 response. Outside production (preview/local) include the real
+ * error detail to aid debugging; in production stay opaque so raw Supabase/
+ * Postgres error text is never leaked to clients.
+ */
+function errorResponse(
+  error: { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null | undefined,
+  fallback: string
+) {
+  // Show detail on Vercel previews and any non-production Node env; stay opaque
+  // in production everywhere (incl. self-hosted, where VERCEL_ENV is unset).
+  const expose = process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV !== 'production';
+  const detail = [error?.message, error?.code, error?.details, error?.hint].filter(Boolean).join(' | ');
+  return NextResponse.json({ error: expose && detail ? detail : fallback }, { status: 500 });
+}
+
+/**
  * POST /api/admin/district/schools
  * Create a new school in the district admin's district
  */
@@ -18,7 +34,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // Verify user is a district admin and get their district
     const { data: adminPermission, error: permError } = await supabase
       .from('admin_permissions')
-      .select('district_id, state_id')
+      .select('district_id')
       .eq('admin_id', userId)
       .eq('role', 'district_admin')
       .single();
@@ -32,7 +48,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     }
 
     const districtId = adminPermission.district_id;
-    const stateId = adminPermission.state_id;
 
     // Parse request body
     const body = await request.json();
@@ -71,7 +86,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         id: schoolId,
         name: name.trim(),
         district_id: districtId,
-        state_id: stateId,
         city: city?.trim() || null,
         school_type: schoolType || null,
         grade_span_low: gradeSpanLow || null,
@@ -84,10 +98,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     if (insertError) {
       log.error('Failed to create school', insertError);
-      return NextResponse.json(
-        { error: insertError.message || 'Failed to create school' },
-        { status: 500 }
-      );
+      return errorResponse(insertError, 'Failed to create school');
     }
 
     log.info('School created successfully by district admin', {
@@ -103,6 +114,15 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     });
   } catch (error) {
     log.error('Unexpected error in district admin create-school', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const err = error as { message?: string; code?: string; details?: string; hint?: string; stack?: string };
+    // Emit structured detail to the platform logs so the cause is diagnosable.
+    console.error('[district-admin-schools] create failed', {
+      message: err?.message,
+      code: err?.code,
+      details: err?.details,
+      hint: err?.hint,
+      stack: err?.stack,
+    });
+    return errorResponse(err, 'Internal server error');
   }
 });

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getStudentDetails, getStudentResourceSchedule } from '@/lib/supabase/queries/teacher-portal';
 import { Card } from '@/app/components/ui/card';
+import { useSchool } from '@/app/components/providers/school-context';
 import Link from 'next/link';
 
 type StudentDetail = {
@@ -14,6 +15,7 @@ type StudentDetail = {
   minutes_per_session: number;
   student_details: {
     iep_goals: string[];
+    accommodations: string[] | null;
     upcoming_iep_date: string | null;
   } | null;
   profiles: {
@@ -36,6 +38,11 @@ export default function StudentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const studentId = params.studentId as string;
+
+  // On secondary (middle/high) sites this page surfaces accommodations and drops
+  // the elementary scheduling/service-minute view. Driven by the teacher's active
+  // school — the site they teach at is the site the student attends.
+  const { isSecondary } = useSchool();
 
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [schedule, setSchedule] = useState<ScheduleSession[]>([]);
@@ -148,6 +155,7 @@ export default function StudentDetailPage() {
   }
 
   const iepGoals = student.student_details?.iep_goals || [];
+  const accommodations = student.student_details?.accommodations || [];
   const upcomingIepDate = student.student_details?.upcoming_iep_date;
 
   // Filter to only show future sessions (today or later)
@@ -182,26 +190,63 @@ export default function StudentDetailPage() {
             {student.grade_level}
           </span>
           <span className="text-gray-600">
-            Resource Specialist: <strong>{student.profiles?.full_name || 'N/A'}</strong>
+            {isSecondary ? 'Case Manager' : 'Resource Specialist'}: <strong>{student.profiles?.full_name || 'N/A'}</strong>
           </span>
         </div>
       </div>
 
       {/* Service Details */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-6">
-        <Card className="p-6">
-          <dt className="text-sm font-medium text-gray-500">Sessions per Week</dt>
-          <dd className="mt-1 text-2xl font-semibold text-gray-900">{student.sessions_per_week}</dd>
-        </Card>
-        <Card className="p-6">
-          <dt className="text-sm font-medium text-gray-500">Minutes per Session</dt>
-          <dd className="mt-1 text-2xl font-semibold text-gray-900">{student.minutes_per_session}</dd>
-        </Card>
+        {!isSecondary && (
+          <>
+            <Card className="p-6">
+              <dt className="text-sm font-medium text-gray-500">Sessions per Week</dt>
+              <dd className="mt-1 text-2xl font-semibold text-gray-900">{student.sessions_per_week}</dd>
+            </Card>
+            <Card className="p-6">
+              <dt className="text-sm font-medium text-gray-500">Minutes per Session</dt>
+              <dd className="mt-1 text-2xl font-semibold text-gray-900">{student.minutes_per_session}</dd>
+            </Card>
+          </>
+        )}
         <Card className="p-6">
           <dt className="text-sm font-medium text-gray-500">IEP Goals</dt>
           <dd className="mt-1 text-2xl font-semibold text-gray-900">{iepGoals.length}</dd>
         </Card>
+        {isSecondary && (
+          <Card className="p-6">
+            <dt className="text-sm font-medium text-gray-500">Accommodations</dt>
+            <dd className="mt-1 text-2xl font-semibold text-gray-900">{accommodations.length}</dd>
+          </Card>
+        )}
       </div>
+
+      {/* Accommodations — secondary sites surface these to teachers directly,
+          so the case manager's accommodations are the teacher's line of sight
+          without digging through IEP paperwork. */}
+      {isSecondary && (
+        <Card className="mb-6">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">Accommodations</h2>
+          </div>
+          <div className="px-6 py-4">
+            {accommodations.length === 0 ? (
+              <p className="text-gray-500 italic">No accommodations recorded.</p>
+            ) : (
+              <ul className="space-y-4">
+                {accommodations.map((accommodation, index) => (
+                  <li key={index} className="flex gap-3">
+                    <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 text-gray-800">{accommodation}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* IEP Goals */}
       <Card className="mb-6">
@@ -233,7 +278,8 @@ export default function StudentDetailPage() {
         </div>
       </Card>
 
-      {/* Resource Schedule */}
+      {/* Resource Schedule — elementary scheduling view, hidden on secondary sites */}
+      {!isSecondary && (
       <Card>
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-medium text-gray-900">Weekly Resource Schedule</h2>
@@ -270,6 +316,7 @@ export default function StudentDetailPage() {
           )}
         </div>
       </Card>
+      )}
     </div>
   );
 }

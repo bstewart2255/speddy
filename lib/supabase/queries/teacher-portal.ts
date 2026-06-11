@@ -141,6 +141,7 @@ export async function getStudentDetails(studentId: string) {
           minutes_per_session,
           student_details (
             iep_goals,
+            accommodations,
             upcoming_iep_date
           ),
           profiles!students_provider_id_fkey (
