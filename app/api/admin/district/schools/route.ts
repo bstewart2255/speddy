@@ -16,7 +16,9 @@ function errorResponse(
   error: { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null | undefined,
   fallback: string
 ) {
-  const expose = process.env.VERCEL_ENV !== 'production';
+  // Show detail on Vercel previews and any non-production Node env; stay opaque
+  // in production everywhere (incl. self-hosted, where VERCEL_ENV is unset).
+  const expose = process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV !== 'production';
   const detail = [error?.message, error?.code, error?.details, error?.hint].filter(Boolean).join(' | ');
   return NextResponse.json({ error: expose && detail ? detail : fallback }, { status: 500 });
 }
@@ -62,19 +64,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // Validation
     if (!name?.trim()) {
       return NextResponse.json({ error: 'School name is required' }, { status: 400 });
-    }
-
-    // TEMP diagnostic (non-production only): if the service-role key is missing,
-    // report which Supabase-related env vars the runtime actually sees — names
-    // only, never values — to pinpoint a missing/mis-named/mis-scoped key.
-    // Remove once the env config is confirmed.
-    if (process.env.VERCEL_ENV !== 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const present = Object.keys(process.env)
-        .filter((k) => /SUPABASE|SERVICE_ROLE|POSTGRES/i.test(k))
-        .sort();
-      const diag = `Service client unavailable | VERCEL_ENV=${process.env.VERCEL_ENV ?? '(unset)'} | hasUrl=${!!process.env.NEXT_PUBLIC_SUPABASE_URL} | hasServiceKey=false | present=[${present.join(', ') || 'none'}]`;
-      console.error('[district-admin-schools]', diag);
-      return NextResponse.json({ error: diag }, { status: 500 });
     }
 
     // Use admin client for insert (bypass RLS)
