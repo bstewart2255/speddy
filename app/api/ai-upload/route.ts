@@ -11,9 +11,9 @@ import { withRoute } from '@/lib/api/with-route';
 // Force Node.js runtime for file processing
 export const runtime = "nodejs";
 
-// This route does a two-step PDF.co conversion plus an 8k-token Anthropic call,
-// which far exceeds the platform default (~10-15s). Requires platform support
-// (Vercel Pro = 300s); falls back to the platform cap on lower tiers.
+// This route runs an 8k-token Anthropic completion, which can far exceed the
+// platform default (~10-15s). Requires platform support (Vercel Pro = 300s);
+// falls back to the platform cap on lower tiers.
 export const maxDuration = 300; // 5 minutes
 
 // Supported file types - expanded list
@@ -29,8 +29,8 @@ const SUPPORTED_TYPES = [
   "text/rtf",
 ];
 
-// Each request runs a paid external conversion (PDF.co) plus an Anthropic
-// completion, so cap how often a single user can invoke it.
+// Each request runs a paid Anthropic completion, so cap how often a single
+// user can invoke it.
 export const POST = withRoute(
   { aiGated: true, rateLimit: { requests: 20, windowSeconds: 3600, name: 'ai-upload', failClosed: true } },
   async ({ req: request, userId }) => {
@@ -91,111 +91,16 @@ export const POST = withRoute(
     const buffer = Buffer.from(bytes);
 
     if (file.type === 'application/pdf') {
-      extractionMethod = 'PDF';
-
-      try {
-        log.info('Processing PDF via PDF.co API', { userId, fileName: file.name });
-
-        const API_KEY = process.env.PDF_API_KEY;
-        if (!API_KEY) {
-          log.error('PDF API key not configured', null, { userId });
-          return NextResponse.json({ 
-            error: 'PDF processing not configured. Please add PDF_API_KEY to environment variables.' 
-          }, { status: 500 });
-        }
-
-        // Step 1: Upload the file to PDF.co
-        const uploadPerf = measurePerformanceWithAlerts('pdf_upload', 'api');
-        const formData = new FormData();
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        formData.append('file', blob, file.name);
-
-        const uploadResponse = await fetch('https://api.pdf.co/v1/file/upload', {
-          method: 'POST',
-          headers: {
-            'x-api-key': API_KEY
-          },
-          body: formData
-        });
-
-        const uploadResult = await uploadResponse.json();
-        uploadPerf.end({ success: !uploadResult.error });
-        
-        log.info('PDF upload result', {
-          userId,
-          success: !uploadResult.error,
-          fileUrl: uploadResult.url ? 'URL generated' : 'No URL'
-        });
-
-        if (uploadResult.error || !uploadResult.url) {
-          throw new Error(uploadResult.message || 'Failed to upload file');
-        }
-
-        // Step 2: Convert the uploaded file to text
-        const convertPerf = measurePerformanceWithAlerts('pdf_convert', 'api');
-        const convertResponse = await fetch('https://api.pdf.co/v1/pdf/convert/to/text', {
-          method: 'POST',
-          headers: {
-            'x-api-key': API_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            url: uploadResult.url,
-            inline: true,
-            async: false
-          })
-        });
-
-        const convertResult = await convertResponse.json();
-        convertPerf.end({ success: convertResult.error === false });
-        
-        log.info('PDF conversion result', {
-          userId,
-          success: convertResult.error === false,
-          textLength: convertResult.body?.length || 0
-        });
-
-        if (convertResult.error === false && convertResult.body) {
-          fileContent = convertResult.body;
-          log.info('PDF text extracted successfully', {
-            userId,
-            contentLength: fileContent.length
-          });
-          
-          // Additional validation for PDF content
-          if (!fileContent || fileContent.length === 0) {
-            throw new Error('PDF conversion returned empty content');
-          }
-          
-          // Check if the PDF might be scanned/image-based
-          const words = fileContent.trim().split(/\s+/);
-          if (words.length < 10) {
-            log.warn('PDF appears to contain very little text', {
-              userId,
-              wordCount: words.length,
-              contentPreview: fileContent.substring(0, 200)
-            });
-            throw new Error('PDF appears to be image-based or contains very little text. Please use a text-based PDF or convert to Word format.');
-          }
-        } else {
-          throw new Error(convertResult.message || 'Failed to extract text');
-        }
-
-      } catch (error: any) {
-        log.error('PDF API error', error, {
-          userId,
-          fileName: file.name
-        });
-        
-        track.event('pdf_processing_failed', {
-          userId,
-          error: error.message
-        });
-        
-        return NextResponse.json({ 
-          error: 'Failed to process PDF. Please try converting to Word format.' 
-        }, { status: 500 });
-      }
+      // PDF text extraction is intentionally not supported. The prior path
+      // uploaded the raw PDF to an external service (PDF.co) that is not a
+      // disclosed subprocessor for student data; removed in SPE-164. When PDF
+      // parsing is needed again, prefer an in-house parser (pdfjs-dist, already
+      // a dependency) or a disclosed subprocessor before re-enabling.
+      log.info('Rejected unsupported PDF upload', { userId, fileName: file.name });
+      return NextResponse.json(
+        { error: 'PDF upload is not currently supported. Please upload a Word, Excel, CSV, or text file.' },
+        { status: 400 }
+      );
     } else if (file.type.includes("sheet") || file.type.includes("excel")) {
       // Process Excel files
       extractionMethod = "Excel";
