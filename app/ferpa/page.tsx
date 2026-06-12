@@ -94,7 +94,7 @@ export default function FERPAPage() {
                 <li>Role-based access controls ensure you see only authorized student data</li>
                 <li>Secure authentication protects against unauthorized access</li>
                 <li>Encrypted data transmission and storage</li>
-                <li>Audit logs track all data access and modifications</li>
+                <li>Database row-level security (RLS) policies restrict each account to only its authorized data</li>
                 <li>Automatic session timeouts for security</li>
               </ul>
 

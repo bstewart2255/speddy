@@ -99,15 +99,17 @@ export default function PrivacyPage() {
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">4.3 Service Providers</h3>
             <p className="text-gray-700 mb-4">We work with trusted service providers:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li><strong>Supabase:</strong> Secure database hosting (FERPA-compliant infrastructure)</li>
-              <li><strong>Anthropic:</strong> AI assistance (receives only anonymized, non-identifiable prompts)</li>
-              <li><strong>Crisp:</strong> Help chat support (may collect user information such as IP address, location, and browser type; users should avoid sharing student data in chat messages)</li>
+              <li><strong>Supabase:</strong> Database, authentication, and file storage (system of record for student and provider data)</li>
+              <li><strong>Vercel:</strong> Application hosting and infrastructure</li>
+              <li><strong>Sentry:</strong> Error monitoring (operational error data, configured to minimize personal information)</li>
+              <li><strong>OpenAI and Anthropic:</strong> AI providers for optional AI-assisted features. Limited student data (such as initials and IEP goal text) may be shared with them to generate lesson and assessment content.</li>
+              <li><strong>Crisp:</strong> Help chat support (may collect provider account info such as name, email, IP address, and browser type; users should avoid sharing student data in chat messages)</li>
             </ul>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Data Security</h2>
             <p className="text-gray-700 mb-4">We implement comprehensive security measures:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li>End-to-end encryption for all data transmission</li>
+              <li>Encryption in transit (TLS) and at rest</li>
               <li>Encrypted data storage with regular security audits</li>
               <li>Multi-factor authentication options</li>
               <li>Role-based access controls</li>
