@@ -7,7 +7,7 @@ import Navbar from '../components/navigation/navbar';
 import Footer from '../components/navigation/footer';
 import { DashboardErrorBoundary, AsyncErrorBoundary } from '../components/ui/dashboard-error-boundary';
 import { SchoolProvider } from '../components/providers/school-context';
-import { CrispUserIdentifier } from '../components/crisp-user-identifier';
+import { HelpScoutBeaconIdentifier } from '../components/helpscout-beacon-identifier';
 import { ToastProvider } from '../contexts/toast-context';
 import { log } from '@/lib/monitoring/logger';
 
@@ -70,7 +70,7 @@ export default function DashboardLayout({
               <DashboardErrorBoundary>
                 <Navbar />
               </DashboardErrorBoundary>
-              <CrispUserIdentifier />
+              <HelpScoutBeaconIdentifier />
               <main className="flex-1 max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
                 <DashboardErrorBoundary>
                   {children}

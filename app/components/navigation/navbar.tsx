@@ -280,9 +280,8 @@ export default function Navbar() {
             <LongHoverTooltip content="Open the help chat to get assistance with using Speddy. Our support team typically responds within a few hours.">
               <button
                 onClick={() => {
-                  if (window.$crisp) {
-                    window.$crisp.push(['do', 'chat:show']);
-                    window.$crisp.push(['do', 'chat:open']);
+                  if (window.Beacon) {
+                    window.Beacon('open');
                   }
                 }}
                 className="text-sm font-medium text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2"
