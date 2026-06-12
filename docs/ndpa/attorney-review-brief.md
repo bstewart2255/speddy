@@ -156,7 +156,10 @@ representation in good faith? (b) The clauses say framework
 exclusions/variances "must be detailed in an attachment to Exhibit H" — but
 the v1.5 PDF contains **no Exhibit H page** (we are asking CITE about this,
 Linear SPE-172). Should any of our listed gaps be formally documented as
-variances, and if so, how, given the missing exhibit?
+variances, and if so, how, given the missing exhibit? (c) The most material
+gap is **audit logging of student-data access** (database scaffolding
+exists; application wiring is tracked but not built) — advise whether it
+should be completed pre-signing or documented as an accepted variance.
 
 ### 6. Cover-page state-law blank (confirmation)
 

@@ -73,8 +73,8 @@ detail), `data-inventory.md`, `subprocessors.md`, `offboarding-runbook.md`,
 | IP-based rate limiting on login | PR.AC | Not implemented — roadmap |
 | SSO integration | PR.AC | Not available |
 | Formal third-party penetration test | ID.RA / DE | Not performed; infrastructure providers (Supabase, Vercel) maintain SOC 2 Type II |
-| Audit logging of student-data access/modification | DE.CM / PR.PT | Table scaffolding exists (`audit_logs`); application wiring tracked in SPE-169 |
-| Annual IR tabletop exercise | RS.RP | Committed in `incident-response-plan.md` §9; first exercise to be scheduled |
+| Audit logging of student-data access/modification | DE.CM / PR.PT | Table scaffolding exists (`audit_logs`); application wiring tracked in SPE-169. The most material gap here — leading candidate for a documented variance (Exhibit H mechanism); raised for counsel in `ndpa/attorney-review-brief.md` item 5 |
+| Annual IR tabletop exercise | RS.RP | Committed in `incident-response-plan.md` §9; first exercise within 90 days of the first executed CA-NDPA, outcome documented |
 
 This is a self-assessment of alignment, not a certification or third-party
 audit. Counsel/DPO should confirm this satisfies the Art. V §3

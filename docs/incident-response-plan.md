@@ -38,7 +38,7 @@ and all subprocessors listed in `subprocessors.md`.
 | Role | Who | Responsibilities |
 | --- | --- | --- |
 | Incident Lead | Orchestrate LLC principal | Declares/classifies incidents, directs response, owns communications and notifications |
-| Counsel | Outside FERPA/privacy counsel (engaged as needed) | Advises on notification obligations and regulatory requirements |
+| Counsel | Outside FERPA/privacy counsel (engaged as needed) | Advises on notification obligations and regulatory requirements. The Incident Lead engages counsel immediately upon SEV-1 classification or any suspected Student Data exposure |
 | Subprocessor contacts | Supabase, Vercel, Sentry, Help Scout support/security channels | Upstream investigation and containment assistance |
 
 Speddy is operated by a small team; the Incident Lead may perform multiple
@@ -85,7 +85,7 @@ Actions are chosen per incident from this playbook:
 - Preserve evidence before remediation where practical: export relevant Sentry events, Supabase logs, `sign_in_logs` rows, and deployment history
 - Establish what data was affected (which tables/buckets, which students/districts), the time window, and the access vector
 - Use Supabase point-in-time recovery/backups to compare state if data integrity is in question
-- Determine whether the incident meets the CA-NDPA definition of a data breach (Section 2); document the confirmation time — the 72-hour notification clock starts at confirmation
+- Determine whether the incident meets the CA-NDPA definition of a data breach (Section 2); document the confirmation time — the 72-hour notification clock starts at confirmation. **Confirmation** is made by the Incident Lead (in consultation with Counsel) when unauthorized access to or acquisition of Student Data is established or cannot reasonably be ruled out; the decision is made without unreasonable delay, targeting within 24 hours of the investigation establishing those facts
 
 ### Phase 3 — Notify
 
@@ -136,11 +136,13 @@ barred (Art. II §4).
 For every incident, the Incident Lead maintains a dated log: detection
 source and time, classification, confirmation time, containment and
 investigation actions, notification times and recipients, root cause, and
-corrective actions. Records are retained for at least three years (the
-CA-NDPA term).
+corrective actions. Records are kept in Orchestrate LLC's access-controlled
+business records storage (encrypted cloud storage, separate from production
+systems, accessible only to the Incident Lead) and retained for at least
+three years (the CA-NDPA term).
 
 ## 9. Plan Maintenance & Testing
 
 - Reviewed and updated at least annually, and after every SEV-1/SEV-2 incident
-- A tabletop walkthrough of one SEV-1 scenario (e.g., leaked service-role key) is performed annually
+- A tabletop walkthrough of one SEV-1 scenario (e.g., leaked service-role key) is performed annually — the first within 90 days of the first executed CA-NDPA — and its outcome is documented in the incident log
 - The current version is provided to LEAs on request per CA-NDPA Art. V §4(3)
