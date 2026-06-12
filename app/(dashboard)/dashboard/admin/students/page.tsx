@@ -16,6 +16,12 @@ import { StudentScheduleModal } from '@/app/components/admin/student-schedule-mo
 import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
 import { useToast } from '@/app/contexts/toast-context';
 
+interface CareMatch {
+  id: string;
+  student_name: string;
+  referral_reason: string | null;
+}
+
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<AdminStudentView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +31,7 @@ export default function AdminStudentsPage() {
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [scheduleModalStudent, setScheduleModalStudent] = useState<GroupedStudent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<GroupedStudent | null>(null);
+  const [careMatches, setCareMatches] = useState<CareMatch[]>([]);
   const { showToast } = useToast();
 
   const fetchStudents = async () => {
@@ -94,18 +101,48 @@ export default function AdminStudentsPage() {
       setConfirmDelete(null);
 
       // Delete all provider records for this student
-      await Promise.all(
+      const results = await Promise.all(
         confirmDelete.providerRecords.map(r => deleteStudentAsAdmin(r.id, schoolId))
       );
 
       // Remove all related student records from local state
       const idsToRemove = new Set(confirmDelete.providerRecords.map(r => r.id));
       setStudents(prev => prev.filter(s => !idsToRemove.has(s.id)));
+
+      // CARE referrals are matched by name (not FK), so they are surfaced rather
+      // than auto-deleted. Dedupe matches across the grouped provider records.
+      const matchMap = new Map<string, CareMatch>();
+      results.forEach(res => (res.careMatches ?? []).forEach(m => matchMap.set(m.id, m)));
+      if (matchMap.size > 0) {
+        setCareMatches(Array.from(matchMap.values()));
+      }
     } catch (err) {
       console.error('Error deleting student:', err);
       showToast(err instanceof Error ? err.message : 'Failed to delete student', 'error');
     } finally {
       setDeletingGroupKey(null);
+    }
+  };
+
+  const deleteCareMatches = async () => {
+    const matches = careMatches;
+    setCareMatches([]);
+    try {
+      await Promise.all(
+        matches.map(async (m) => {
+          const res = await fetch(`/api/admin/care-referrals/${encodeURIComponent(m.id)}`, {
+            method: 'DELETE',
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body?.error || 'Failed to delete CARE referral');
+          }
+        })
+      );
+      showToast('Related CARE records deleted', 'success');
+    } catch (err) {
+      console.error('Error deleting CARE records:', err);
+      showToast(err instanceof Error ? err.message : 'Failed to delete CARE records', 'error');
     }
   };
 
@@ -348,6 +385,23 @@ export default function AdminStudentsPage() {
             : ''
         }
         confirmLabel="Delete"
+        variant="danger"
+      />
+
+      {/* CARE records follow-up: matched by name, confirmed separately */}
+      <ConfirmationModal
+        isOpen={careMatches.length > 0}
+        onClose={() => setCareMatches([])}
+        onConfirm={deleteCareMatches}
+        title="Delete related CARE records?"
+        message={
+          careMatches.length > 0
+            ? `We found ${careMatches.length} CARE referral(s) matching this student's name (${careMatches
+                .map(m => m.student_name)
+                .join(', ')}). These hold special-education referral data and are not removed automatically. Delete them too? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete CARE records"
         variant="danger"
       />
     </div>

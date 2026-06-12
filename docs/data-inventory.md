@@ -87,10 +87,11 @@ recipient — see [`subprocessors.md`](./subprocessors.md)), but it **is** a
 second storage location that the Schedule of Data must disclose.
 
 **NDPA implication:** honoring a data-return/deletion request requires clearing
-or bounding this local cache too (TTL, clear-on-logout, or not persisting
-identifiers). Tracked as in-scope for **SPE-143**. Until then, this data can
-persist on every provider device that ever scanned a given student, even after
-the student is removed backend-side.
+or bounding this local cache too. **Addressed in SPE-143:** the cache now expires
+after a **7-day TTL** (pruned on read and via an hourly alarm) and is cleared on
+logout — manual disconnect, or automatically when the provider's API key is
+invalidated server-side. To force-clear during offboarding, revoke the provider's
+extension API key (`api_keys`); see [`offboarding-runbook.md`](./offboarding-runbook.md).
 
 ## Notable points (for the NDPA / due diligence)
 

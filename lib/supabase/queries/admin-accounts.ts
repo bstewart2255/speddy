@@ -1289,74 +1289,40 @@ export async function updateStudentAsAdmin(
  * @param studentId - The student ID
  * @param schoolId - The school ID (for permission check)
  */
-export async function deleteStudentAsAdmin(studentId: string, schoolId: string) {
-  const supabase = createClient<Database>();
+export interface DeleteStudentResult {
+  success: boolean;
+  /**
+   * CARE referrals matched to this student by name (not by FK, so they are not
+   * deleted automatically). Surfaced for the admin to confirm and remove via
+   * /api/admin/care-referrals/[referralId].
+   */
+  careMatches?: Array<{ id: string; student_name: string; referral_reason: string | null }>;
+  storageObjectsRemoved?: number;
+}
 
-  // Verify admin has permission
-  const hasPermission = await isAdminForSchool(schoolId);
-  if (!hasPermission) {
-    throw new Error('You do not have permission to delete students at this school');
-  }
-
-  // Verify student belongs to this school
-  const studentCheck = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, school_id')
-        .eq('id', studentId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    { operation: 'verify_student_school_for_delete', studentId }
+/**
+ * Delete a student (and all their data, including Storage objects) as an admin.
+ *
+ * SPE-143: this now routes through the server (`DELETE /api/admin/students/[id]`)
+ * so it can remove the student's Storage objects and surface CARE referrals —
+ * neither of which a browser/RLS client can reach. The row delete itself still
+ * runs under the admin's RLS session server-side. Returns any name-matched CARE
+ * referrals for the caller to confirm.
+ */
+export async function deleteStudentAsAdmin(
+  studentId: string,
+  schoolId: string
+): Promise<DeleteStudentResult> {
+  const res = await fetch(
+    `/api/admin/students/${encodeURIComponent(studentId)}?schoolId=${encodeURIComponent(schoolId)}`,
+    { method: 'DELETE' }
   );
 
-  if (studentCheck.error || !studentCheck.data) {
-    throw new Error('Student not found');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.error || 'Failed to delete student');
   }
-
-  if (studentCheck.data.school_id !== schoolId) {
-    throw new Error('Student does not belong to this school');
-  }
-
-  const deletePerf = measurePerformanceWithAlerts('delete_student_admin', 'database');
-
-  // First delete schedule_sessions
-  const deleteSessionsResult = await safeQuery(
-    async () => {
-      const { error } = await supabase
-        .from('schedule_sessions')
-        .delete()
-        .eq('student_id', studentId);
-      if (error) throw error;
-      return null;
-    },
-    { operation: 'delete_student_sessions_admin', studentId }
-  );
-
-  if (deleteSessionsResult.error) {
-    deletePerf.end();
-    throw deleteSessionsResult.error;
-  }
-
-  // Then delete the student
-  const deleteResult = await safeQuery(
-    async () => {
-      const { error } = await supabase
-        .from('students')
-        .delete()
-        .eq('id', studentId);
-      if (error) throw error;
-      return true;
-    },
-    { operation: 'delete_student_admin', studentId }
-  );
-
-  deletePerf.end();
-
-  if (deleteResult.error) throw deleteResult.error;
-  return true;
+  return body as DeleteStudentResult;
 }
 
 // ============================================================================
