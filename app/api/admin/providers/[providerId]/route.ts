@@ -2,7 +2,6 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 import { withRoute } from '@/lib/api/with-route';
-import { isAdminForSchool } from '@/lib/api/admin-authz';
 
 const log = logger.child({ module: 'admin-provider-delete' });
 
@@ -43,7 +42,10 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
     return NextResponse.json({ error: 'Account not found' }, { status: 404 });
   }
 
-  // Authorization: a Speddy super-admin, or an admin over this provider's school.
+  // Authorization: a Speddy super-admin, or a district admin whose district(s)
+  // cover EVERY school the provider serves. Deleting an account removes that
+  // provider's data across all of their schools, so a single-school (site) admin
+  // must not be able to trigger it (SPE-143 review).
   const rls = await createClient();
   const { data: me } = await rls
     .from('profiles')
@@ -51,13 +53,46 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
     .eq('id', userId)
     .single();
 
-  const allowed =
-    me?.is_speddy_admin === true ||
-    (!!provider.school_id && (await isAdminForSchool(rls, userId, provider.school_id)));
+  let allowed = me?.is_speddy_admin === true;
+
+  if (!allowed) {
+    // Every school the provider serves: their primary school plus provider_schools.
+    const { data: provSchools } = await service
+      .from('provider_schools')
+      .select('school_id')
+      .eq('provider_id', providerId);
+    const providerSchoolIds = new Set<string>();
+    if (provider.school_id) providerSchoolIds.add(provider.school_id);
+    (provSchools ?? []).forEach((r) => r.school_id && providerSchoolIds.add(r.school_id));
+
+    // The requester's district_admin districts (site admins cannot delete accounts).
+    const { data: perms } = await rls
+      .from('admin_permissions')
+      .select('district_id')
+      .eq('admin_id', userId)
+      .eq('role', 'district_admin');
+    const myDistrictIds = new Set((perms ?? []).map((p) => p.district_id).filter(Boolean));
+
+    if (myDistrictIds.size > 0 && providerSchoolIds.size > 0) {
+      const { data: schools } = await service
+        .from('schools')
+        .select('id, district_id')
+        .in('id', Array.from(providerSchoolIds));
+      // Allow only if every one of the provider's schools resolved and belongs to
+      // one of the requester's districts.
+      allowed =
+        !!schools &&
+        schools.length === providerSchoolIds.size &&
+        schools.every((s) => myDistrictIds.has(s.district_id));
+    }
+  }
 
   if (!allowed) {
     return NextResponse.json(
-      { error: 'You do not have permission to delete this account' },
+      {
+        error:
+          "You do not have permission to delete this account. Account deletion requires a district admin covering all of the provider's schools, or a Speddy admin.",
+      },
       { status: 403 }
     );
   }

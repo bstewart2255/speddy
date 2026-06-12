@@ -8,6 +8,11 @@ const RETENTION_MONTHS = 12;
 // storage.remove() takes an array; chunk large deletes to keep each call bounded.
 const STORAGE_REMOVE_CHUNK = 100;
 
+// Bound how many rows one run processes so a large backlog (e.g. first deploy or
+// missed schedules) can't exhaust memory; the response sets `moreRemaining` so
+// the scheduler can re-run until the backlog clears.
+const SELECT_BATCH = 10000;
+
 /**
  * GET /api/cron/cleanup-worksheet-images
  *
@@ -59,7 +64,9 @@ export async function GET(request: NextRequest) {
     const { data: expired, error: selectError } = await supabase
       .from('worksheet_submissions')
       .select('id, image_url')
-      .lt('submitted_at', cutoffDate.toISOString());
+      .lt('submitted_at', cutoffDate.toISOString())
+      .order('submitted_at', { ascending: true })
+      .limit(SELECT_BATCH);
 
     if (selectError) {
       console.error('Error selecting expired worksheet submissions:', selectError);
@@ -134,6 +141,8 @@ export async function GET(request: NextRequest) {
         rowsDeleted,
         storageRemoved,
         storageErrors: storageErrors || undefined,
+        // True when this run hit the batch cap — re-trigger to clear the backlog.
+        moreRemaining: rows.length === SELECT_BATCH,
         retentionMonths: RETENTION_MONTHS,
         cutoffDate: cutoffDate.toISOString(),
         processingTimeMs: processingTime,

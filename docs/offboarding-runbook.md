@@ -24,10 +24,12 @@ operational half of the NDPA deletion obligation tracked in **SPE-143**.
 
 Student and CARE-referral deletes are gated by `isAdminForSchool` (site/district
 admin), and the student row delete runs under the admin's own RLS session.
-Account (provider) deletion is allowed for a Speddy super-admin (`is_speddy_admin`)
-or an admin over the provider's school. Across all routes, destructive steps use
-the service-role client only where RLS + cascade cannot reach (Storage, cross-RLS
-cleanup).
+Account (provider) deletion is restricted to a Speddy super-admin
+(`is_speddy_admin`) or a district admin whose district(s) cover **every** school
+the provider serves — because deleting an account removes that provider's data
+across all of their schools, a single-school (site) admin cannot trigger it.
+Across all routes, destructive steps use the service-role client only where RLS +
+cascade cannot reach (Storage, cross-RLS cleanup).
 
 ---
 
@@ -97,7 +99,9 @@ rows) older than **12 months**. It is gated by `CRON_SECRET` (sent as the
 
 **Scheduling is not wired automatically.** Register it with the same scheduler that
 runs the other cron routes (an external scheduler that sends `CRON_SECRET`, or a
-`vercel.json` `crons` entry). Recommended cadence: daily.
+`vercel.json` `crons` entry). Recommended cadence: daily. Each run processes up to
+10,000 submissions; if the response reports `moreRemaining: true` (e.g. after a
+first deployment or a long gap), re-trigger until it clears.
 
 ---
 
