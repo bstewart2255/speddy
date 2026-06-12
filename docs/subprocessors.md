@@ -34,8 +34,11 @@ _Last reviewed: 2026-06-11._
 Both providers are hard-gated off by `AI_FEATURES_ENABLED` (default off; see
 SPE-162): the AI routes return 404 (before auth or handler logic) and make
 **zero** provider calls unless the env var is set to exactly the string `'true'`.
-**Do not enable until provider DPAs (no-training / zero-retention) are executed —
-SPE-163.**
+
+**DPAs executed and on file (2026-06-12):** OpenAI signed (self-serve), Anthropic
+incorporated via Commercial Terms + dated copy saved; both US-processed on standard
+tiers (SPE-163). **Still do not enable AI** until Zero Data Retention is requested
+(SPE-163) and prompt de-identification lands (SPE-61).
 
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
