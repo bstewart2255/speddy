@@ -72,6 +72,26 @@ _Entry: all **auto-captured** (derived) — not provider- or student-entered._
 - **OpenAI / Anthropic** — *only when AI is enabled* (currently hard-gated off, SPE-162 — gated routes 404 with **zero** provider calls): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
 - **Crisp** — support chat. Receives the signed-in **provider's** email, full name, **role, school district, school site, and user ID** (pushed as Crisp session data); no student data by design (though a provider could paste it into a chat message).
 
+## Client-side storage (provider devices)
+
+Student data lives in **two** places, not one. Besides the Supabase backend
+(system of record), the Chrome extension caches student data **on the
+provider's own device** in `chrome.storage.local` during passive discrepancy
+detection: **SEIS ID (SSID), student name, grade, and school**, keyed per
+student.
+
+This local cache sits **outside** the Supabase backend — and therefore outside
+RLS and outside the backend's retention/deletion tooling. It is **not** a
+subprocessor (it is first-party code on the provider's device, not an external
+recipient — see [`subprocessors.md`](./subprocessors.md)), but it **is** a
+second storage location that the Schedule of Data must disclose.
+
+**NDPA implication:** honoring a data-return/deletion request requires clearing
+or bounding this local cache too (TTL, clear-on-logout, or not persisting
+identifiers). Tracked as in-scope for **SPE-143**. Until then, this data can
+persist on every provider device that ever scanned a given student, even after
+the student is removed backend-side.
+
 ## Notable points (for the NDPA / due diligence)
 
 1. **Full student names and date of birth _are_ collected** (`student_details`). This corrects the earlier SPE-59 draft inventory, which said "initials, not full names." Names + DOB must be disclosed on the Schedule of Data.
