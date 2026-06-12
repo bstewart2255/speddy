@@ -37,7 +37,7 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Field | What goes there | Source |
 |---|---|---|
 | LEA designated rep | District fills | — |
-| Provider designated rep: name, title, address, phone, email | **[NEEDED]** — note this contact doubles as the **data-security contact** the LEA may use (Art. V §3) | Decision 3; resolve the `@speddy.xyz` vs `@speddy.com` email discrepancy (privacy page vs `speddy-technical-security-overview.md` §13) |
+| Provider designated rep: name, title, address, phone, email | Email: **help@speddy.xyz** (decided 2026-06-12; all public docs standardized). Name, title, address, phone **[NEEDED]** — note this contact doubles as the **data-security contact** the LEA may use (Art. V §3) | Decision 3 |
 | Provider signature block (By / Date / Printed Name / Title) | Authorized signer of Orchestrate LLC **[NEEDED]** | Decision 2 |
 
 ### Standard Clauses — commitments we are signing up to (no blanks, but verify)
@@ -45,12 +45,12 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Clause | Commitment | Our position | Source |
 |---|---|---|---|
 | Art. II §2 (+ Ex. G ¶2) | Parent access/correction via the LEA within **45 days** | Supported operationally — requests routed through the district; deletion tooling exists | `offboarding-runbook.md` §A |
-| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file; **Supabase / Vercel / Sentry DPA copies not yet documented** — Gap 5 | `subprocessors.md` |
+| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file. Researched 2026-06-12: **Supabase** DPA requires a signing step (dashboard → Legal Documents); **Vercel** DPA is incorporated into the ToS (deemed signed — Pro/Enterprise plans; confirm plan tier + download copy); **Sentry** DPA is self-serve click-accept (Settings → Legal & Compliance, Owner/Billing role). See Gap 8 | `subprocessors.md`; supabase.com/legal/dpa, vercel.com/legal/dpa, sentry.io/legal/dpa |
 | Art. IV §6 / Art. VII §2 | Dispose of Student Data within **60 days** of written request; destroy on termination | Supported: per-student cascade delete + Storage cleanup, provider/account deletion, district offboarding runbook, extension-cache TTL/clear | `offboarding-runbook.md` (SPE-143, PR #655) |
 | Art. V §1 | US data storage where required; list of storage locations on request | Supabase project region **us-west-1 (N. California)** — verified 2026-06-12; Vercel function region configurable; Sentry US ingest | `subprocessors.md`; live project settings |
 | Art. V §2 | Annual LEA audit right (10 business days' notice + NDA) | Acceptable; no tooling needed | — |
 | Art. V §3 | Implement a Cybersecurity Framework from Exhibit F; variances detailed in an attachment to Exhibit H | **No framework formally designated today** — Decision 6 / Gap 7 | `speddy-technical-security-overview.md` §7–9 |
-| Art. V §4 | Breach notice to LEA within **72 hours** of confirmation; **written incident-response plan** available on request | 72h matches our stated commitment; standalone written IR plan **not confirmed to exist** — Gap 6 | `speddy-technical-security-overview.md` §10 |
+| Art. V §4 | Breach notice to LEA within **72 hours** of confirmation; **written incident-response plan** available on request | 72h matches our stated commitment; written IR plan exists: `docs/incident-response-plan.md` (v1.0, June 2026) | `incident-response-plan.md`; `speddy-technical-security-overview.md` §10 |
 | Art. IV §7 / Ex. G ¶4 | No targeted advertising, no profiling, no sale, no AI training on Student Data | True today; AI hard-gated off; provider DPAs prohibit training | `subprocessors.md` (SPE-162, SPE-163) |
 | §4 of preamble | DPA term: **3 years**; Exhibit E expires 3 years from signature | Calendar it | NDPA p. 2 §4 |
 
@@ -81,7 +81,7 @@ and (pending SPE-60) "transfer" dispositions — `offboarding-runbook.md`.
 | Field | What goes there | Source |
 |---|---|---|
 | Originating LEA name + DPA date | The first district that signs; filled at execution | — |
-| Email where Subscribing LEAs send signed Exhibit E | Stable role address **[NEEDED]** (Decision 4; e.g. `legal@…` or `help@speddy.xyz`) | — |
+| Email where Subscribing LEAs send signed Exhibit E | **help@speddy.xyz** (decided 2026-06-12) | — |
 | PROVIDER / BY / Printed Name / Title / Date | Orchestrate LLC + signatory | Decision 2 |
 | Subscribing LEA section | Leave blank (future LEAs fill) | — |
 
@@ -223,9 +223,9 @@ Source: `subprocessors.md` (last reviewed 2026-06-11).
 
 | Subprocessor | Function | Student data | Location | Agreement |
 |---|---|---|---|---|
-| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA **[NEEDED — confirm on file]** |
-| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA **[NEEDED — confirm on file]** |
-| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA **[NEEDED — confirm on file]** |
+| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; **sign via dashboard → Legal Documents [ACTION]** |
+| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS (Pro/Enterprise); **confirm plan tier + save copy [ACTION]** |
+| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve; **accept in Settings → Legal & Compliance [ACTION]** |
 | Help Scout | Support help desk + chat widget | No by design (provider PII only) | US | DPA v2 via ToS; DPF + SCCs (SPE-170, on file) |
 | OpenAI — **planned, NOT enabled** | AI lesson generation (when enabled) | None today (hard-gated off); initials + IEP goal text when enabled | US | DPA executed 2026-06-12 (SPE-163) |
 | Anthropic — **planned, NOT enabled** | AI generation/grading/parsing (when enabled) | None today (hard-gated off) | US | DPA via Commercial Terms, copy on file 2026-06-12 (SPE-163) |
@@ -244,13 +244,12 @@ only when active); Supabase Auth transactional email.
 2. **[NEEDED] Authorized signatory** — name + title for three signature
    blocks (DPA, Exhibit E, Exhibit G).
 3. **[NEEDED] Designated representative / security contact** — name, title,
-   address, phone, email (doubles as the Art. V §3 security contact).
-   **Email-domain conflict:** the privacy page uses `help@speddy.xyz`; the
-   security overview §13 lists `security@/support@/legal@speddy.com`. Pick
-   real, monitored addresses and fix the stale doc.
-4. **GOPT (Exhibit E)** — sign or not, and which inbox receives subscribing
-   LEAs' signed Exhibit E. Recommend signing: it's the CSPA scaling
-   mechanism. Note Exhibit E expires 3 years after signature. **[ATTORNEY]**
+   address, phone (doubles as the Art. V §3 security contact).
+   ~~Email-domain conflict~~ **Resolved 2026-06-12: all contact points are
+   `help@speddy.xyz`** (privacy page, security overview, IR plan, Exhibit E).
+4. **GOPT (Exhibit E)** — sign or not (inbox decided: help@speddy.xyz).
+   Recommend signing: it's the CSPA scaling mechanism. Note Exhibit E
+   expires 3 years after signature. **[ATTORNEY]**
 5. **AI Addendum stance** — recommend "No AI used at this time" + the §4
    planned-use narrative (accurate today; obligates notice + updated AI
    schedule before enabling). Alternative (pre-disclosing AI use now)
@@ -264,24 +263,34 @@ only when active); Supabase Auth transactional email.
    variances go in "an attachment to Exhibit H," and Art. VII §3 gives
    Exhibit H top priority. Ask CITE/CSPA how providers attach Exhibit H
    material (or confirm it's intentionally omitted). **[ATTORNEY]**
-8. **Subprocessor DPAs incomplete (Art. II §5)** — only OpenAI, Anthropic,
-   and Help Scout DPAs are documented as on file. Execute/download and file
-   the **Supabase, Vercel, and Sentry** DPAs.
-9. **Stale security overview** — `speddy-technical-security-overview.md`
-   (Dec 2025) contradicts current reality: Replit/GCP hosting (now Vercel),
-   "initials only, full names not collected" (false — `student_details`),
-   AI services active (now gated off), `@speddy.com` contacts, no mention of
-   Help Scout or the Chrome extension. **Must be rewritten before it backs
-   any NDPA representation or goes to a district.**
-10. **Privacy-page MFA claim** — `app/privacy/page.tsx` §5 claims
-    "multi-factor authentication options" while MFA is not implemented
-    (security overview §2). Fix the page or ship MFA (SPE-134 territory).
-11. **Written incident-response plan (Art. V §4(3))** — required in writing
-    and producible on request. The security overview sketches a process; a
-    standalone IR plan document needs to exist. **[DPO]**
-12. **Retention cron not scheduled** — `cleanup-worksheet-images` exists but
-    no `vercel.json` crons entry / external scheduler is wired (verified
-    2026-06-12). Schedule it before relying on the 12-month TTL.
+8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12. Three quick
+   self-serve actions remain (~15 min total):
+   - **Supabase**: DPA must be signed — Supabase dashboard → Organization →
+     Legal Documents (PandaDoc flow). Save the executed copy.
+   - **Vercel**: DPA is incorporated by reference into the Terms of Service
+     (deemed signed) for **Pro/Enterprise** customers — confirm the Speddy
+     project is on Pro (Hobby is non-commercial anyway), then save a copy of
+     vercel.com/legal/dpa for the records file.
+   - **Sentry**: self-serve click-accept — Sentry → Settings → Legal &
+     Compliance (requires Owner/Billing role); DocuSign option if a signed
+     copy is preferred. Save the acceptance record.
+9. ~~Stale security overview~~ **Resolved 2026-06-12** — rewritten (v2.0):
+   Vercel hosting, us-west-1 data residency, accurate data inventory (full
+   names/DOB disclosed), AI-disabled posture, Help Scout + Chrome extension
+   covered, `help@speddy.xyz` contacts, no MFA references.
+10. ~~Privacy-page MFA claim~~ **Resolved 2026-06-12** — MFA bullet removed
+    from `app/privacy/page.tsx`; page date bumped.
+11. ~~Written incident-response plan~~ **Resolved 2026-06-12** — created at
+    `docs/incident-response-plan.md` (v1.0): detection, severity levels,
+    containment playbook, 72-hour LEA notification with the Art. V §4
+    content items, post-incident review, annual tabletop. **[DPO review
+    still recommended before distribution.]**
+12. ~~Retention cron not scheduled~~ **Resolved 2026-06-12** — `vercel.json`
+    created with daily crons for `cleanup-worksheet-images` (12-month image
+    TTL) and `cleanup-uploads` (7-day rate-limit rows, 90-day analytics).
+    **Verify `CRON_SECRET` is set in the Vercel project env** — Vercel Cron
+    sends it as `Authorization: Bearer` automatically; the routes 401
+    without it. Confirm first runs in the Vercel dashboard after deploy.
 13. **Bulk export (SPE-60) still open** — Art. IV §6 allows disposition by
     *transfer* and districts may request data return. Per-student deletion
     is built; comprehensive export is not. Decide whether to accept the gap
@@ -298,16 +307,16 @@ only when active); Supabase Auth transactional email.
 
 1. ☐ Confirm legal entity name, formation state, business address (Gap 1)
 2. ☐ Designate authorized signatory (Gap 2)
-3. ☐ Designate rep + security contact; fix email-domain inconsistency (Gap 3)
-4. ☐ Decide GOPT yes/no + subscribing-LEA inbox (Gap 4) **[ATTORNEY]**
+3. ☐ Designate rep + security contact (name/title/address/phone; email is help@speddy.xyz) (Gap 3)
+4. ☐ Decide GOPT yes/no (inbox decided: help@speddy.xyz) (Gap 4) **[ATTORNEY]**
 5. ☐ Confirm "No AI used at this time" stance (Gap 5) **[ATTORNEY]**
 6. ☐ Designate cybersecurity framework + internal mapping memo (Gap 6) **[DPO/ATTORNEY]**
 7. ☐ Ask CITE about Exhibit H handling (Gap 7) **[ATTORNEY]**
-8. ☐ Execute/file Supabase, Vercel, Sentry DPAs; collate with OpenAI/Anthropic/Help Scout records (Gap 8)
-9. ☐ Rewrite `speddy-technical-security-overview.md` to current reality (Gap 9)
-10. ☐ Fix privacy-page MFA claim or implement MFA (Gap 10)
-11. ☐ Write/adopt formal incident-response plan (Gap 11) **[DPO]**
-12. ☐ Schedule the worksheet-image retention cron (Gap 12 — eng, small)
+8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · confirm Vercel Pro plan + save DPA copy; collate with OpenAI/Anthropic/Help Scout records (Gap 8)
+9. ☑ Security overview rewritten to current reality, v2.0 (Gap 9 — done 2026-06-12)
+10. ☑ MFA references removed from privacy page (Gap 10 — done 2026-06-12)
+11. ☑ Incident-response plan written: `docs/incident-response-plan.md` (Gap 11 — done 2026-06-12; **[DPO]** review recommended)
+12. ☑ Retention crons scheduled via `vercel.json` (Gap 12 — done 2026-06-12; ☐ verify `CRON_SECRET` env in Vercel + first-run success)
 13. ☐ Decide SPE-60 (bulk export) timing vs. data-return obligation (Gap 13)
 14. ☐ Counsel review of Exhibit B checkbox set + notes (Gap 14) **[ATTORNEY]**
 15. ☐ Verify locked-PDF prefills (state-law blank, Exhibit G checkbox) (Gap 15)

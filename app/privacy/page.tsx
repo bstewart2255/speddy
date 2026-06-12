@@ -6,7 +6,7 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: January 21, 2026</p>
+            <p className="text-gray-600">Last Updated: June 12, 2026</p>
           </div>
 
           {/* Content */}
@@ -111,7 +111,6 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Encryption in transit (TLS) and at rest</li>
               <li>Encrypted data storage with regular security audits</li>
-              <li>Multi-factor authentication options</li>
               <li>Role-based access controls</li>
               <li>Regular security updates and monitoring</li>
               <li>Incident response procedures</li>
