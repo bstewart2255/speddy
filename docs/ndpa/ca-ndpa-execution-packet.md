@@ -284,9 +284,13 @@ only when active); Supabase Auth transactional email.
 12. ~~Retention cron not scheduled~~ **Resolved 2026-06-12** — `vercel.json`
     created with daily crons for `cleanup-worksheet-images` (12-month image
     TTL) and `cleanup-uploads` (7-day rate-limit rows, 90-day analytics).
-    **Verify `CRON_SECRET` is set in the Vercel project env** — Vercel Cron
+    **Verify in the Vercel project env: `CRON_SECRET` is set** (Vercel Cron
     sends it as `Authorization: Bearer` automatically; the routes 401
-    without it. Confirm first runs in the Vercel dashboard after deploy.
+    without it) **and `CLEANUP_ANALYTICS=true`** — the analytics step of
+    `cleanup-uploads` is opt-in (`app/api/cron/cleanup-uploads/route.ts`,
+    default false), so the 90-day analytics TTL is not enforced until that
+    flag is set (flagged by Codex review, PR #658). Confirm first runs in
+    the Vercel dashboard after deploy.
 13. ~~Bulk export decision~~ **Decided 2026-06-12: option (a)** — sign now;
     a district data-return/transfer request will be fulfilled manually
     within the 60-day Art. IV §6 window (current scale ~100 students).
@@ -312,7 +316,7 @@ only when active); Supabase Auth transactional email.
 9. ☑ Security overview rewritten to current reality, v2.0 (Gap 9 — done 2026-06-12)
 10. ☑ MFA references removed from privacy page (Gap 10 — done 2026-06-12)
 11. ☑ Incident-response plan written: `docs/incident-response-plan.md` (Gap 11 — done 2026-06-12; **[DPO]** review recommended)
-12. ☑ Retention crons scheduled via `vercel.json` (Gap 12 — done 2026-06-12; ☐ verify `CRON_SECRET` env in Vercel + first-run success)
+12. ☑ Retention crons scheduled via `vercel.json` (Gap 12 — done 2026-06-12; ☐ verify `CRON_SECRET` **and `CLEANUP_ANALYTICS=true`** env in Vercel + first-run success)
 13. ☑ Bulk export: option (a) — manual fulfillment within 60 days; SPE-60 stays backlog (decided 2026-06-12; attorney confirms, brief item 10)
 14. ☐ Counsel review of Exhibit B checkbox set + notes (Gap 14) **[ATTORNEY]**
 15. ☐ Verify locked-PDF prefills (state-law blank, Exhibit G checkbox) (Gap 15)
