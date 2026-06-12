@@ -70,7 +70,7 @@ _Entry: all **auto-captured** (derived) — not provider- or student-entered._
 - **Vercel** — hosting/network: all traffic transits Vercel compute in transit, and request-scoped data may appear in console/runtime logs (not every element is always logged).
 - **Sentry** — incidental error context only, minimized (no logs/replay; SPE-167).
 - **OpenAI / Anthropic** — *only when AI is enabled* (currently hard-gated off, SPE-162 — gated routes 404 with **zero** provider calls): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
-- **Crisp** — support chat. Receives the signed-in **provider's** email, full name, **role, school district, school site, and user ID** (pushed as Crisp session data); no student data by design (though a provider could paste it into a chat message).
+- **Help Scout** — support help desk + chat (Beacon widget). Receives the signed-in **provider's** email, full name, **role, school district, school site, and user ID** (pushed as Beacon identify attributes); no student data by design (though a provider could paste it into a chat message).
 
 ## Client-side storage (provider devices)
 

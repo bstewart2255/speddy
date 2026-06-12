@@ -40,19 +40,12 @@ export default function RootLayout({
           {children}
         </AuthProvider>
         <Script
-          id="crisp-widget"
+          id="helpscout-beacon"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              window.$crisp=[];
-              window.CRISP_WEBSITE_ID="23e988ce-802b-4c86-8738-eb8a1d3374b0";
-              (function(){
-                var d=document;
-                var s=d.createElement("script");
-                s.src="https://client.crisp.chat/l.js";
-                s.async=1;
-                d.getElementsByTagName("head")[0].appendChild(s);
-              })();
+              !function(e,t,n){function a(){var e=t.getElementsByTagName("script")[0],n=t.createElement("script");n.type="text/javascript",n.async=!0,n.src="https://beacon-v2.helpscout.net",e.parentNode.insertBefore(n,e)}if(e.Beacon=n=function(t,n,a){e.Beacon.readyQueue.push({method:t,options:n,data:a})},n.readyQueue=[],"complete"===t.readyState)return a();e.attachEvent?e.attachEvent("onload",a):e.addEventListener("load",a,!1)}(window,document,window.Beacon||function(){});
+              window.Beacon('init', 'acb6362b-53aa-4ebc-acba-772d9bd6fe4c');
             `,
           }}
         />
