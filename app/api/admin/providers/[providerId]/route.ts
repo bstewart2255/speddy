@@ -129,7 +129,7 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
   }
 
   // --- Null the nullable NO ACTION references to this provider so the delete isn't blocked. ---
-  await Promise.all([
+  const nullResults = await Promise.all([
     service.from('admin_permissions').update({ granted_by: null }).eq('granted_by', providerId),
     service.from('bell_schedules').update({ created_by_id: null }).eq('created_by_id', providerId),
     service.from('care_action_items').update({ assignee_id: null }).eq('assignee_id', providerId),
@@ -140,6 +140,16 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
     service.from('holidays').update({ created_by: null }).eq('created_by', providerId),
     service.from('worksheet_submissions').update({ submitted_by: null }).eq('submitted_by', providerId),
   ]);
+  const nullErr = nullResults.find((r) => r.error)?.error;
+  if (nullErr) {
+    // Stop before the profile delete; otherwise it would fail with a confusing
+    // foreign-key violation instead of this clear message.
+    log.error('Failed to null provider references before delete', nullErr);
+    return NextResponse.json(
+      { error: `Failed to prepare account for deletion: ${nullErr.message}` },
+      { status: 500 }
+    );
+  }
 
   // --- Delete the profile (cascades the provider's students + owned data) ---
   const { error: profileDelErr } = await service.from('profiles').delete().eq('id', providerId);

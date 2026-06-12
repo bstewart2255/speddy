@@ -126,7 +126,6 @@ export default function AdminStudentsPage() {
 
   const deleteCareMatches = async () => {
     const matches = careMatches;
-    setCareMatches([]);
     try {
       await Promise.all(
         matches.map(async (m) => {
@@ -139,6 +138,8 @@ export default function AdminStudentsPage() {
           }
         })
       );
+      // Clear only after success, so a partial failure keeps the modal open to retry.
+      setCareMatches([]);
       showToast('Related CARE records deleted', 'success');
     } catch (err) {
       console.error('Error deleting CARE records:', err);

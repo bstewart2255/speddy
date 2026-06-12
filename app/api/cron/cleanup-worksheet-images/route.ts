@@ -13,8 +13,9 @@ const STORAGE_REMOVE_CHUNK = 100;
  *
  * Deletes worksheet_submissions older than RETENTION_MONTHS and removes their
  * images from the private `worksheet-submissions` bucket (path stored in
- * `image_url`). Storage objects are removed first; the rows are deleted only
- * after, so a Storage failure never orphans an image behind a deleted row.
+ * `image_url`). Storage objects are removed first, and a row is deleted only once
+ * its image is gone (or it never had one), so a Storage failure never orphans an
+ * image behind a deleted row — failed paths are retried on the next run.
  *
  * Auth mirrors the existing cleanup cron: a shared secret in the `x-cron-secret`
  * header or `Authorization: Bearer <secret>` form, compared against CRON_SECRET.
@@ -74,10 +75,12 @@ export async function GET(request: NextRequest) {
     }
 
     const rows = expired ?? [];
-    const paths = rows.map((r) => r.image_url).filter((p): p is string => !!p);
 
-    // Remove Storage objects first, in bounded chunks.
-    let storageRemoved = 0;
+    // Remove Storage objects first, in bounded chunks. Track which paths were
+    // actually removed so we never delete a row whose image survived (that would
+    // orphan student work in the private bucket).
+    const paths = rows.map((r) => r.image_url).filter((p): p is string => !!p);
+    const removedPaths = new Set<string>();
     let storageErrors = 0;
     for (let i = 0; i < paths.length; i += STORAGE_REMOVE_CHUNK) {
       const chunk = paths.slice(i, i + STORAGE_REMOVE_CHUNK);
@@ -88,13 +91,17 @@ export async function GET(request: NextRequest) {
         storageErrors++;
         console.error('Error removing worksheet-submission images:', removeError);
       } else {
-        storageRemoved += chunk.length;
+        chunk.forEach((p) => removedPaths.add(p));
       }
     }
+    const storageRemoved = removedPaths.size;
 
-    // Delete the rows.
+    // Delete only rows whose image is gone (or that never had one); keep rows whose
+    // image failed to remove so the next run retries them without orphaning the object.
     let rowsDeleted = 0;
-    const ids = rows.map((r) => r.id);
+    const ids = rows
+      .filter((r) => !r.image_url || removedPaths.has(r.image_url))
+      .map((r) => r.id);
     if (ids.length) {
       const { error: deleteError, count } = await supabase
         .from('worksheet_submissions')

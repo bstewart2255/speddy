@@ -27,15 +27,18 @@ export async function isAdminForSchool(
     return true;
   }
 
-  // District admin whose district owns the school
-  const districtAdmin = permissions.find((p) => p.role === 'district_admin');
-  if (districtAdmin?.district_id) {
+  // District admin whose district owns the school. A user can hold district_admin
+  // for multiple districts, so check all of them, not just the first.
+  const districtAdmins = permissions.filter((p) => p.role === 'district_admin' && p.district_id);
+  if (districtAdmins.length) {
     const { data: school } = await rls
       .from('schools')
       .select('district_id')
       .eq('id', schoolId)
       .single();
-    if (school) return school.district_id === districtAdmin.district_id;
+    if (school) {
+      return districtAdmins.some((p) => p.district_id === school.district_id);
+    }
   }
 
   return false;

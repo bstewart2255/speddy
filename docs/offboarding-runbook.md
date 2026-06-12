@@ -22,10 +22,12 @@ operational half of the NDPA deletion obligation tracked in **SPE-143**.
 | **Worksheet-image retention** | `app/api/cron/cleanup-worksheet-images` (cron, `CRON_SECRET`) | Deletes `worksheet_submissions` + their images older than **12 months**. |
 | **Bulk export** | **See [SPE-60](https://linear.app/speddy/issue/SPE-60)** | Export is tracked separately and is **not** rebuilt here. |
 
-All deletion routes are gated by `isAdminForSchool` (site/district admin) and run
-destructive steps with the service-role client only where RLS + cascade cannot
-reach (Storage, cross-RLS cleanup). The student row delete itself runs under the
-admin's own RLS session.
+Student and CARE-referral deletes are gated by `isAdminForSchool` (site/district
+admin), and the student row delete runs under the admin's own RLS session.
+Account (provider) deletion is allowed for a Speddy super-admin (`is_speddy_admin`)
+or an admin over the provider's school. Across all routes, destructive steps use
+the service-role client only where RLS + cascade cannot reach (Storage, cross-RLS
+cleanup).
 
 ---
 
