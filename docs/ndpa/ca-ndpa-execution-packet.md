@@ -27,7 +27,7 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Field | What goes there | Source |
 |---|---|---|
 | LEA name + address | Filled by the district | — |
-| Provider name + address | **Orchestrate LLC** + registered business address **[NEEDED]** | `app/privacy/page.tsx` §1, §14 ("Orchestrate LLC"); address not in repo |
+| Provider name + address | **Orchestrate LLC**, a California limited liability company, **2108 N St Ste N, Sacramento, CA 95816 US** (confirmed 2026-06-12) | `app/privacy/page.tsx` §1, §14; owner-confirmed |
 | Blank after "applicable state privacy laws and regulations ___ and" | Likely pre-printed in the locked CA form; if fillable, counsel supplies (e.g., SOPIPA — Cal. B&P Code §§ 22584–22585; Cal. Ed. Code § 49073.1 / AB 1584) **[ATTORNEY]** | NDPA cover; confirm in the live PDF |
 | ☑ Exhibit G (Supplemental State Terms) | Checked — mandatory for the CA version (appears pre-checked in the locked form) | NDPA p. 2 §2 |
 | ☐/☑ Exhibit E (General Offer of Privacy Terms) | **Decision 4** — recommend checking (the CSPA model: one signature, other LEAs subscribe) | NDPA p. 2 §2 |
@@ -37,8 +37,8 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Field | What goes there | Source |
 |---|---|---|
 | LEA designated rep | District fills | — |
-| Provider designated rep: name, title, address, phone, email | Email: **help@speddy.xyz** (decided 2026-06-12; all public docs standardized). Name, title, address, phone **[NEEDED]** — note this contact doubles as the **data-security contact** the LEA may use (Art. V §3) | Decision 3 |
-| Provider signature block (By / Date / Printed Name / Title) | Authorized signer of Orchestrate LLC **[NEEDED]** | Decision 2 |
+| Provider designated rep: name, title, address, phone, email | **Blair Stewart, Owner, 2108 N St Ste N, Sacramento, CA 95816 US; help@speddy.xyz; phone on file** (kept out of this public repo — enter directly in the PDF; business-line decision pending). This contact doubles as the **data-security contact** the LEA may use (Art. V §3) | Confirmed 2026-06-12 |
+| Provider signature block (By / Date / Printed Name / Title) | **Blair Stewart, Owner** (confirmed 2026-06-12); same signer on Exhibit E and Exhibit G | Confirmed |
 
 ### Standard Clauses — commitments we are signing up to (no blanks, but verify)
 
@@ -82,7 +82,7 @@ and (pending SPE-60) "transfer" dispositions — `offboarding-runbook.md`.
 |---|---|---|
 | Originating LEA name + DPA date | The first district that signs; filled at execution | — |
 | Email where Subscribing LEAs send signed Exhibit E | **help@speddy.xyz** (decided 2026-06-12) | — |
-| PROVIDER / BY / Printed Name / Title / Date | Orchestrate LLC + signatory | Decision 2 |
+| PROVIDER / BY / Printed Name / Title / Date | Orchestrate LLC — **Blair Stewart, Owner** | Confirmed 2026-06-12 |
 | Subscribing LEA section | Leave blank (future LEAs fill) | — |
 
 ### Exhibit F — Data Security Requirements (p. 18)
@@ -238,38 +238,34 @@ only when active); Supabase Auth transactional email.
 
 ## 6. Gaps & decisions (need your input — don't sign without resolving)
 
-1. **[NEEDED] Legal entity details** — exact registered name ("Orchestrate
-   LLC"?), state of formation, principal business address. Cover page,
-   Exhibit E, Exhibit G.
-2. **[NEEDED] Authorized signatory** — name + title for three signature
-   blocks (DPA, Exhibit E, Exhibit G).
-3. **[NEEDED] Designated representative / security contact** — name, title,
-   address, phone (doubles as the Art. V §3 security contact).
-   ~~Email-domain conflict~~ **Resolved 2026-06-12: all contact points are
-   `help@speddy.xyz`** (privacy page, security overview, IR plan, Exhibit E).
-4. **GOPT (Exhibit E)** — sign or not (inbox decided: help@speddy.xyz).
-   Recommend signing: it's the CSPA scaling mechanism. Note Exhibit E
-   expires 3 years after signature. **[ATTORNEY]**
-5. **AI Addendum stance** — recommend "No AI used at this time" + the §4
-   planned-use narrative (accurate today; obligates notice + updated AI
-   schedule before enabling). Alternative (pre-disclosing AI use now)
-   misstates current processing. **[ATTORNEY]**
-6. **Cybersecurity framework (Exhibit F / Art. V §3)** — no framework is
-   formally adopted today; the security overview describes controls but
-   names none. Designate one (NIST CSF 1.1 or CIS Controls fit a team this
-   size), write a short internal control mapping, and document variances.
-   **[DPO/ATTORNEY]**
-7. **Exhibit H doesn't exist in this PDF** — yet Art. V §3 says framework
-   variances go in "an attachment to Exhibit H," and Art. VII §3 gives
-   Exhibit H top priority. Ask CITE/CSPA how providers attach Exhibit H
-   material (or confirm it's intentionally omitted). **[ATTORNEY]**
+1. ~~Legal entity details~~ **Resolved 2026-06-12** — Orchestrate LLC,
+   California LLC, 2108 N St Ste N, Sacramento, CA 95816 US.
+2. ~~Authorized signatory~~ **Resolved 2026-06-12** — Blair Stewart, Owner
+   (DPA, Exhibit E, Exhibit G).
+3. ~~Designated representative / security contact~~ **Resolved 2026-06-12**
+   — Blair Stewart, Owner; help@speddy.xyz; phone on file (kept off this
+   public repo). Open sub-decision: dedicated business phone line before
+   signing (the number is distributed to every subscribing LEA for 3 years).
+4. ~~GOPT (Exhibit E)~~ **Decided 2026-06-12: YES, sign** — inbox
+   help@speddy.xyz. Attorney to confirm (brief item 2). Exhibit E expires 3
+   years after signature.
+5. ~~AI Addendum stance~~ **Decided 2026-06-12: "No AI used at this time"**
+   + the §4 planned-use narrative. Attorney to confirm (brief item 3).
+   Enablement obligations captured in **SPE-174**.
+6. ~~Cybersecurity framework~~ **Decided 2026-06-12: NIST CSF 1.1** —
+   self-assessment mapping written at `docs/security-framework-mapping.md`
+   (with honest gaps table). Attorney to confirm sufficiency (brief item 5).
+7. ~~Exhibit H question~~ **Tracked as SPE-172** — email CITE/CSPA; question
+   text is in the ticket. Also raised in attorney brief item 5(b).
 8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12. Three quick
    self-serve actions remain (~15 min total):
    - **Supabase**: DPA must be signed — Supabase dashboard → Organization →
      Legal Documents (PandaDoc flow). Save the executed copy.
    - **Vercel**: DPA is incorporated by reference into the Terms of Service
-     (deemed signed) for **Pro/Enterprise** customers — confirm the Speddy
-     project is on Pro (Hobby is non-commercial anyway), then save a copy of
+     (deemed signed) for **Pro/Enterprise** customers. **Confirmed
+     2026-06-12: currently on HOBBY plan → upgrade to Pro required before
+     signing** (Hobby is non-commercial and outside the DPA's scope) —
+     tracked as **SPE-173** (blocks SPE-59). After upgrading, save a copy of
      vercel.com/legal/dpa for the records file.
    - **Sentry**: self-serve click-accept — Sentry → Settings → Legal &
      Compliance (requires Owner/Billing role); DocuSign option if a signed
@@ -291,10 +287,10 @@ only when active); Supabase Auth transactional email.
     **Verify `CRON_SECRET` is set in the Vercel project env** — Vercel Cron
     sends it as `Authorization: Bearer` automatically; the routes 401
     without it. Confirm first runs in the Vercel dashboard after deploy.
-13. **Bulk export (SPE-60) still open** — Art. IV §6 allows disposition by
-    *transfer* and districts may request data return. Per-student deletion
-    is built; comprehensive export is not. Decide whether to accept the gap
-    or prioritize SPE-60 pre-signing.
+13. ~~Bulk export decision~~ **Decided 2026-06-12: option (a)** — sign now;
+    a district data-return/transfer request will be fulfilled manually
+    within the 60-day Art. IV §6 window (current scale ~100 students).
+    SPE-60 stays in the backlog. Attorney to confirm (brief item 10).
 14. **Exhibit B judgment calls** — Communications unchecked (notes disclosed
     under Other), Observation data unchecked, Program Membership unchecked,
     State ID checked with the extension-cache note. Confirm framings.
@@ -305,22 +301,22 @@ only when active); Supabase Auth transactional email.
 
 ## 7. Pre-execution checklist (ordered)
 
-1. ☐ Confirm legal entity name, formation state, business address (Gap 1)
-2. ☐ Designate authorized signatory (Gap 2)
-3. ☐ Designate rep + security contact (name/title/address/phone; email is help@speddy.xyz) (Gap 3)
-4. ☐ Decide GOPT yes/no (inbox decided: help@speddy.xyz) (Gap 4) **[ATTORNEY]**
-5. ☐ Confirm "No AI used at this time" stance (Gap 5) **[ATTORNEY]**
-6. ☐ Designate cybersecurity framework + internal mapping memo (Gap 6) **[DPO/ATTORNEY]**
-7. ☐ Ask CITE about Exhibit H handling (Gap 7) **[ATTORNEY]**
-8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · confirm Vercel Pro plan + save DPA copy; collate with OpenAI/Anthropic/Help Scout records (Gap 8)
+1. ☑ Entity confirmed: Orchestrate LLC / CA / 2108 N St Ste N, Sacramento, CA 95816 US (done 2026-06-12)
+2. ☑ Signatory: Blair Stewart, Owner (done 2026-06-12)
+3. ☑ Designated rep/security contact: Blair Stewart, Owner, help@speddy.xyz (done 2026-06-12; ☐ optional: dedicated business phone line before signing)
+4. ☑ GOPT: YES — inbox help@speddy.xyz (decided 2026-06-12; attorney confirms, brief item 2)
+5. ☑ AI stance: "No AI used at this time" (decided 2026-06-12; attorney confirms, brief item 3; enablement runbook = SPE-174)
+6. ☑ Framework: NIST CSF 1.1 + mapping memo `docs/security-framework-mapping.md` (done 2026-06-12; attorney confirms, brief item 5)
+7. ☐ Email CITE about Exhibit H (tracked: **SPE-172**)
+8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · **upgrade Vercel Hobby → Pro (SPE-173)** + save DPA copy; collate with OpenAI/Anthropic/Help Scout records (Gap 8)
 9. ☑ Security overview rewritten to current reality, v2.0 (Gap 9 — done 2026-06-12)
 10. ☑ MFA references removed from privacy page (Gap 10 — done 2026-06-12)
 11. ☑ Incident-response plan written: `docs/incident-response-plan.md` (Gap 11 — done 2026-06-12; **[DPO]** review recommended)
 12. ☑ Retention crons scheduled via `vercel.json` (Gap 12 — done 2026-06-12; ☐ verify `CRON_SECRET` env in Vercel + first-run success)
-13. ☐ Decide SPE-60 (bulk export) timing vs. data-return obligation (Gap 13)
+13. ☑ Bulk export: option (a) — manual fulfillment within 60 days; SPE-60 stays backlog (decided 2026-06-12; attorney confirms, brief item 10)
 14. ☐ Counsel review of Exhibit B checkbox set + notes (Gap 14) **[ATTORNEY]**
 15. ☐ Verify locked-PDF prefills (state-law blank, Exhibit G checkbox) (Gap 15)
-16. ☐ Full FERPA/COPPA counsel review of the assembled packet **[ATTORNEY]**
+16. ☐ Full FERPA/COPPA counsel review — forward `docs/ndpa/attorney-review-brief.md` + enclosures listed in its §A **[ATTORNEY]**
 17. ☐ Sign (DPA + Exhibit E + Exhibit G), register via CITE/CSPA, send to the originating LEA
 18. ☐ Post-signing: calendar 3-year DPA/Exhibit E expiry; stand up the subscribing-LEA intake inbox; wire subprocessor-change notifications (`subprocessors.md` header) into the release process
 
