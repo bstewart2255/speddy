@@ -31,10 +31,11 @@ _Last reviewed: 2026-06-11._
 
 ## Planned — disclosed but NOT currently enabled
 
-Both providers are hard-gated off by `AI_FEATURES_ENABLED` (default `false`, see
-SPE-162): the AI routes return 404 and make **zero** provider calls until the flag
-is set. **Do not enable until provider DPAs (no-training / zero-retention) are
-executed — SPE-163.**
+Both providers are hard-gated off by `AI_FEATURES_ENABLED` (default off; see
+SPE-162): the AI routes return 404 (before auth or handler logic) and make
+**zero** provider calls unless the env var is set to exactly the string `'true'`.
+**Do not enable until provider DPAs (no-training / zero-retention) are executed —
+SPE-163.**
 
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
@@ -51,8 +52,10 @@ executed — SPE-163.**
 
 - **Supabase Auth** sends auth emails (signup confirmation, password reset).
 - **Resend** powers the inbound email → worksheet webhook only, which is
-  **disabled by default** and requires provider signature verification before
-  re-enabling (SPE-128). Uses student **initials** (not full names) when active.
+  **disabled by default** (returns 404 unless `EMAIL_WEBHOOK_ENABLED === 'true'`).
+  Provider signature verification is **not yet implemented** and must be added
+  before re-enabling — flipping the flag alone would accept unauthenticated POSTs
+  (SPE-128). Uses student **initials** (not full names) when active.
 
 ## Removed / not in use (no student data)
 
