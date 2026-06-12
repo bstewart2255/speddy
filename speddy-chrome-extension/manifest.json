@@ -5,7 +5,8 @@
   "description": "Automatically detect discrepancies between SEIS and Speddy IEP data",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "alarms"
   ],
   "host_permissions": [
     "https://*.seis.org/*",

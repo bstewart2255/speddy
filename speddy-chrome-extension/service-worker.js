@@ -6,6 +6,13 @@
 // API endpoint
 const API_BASE_URL = 'https://speddy.xyz';
 
+// SPE-143: bound the on-device cache of student data (SEIS ID, name, grade,
+// school) so backend deletion/retention isn't undermined by stale local copies.
+// Cached discrepancies expire after this TTL, and the cache is cleared on logout
+// (manual disconnect, or an invalidated API key — see handlePassiveExtraction).
+const DISCREPANCY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const PRUNE_ALARM_NAME = 'prune-discrepancies';
+
 // Listen for installation
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('Speddy extension installed', details.reason);
@@ -94,6 +101,16 @@ async function handlePassiveExtraction(student, pageType, url) {
       body: JSON.stringify({ student }),
     });
 
+    // Clear-on-logout: if the API key has been revoked/invalidated server-side,
+    // treat it as a logout — drop the key and wipe the on-device student cache so
+    // it can't linger after backend access is gone.
+    if (response.status === 401 || response.status === 403) {
+      await chrome.storage.local.remove('apiKey');
+      await clearDiscrepancies();
+      console.warn('API key invalid — disconnected and cleared local cache');
+      return { error: 'API key invalid — disconnected' };
+    }
+
     if (!response.ok) {
       let errorMessage = 'Compare API error';
       try {
@@ -153,10 +170,33 @@ async function storeDiscrepancy(student, compareResult, url) {
 }
 
 /**
- * Get all stored discrepancies
+ * Drop cached discrepancies older than the TTL. Returns the surviving set.
+ * Persists only when something was actually removed.
+ */
+async function pruneExpiredDiscrepancies() {
+  const { discrepancies = {} } = await chrome.storage.local.get('discrepancies');
+  const now = Date.now();
+  let changed = false;
+
+  for (const [key, entry] of Object.entries(discrepancies)) {
+    const detectedAt = entry?.detectedAt ? Date.parse(entry.detectedAt) : NaN;
+    if (Number.isNaN(detectedAt) || now - detectedAt > DISCREPANCY_TTL_MS) {
+      delete discrepancies[key];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await chrome.storage.local.set({ discrepancies });
+  }
+  return discrepancies;
+}
+
+/**
+ * Get all stored discrepancies (expired entries are pruned first)
  */
 async function getStoredDiscrepancies() {
-  const { discrepancies = {} } = await chrome.storage.local.get('discrepancies');
+  const discrepancies = await pruneExpiredDiscrepancies();
   return { discrepancies };
 }
 
@@ -183,7 +223,7 @@ async function clearDiscrepancies(studentKey) {
  * Update the extension badge with discrepancy count
  */
 async function updateBadge() {
-  const { discrepancies = {} } = await chrome.storage.local.get('discrepancies');
+  const discrepancies = await pruneExpiredDiscrepancies();
   const count = Object.keys(discrepancies).length;
 
   if (count > 0) {
@@ -196,7 +236,17 @@ async function updateBadge() {
   }
 }
 
-// Initialize badge on startup
+// Periodically prune expired cached discrepancies (TTL enforcement), even when
+// the popup is never opened.
+chrome.alarms.create(PRUNE_ALARM_NAME, { periodInMinutes: 60 });
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === PRUNE_ALARM_NAME) {
+    await pruneExpiredDiscrepancies();
+    await updateBadge();
+  }
+});
+
+// Initialize badge on startup (also prunes expired entries)
 updateBadge();
 
 // Log that service worker started
