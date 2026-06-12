@@ -27,7 +27,7 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 | **Student Work** | **Yes** | Optional | Scanned worksheet **images**, generated worksheets/lessons, uploaded documents (rosters / IEP docs) | `worksheet_submissions.image_url`, `documents`, `worksheets`, `saved_worksheets` |
 | **Conduct / Behavior** | Limited | Optional | Behavior-area IEP goals; CARE referral reason | `student_details.iep_goals`, `care_referrals.referral_reason` |
 | **Communications** | Limited | Optional | Provider session/progress notes (free text) | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes` |
-| **Student Identifiers (local/state)** | Internal only | Derived | Speddy student UUID. **SSID / SEIS ID is read by the Chrome extension for matching but is NOT persisted.** | `students.id` |
+| **Student Identifiers (local/state)** | **Yes (extension)** | Derived | Speddy student UUID (backend). **SEIS ID (SSID) is _not_ stored in the backend DB, but the Chrome extension persists it — with student name, grade, and school — in the provider's local browser storage (`chrome.storage.local`) when passive discrepancy detection runs.** | `students.id`; extension `chrome.storage.local` |
 | **Parent/Guardian Contact** | **No** | — | — | — |
 | **Student Contact Info** | **No** | — | No student email / phone / address | — |
 | **Student Survey Responses** | **No** | — | — | — |
@@ -67,17 +67,17 @@ _Entry: all **auto-captured** (derived) — not provider- or student-entered._
 ## Where each element flows (see [`subprocessors.md`](./subprocessors.md))
 
 - **Supabase** — system of record for everything above; **Storage** holds worksheet images and uploaded documents (private buckets).
-- **Vercel** — all of it, in transit + runtime logs.
+- **Vercel** — hosting/network: all traffic transits Vercel compute in transit, and request-scoped data may appear in console/runtime logs (not every element is always logged).
 - **Sentry** — incidental error context only, minimized (no logs/replay; SPE-167).
-- **OpenAI / Anthropic** — *only when AI is enabled* (currently gated off, SPE-162): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
-- **Crisp** — provider **name + email** only (support chat). No student data by design.
+- **OpenAI / Anthropic** — *only when AI is enabled* (currently hard-gated off, SPE-162 — gated routes 404 with **zero** provider calls): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
+- **Crisp** — support chat. Receives the signed-in **provider's** email, full name, **role, school district, school site, and user ID** (pushed as Crisp session data); no student data by design (though a provider could paste it into a chat message).
 
 ## Notable points (for the NDPA / due diligence)
 
 1. **Full student names and date of birth _are_ collected** (`student_details`). This corrects the earlier SPE-59 draft inventory, which said "initials, not full names." Names + DOB must be disclosed on the Schedule of Data.
 2. **The CARE module holds special-education evaluation data** — full student names, referral reasons, and psych/speech/OT testing + eligibility outcomes. This is among the most sensitive data here (special-ed records under FERPA/IDEA) and should be called out explicitly.
 3. **Student work images** are stored (Supabase Storage, private buckets, served via short-lived signed URLs).
-4. **Minimization wins worth stating:** no SSID/SEIS ID persisted, no parent/guardian or student contact info, no SSN, no race/ethnicity/gender, no health data beyond special-ed status.
+4. **Minimization wins worth stating:** no SEIS ID (SSID) stored in the backend DB (it is held only in the provider's local browser storage by the Chrome extension — see Section A), no parent/guardian or student contact info, no SSN, no race/ethnicity/gender, no health data beyond special-ed status.
 5. **Provider IP addresses** are logged (`sign_in_logs`, `analytics_events`) — provider PII, not student.
 
 _Related: SPE-59 (CITE NDPA), SPE-165 (subprocessor list), SPE-143 (deletion/retention — required to honor NDPA data-return/deletion obligations for the elements above)._
