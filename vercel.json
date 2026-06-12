@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/cleanup-uploads", "schedule": "0 8 * * *" },
+    { "path": "/api/cron/cleanup-worksheet-images", "schedule": "0 9 * * *" }
+  ]
+}

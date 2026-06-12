@@ -6,7 +6,7 @@
 
 ## Document Purpose
 
-This document provides technical details about Speddy's architecture, security implementation, data handling practices, and regulatory compliance posture. It is intended for IT leadership evaluating Speddy for deployment within a school district.
+This document provides technical details about Speddy's architecture, security implementation, data handling practices, and regulatory compliance posture. It is intended for IT leadership evaluating Speddy for deployment within a school district. It is the companion to the data inventory (`data-inventory.md`), subprocessor list (`subprocessors.md`), offboarding/deletion runbook (`offboarding-runbook.md`), and incident response plan (`incident-response-plan.md`).
 
 ---
 
@@ -14,23 +14,27 @@ This document provides technical details about Speddy's architecture, security i
 
 ### Technology Stack
 
-| Component        | Technology                                 |
-| ---------------- | ------------------------------------------ |
-| Frontend         | Next.js 15, React, TypeScript              |
-| Backend          | Next.js API Routes (Node.js)               |
-| Database         | PostgreSQL (via Supabase)                  |
-| Authentication   | Supabase Auth (JWT-based)                  |
-| File Storage     | Supabase Storage                           |
-| Hosting          | Replit Deployments (Google Cloud Platform) |
-| AI Services      | Anthropic Claude API                       |
-| Error Monitoring | Sentry                                     |
+| Component        | Technology                                          |
+| ---------------- | --------------------------------------------------- |
+| Frontend         | Next.js 15, React, TypeScript                       |
+| Backend          | Next.js API Routes (Node.js)                        |
+| Database         | PostgreSQL (via Supabase)                           |
+| Authentication   | Supabase Auth (JWT-based)                           |
+| File Storage     | Supabase Storage (private buckets)                  |
+| Hosting          | Vercel                                              |
+| Error Monitoring | Sentry (minimized configuration — see Section 6)    |
+| Support / Chat   | Help Scout (Beacon widget)                          |
+| AI Services      | **None active.** OpenAI/Anthropic integrations exist in the codebase but are disabled platform-wide (see Section 5) |
 
 ### Deployment Model
 
 - **SaaS**: Speddy is a cloud-hosted application
-- **Multi-tenant**: Districts share infrastructure with logical data separation
-- **Autoscale**: Application runs on Google Cloud Platform via Replit Deployments, scaling automatically with demand
-- **Region**: All data hosted in United States
+- **Multi-tenant**: Districts share infrastructure with logical data separation enforced by database row-level security
+- **Region**: Database, file storage, and authentication run in Supabase's **us-west-1 (Northern California)** region; all student data at rest is stored in the United States
+
+### Chrome Extension
+
+Speddy offers a companion Chrome extension that, with the provider's authorization, **reads** student records from the LEA's SEIS (California Special Education Information System) account to detect discrepancies between SEIS and Speddy records. It writes nothing back to SEIS. The extension authenticates to Speddy with a per-provider API key (stored server-side only as a hash) and caches discrepancy data (SEIS ID, student name, grade, school) in the provider's local browser storage with a **7-day TTL**; the cache is cleared on logout and whenever the provider's API key is revoked server-side.
 
 ---
 
@@ -38,10 +42,12 @@ This document provides technical details about Speddy's architecture, security i
 
 ### Authentication Method
 
-- **Email/Password authentication** via Supabase Auth
+- **Email/password authentication** via Supabase Auth
+- **Self-signup restricted to educational email domains** (`.edu`, `.org`, `.k12.*`, `.gov`, `.us`); other roles are admin-provisioned
 - **JWT tokens** for session management
-- **Secure cookies** with `httpOnly`, `secure`, and `sameSite=lax` attributes
+- **Secure cookies** with `httpOnly`, `secure`, and `sameSite` attributes
 - **Session validation** on every request via middleware
+- **Inactivity timeout**: sessions are automatically signed out after 45 minutes of inactivity, with a warning prompt before logout
 
 ### Password Requirements
 
@@ -50,10 +56,6 @@ This document provides technical details about Speddy's architecture, security i
 - At least one lowercase letter (a-z)
 - At least one number (0-9)
 - At least one special character
-
-### Multi-Factor Authentication
-
-MFA is not currently implemented. Supabase Auth supports TOTP-based MFA, which can be enabled for administrative accounts upon request.
 
 ### Role-Based Access Control
 
@@ -78,7 +80,7 @@ Access is enforced at multiple levels:
 
 ### Row-Level Security (RLS)
 
-All tables containing sensitive data have Row-Level Security policies enabled. Users can only access records they are authorized to view based on:
+RLS is enabled on **every table** in the application schema. Users can only access records they are authorized to view based on:
 
 - **Provider ownership**: Specialists access only their assigned students
 - **School affiliation**: Users access data within their school context
@@ -95,9 +97,10 @@ RLS is enforced at the PostgreSQL level, providing defense-in-depth independent 
 
 ### Database Access
 
-- Application uses parameterized queries (prevents SQL injection)
+- Application uses the Supabase client with parameterized queries (prevents SQL injection)
 - Service role credentials stored server-side only
-- Client-side uses anonymous key with RLS restrictions
+- Client-side uses the anonymous key, constrained by RLS
+- File storage uses private buckets served via short-lived signed URLs
 
 ---
 
@@ -105,104 +108,107 @@ RLS is enforced at the PostgreSQL level, providing defense-in-depth independent 
 
 ### Student Data Collected
 
-Speddy minimizes the collection of personally identifiable information (PII):
+The authoritative element-by-element inventory is maintained in `data-inventory.md` and disclosed to districts in the CA-NDPA Schedule of Data (Exhibit B). In summary:
 
-| Data Point        | What We Collect             | What We Don't Collect            |
-| ----------------- | --------------------------- | -------------------------------- |
-| Student Name      | Initials only (e.g., "JS")  | Full names are not required      |
-| Grade Level       | Grade number (e.g., 3)      | —                                |
-| IEP Goals         | Goal text (scrubbed of PII) | Student identifiers in goal text |
-| Assessment Scores | Numerical scores            | —                                |
-| Session Records   | Dates, times, attendance    | —                                |
+| Data Point | Notes |
+| --- | --- |
+| Student identifiers | Initials are the core identifier used throughout the app; **full first/last names and date of birth are optional, provider-entered fields** |
+| IEP data | Goals, accommodations, IEP/triennial dates, service minutes |
+| Special-education eligibility process | Referral reasons, academic/speech/psych/OT testing dates and outcomes, eligibility category (CARE/SST module) |
+| Schedules & attendance | Session day/time, service type, group assignment, session attendance and absence reasons |
+| Assessment & progress | Assessment scores (e.g., mClass, STAR), exit-ticket and progress-check results, IEP-goal progress, derived performance metrics |
+| Student work | Scanned worksheet images and provider-uploaded documents, stored in private buckets |
+| Not collected | Parent/guardian contact information, student contact information, SSN, race/ethnicity/gender, health data beyond special-education status, transcripts/course grades |
 
-### PII Scrubbing
-
-Before IEP goal text is sent to AI services, an automated PII scrubbing process:
-
-1. Removes student names from goal text (replaced with generic placeholders)
-2. Removes specific dates (converted to relative timeframes)
-3. Removes district/student ID numbers
-4. Preserves educational content and metrics
-
-This scrubbing uses both regex-based pattern matching and optional AI-assisted detection.
-
-### Data Sent to AI Services
-
-When generating lesson materials, the following is sent to Anthropic's Claude API:
-
-- Student grade level
-- Student initials (e.g., "JB") for worksheet labeling
-- Subject area
-- IEP goal text (PII-scrubbed)
-- Curriculum context
-- Difficulty preferences
-
-**Not sent**: Full student names, dates of birth, student IDs, or other direct identifiers.
+Provider (adult staff) account data — name, school email, role, school/district — and operational metadata (sign-in IP address, user agent, product usage events) are also processed; see `data-inventory.md`.
 
 ### Data Retention
 
-| Data Type          | Retention Policy                           |
-| ------------------ | ------------------------------------------ |
-| Student records    | User-controlled; deletable via application |
-| Generated lessons  | User-controlled; deletable via application |
-| Session schedules  | User-controlled; deletable via application |
-| Upload rate limits | 7-day rolling window                       |
-| Analytics events   | 90-day rolling window                      |
+| Data Type                  | Retention Policy                                        |
+| -------------------------- | ------------------------------------------------------- |
+| Student records            | District/user-controlled; deletable via application     |
+| Worksheet-submission images | Deleted automatically after **12 months** (scheduled job) |
+| Upload rate-limit records  | 7-day rolling window (scheduled job)                    |
+| Analytics events           | 90-day rolling window (scheduled job)                   |
 
-### Data Deletion
+### Data Deletion & Return
 
-Users can delete student records and associated data through the application. Upon account termination, all user data can be deleted upon request.
+Speddy maintains operational tooling for honoring deletion and offboarding requests (see `offboarding-runbook.md`):
+
+- **Per-student deletion** that cascades through all related records and removes stored worksheet images
+- **Provider/account deletion** including authentication records
+- **District offboarding** procedures covering all schools, students, providers, storage objects, and extension API keys
+- **Extension cache controls**: 7-day TTL plus forced clearing via API-key revocation
+
+Disposition of student data upon district request is completed within the contractual window of the executed data privacy agreement (60 days under the CA-NDPA).
 
 ---
 
-## 5. Third-Party Services & Subprocessors
+## 5. AI Features (Currently Disabled)
 
-### Supabase (Database & Authentication)
+Speddy's codebase includes optional AI-assisted features (lesson, exit-ticket, and progress-check generation; worksheet-image grading; document parsing) that would use OpenAI and Anthropic as subprocessors. As of this document's date:
 
-- **Purpose**: Database hosting, user authentication, file storage
+- These features are **disabled platform-wide** by a server-side feature gate; the AI routes return 404 and make **zero** calls to AI providers
+- Data-processing agreements with both AI providers are executed and on file; both prohibit training on customer data
+- Before any AI feature is enabled, Speddy will apply prompt de-identification, request zero-data-retention handling from the AI providers, and provide advance notice to districts as required by the executed CA-NDPA (Exhibit G)
+
+---
+
+## 6. Third-Party Services & Subprocessors
+
+The authoritative list is maintained in `subprocessors.md`. Districts are notified of subprocessor changes per the executed data privacy agreement.
+
+### Supabase (Database, Authentication & Storage)
+
+- **Purpose**: Database hosting, user authentication, file storage — system of record
 - **Data processed**: All application data
-- **Location**: United States
+- **Location**: United States (us-west-1, Northern California)
 - **Security**: SOC 2 Type II certified
 - **Website**: https://supabase.com
 
-### Anthropic (AI Services)
+### Vercel (Hosting)
 
-- **Purpose**: AI-powered lesson and worksheet generation
-- **Data processed**: PII-scrubbed IEP goals, grade levels, educational content
-- **API data retention**: Per Anthropic's API Terms (data not used for model training by default for business accounts)
-- **Website**: https://anthropic.com
-
-### Replit / Google Cloud Platform (Hosting)
-
-- **Purpose**: Application hosting and deployment
-- **Data processed**: Application traffic, server logs
-- **Infrastructure**: Google Cloud Platform (US region)
-- **Security**: Google Cloud security infrastructure with encryption in transit and at rest
-- **Website**: https://replit.com
+- **Purpose**: Application hosting and deployment; request/response traffic and runtime logs transit Vercel compute
+- **Data processed**: Application traffic; request-scoped data may appear in runtime logs
+- **Security**: SOC 2 Type II certified
+- **Website**: https://vercel.com
 
 ### Sentry (Error Monitoring)
 
-- **Purpose**: Error tracking and performance monitoring
-- **Data processed**: Error logs, stack traces, user IDs (no PII)
+- **Purpose**: Error tracking (exceptions and stack traces)
+- **Minimized configuration**: Session Replay and Sentry Logs are disabled; `sendDefaultPii` is off; email addresses are scrubbed before events are sent; logger metadata is not forwarded
+- **Data processed**: Operational error data only (US ingest)
 - **Website**: https://sentry.io
+
+### Help Scout (Support)
+
+- **Purpose**: Help desk and in-app chat widget (Beacon)
+- **Data processed**: Signed-in **provider's** name, email, role, school district/site, and user ID. No student data by design; users are instructed not to paste student information into chat
+- **Location**: United States
+- **Website**: https://www.helpscout.com
+
+### OpenAI / Anthropic (AI — planned, not enabled)
+
+Disclosed as planned subprocessors; they receive **no data today** (see Section 5).
+
+### SEIS (data source, not a subprocessor)
+
+The Chrome extension reads from the LEA's SEIS account; SEIS is the origin of data, not a recipient.
 
 ---
 
-## 6. Regulatory Compliance
+## 7. Regulatory Compliance
 
 ### FERPA (Family Educational Rights and Privacy Act)
 
-Speddy is designed with FERPA compliance in mind:
-
-| FERPA Requirement               | Speddy Implementation                                                     |
-| ------------------------------- | ------------------------------------------------------------------------- |
-| Legitimate educational interest | Role-based access ensures only authorized staff access student data       |
-| Data minimization               | Student initials used instead of full names; PII scrubbing on AI requests |
-| Access controls                 | Database-level RLS and application-level role enforcement                 |
-| Audit capability                | Authentication events logged; database maintains timestamps               |
-| Third-party agreements          | Data Processing Agreements available for subprocessors                    |
-
-**Note**: Districts should conduct their own FERPA compliance review and may require a Data Processing Agreement (DPA) with Speddy.
+| FERPA Requirement               | Speddy Implementation                                                      |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| Legitimate educational interest | Role-based access ensures only authorized staff access student data        |
+| School Official designation     | Formalized through the executed CA-NDPA (CITE/CSPA)                        |
+| Data minimization               | No parent/guardian or student contact info, SSN, or demographic profiles collected |
+| Access controls                 | Database-level RLS and application-level role enforcement                   |
+| Data return & destruction       | Deletion and offboarding tooling backing the NDPA's 60-day disposition duty |
+| Third-party agreements          | Data-processing agreements with subprocessors (see `subprocessors.md`)      |
 
 ### COPPA (Children's Online Privacy Protection Act)
 
@@ -210,64 +216,39 @@ Speddy is designed with FERPA compliance in mind:
 - All data is entered by authorized school personnel
 - No direct student interaction with the platform
 
-### State Privacy Laws
+### California Student Privacy Laws
 
-Districts should review Speddy's practices against applicable state student privacy laws (e.g., California's SOPIPA, New York's Education Law 2-d).
+Speddy executes the **California Student Data Privacy Agreement (CA-NDPA)** via CITE / the California Student Privacy Alliance, which incorporates California's supplemental state terms (SOPIPA, Ed. Code § 49073.1) and an AI addendum. Subscribing districts may accept Speddy's General Offer of Privacy Terms where offered.
 
 ---
 
-## 7. Security Controls
+## 8. Security Controls
 
 ### Input Validation
 
 - All user input validated server-side
-- Email domain restrictions on signup (educational domains only)
-- File upload type validation (whitelist-based)
+- Self-signup restricted to educational email domains
+- File upload type validation and upload rate limiting
 - HTML content sanitized using DOMPurify to prevent XSS attacks
 
 ### API Security
 
 - All API routes require authenticated sessions
-- Webhook endpoints verify signatures
-- Cron endpoints protected by secret tokens
-- Rate limiting on file uploads
+- Scheduled (cron) endpoints protected by a server-held secret
+- Extension endpoints authenticate via per-provider API keys (stored as hashes; revocable)
+- Inbound email webhook is disabled by default
 
 ### Session Management
 
 - JWT tokens with expiration
 - Session validated on every request
 - Secure cookie attributes enforced
-- Sessions invalidated on logout
+- Sessions invalidated on logout; 45-minute inactivity auto-logout
 
 ### Error Handling
 
 - Structured error responses (no sensitive data leaked)
-- Server errors logged to Sentry
-- Passwords and tokens stripped from logs
-
----
-
-## 8. Infrastructure Security
-
-### Hosting Security (Replit / Google Cloud Platform)
-
-- Automatic HTTPS with TLS 1.2+
-- DDoS protection
-- Automatic security patching
-- SOC 2 Type II certified
-
-### Database Security (Supabase)
-
-- Encrypted connections required
-- Automatic backups
-- Point-in-time recovery available
-- SOC 2 Type II certified
-
-### Secrets Management
-
-- Environment variables stored encrypted
-- Service role keys never exposed to client
-- API keys rotatable without code changes
+- Server errors logged to Sentry with PII scrubbing (see Section 6)
 
 ---
 
@@ -275,52 +256,43 @@ Districts should review Speddy's practices against applicable state student priv
 
 ### Implemented Controls
 
-- Row-Level Security on all sensitive tables
-- PII scrubbing before AI processing
+- Row-Level Security on every application table
+- Role-based access control with admin scoping
+- JWT-based authentication with secure cookies and inactivity timeout
 - Input validation and HTML sanitization
-- JWT-based authentication with secure cookies
-- Role-based access control
-- Webhook signature verification
-- Session timeout with warning (45-minute inactivity auto-logout)
+- Private storage buckets with signed URLs
+- Automated data-retention jobs (Section 4)
+- Deletion/offboarding tooling (Section 4)
+- Minimized error-monitoring footprint (Section 6)
+- AI feature gate (Section 5)
 
-### Recommended Enhancements (Not Yet Implemented)
+### Known Limitations / Roadmap
 
-| Enhancement                       | Status                          | Priority |
-| --------------------------------- | ------------------------------- | -------- |
-| Multi-Factor Authentication       | Supabase-supported, not enabled | High     |
-| HTTP Security Headers (CSP, HSTS) | Not configured                  | Medium   |
-| IP-based rate limiting on login   | Not implemented                 | Medium   |
+| Item                              | Status          |
+| --------------------------------- | --------------- |
+| HTTP Security Headers (CSP, HSTS beyond platform defaults) | Not configured |
+| IP-based rate limiting on login   | Not implemented |
+| Single Sign-On (SSO)              | Not available   |
 
-These enhancements can be prioritized based on district requirements.
+These can be prioritized based on district requirements.
 
 ---
 
 ## 10. Incident Response
 
-### Monitoring
-
-- Real-time error tracking via Sentry
-- Health check endpoints for system status
-- Database query performance monitoring
+Speddy maintains a written incident response plan (`incident-response-plan.md`), available to districts on request, covering detection, containment, investigation, notification, and post-incident review.
 
 ### Incident Notification
 
-Districts will be notified of security incidents affecting their data within 72 hours of discovery, including:
+Districts will be notified of security incidents affecting their data within **72 hours of confirmation**, including:
 
-- Nature of the incident
-- Data potentially affected
-- Remediation steps taken
-- Contact information for questions
+- Nature of the incident and a general description
+- Types of data potentially affected
+- Date or estimated date range of the incident
+- Whether notification was delayed by a law-enforcement investigation
+- Remediation steps taken and contact information for questions
 
-### Data Breach Response
-
-In the event of a confirmed data breach:
-
-1. Immediate containment and investigation
-2. District notification within 72 hours
-3. Regulatory notification as required
-4. Root cause analysis and remediation
-5. Post-incident report provided to affected districts
+This matches the breach-notification commitments in the executed CA-NDPA (Article V, Section 4).
 
 ---
 
@@ -339,52 +311,44 @@ In the event of a confirmed data breach:
 
 If your district uses web filtering, allow the following domains:
 
-| Domain          | Purpose                                              |
-| --------------- | ---------------------------------------------------- |
-| `speddy.xyz`    | Main application                                     |
-| `*.supabase.co` | Authentication and database (client-side auth flows) |
-| `*.sentry.io`   | Error monitoring (client-side error reporting)       |
-
-### Single Sign-On (SSO)
-
-SSO integration is not currently available. If required, please contact us to discuss implementation options.
+| Domain                      | Purpose                                              |
+| --------------------------- | ---------------------------------------------------- |
+| `speddy.xyz`                | Main application                                     |
+| `*.supabase.co`             | Authentication and database (client-side auth flows) |
+| `*.sentry.io`               | Error monitoring (client-side error reporting)       |
+| `beacon-v2.helpscout.net`   | Support chat widget                                  |
 
 ### Data Export
 
-Individual progress reports can be exported. Comprehensive bulk data export for district records or migration is available upon request—contact support@speddy.com.
+Individual progress reports can be exported from the application. Comprehensive bulk data export for district records or offboarding is available upon request — contact help@speddy.xyz.
 
 ---
 
 ## 12. Frequently Asked Questions
 
 **Q: Where is our data stored?**
-A: All data is stored in United States data centers via Supabase (database) and Replit/Google Cloud Platform (application).
+A: Student and provider data is stored at rest in the United States (Supabase, us-west-1 / Northern California). The application is served by Vercel.
 
 **Q: Can we get a copy of our data?**
-A: Yes. Administrators can export data through the application, or request a full data export by contacting support.
+A: Yes. Individual reports can be exported in the application, and a full district export can be requested at help@speddy.xyz.
 
 **Q: What happens to our data if we stop using Speddy?**
-A: Upon contract termination, all district data can be exported and then permanently deleted upon request.
+A: Upon contract termination, district data is returned on request and then permanently deleted using Speddy's offboarding tooling, within the disposition window of the executed data privacy agreement.
 
 **Q: Is student data used to train AI models?**
-A: No. Data sent to Anthropic's API is not used for model training under their business API terms. Additionally, PII is scrubbed before any data reaches the AI service.
-
-**Q: Do you conduct penetration testing?**
-A: We conduct regular security reviews of the codebase. Formal penetration testing can be arranged upon request.
+A: No. AI features are currently disabled platform-wide and no student data reaches any AI provider. If AI features are enabled in the future, Speddy's agreements with its AI providers prohibit training on customer data, and districts will be notified in advance per the CA-NDPA AI addendum.
 
 **Q: Can we review your SOC 2 report?**
-A: Our infrastructure providers (Supabase, Replit/Google Cloud Platform) maintain SOC 2 Type II certifications. Their reports are available upon request.
+A: Our infrastructure providers (Supabase, Vercel) maintain SOC 2 Type II certifications; their reports are available through their compliance programs.
 
-**Q: Do you have a Data Processing Agreement (DPA)?**
-A: Yes. We can provide a DPA that meets district requirements. Contact us to initiate the agreement process.
+**Q: Do you have a Data Privacy Agreement (DPA)?**
+A: Yes. Speddy executes the CA-NDPA (Standard Version 1.5) via CITE / the California Student Privacy Alliance. Contact help@speddy.xyz to initiate.
 
 ---
 
 ## 13. Contact Information
 
-**Security Questions**: security@speddy.com
-**Technical Support**: support@speddy.com
-**Data Processing Agreements**: legal@speddy.com
+**All inquiries (security, support, privacy/DPA)**: help@speddy.xyz
 
 ---
 
@@ -392,8 +356,8 @@ A: Yes. We can provide a DPA that meets district requirements. Contact us to ini
 
 | Item             | Value         |
 | ---------------- | ------------- |
-| Document Version | 1.0           |
-| Last Updated     | December 2025 |
+| Document Version | 2.0           |
+| Last Updated     | June 2026     |
 | Review Frequency | Quarterly     |
 
 ---

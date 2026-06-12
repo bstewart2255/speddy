@@ -6,7 +6,7 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: January 21, 2026</p>
+            <p className="text-gray-600">Last Updated: June 12, 2026</p>
           </div>
 
           {/* Content */}
@@ -102,7 +102,7 @@ export default function PrivacyPage() {
               <li><strong>Supabase:</strong> Database, authentication, and file storage (system of record for student and provider data)</li>
               <li><strong>Vercel:</strong> Application hosting and infrastructure</li>
               <li><strong>Sentry:</strong> Error monitoring (operational error data, configured to minimize personal information)</li>
-              <li><strong>OpenAI and Anthropic:</strong> AI providers for optional AI-assisted features. Limited student data (such as initials and IEP goal text) may be shared with them to generate lesson and assessment content.</li>
+              <li><strong>OpenAI and Anthropic:</strong> AI providers for optional AI-assisted features. These features are currently disabled platform-wide, and no student data is shared with either provider today. If enabled in the future, limited student data (such as initials and IEP goal text) may be shared with them to generate lesson and assessment content, and school districts will be notified in advance.</li>
               <li><strong>Help Scout:</strong> Help desk and chat support (we share provider account info such as name, email, role, and school; Help Scout&apos;s chat widget may also collect technical data such as IP address and browser type via standard web requests; users should avoid sharing student data in chat messages)</li>
             </ul>
 
@@ -111,7 +111,6 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Encryption in transit (TLS) and at rest</li>
               <li>Encrypted data storage with regular security audits</li>
-              <li>Multi-factor authentication options</li>
               <li>Role-based access controls</li>
               <li>Regular security updates and monitoring</li>
               <li>Incident response procedures</li>
