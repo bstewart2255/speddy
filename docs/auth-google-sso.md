@@ -34,17 +34,24 @@ first, then enable.
 
 1. **Google Cloud Console → APIs & Services → Credentials**
    - Create an **OAuth 2.0 Client ID** (type: Web application).
-   - Authorized redirect URI: `https://<PROJECT-REF>.supabase.co/auth/v1/callback`
-     (your Supabase project's callback, *not* the app's `/auth/callback`).
+   - Authorized redirect URI: `https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`
+     (the Supabase project's callback, *not* the app's `/auth/callback`).
+   - Consent screen / Audience: **External**, **Published / In production**. Scopes
+     are just `email`/`profile`/`openid`, which need **no Google verification**.
    - Note the **Client ID** and **Client secret**.
 
 2. **Supabase Dashboard → Authentication → Providers → Google**
    - Enable Google, paste the Client ID + secret, save.
+   - Leave **Skip nonce checks** and **Allow users without an email** OFF.
 
 3. **Supabase Dashboard → Authentication → URL Configuration**
-   - Ensure the app origin(s) are in **Redirect URLs** (e.g.
-     `https://<your-app-domain>/auth/callback`, plus `http://localhost:3000/auth/callback`
-     for local dev).
+   - **Site URL:** `https://www.speddy.xyz` (bare origin — no path; used as the
+     fallback redirect and as the base for auth email links).
+   - **Redirect URLs** (allowlist) — must include:
+     - `https://www.speddy.xyz/**` (production)
+     - `https://speddy.xyz/**` (apex, optional)
+     - `http://localhost:3000/**` (local dev/testing)
+     - the existing `*.vercel.app` previews stay.
 
 4. **(Optional) Single-district lockdown:** set `NEXT_PUBLIC_GOOGLE_HD` to the
    district's Google Workspace domain to pass Google the `hd` hint. Not required
