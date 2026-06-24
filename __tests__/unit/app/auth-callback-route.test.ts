@@ -89,10 +89,20 @@ describe('Google SSO callback provisioning gate', () => {
     expect(mockDeleteUser).toHaveBeenCalledWith('user-1');
   });
 
-  it('fails closed if provisioning cannot be verified', async () => {
+  it('fails closed if the provisioning lookup throws', async () => {
     mockMaybeSingle.mockRejectedValue(new Error('db down'));
     const res = await call('?code=abc');
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+    expect(mockDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it('fails closed WITHOUT deleting when the lookup resolves an error (transient DB failure)', async () => {
+    // maybeSingle() returns { data: null, error } on a PostgREST/DB error
+    // rather than throwing. A real provisioned user must NOT be deleted here.
+    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+    const res = await call('?code=abc');
+    expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+    expect(mockSignOut).toHaveBeenCalled();
     expect(mockDeleteUser).not.toHaveBeenCalled();
   });
 

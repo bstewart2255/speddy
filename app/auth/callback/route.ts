@@ -51,22 +51,34 @@ export async function GET(request: Request) {
     // Authoritative provisioning check via the service role (bypasses RLS so a
     // legitimately provisioned user is never falsely rejected).
     const admin = createServiceClient();
-    const { data: profile } = await admin
+    const { data: profile, error: lookupError } = await admin
       .from('profiles')
       .select('id')
       .eq('id', user.id)
       .maybeSingle();
 
+    if (lookupError) {
+      // Couldn't verify provisioning (e.g. a transient PostgREST/DB error).
+      // maybeSingle() RESOLVES errors here rather than throwing, so this must
+      // be handled before the !profile branch — otherwise a momentary read
+      // failure would look like "no account" and delete a real user. Fail
+      // closed WITHOUT deleting: never destroy an account we can't confirm is
+      // unprovisioned.
+      logger.error('SSO provisioning lookup failed; rejecting without deleting', lookupError);
+      await supabase.auth.signOut();
+      return redirectTo('/login?error=oauth_failed');
+    }
+
     if (!profile) {
-      // No Speddy account for this identity. Sign out and remove the orphan
-      // auth user that Supabase created for this OAuth sign-in.
+      // Confirmed: no Speddy account for this identity. Sign out and remove the
+      // orphan auth user that Supabase created for this OAuth sign-in.
       await supabase.auth.signOut();
       await admin.auth.admin.deleteUser(user.id);
       logger.warn('Rejected SSO sign-in for an unprovisioned account', { userId: user.id });
       return redirectTo('/login?error=not_provisioned');
     }
   } catch (e) {
-    // Fail closed: if provisioning can't be verified, do not grant access.
+    // Fail closed on any unexpected throw too.
     logger.error('SSO provisioning check failed; rejecting sign-in', e);
     try {
       await supabase.auth.signOut();
