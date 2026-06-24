@@ -53,10 +53,14 @@ first, then enable.
      - `http://localhost:3000/**` (local dev/testing)
      - the existing `*.vercel.app` previews stay.
 
-4. **(Optional) Single-district lockdown:** set `NEXT_PUBLIC_GOOGLE_HD` to the
-   district's Google Workspace domain to pass Google the `hd` hint. Not required
-   for security — the provisioning gate already rejects accounts we didn't
-   create — but tidy for single-district deployments.
+4. **App env (Vercel) → `NEXT_PUBLIC_SITE_URL`:** set to the canonical public
+   origin (`https://www.speddy.xyz`) so the callback builds redirect URLs on the
+   real domain. The callback does **not** trust the `x-forwarded-host` header.
+
+5. **(Optional) Account-chooser hint:** set `NEXT_PUBLIC_GOOGLE_HD` to the
+   district's Google Workspace domain to pass Google the `hd` param. This only
+   pre-selects the account chooser toward that domain — it is **not** a security
+   boundary (the provisioning gate is). Tidy for single-district deployments.
 
 ## Notes / known edges
 

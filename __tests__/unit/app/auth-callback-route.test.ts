@@ -93,6 +93,7 @@ describe('Google SSO callback provisioning gate', () => {
     mockMaybeSingle.mockRejectedValue(new Error('db down'));
     const res = await call('?code=abc');
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+    expect(mockSignOut).toHaveBeenCalled();
     expect(mockDeleteUser).not.toHaveBeenCalled();
   });
 
@@ -115,5 +116,18 @@ describe('Google SSO callback provisioning gate', () => {
     const res = await call('?code=abc&next=https://evil.example.com');
     expect(location(res).host).toBe('localhost:3000');
     expect(location(res).pathname).toBe('/dashboard');
+  });
+
+  it('uses NEXT_PUBLIC_SITE_URL as the redirect origin when set (not x-forwarded-host)', async () => {
+    const prev = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://www.speddy.xyz';
+    try {
+      const res = await call('?code=abc');
+      expect(location(res).host).toBe('www.speddy.xyz');
+      expect(location(res).pathname).toBe('/dashboard');
+    } finally {
+      if (prev === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+      else process.env.NEXT_PUBLIC_SITE_URL = prev;
+    }
   });
 });

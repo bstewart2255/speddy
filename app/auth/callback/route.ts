@@ -24,10 +24,14 @@ export async function GET(request: Request) {
   // Only allow internal redirects to avoid open-redirect abuse.
   const next = nextParam && nextParam.startsWith('/') ? nextParam : '/dashboard';
 
-  // Honor the proxy host in production (Vercel) so redirects stay on the public origin.
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  const isLocalEnv = process.env.NODE_ENV === 'development';
-  const base = isLocalEnv || !forwardedHost ? url.origin : `https://${forwardedHost}`;
+  // Build the redirect base from a configured canonical origin when set,
+  // otherwise the request's own origin. We intentionally do NOT trust the raw
+  // `x-forwarded-host` header — it's client-controllable and would be an
+  // open-redirect primitive. Set NEXT_PUBLIC_SITE_URL to the public origin
+  // (e.g. https://www.speddy.xyz) in production so redirects land on the
+  // canonical domain regardless of proxy host resolution.
+  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '');
+  const base = configuredOrigin || url.origin;
   const redirectTo = (path: string) => NextResponse.redirect(`${base}${path}`);
 
   if (oauthError) {
