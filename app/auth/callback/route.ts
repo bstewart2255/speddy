@@ -42,16 +42,23 @@ export async function GET(request: Request) {
     return redirectTo('/login?error=oauth_failed');
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error || !data.user) {
-    logger.warn('OAuth code exchange failed', { error: error?.message });
-    return redirectTo('/login?error=oauth_failed');
-  }
-
-  const user = data.user;
-
+  // Everything that touches Supabase runs inside this try so any throw — client
+  // setup, code exchange, or the provisioning lookup — fails closed with a
+  // redirect rather than bubbling into a 500. `supabaseRef` is captured so the
+  // catch can still attempt a best-effort sign-out.
+  let supabaseRef: Awaited<ReturnType<typeof createClient>> | null = null;
   try {
+    const supabase = await createClient();
+    supabaseRef = supabase;
+
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error || !data.user) {
+      logger.warn('OAuth code exchange failed', { error: error?.message });
+      return redirectTo('/login?error=oauth_failed');
+    }
+
+    const user = data.user;
+
     // Authoritative provisioning check via the service role (bypasses RLS so a
     // legitimately provisioned user is never falsely rejected).
     const admin = createServiceClient();
@@ -74,18 +81,25 @@ export async function GET(request: Request) {
     }
 
     if (!profile) {
-      // Confirmed: no Speddy account for this identity. Sign out and remove the
-      // orphan auth user that Supabase created for this OAuth sign-in.
-      await supabase.auth.signOut();
+      // Confirmed: no Speddy account for this identity. Remove the orphan auth
+      // user that Supabase created for this OAuth sign-in. Sign-out is best
+      // effort — its failure must NOT skip the deletion, which is the whole
+      // point of this branch.
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        logger.warn('Failed to clear SSO session for an unprovisioned account', signOutError);
+      }
       await admin.auth.admin.deleteUser(user.id);
       logger.warn('Rejected SSO sign-in for an unprovisioned account', { userId: user.id });
       return redirectTo('/login?error=not_provisioned');
     }
   } catch (e) {
-    // Fail closed on any unexpected throw too.
+    // Fail closed on any unexpected throw (client setup, code exchange,
+    // provisioning lookup).
     logger.error('SSO provisioning check failed; rejecting sign-in', e);
     try {
-      await supabase.auth.signOut();
+      if (supabaseRef) await supabaseRef.auth.signOut();
     } catch {
       // best effort
     }

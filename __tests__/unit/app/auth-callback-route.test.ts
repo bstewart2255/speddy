@@ -130,4 +130,18 @@ describe('Google SSO callback provisioning gate', () => {
       else process.env.NEXT_PUBLIC_SITE_URL = prev;
     }
   });
+
+  it('fails closed (redirects, no 500) when the supabase client setup throws', async () => {
+    mockCreateClient.mockRejectedValue(new Error('env missing'));
+    const res = await call('?code=abc');
+    expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+  });
+
+  it('still deletes the orphan when sign-out throws for an unprovisioned user', async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+    mockSignOut.mockRejectedValue(new Error('signout failed'));
+    const res = await call('?code=abc');
+    expect(mockDeleteUser).toHaveBeenCalledWith('user-1');
+    expect(location(res).searchParams.get('error')).toBe('not_provisioned');
+  });
 });
