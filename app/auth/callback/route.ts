@@ -7,14 +7,19 @@ import { logger } from '@/lib/logger';
  *
  * Provisioning gate: Speddy accounts are created by admins (and, for some
  * provider roles, self-signup) — never implicitly by SSO. We only allow a
- * social sign-in to proceed if we ALREADY have an account for the user,
- * detected by the presence of a `profiles` row. There is no trigger on
- * `auth.users` (profiles are created by explicit RPC during signup/admin
- * creation — see 20250117_create_profile_on_signup.sql), so a brand-new
- * Google user has an auth row but no profile. When there's no profile we
- * delete the just-created orphan auth user and bounce them back to /login
- * with an explanation. Net effect: SSO can sign existing users in, but can
- * never create a new account.
+ * social sign-in to proceed if the account ALREADY existed before this Google
+ * login, detected by the presence of a non-Google ('email') identity.
+ *
+ * We do NOT gate on a `profiles` row: an `on_auth_user_created` trigger
+ * (`handle_new_user()`) auto-creates a profile (default role 'resource') for
+ * every new auth user, so "profile exists" is always true. A genuinely
+ * provisioned account always has an `email` (password) identity, and Supabase
+ * auto-links Google to it by verified email; a first-time Google sign-in is
+ * google-only. For a google-only account we sign out and delete the orphan
+ * auth user AND its trigger-created profile (profiles.id -> auth.users.id is
+ * NO ACTION, so the profile must be removed explicitly), then bounce to
+ * /login. Net effect: SSO can sign existing users in, but can never create a
+ * new account.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -81,16 +86,30 @@ export async function GET(request: Request) {
     const isProvisioned = identities.some((identity) => identity.provider !== 'google');
 
     if (!isProvisioned) {
-      // First-time Google identity with no pre-existing Speddy account. Remove
-      // the orphan auth user Supabase just created (this also removes the
-      // trigger-created profile). Sign-out is best effort — its failure must NOT
-      // skip the deletion, which is the whole point of this branch.
+      // First-time Google identity with no pre-existing Speddy account. Clean up
+      // the orphan Supabase just created. The `on_auth_user_created` trigger
+      // also created a `profiles` row, and `profiles.id -> auth.users.id` is
+      // NO ACTION (no cascade), so delete the profile explicitly BEFORE the auth
+      // user — otherwise the FK blocks deleteUser. Sign-out is best effort. If
+      // either delete fails, fail closed instead of claiming a clean rejection.
       try {
         await supabase.auth.signOut();
       } catch (signOutError) {
         logger.warn('Failed to clear SSO session for an unprovisioned account', signOutError);
       }
-      await admin.auth.admin.deleteUser(user.id);
+
+      const { error: profileDeleteError } = await admin.from('profiles').delete().eq('id', user.id);
+      if (profileDeleteError) {
+        logger.error('Failed to delete trigger-created profile for unprovisioned SSO account', profileDeleteError);
+        return redirectTo('/login?error=oauth_failed');
+      }
+
+      const { error: userDeleteError } = await admin.auth.admin.deleteUser(user.id);
+      if (userDeleteError) {
+        logger.error('Failed to delete unprovisioned SSO auth user', userDeleteError);
+        return redirectTo('/login?error=oauth_failed');
+      }
+
       logger.warn('Rejected SSO sign-in for an unprovisioned (Google-only) account', { userId: user.id });
       return redirectTo('/login?error=not_provisioned');
     }

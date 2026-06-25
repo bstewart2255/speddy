@@ -19,10 +19,14 @@ create a new account.
      login (admin-created, or a prior self-signup), and Supabase auto-linked the
      Google identity to it by verified email. They land on their existing
      role/school. ✅
+   - **Lookup failure** → the callback fails closed to `/login?error=oauth_failed`
+     (without deleting anything).
    - **Google-only** → first-time Google identity we don't have an account for.
-     The callback signs them out, **deletes the orphan auth user** (which also
-     removes the trigger-created profile), and returns to
-     `/login?error=not_provisioned` with an "ask your admin" message. 🚫
+     The callback *attempts* to sign them out, then **deletes the orphan auth
+     user and its trigger-created profile** — the `profiles.id → auth.users.id`
+     FK is `NO ACTION`, so the profile is deleted explicitly first — and returns
+     to `/login?error=not_provisioned` with an "ask your admin" message. If
+     cleanup fails it falls back to `/login?error=oauth_failed`. 🚫
 
 Why the gate checks **identities, not a `profiles` row:** an
 `on_auth_user_created` trigger (`handle_new_user()`) auto-creates a `profiles`

@@ -6,8 +6,10 @@
  * before this Google login — detected by the presence of a NON-Google identity
  * (admin-created and self-signup accounts always have an `email` identity, and
  * Supabase auto-links Google to them by verified email). A first-time,
- * google-only account is signed out, its orphan auth user deleted (which also
- * removes the trigger-created profile), and bounced to /login?error=not_provisioned.
+ * google-only account is signed out, then its trigger-created `profiles` row
+ * AND orphan auth user are deleted (profiles.id -> auth.users.id is NO ACTION,
+ * so the profile is removed explicitly) before bouncing to
+ * /login?error=not_provisioned. If any delete fails, fail closed to oauth_failed.
  *
  * NB: we intentionally do NOT gate on a `profiles` row — an `on_auth_user_created`
  * trigger auto-creates a profile for every new auth user, so "profile exists" is
@@ -21,6 +23,7 @@ const mockCreateClient = jest.fn();
 
 const mockGetUserById = jest.fn();
 const mockDeleteUser = jest.fn();
+const mockProfileDeleteEq = jest.fn();
 const mockCreateServiceClient = jest.fn();
 
 jest.mock('@/lib/supabase/server', () => ({
@@ -35,7 +38,10 @@ jest.mock('@/lib/logger', () => ({
 import { GET } from '@/app/auth/callback/route';
 
 function buildAdminClient() {
-  return { auth: { admin: { getUserById: mockGetUserById, deleteUser: mockDeleteUser } } };
+  return {
+    from: jest.fn(() => ({ delete: jest.fn(() => ({ eq: mockProfileDeleteEq })) })),
+    auth: { admin: { getUserById: mockGetUserById, deleteUser: mockDeleteUser } },
+  };
 }
 
 // Build a getUserById() result with the given identity providers.
@@ -59,6 +65,7 @@ describe('Google SSO callback provisioning gate', () => {
     mockExchange.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
     // Default: a provisioned account that Google linked to (email + google).
     mockGetUserById.mockResolvedValue(userWith(['email', 'google']));
+    mockProfileDeleteEq.mockResolvedValue({ error: null });
     mockDeleteUser.mockResolvedValue({ data: {}, error: null });
     mockSignOut.mockResolvedValue({ error: null });
   });
@@ -86,6 +93,7 @@ describe('Google SSO callback provisioning gate', () => {
     const res = await call('?code=abc');
     expect(location(res).pathname).toBe('/dashboard');
     expect(location(res).searchParams.get('error')).toBeNull();
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1');
     expect(mockDeleteUser).not.toHaveBeenCalled();
     expect(mockSignOut).not.toHaveBeenCalled();
   });
@@ -95,8 +103,26 @@ describe('Google SSO callback provisioning gate', () => {
     const res = await call('?code=abc');
     expect(location(res).pathname).toBe('/login');
     expect(location(res).searchParams.get('error')).toBe('not_provisioned');
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1');
     expect(mockSignOut).toHaveBeenCalled();
+    expect(mockProfileDeleteEq).toHaveBeenCalledWith('id', 'user-1');
     expect(mockDeleteUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('fails closed (no auth-user delete) when the profile delete fails', async () => {
+    mockGetUserById.mockResolvedValue(userWith(['google']));
+    mockProfileDeleteEq.mockResolvedValue({ error: { message: 'fk' } });
+    const res = await call('?code=abc');
+    expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+    expect(mockDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the auth-user delete fails', async () => {
+    mockGetUserById.mockResolvedValue(userWith(['google']));
+    mockDeleteUser.mockResolvedValue({ data: { user: null }, error: { message: 'boom' } });
+    const res = await call('?code=abc');
+    expect(location(res).searchParams.get('error')).toBe('oauth_failed');
+    expect(mockProfileDeleteEq).toHaveBeenCalledWith('id', 'user-1');
   });
 
   it('fails closed if the identity lookup throws', async () => {
