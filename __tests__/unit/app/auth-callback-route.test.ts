@@ -2,10 +2,16 @@
  * Unit tests for the Google SSO callback provisioning gate
  * (`app/auth/callback/route.ts`).
  *
- * Contract: a social sign-in may only proceed when we ALREADY have an account
- * (a `profiles` row) for the user. An unprovisioned identity must be signed out,
- * have its orphan auth user deleted, and be bounced to /login?error=not_provisioned.
- * SSO can never create a usable new account.
+ * Contract: a social sign-in may only proceed when the account already existed
+ * before this Google login — detected by the presence of a NON-Google identity
+ * (admin-created and self-signup accounts always have an `email` identity, and
+ * Supabase auto-links Google to them by verified email). A first-time,
+ * google-only account is signed out, its orphan auth user deleted (which also
+ * removes the trigger-created profile), and bounced to /login?error=not_provisioned.
+ *
+ * NB: we intentionally do NOT gate on a `profiles` row — an `on_auth_user_created`
+ * trigger auto-creates a profile for every new auth user, so "profile exists" is
+ * always true and is not a valid provisioning signal.
  */
 
 // jest requires factory-referenced vars to be prefixed with `mock`.
@@ -13,7 +19,7 @@ const mockExchange = jest.fn();
 const mockSignOut = jest.fn();
 const mockCreateClient = jest.fn();
 
-const mockMaybeSingle = jest.fn();
+const mockGetUserById = jest.fn();
 const mockDeleteUser = jest.fn();
 const mockCreateServiceClient = jest.fn();
 
@@ -29,11 +35,14 @@ jest.mock('@/lib/logger', () => ({
 import { GET } from '@/app/auth/callback/route';
 
 function buildAdminClient() {
-  const eq = jest.fn(() => ({ maybeSingle: mockMaybeSingle }));
-  const select = jest.fn(() => ({ eq }));
-  const from = jest.fn(() => ({ select }));
-  return { from, auth: { admin: { deleteUser: mockDeleteUser } } };
+  return { auth: { admin: { getUserById: mockGetUserById, deleteUser: mockDeleteUser } } };
 }
+
+// Build a getUserById() result with the given identity providers.
+const userWith = (providers: string[]) => ({
+  data: { user: { id: 'user-1', identities: providers.map((provider) => ({ provider })) } },
+  error: null,
+});
 
 const call = (qs: string) =>
   GET(new Request(`http://localhost:3000/auth/callback${qs}`));
@@ -48,7 +57,8 @@ describe('Google SSO callback provisioning gate', () => {
     });
     mockCreateServiceClient.mockReturnValue(buildAdminClient());
     mockExchange.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
-    mockMaybeSingle.mockResolvedValue({ data: { id: 'user-1' }, error: null });
+    // Default: a provisioned account that Google linked to (email + google).
+    mockGetUserById.mockResolvedValue(userWith(['email', 'google']));
     mockDeleteUser.mockResolvedValue({ data: {}, error: null });
     mockSignOut.mockResolvedValue({ error: null });
   });
@@ -72,7 +82,7 @@ describe('Google SSO callback provisioning gate', () => {
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
   });
 
-  it('lets a provisioned user through and never deletes them', async () => {
+  it('lets a provisioned (email+google) user through and never deletes them', async () => {
     const res = await call('?code=abc');
     expect(location(res).pathname).toBe('/dashboard');
     expect(location(res).searchParams.get('error')).toBeNull();
@@ -80,8 +90,8 @@ describe('Google SSO callback provisioning gate', () => {
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 
-  it('rejects an unprovisioned user: signs out, deletes the orphan, bounces to login', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+  it('rejects a google-only account (even though the trigger created a profile)', async () => {
+    mockGetUserById.mockResolvedValue(userWith(['google']));
     const res = await call('?code=abc');
     expect(location(res).pathname).toBe('/login');
     expect(location(res).searchParams.get('error')).toBe('not_provisioned');
@@ -89,18 +99,17 @@ describe('Google SSO callback provisioning gate', () => {
     expect(mockDeleteUser).toHaveBeenCalledWith('user-1');
   });
 
-  it('fails closed if the provisioning lookup throws', async () => {
-    mockMaybeSingle.mockRejectedValue(new Error('db down'));
+  it('fails closed if the identity lookup throws', async () => {
+    mockGetUserById.mockRejectedValue(new Error('admin api down'));
     const res = await call('?code=abc');
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
     expect(mockSignOut).toHaveBeenCalled();
     expect(mockDeleteUser).not.toHaveBeenCalled();
   });
 
-  it('fails closed WITHOUT deleting when the lookup resolves an error (transient DB failure)', async () => {
-    // maybeSingle() returns { data: null, error } on a PostgREST/DB error
-    // rather than throwing. A real provisioned user must NOT be deleted here.
-    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+  it('fails closed WITHOUT deleting when the identity lookup resolves an error', async () => {
+    // A real provisioned user must NOT be deleted when we simply can't verify.
+    mockGetUserById.mockResolvedValue({ data: { user: null }, error: { message: 'timeout' } });
     const res = await call('?code=abc');
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
     expect(mockSignOut).toHaveBeenCalled();
@@ -137,8 +146,8 @@ describe('Google SSO callback provisioning gate', () => {
     expect(location(res).searchParams.get('error')).toBe('oauth_failed');
   });
 
-  it('still deletes the orphan when sign-out throws for an unprovisioned user', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null });
+  it('still deletes the orphan when sign-out throws for a google-only account', async () => {
+    mockGetUserById.mockResolvedValue(userWith(['google']));
     mockSignOut.mockRejectedValue(new Error('signout failed'));
     const res = await call('?code=abc');
     expect(mockDeleteUser).toHaveBeenCalledWith('user-1');

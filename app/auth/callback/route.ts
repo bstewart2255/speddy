@@ -59,39 +59,39 @@ export async function GET(request: Request) {
 
     const user = data.user;
 
-    // Authoritative provisioning check via the service role (bypasses RLS so a
-    // legitimately provisioned user is never falsely rejected).
+    // Provisioning gate. A `profiles` row is NOT a reliable signal: an
+    // `on_auth_user_created` trigger auto-creates a profile (defaulting role to
+    // 'resource') for EVERY new auth user, including a first-time Google
+    // sign-in. Instead we gate on identities: a genuinely provisioned account
+    // (admin-created, or a prior self-signup) always has a non-Google ('email')
+    // identity, and Supabase auto-links Google to it by verified email. A
+    // first-time Google sign-in yields a google-only account — reject that.
     const admin = createServiceClient();
-    const { data: profile, error: lookupError } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { data: fullUser, error: lookupError } = await admin.auth.admin.getUserById(user.id);
 
-    if (lookupError) {
-      // Couldn't verify provisioning (e.g. a transient PostgREST/DB error).
-      // maybeSingle() RESOLVES errors here rather than throwing, so this must
-      // be handled before the !profile branch — otherwise a momentary read
-      // failure would look like "no account" and delete a real user. Fail
-      // closed WITHOUT deleting: never destroy an account we can't confirm is
-      // unprovisioned.
-      logger.error('SSO provisioning lookup failed; rejecting without deleting', lookupError);
+    if (lookupError || !fullUser?.user) {
+      // Couldn't verify identities → fail closed WITHOUT deleting; never destroy
+      // an account we can't confirm is unprovisioned.
+      logger.error('SSO identity lookup failed; rejecting without deleting', lookupError);
       await supabase.auth.signOut();
       return redirectTo('/login?error=oauth_failed');
     }
 
-    if (!profile) {
-      // Confirmed: no Speddy account for this identity. Remove the orphan auth
-      // user that Supabase created for this OAuth sign-in. Sign-out is best
-      // effort — its failure must NOT skip the deletion, which is the whole
-      // point of this branch.
+    const identities = fullUser.user.identities ?? [];
+    const isProvisioned = identities.some((identity) => identity.provider !== 'google');
+
+    if (!isProvisioned) {
+      // First-time Google identity with no pre-existing Speddy account. Remove
+      // the orphan auth user Supabase just created (this also removes the
+      // trigger-created profile). Sign-out is best effort — its failure must NOT
+      // skip the deletion, which is the whole point of this branch.
       try {
         await supabase.auth.signOut();
       } catch (signOutError) {
         logger.warn('Failed to clear SSO session for an unprovisioned account', signOutError);
       }
       await admin.auth.admin.deleteUser(user.id);
-      logger.warn('Rejected SSO sign-in for an unprovisioned account', { userId: user.id });
+      logger.warn('Rejected SSO sign-in for an unprovisioned (Google-only) account', { userId: user.id });
       return redirectTo('/login?error=not_provisioned');
     }
   } catch (e) {
