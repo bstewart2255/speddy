@@ -108,7 +108,20 @@ export function useActivityTracker({
     if (!isEnabledRef.current) {
       return;
     }
-    
+
+    // Enforce the idle window across tab/browser close. The timeout timer only
+    // runs while a tab is open, so on (re)mount check the last recorded
+    // activity: if it's already older than the timeout, the user was idle past
+    // the limit while away — log them out now instead of starting a fresh
+    // window. (Placed before the listeners are attached so there's nothing to
+    // clean up on the early return.)
+    const storedActivity = localStorage.getItem('lastActivity');
+    const storedActivityTime = storedActivity ? parseInt(storedActivity, 10) : NaN;
+    if (!Number.isNaN(storedActivityTime) && Date.now() - storedActivityTime >= timeout) {
+      onTimeout();
+      return;
+    }
+
     // Activity events to monitor
     const events = [
       'mousedown',
@@ -165,7 +178,7 @@ export function useActivityTracker({
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (warningRef.current) clearTimeout(warningRef.current);
     };
-  }, [handleActivity, checkCrossTabActivity, updateActivity, timeout]);
+  }, [handleActivity, checkCrossTabActivity, updateActivity, timeout, onTimeout]);
 
   // Method to manually extend session
   const extendSession = useCallback((options: KeepAliveOptions = {}) => {

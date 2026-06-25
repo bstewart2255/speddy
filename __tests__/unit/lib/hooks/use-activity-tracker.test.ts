@@ -157,4 +157,31 @@ describe('useActivityTracker', () => {
       activityType: 'test-activity'
     });
   });
+
+  it('logs out immediately on mount when stored activity is older than the timeout (closed-tab idle)', () => {
+    // Simulate reopening after being idle longer than the timeout window.
+    const staleTime = Date.now() - (mockConfig.timeout + 60000);
+    localStorageMock.getItem.mockReturnValue(String(staleTime));
+
+    renderHook(() => useActivityTracker(mockConfig));
+
+    expect(mockConfig.onTimeout).toHaveBeenCalled();
+  });
+
+  it('does not log out on mount when stored activity is within the timeout window', () => {
+    const recent = Date.now() - 5000; // 5s ago, well within the 30s window
+    localStorageMock.getItem.mockReturnValue(String(recent));
+
+    renderHook(() => useActivityTracker(mockConfig));
+
+    expect(mockConfig.onTimeout).not.toHaveBeenCalled();
+  });
+
+  it('does not log out on mount when there is no stored activity (fresh login)', () => {
+    localStorageMock.getItem.mockReturnValue(null);
+
+    renderHook(() => useActivityTracker(mockConfig));
+
+    expect(mockConfig.onTimeout).not.toHaveBeenCalled();
+  });
 });
