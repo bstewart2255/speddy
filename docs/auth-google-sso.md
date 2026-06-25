@@ -12,19 +12,31 @@ create a new account.
    `supabase.auth.signInWithOAuth({ provider: 'google', ... })`.
 2. Google → Supabase → redirects back to **`/auth/callback`**
    (`app/auth/callback/route.ts`), which exchanges the code for a session.
-3. **Provisioning gate:** the callback checks (service role) whether a
-   `profiles` row exists for the signed-in user.
-   - **Exists** → the user was provisioned (admin-created, or a prior
-     self-signup). Supabase auto-linked the Google identity to that account by
-     verified email, so they land on their existing role/school. ✅
-   - **Missing** → brand-new Google identity we don't have an account for. The
-     callback signs them out, **deletes the orphan auth user**, and returns to
-     `/login?error=not_provisioned` with an "ask your admin" message. 🚫
+3. **Provisioning gate:** the callback checks (service role,
+   `auth.admin.getUserById`) whether the signed-in user has a **non-Google
+   identity**.
+   - **Has one** (`email` ± `google`) → the account existed before this Google
+     login (admin-created, or a prior self-signup), and Supabase auto-linked the
+     Google identity to it by verified email. They land on their existing
+     role/school. ✅
+   - **Lookup failure** → the callback fails closed to `/login?error=oauth_failed`
+     (without deleting anything).
+   - **Google-only** → first-time Google identity we don't have an account for.
+     The callback *attempts* to sign them out, then **deletes the orphan auth
+     user and its trigger-created profile** — the `profiles.id → auth.users.id`
+     FK is `NO ACTION`, so the profile is deleted explicitly first — and returns
+     to `/login?error=not_provisioned` with an "ask your admin" message. If
+     cleanup fails it falls back to `/login?error=oauth_failed`. 🚫
 
-Why the gate is a `profiles` check: there is no trigger on `auth.users`
-(`supabase/migrations/20250117_create_profile_on_signup.sql`), so a brand-new
-OAuth user has an auth row but **no** profile — making "has a profile" a
-reliable "do we have an account for them" signal.
+Why the gate checks **identities, not a `profiles` row:** an
+`on_auth_user_created` trigger (`handle_new_user()`) auto-creates a `profiles`
+row — defaulting role to `'resource'` — for *every* new auth user, including a
+first-time Google sign-in. So "has a profile" is always true and is **not** a
+valid provisioning signal. A genuinely provisioned account, by contrast, always
+has an `email` (password) identity; a brand-new Google account has only the
+`google` identity. (The `20250117_create_profile_on_signup.sql` migration says
+"no trigger," but production drifted — the trigger exists; see the follow-up
+ticket.)
 
 ## Enablement steps (manual — not done by the code)
 
