@@ -4,6 +4,12 @@
 - Use the Github CLI tool to manage actions in the repo.
 - When encountering a complex issue, or a bug that is proving difficult to resolve, use Web Search to investigate the problem and receive support in finding a solution.
 - Don't over-engineer anything. It's better to add more later, than to have to go back and fix what's been done. At any juncture point, ask yourself, "Is this over-engineering?"
+- **Architecture reference:** `docs/ARCHITECTURE.md` is the grounded, how-it-works
+  map of the domain model — roles & permissions, org hierarchy/scoping, account
+  creation, auth/session, the scheduling model, data retention, and CARE. Read it
+  to get up to speed fast; it's cross-referenced to the relevant Linear tickets
+  and to the "Speddy" Miro board. When you change one of those areas, update the
+  matching section (each ends with a "Source of truth" file list).
 
 ## Autonomous execution for high-confidence, non-UX work
 
