@@ -18,8 +18,14 @@ export default function LoginForm() {
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
   const router = useRouter();
 
-  // Surface errors handed back by the OAuth callback (?error=...).
   useEffect(() => {
+    // We're on the login page (unauthenticated), so any leftover idle-timeout
+    // timestamp is from a prior, now-ended session (e.g. cookies expired without
+    // a clean sign-out). Clear it so a fresh login isn't immediately signed out
+    // by the cross-close idle check in use-activity-tracker.
+    localStorage.removeItem('lastActivity');
+
+    // Surface errors handed back by the OAuth callback (?error=...).
     const err = new URLSearchParams(window.location.search).get('error');
     if (err === 'not_provisioned') {
       setError(
