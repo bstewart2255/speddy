@@ -30,6 +30,13 @@ describe('LoginForm', () => {
     expect(screen.getByText(/don't have an account/i)).toBeInTheDocument()
   })
 
+  it('clears stale lastActivity on mount so a fresh login is not auto-timed-out', () => {
+    const removeItemSpy = jest.spyOn(Storage.prototype, 'removeItem')
+    render(<LoginForm />)
+    expect(removeItemSpy).toHaveBeenCalledWith('lastActivity')
+    removeItemSpy.mockRestore()
+  })
+
   it('validates email format', async () => {
     const user = userEvent.setup()
     render(<LoginForm />)
