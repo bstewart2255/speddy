@@ -92,12 +92,13 @@ export async function listMyStudentChats(): Promise<ChatConversationSummary[]> {
   if (ids.length === 0) return [];
 
   // Latest non-deleted message per conversation (reduce client-side).
-  const { data: msgs } = await supabase
+  const { data: msgs, error: msgsError } = await supabase
     .from('messages')
     .select('conversation_id, body, created_at')
     .in('conversation_id', ids)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
+  if (msgsError) throw msgsError;
 
   const lastByConvo = new Map<string, { body: string; created_at: string }>();
   for (const m of msgs ?? []) {
@@ -107,10 +108,11 @@ export async function listMyStudentChats(): Promise<ChatConversationSummary[]> {
   }
 
   // The user's own read cursors (RLS: self-only).
-  const { data: reads } = await supabase
+  const { data: reads, error: readsError } = await supabase
     .from('conversation_read_state')
     .select('conversation_id, last_read_at')
     .in('conversation_id', ids);
+  if (readsError) throw readsError;
   const readBy = new Map((reads ?? []).map((r) => [r.conversation_id, r.last_read_at]));
 
   const summaries: ChatConversationSummary[] = conversations.map((c) => {
@@ -262,7 +264,7 @@ export async function markConversationRead(conversationId: string): Promise<void
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
-  await supabase.from('conversation_read_state').upsert(
+  const { error } = await supabase.from('conversation_read_state').upsert(
     {
       conversation_id: conversationId,
       profile_id: user.id,
@@ -270,6 +272,7 @@ export async function markConversationRead(conversationId: string): Promise<void
     },
     { onConflict: 'conversation_id,profile_id' },
   );
+  if (error) throw error;
 }
 
 /**

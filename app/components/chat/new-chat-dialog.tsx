@@ -13,19 +13,24 @@ interface NewChatDialogProps {
 export function NewChatDialog({ isOpen, onClose, onPick }: NewChatDialogProps) {
   const [students, setStudents] = useState<ChatStudentOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setLoading(true);
+    setError(null);
     setQuery('');
     listChatStudents()
       .then((s) => {
         if (!cancelled) setStudents(s);
       })
-      .catch(() => {
-        if (!cancelled) setStudents([]);
+      .catch((e) => {
+        if (!cancelled) {
+          setStudents([]);
+          setError(e instanceof Error ? e.message : 'Failed to load students');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -58,6 +63,8 @@ export function NewChatDialog({ isOpen, onClose, onPick }: NewChatDialogProps) {
         <div className="max-h-72 overflow-y-auto rounded-md border border-gray-200">
           {loading ? (
             <div className="px-3 py-4 text-sm text-gray-400">Loading students…</div>
+          ) : error ? (
+            <div className="px-3 py-4 text-sm text-red-600">{error}</div>
           ) : filtered.length === 0 ? (
             <div className="px-3 py-4 text-sm text-gray-400">No students found.</div>
           ) : (

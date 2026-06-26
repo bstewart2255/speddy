@@ -47,26 +47,42 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
     if (!conversationId) {
       setMessages([]);
       setError(null);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
+    let historyLoaded = false;
     setLoading(true);
     setError(null);
+    setMessages([]); // clear the previous conversation
 
-    getMessages(conversationId)
-      .then((m) => {
-        if (!cancelled) {
-          setMessages(m);
+    // Load the history snapshot only after the channel has resolved, and MERGE
+    // it into state (don't replace) so a live INSERT that arrived during the
+    // subscribe handshake isn't lost. upsertMessage de-dupes by id.
+    const loadHistory = () => {
+      if (cancelled || historyLoaded) return;
+      historyLoaded = true;
+      getMessages(conversationId)
+        .then((history) => {
+          if (cancelled) return;
+          setMessages((prev) => {
+            const byId = new Map(prev.map((m) => [m.id, m]));
+            for (const m of history) if (!byId.has(m.id)) byId.set(m.id, m);
+            return [...byId.values()].sort((a, b) =>
+              a.createdAt === b.createdAt
+                ? a.id.localeCompare(b.id)
+                : a.createdAt.localeCompare(b.createdAt),
+            );
+          });
           setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
+        })
+        .catch((e) => {
+          if (cancelled) return;
           setError(e instanceof Error ? e.message : 'Failed to load messages');
           setLoading(false);
-        }
-      });
+        });
+    };
 
     const channel = supabase
       .channel(`chat-${conversationId}`)
@@ -83,7 +99,15 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
           upsertMessage(toChatMessage(payload.new as Parameters<typeof toChatMessage>[0]));
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          loadHistory();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          // Realtime didn't connect; still load history so messages render
+          // (without live updates) rather than spinning forever.
+          loadHistory();
+        }
+      });
     channelRef.current = channel;
 
     return () => {

@@ -104,6 +104,12 @@ export default function Navbar() {
       { name: 'Dashboard', href: '/dashboard' }
     ];
 
+    // While the role is still loading (empty string), show only the base nav so
+    // role-specific items (e.g. Chat) don't flash for roles that exclude them.
+    if (!role) {
+      return baseNavigation;
+    }
+
     if (role === 'district_admin') {
       // District admins see schools overview, dashboard, and CARE
       return [

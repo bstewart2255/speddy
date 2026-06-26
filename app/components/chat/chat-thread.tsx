@@ -42,7 +42,9 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
 
   // Mark read on open and whenever new messages arrive while open.
   useEffect(() => {
-    void markConversationRead(conversationId);
+    markConversationRead(conversationId).catch(() => {
+      /* non-fatal: the unread badge may be briefly stale */
+    });
   }, [conversationId, messages.length]);
 
   // Keep the latest message in view.
@@ -64,7 +66,9 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
     try {
       await send(body);
     } catch {
-      setInput(body); // restore on failure so the user doesn't lose their text
+      // Restore the failed text only if the user hasn't started a new draft
+      // while the request was in flight.
+      setInput((current) => (current === '' ? body : current));
     }
   };
 
@@ -98,6 +102,7 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
 
       <form onSubmit={handleSubmit} className="flex gap-2 border-t border-gray-200 p-3">
         <input
+          aria-label="Message"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Write a message…"
