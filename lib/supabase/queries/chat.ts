@@ -154,67 +154,36 @@ export interface OpenedConversation {
 /**
  * Open the student_group conversation for a student, creating it lazily if it
  * doesn't exist yet, and return it along with the student's display initials.
- * Conversation creation is gated by RLS (chat_is_student_participant), so this
- * only succeeds for a current team member. Handles the create race via the
- * one-chat-per-student unique index.
+ *
+ * Creation goes through the open_student_conversation RPC (SECURITY DEFINER),
+ * which performs the same authorization itself (is_chat_eligible + the
+ * chat_is_student_participant team check) and inserts as the owner. This is the
+ * single reliable write path: a direct client insert against `conversations`
+ * was intermittently rejected by the table's INSERT policy with a misleading
+ * 42501 even for valid team members, whereas the RPC (called like the working
+ * student picker) does not depend on that policy and forces created_by =
+ * auth.uid(). The one-chat-per-student race is handled inside the RPC.
  */
 export async function openStudentConversation(studentId: string): Promise<OpenedConversation> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
 
+  // Display details only; the RPC enforces access independently of this read.
   const { data: student, error: studentError } = await supabase
     .from('students')
-    .select('initials, grade_level, school_id')
+    .select('initials, grade_level')
     .eq('id', studentId)
     .single();
-  // Surface the real failure rather than silently proceeding with a null student
-  // (which would then insert a null school_id and fail confusingly downstream).
   if (studentError) throw new Error(`Couldn't load this student: ${describeDbError(studentError)}`);
   const studentInitials = student?.initials ?? '—';
   const studentGrade = student?.grade_level ?? null;
 
-  const { data: existing, error: existingError } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('type', 'student_group')
-    .eq('student_id', studentId)
-    .maybeSingle();
-  if (existingError) throw new Error(`Couldn't open this chat: ${describeDbError(existingError)}`);
-  if (existing) return { conversationId: existing.id, studentInitials, studentGrade };
+  const { data: conversationId, error } = await supabase.rpc('open_student_conversation', {
+    p_student_id: studentId,
+  });
+  if (error) throw new Error(`Couldn't start this chat: ${describeDbError(error)}`);
+  if (!conversationId) throw new Error("Couldn't start this chat: no conversation returned.");
 
-  const { data: created, error } = await supabase
-    .from('conversations')
-    .insert({
-      type: 'student_group',
-      student_id: studentId,
-      school_id: student?.school_id ?? null,
-      // created_by is set server-side via a DEFAULT of auth.uid(). The INSERT RLS
-      // check requires created_by = auth.uid(); deriving it on the server keeps
-      // that true by construction instead of trusting the client's cached user id
-      // (a stale/mismatched session was causing a misleading 42501 "not on the
-      // team" rejection here).
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    // Likely a concurrent create hitting the one-chat-per-student unique index;
-    // re-select the winner.
-    const { data: again } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('type', 'student_group')
-      .eq('student_id', studentId)
-      .maybeSingle();
-    if (again) return { conversationId: again.id, studentInitials, studentGrade };
-    // Not a create race — surface the actual error (RLS denial, constraint, network…)
-    // instead of letting the caller show a generic "not on the team" message.
-    throw new Error(`Couldn't start this chat: ${describeDbError(error)}`);
-  }
-  return { conversationId: created.id, studentInitials, studentGrade };
+  return { conversationId: conversationId as string, studentInitials, studentGrade };
 }
 
 /**

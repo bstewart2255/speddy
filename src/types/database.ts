@@ -4300,6 +4300,10 @@ export type Database = {
         Args: { district_name: string }
         Returns: string
       }
+      open_student_conversation: {
+        Args: { p_student_id: string }
+        Returns: string
+      }
       normalize_existing_school_data: {
         Args: never
         Returns: {
