@@ -111,7 +111,7 @@ real account.
 flowchart TD
     S["students row"] --> P1["students.provider_id<br/>(case manager / resource specialist)"]
     S --> P2["students.teacher_id → teachers.account_id<br/>(linked classroom teacher)"]
-    S --> P3["schedule_sessions where student_id = S<br/>provider_id, assigned_to_specialist_id, assigned_to_sea_id"]
+    S --> P3["schedule_sessions ACTIVE TEMPLATES for student S<br/>(is_template=true / session_date IS NULL, deleted_at IS NULL)<br/>provider_id, assigned_to_specialist_id, assigned_to_sea_id"]
     S --> P4["admin_permissions where role='site_admin'<br/>AND school_id = students.school_id<br/>(site admin — always)"]
     P1 --> U["DISTINCT profiles.id<br/>WITH an account = roster"]
     P2 --> U
@@ -122,9 +122,19 @@ flowchart TD
 - **Case manager / resource specialist** — `students.provider_id`. Almost always
   present.
 - **Linked classroom teacher** — `students.teacher_id → teachers.account_id`.
-- **Assigned providers / specialists / SEAs** — distinct ids from non-deleted
-  `schedule_sessions` for the student (`provider_id`,
-  `assigned_to_specialist_id`, `assigned_to_sea_id`).
+- **Assigned providers / specialists / SEAs** — distinct ids from the student's
+  **active *template*** `schedule_sessions` (`provider_id`,
+  `assigned_to_specialist_id`, `assigned_to_sea_id`), where
+  **`is_template = true` (equivalently `session_date IS NULL`) and
+  `deleted_at IS NULL`**. **Not** all non-deleted session rows.
+  > **Why templates only:** `schedule_sessions` retains dated *instance* rows as
+  > history (completed/past occurrences are not always soft-deleted), and the
+  > scheduler models a *current* assignment as the template row, not its
+  > instances (`session_date IS NULL` — see `lib/services/session-update-service.ts:493`,
+  > `lib/scheduling/optimized-scheduler.ts:734`, `lib/scheduling/session-requirement-sync.ts:149`).
+  > Unioning all non-deleted rows would keep a **former** assignee in the roster
+  > via their leftover historical instances, contradicting §3 (lost linkage →
+  > lost access). Narrowing to active templates makes "currently assigned" exact.
 - **Site admin** — anyone with a `site_admin` grant in `admin_permissions`
   scoped to the student's `school_id`. Always included.
 
