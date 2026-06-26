@@ -147,7 +147,10 @@ the underlying data via existing RLS, but are not added to student chats.
 `sea` role is excluded from the entire module — neither auto-added to student
 group chats (hence `assigned_to_sea_id` is omitted above) nor given the DM
 surface. They are still on the student's care team operationally; they just don't
-participate in chat.
+participate in chat. **This is enforced at the authorization layer, not just the
+UI:** `is_chat_eligible()` returns false for `sea` and is a factor of every
+`can_access` check and the `conversation_participants` insert policy (§6), so a
+SEA can't read or send even if a participant row is somehow created for them.
 
 ### The account caveat (must be surfaced in UI, not hidden)
 A teacher (`teachers.account_id`) can be **linked to a student but have no
@@ -242,12 +245,22 @@ A single boolean gate per conversation drives all message RLS:
 
 ```text
 can_access(conversation c, uid) :=
-    c.type = 'direct'
-      ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
-  : c.type = 'student_group'
-      ? chat_is_student_participant(c.student_id, uid)
-  : false
+    is_chat_eligible(uid)                            -- excludes the sea role (see below)
+    AND (
+      c.type = 'direct'
+        ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
+    : c.type = 'student_group'
+        ? chat_is_student_participant(c.student_id, uid)
+    : false
+    )
 ```
+
+`is_chat_eligible(uid)` is a `SECURITY DEFINER` boolean that returns false for the
+`sea` role (and any other excluded role), evaluated against `profiles.role`. It is
+the **authorization-layer** enforcement of the SEA exclusion (§4) — not a UI
+concern. Because it's a factor of `can_access`, a SEA can never read or send in
+*any* conversation even if a `conversation_participants` row is created for them
+by a buggy API path or an admin action.
 
 Policy sketch (illustrative, not final SQL):
 
@@ -255,8 +268,10 @@ Policy sketch (illustrative, not final SQL):
 - **`messages` SELECT / INSERT** — the message's conversation passes
   `can_access(...)` for `auth.uid()`; INSERT additionally requires
   `sender_id = auth.uid()`.
-- **`conversation_participants`** — visible to the two members; inserted only via
-  the DM-creation path (server-side), constrained to same-site eligibility.
+- **`conversation_participants`** — visible to the two members; **INSERT requires
+  `is_chat_eligible(profile_id)`** (so a `sea` row is rejected at the DB, not just
+  hidden in the UI) and is created only via the DM-creation path (server-side),
+  constrained to same-site eligibility.
 - **`conversation_read_state`** — a user may read/write **only their own** row.
 
 > **Performance.** `chat_is_student_participant` runs inside RLS, so it must be
@@ -388,7 +403,8 @@ no student group chats, and no DMs, even for students they serve via
 
 - Schema: the new `conversations` / `messages` / `conversation_participants` /
   `conversation_read_state` migrations.
-- Membership: `chat_is_student_participant`, `get_student_chat_participants`.
+- Membership / eligibility: `chat_is_student_participant`,
+  `get_student_chat_participants`, `is_chat_eligible` (role exclusion, e.g. `sea`).
 - Linkage inputs: `students` (`provider_id`, `teacher_id`), `teachers.account_id`,
   `schedule_sessions` (`provider_id`, `assigned_to_specialist_id` — **not**
   `assigned_to_sea_id`), `admin_permissions` — see `docs/ARCHITECTURE.md` §3, §6.
