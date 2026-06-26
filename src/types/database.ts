@@ -885,6 +885,131 @@ export type Database = {
           },
         ]
       }
+      conversation_participants: {
+        Row: {
+          added_at: string
+          conversation_id: string
+          profile_id: string
+        }
+        Insert: {
+          added_at?: string
+          conversation_id: string
+          profile_id: string
+        }
+        Update: {
+          added_at?: string
+          conversation_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_participants_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_participants_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_read_state: {
+        Row: {
+          conversation_id: string
+          last_read_at: string
+          profile_id: string
+        }
+        Insert: {
+          conversation_id: string
+          last_read_at?: string
+          profile_id: string
+        }
+        Update: {
+          conversation_id?: string
+          last_read_at?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_read_state_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_read_state_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dm_key: string | null
+          id: string
+          school_id: string | null
+          student_id: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dm_key?: string | null
+          id?: string
+          school_id?: string | null
+          student_id?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dm_key?: string | null
+          id?: string
+          school_id?: string | null
+          student_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
       curriculum_tracking: {
         Row: {
           created_at: string | null
@@ -1753,6 +1878,51 @@ export type Database = {
           validation_regex?: string | null
         }
         Relationships: []
+      }
+      messages: {
+        Row: {
+          body: string
+          conversation_id: string
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          sender_id: string | null
+        }
+        Insert: {
+          body: string
+          conversation_id: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          sender_id?: string | null
+        }
+        Update: {
+          body?: string
+          conversation_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          sender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -3784,6 +3954,10 @@ export type Database = {
       }
     }
     Functions: {
+      can_access_conversation: {
+        Args: { p_conversation_id: string; p_uid: string }
+        Returns: boolean
+      }
       can_assign_sea_to_session:
         | { Args: { provider_id: string; sea_id: string }; Returns: boolean }
         | {
@@ -3805,6 +3979,10 @@ export type Database = {
           }
       can_view_team_member: {
         Args: { target_user_id: string }
+        Returns: boolean
+      }
+      chat_is_student_participant: {
+        Args: { p_student_id: string; p_uid: string }
         Returns: boolean
       }
       copy_schedule_to_year: {
@@ -4045,6 +4223,10 @@ export type Database = {
         Args: { activity_teacher_id: string; activity_teacher_name: string }
         Returns: string
       }
+      get_student_chat_participants: {
+        Args: { p_student_id: string }
+        Returns: string[]
+      }
       get_student_district_id: {
         Args: { p_student_id: string }
         Returns: string
@@ -4088,6 +4270,7 @@ export type Database = {
         Args: { referrer_user_id: string }
         Returns: undefined
       }
+      is_chat_eligible: { Args: { p_uid: string }; Returns: boolean }
       is_teacher_for_student: {
         Args: { p_account_id: string; p_student_id: string }
         Returns: boolean
