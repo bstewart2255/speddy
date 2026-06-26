@@ -48,6 +48,10 @@
   (`state_id`, `district_id`, `school_id`). Both coexist today.
 - **Audit logging is scaffolded but unwired** (`audit_logs` table is empty;
   `logAccess()` is never called) — SPE-169.
+- **Elementary-first.** A school is *elementary* or *secondary* (`isSecondarySchool`,
+  by `school_type` / `grade_span_low ≥ 6`); on a **secondary** site the scheduling
+  surfaces (Schedule, Bell Schedules, Special Activities, Plan) are hidden for
+  providers/teachers/SEAs. Client-side only — §9, SPE-193.
 
 ### Highest-value file map
 
@@ -64,6 +68,7 @@
 | Scheduling model | `schedule_sessions` table; `lib/scheduling/` |
 | Retention cron jobs | `app/api/cron/*`, `vercel.json` |
 | CARE module | `supabase/migrations/20251222_create_care_meeting_tables.sql`, `lib/supabase/queries/care-referrals.ts` |
+| Elementary vs secondary split | `lib/school-helpers.ts` (`isSecondarySchool`); `app/components/providers/school-context.tsx`; `app/components/navigation/navbar.tsx` |
 
 ---
 
@@ -76,6 +81,7 @@
 6. [Scheduling / Session Data Model](#6-scheduling--session-data-model)
 7. [Data Lifecycle & Retention](#7-data-lifecycle--retention)
 8. [CARE / Referrals Model](#8-care--referrals-model)
+9. [Elementary vs Secondary (school-level experience)](#9-elementary-vs-secondary-school-level-experience)
 - [Appendix A — Known gaps (open Linear tickets)](#appendix-a--known-gaps-open-linear-tickets)
 
 ---
@@ -532,6 +538,60 @@ erDiagram
 
 ---
 
+## 9. Elementary vs Secondary (school-level experience)
+
+Speddy is **elementary-first**. Every school is classified **elementary** or
+**secondary** (middle/high), and that flag trims the provider/teacher/SEA
+experience. It is a property of the **school**, not the user's role or a
+student's grade — an itinerant provider gets the elementary UX at one site and
+the trimmed secondary UX at another, on the same login.
+
+**How it's decided** — `lib/school-helpers.ts` → `isSecondarySchool()` (SPE-146),
+evaluated for the **active** school via `useSchool().isSecondary`:
+
+```mermaid
+flowchart TD
+    A["active school"] --> B{"school_type set?"}
+    B -->|"Middle / Junior / High / Senior / Secondary"| S["SECONDARY"]
+    B -->|"Elementary / Primary / K-8 / K-12"| E["ELEMENTARY"]
+    B -->|"unset / unrecognized"| C{"grade_span_low ≥ 6?"}
+    C -->|yes| S
+    C -->|"no / unset"| E
+```
+
+K-8 and K-12 combined sites are treated as **elementary** by product decision
+(they run elementary-style scheduling for their lower grades).
+
+**What a secondary site changes** (all client-side, in the six files that read
+`isSecondary`):
+
+| Surface | Behavior on secondary | Where |
+|---|---|---|
+| Nav (`SECONDARY_HIDDEN_HREFS`) | Hides Schedule, Bell Schedules, Special Activities, Plan, teacher Special Activities | `app/components/navigation/navbar.tsx` |
+| Dashboard | Hides the provider Weekly-view + Attendance widget | `app/(dashboard)/dashboard/page.tsx` |
+| Students list | Hides the "unscheduled sessions" alert | `app/(dashboard)/dashboard/students/page.tsx` |
+| Student modal | Hides the Attendance tab + Sessions/Minutes fields | `app/components/students/student-details-modal.tsx` |
+| Teacher student view | "Resource Specialist" → "Case Manager"; accommodations surfaced first | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
+
+**Unchanged across both:** students/caseload, AI lessons/worksheets/exit tickets
+(grade-driven, not school-type-driven), IEP goals/accommodations, sign-up.
+**Admin and Speddy-Internal portals are unaffected** — admins manage both kinds
+of school (Master Schedule stays), and Internal sets the `school_type` /
+`grade_span` that drive the split.
+
+> **Known gap — SPE-193 (Low):** the gating is **presentation-only**.
+> `middleware.ts` has no school-level guard and the hidden pages don't self-check
+> `isSecondary`, so `/dashboard/schedule`, `/dashboard/bell-schedules`,
+> `/dashboard/special-activities`, and `/dashboard/plan` stay reachable by direct
+> URL on a secondary site (RLS still scopes data).
+
+**Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
+`classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
+(`useSchool().isSecondary`); `app/components/navigation/navbar.tsx`;
+`schools.school_type` / `grade_span_low`.
+
+---
+
 ## Appendix A — Known gaps (open Linear tickets)
 
 Captured while mapping the model (the board + this doc). Status as of
@@ -545,8 +605,9 @@ Captured while mapping the model (the board + this doc). Status as of
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
+| **SPE-193** | Low | UX / robustness | Elementary/secondary feature gating is client-side only; hidden routes reachable by URL on secondary sites. |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142
 (defense-in-depth grants), SPE-143 (student-deletion / retention work), SPE-174
-(AI-enablement runbook — gate SPE-187 before flipping `AI_FEATURES_ENABLED`).
+(AI-enablement runbook — gate SPE-187 before flipping `AI_FEATURES_ENABLED`), SPE-146 (elementary/secondary school classification, drives §9).
