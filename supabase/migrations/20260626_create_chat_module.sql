@@ -18,11 +18,20 @@
 --     request; nothing is stored or deleted on membership change.
 --   * SEAs / paraprofessionals are excluded from the entire module. Enforced at
 --     the authorization layer via is_chat_eligible() (false for role 'sea'),
---     which is a factor of can_access_conversation() AND the
---     conversation_participants INSERT policy — not just the UI.
+--     which is a factor of can_access_conversation() — gating every read/write
+--     path — not just the UI.
 --   * Schedule-derived membership uses ACTIVE TEMPLATE rows only
 --     (is_template = true / deleted_at is null), never historical dated
 --     instances, so a former assignee does not linger in the roster.
+--
+-- Hardening (from PR #667 review):
+--   * get_student_chat_participants() requires the CALLER to be on the student's
+--     team (no roster disclosure to arbitrary authenticated callers).
+--   * messages are immutable except body/edited_at/deleted_at (trigger), so a
+--     message cannot be relocated into another conversation.
+--   * DIRECT conversations + participant rows are NOT client-insertable in
+--     Phase 0; they come from the Phase 2 SECURITY DEFINER creation RPC, which
+--     enforces same-site + the 1:1 cap. anon EXECUTE is revoked on all helpers.
 --
 -- No UI and no realtime in this migration (realtime publication lands in Phase 1).
 
@@ -180,6 +189,13 @@ $$;
 -- Distinct, chat-eligible participant ids for a student group chat. For display
 -- and the "N of M team members have accounts" coverage note. Excludes SEAs and
 -- anyone without a profile via is_chat_eligible().
+--
+-- AUTHORIZATION: the caller must themselves currently be on the student's team,
+-- or the function returns an empty set. SECURITY DEFINER bypasses RLS on the
+-- source tables, so without this gate any authenticated user could read the
+-- roster for an arbitrary student_id (e.g. a reassigned user who kept the UUID).
+-- auth.uid() is the request's JWT subject even under SECURITY DEFINER; a NULL
+-- caller (e.g. service_role with no JWT) therefore also gets an empty set.
 CREATE OR REPLACE FUNCTION public.get_student_chat_participants(p_student_id UUID)
 RETURNS SETOF UUID
 LANGUAGE sql
@@ -219,7 +235,8 @@ AS $$
     JOIN public.admin_permissions ap ON ap.school_id = s.school_id
     WHERE s.id = p_student_id AND ap.role = 'site_admin'
   ) u
-  WHERE public.is_chat_eligible(u.uid);
+  WHERE public.is_chat_eligible(u.uid)
+    AND public.chat_is_student_participant(p_student_id, auth.uid());
 $$;
 
 -- Single access gate for a conversation. is_chat_eligible() first (excludes
@@ -246,13 +263,38 @@ AS $$
      );
 $$;
 
+-- Immutability guard for messages: only body / edited_at / deleted_at may change
+-- on UPDATE. This prevents a sender from relocating a message into another
+-- conversation (changing conversation_id) or spoofing sender_id / created_at —
+-- a stronger guarantee than an RLS WITH CHECK, which cannot see the OLD row.
+CREATE OR REPLACE FUNCTION public.chat_messages_guard_immutable()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.conversation_id <> OLD.conversation_id
+     OR NEW.sender_id IS DISTINCT FROM OLD.sender_id
+     OR NEW.created_at <> OLD.created_at THEN
+    RAISE EXCEPTION 'messages.conversation_id, sender_id and created_at are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_guard_immutable ON public.messages;
+CREATE TRIGGER messages_guard_immutable
+  BEFORE UPDATE ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.chat_messages_guard_immutable();
+
 -- Lock down execution to authenticated app users + service_role (matches the
 -- repo's current security posture: no PUBLIC / anon execute on SECURITY DEFINER
--- helpers).
-REVOKE EXECUTE ON FUNCTION public.is_chat_eligible(UUID) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.chat_is_student_participant(UUID, UUID) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.get_student_chat_participants(UUID) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.can_access_conversation(UUID, UUID) FROM PUBLIC;
+-- helpers). anon is revoked explicitly because Supabase grants it EXECUTE via
+-- default privileges, which a bare "FROM PUBLIC" revoke does not remove.
+REVOKE EXECUTE ON FUNCTION public.is_chat_eligible(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.chat_is_student_participant(UUID, UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.get_student_chat_participants(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.can_access_conversation(UUID, UUID) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.is_chat_eligible(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.chat_is_student_participant(UUID, UUID) TO authenticated, service_role;
@@ -272,10 +314,13 @@ ALTER TABLE public.conversation_read_state  ENABLE ROW LEVEL SECURITY;
 -- Base privileges (RLS still gates every row). No DELETE for authenticated:
 -- conversations/messages are removed only by cascade (student deletion) or the
 -- service role; message removal is a soft delete via UPDATE.
-GRANT SELECT, INSERT, UPDATE ON public.conversations            TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.messages                 TO authenticated;
-GRANT SELECT, INSERT         ON public.conversation_participants TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.conversations           TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.messages                TO authenticated;
+GRANT SELECT                 ON public.conversation_participants TO authenticated; -- inserts via Phase 2 definer RPC only
 GRANT SELECT, INSERT, UPDATE ON public.conversation_read_state  TO authenticated;
+-- belt-and-suspenders: ensure clients never hold INSERT on participants
+-- (no-op on a fresh DB; clears the grant from an earlier apply of this file)
+REVOKE INSERT ON public.conversation_participants FROM authenticated;
 
 -- Policies are dropped-then-created so this migration is safely re-runnable
 -- (idempotent) regardless of how it reaches the database.
@@ -286,20 +331,21 @@ CREATE POLICY conversations_select ON public.conversations
   FOR SELECT TO authenticated
   USING (public.can_access_conversation(id, auth.uid()));
 
--- Creator must be eligible and (for student_group) a current participant of the
--- student. For direct, the same-site pairing is enforced by the participant
--- INSERT policy + the creation RPC (Phase 2).
+-- Phase 0: clients may create ONLY student_group chats, and only if the creator
+-- is currently on the student's team. DIRECT conversations are NOT client-
+-- insertable here — they are created exclusively by the Phase 2 SECURITY DEFINER
+-- creation RPC, which atomically validates the participant pair, enforces the
+-- same-site rule and the 1:1 cap, and computes dm_key. Keeping direct creation
+-- out of client-facing RLS prevents a client from reserving arbitrary dm_keys or
+-- bypassing the same-site invariant.
 DROP POLICY IF EXISTS conversations_insert ON public.conversations;
 CREATE POLICY conversations_insert ON public.conversations
   FOR INSERT TO authenticated
   WITH CHECK (
-    created_by = auth.uid()
+    type = 'student_group'
+    AND created_by = auth.uid()
     AND public.is_chat_eligible(auth.uid())
-    AND (
-      (type = 'student_group' AND public.chat_is_student_participant(student_id, auth.uid()))
-      OR
-      (type = 'direct')
-    )
+    AND public.chat_is_student_participant(student_id, auth.uid())
   );
 
 -- messages ------------------------------------------------------------------
@@ -318,6 +364,9 @@ CREATE POLICY messages_insert ON public.messages
 
 -- A sender may edit / soft-delete only their own messages, and only while they
 -- still have access to the conversation. (Admin moderation is deferred — §10.)
+-- WITH CHECK re-validates access to the post-update conversation; the
+-- messages_guard_immutable trigger additionally pins conversation_id/sender_id/
+-- created_at so a message cannot be relocated into another conversation.
 DROP POLICY IF EXISTS messages_update_own ON public.messages;
 CREATE POLICY messages_update_own ON public.messages
   FOR UPDATE TO authenticated
@@ -325,7 +374,10 @@ CREATE POLICY messages_update_own ON public.messages
     sender_id = auth.uid()
     AND public.can_access_conversation(conversation_id, auth.uid())
   )
-  WITH CHECK (sender_id = auth.uid());
+  WITH CHECK (
+    sender_id = auth.uid()
+    AND public.can_access_conversation(conversation_id, auth.uid())
+  );
 
 -- conversation_participants -------------------------------------------------
 DROP POLICY IF EXISTS conversation_participants_select ON public.conversation_participants;
@@ -333,21 +385,12 @@ CREATE POLICY conversation_participants_select ON public.conversation_participan
   FOR SELECT TO authenticated
   USING (public.can_access_conversation(conversation_id, auth.uid()));
 
--- The conversation creator inserts both participant rows (self + counterpart).
--- Every inserted participant must be chat-eligible, which rejects a 'sea' row at
--- the database even if some path attempts it.
+-- Phase 0: NO client INSERT policy on conversation_participants. Rows are only
+-- ever written for DIRECT conversations, which are created exclusively by the
+-- Phase 2 SECURITY DEFINER RPC (it enforces chat-eligibility of both members,
+-- the same-site rule, and the 1:1 cap, and bypasses RLS as definer). With RLS
+-- enabled and no INSERT policy, clients cannot write participant rows at all.
 DROP POLICY IF EXISTS conversation_participants_insert ON public.conversation_participants;
-CREATE POLICY conversation_participants_insert ON public.conversation_participants
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    public.is_chat_eligible(profile_id)
-    AND EXISTS (
-      SELECT 1 FROM public.conversations c
-      WHERE c.id = conversation_id
-        AND c.type = 'direct'
-        AND c.created_by = auth.uid()
-    )
-  );
 
 -- conversation_read_state ---------------------------------------------------
 -- A user may only see and write their own read cursor.
