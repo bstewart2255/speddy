@@ -273,6 +273,25 @@ export async function markConversationRead(conversationId: string): Promise<void
 }
 
 /**
+ * Whether the current user is on a given student's chat team. Backs the
+ * contextual "Team chat" entry point, so it only shows for actual participants
+ * (and never for SEAs, who are excluded from the membership union).
+ */
+export async function isStudentChatParticipant(studentId: string): Promise<boolean> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase.rpc('chat_is_student_participant', {
+    p_student_id: studentId,
+    p_uid: user.id,
+  });
+  if (error) return false;
+  return data === true;
+}
+
+/**
  * Students the current user can start a chat about. RLS on `students` scopes
  * this to their caseload / school. Conversation creation is independently gated
  * by chat_is_student_participant, so this list is only a convenience picker.

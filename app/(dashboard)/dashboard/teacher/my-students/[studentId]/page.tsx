@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { getStudentDetails, getStudentResourceSchedule } from '@/lib/supabase/queries/teacher-portal';
 import { Card } from '@/app/components/ui/card';
 import { useSchool } from '@/app/components/providers/school-context';
+import { TeamChatButton } from '@/app/components/chat/team-chat-button';
 import Link from 'next/link';
 
 type StudentDetail = {
@@ -184,7 +185,10 @@ export default function StudentDetailPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Student: {student.initials}</h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold text-gray-900">Student: {student.initials}</h1>
+          <TeamChatButton studentId={studentId} />
+        </div>
         <div className="flex items-center gap-4 mt-2">
           <span className="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
             {student.grade_level}

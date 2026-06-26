@@ -13,6 +13,7 @@ import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
 import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 import { useSchool } from '../providers/school-context';
+import { TeamChatButton } from '../chat/team-chat-button';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -218,6 +219,7 @@ export function StudentDetailsModal({
                 Student Details: {student.initials}
               </h2>
               <SharedStudentBadge roles={matchingRoles} />
+              <TeamChatButton studentId={student.id} onNavigate={onClose} />
             </div>
             <button
               onClick={onClose}
