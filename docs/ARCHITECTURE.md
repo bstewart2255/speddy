@@ -12,14 +12,14 @@
 > (greppable, diffable, and readable by agents that don't have the Miro
 > connector).
 >
-> **Last verified:** 2026-06-25, against the live Supabase schema (project
+> **Last verified:** 2026-06-26, against the live Supabase schema (project
 > `qkcruccytmmdajfavpgb`), `supabase/migrations/`, and the files cited in each
 > section. Diagrams use [Mermaid](https://mermaid.js.org/) and render on GitHub.
 >
 > **Not** a quality review — see `docs/2025-09-18-architecture-review.md` for
 > that. This describes how the system behaves today.
 >
-> ### Keeping this current
+> ## Keeping this current
 > Each section ends with a **Source of truth** list (the files/migrations the
 > facts come from). When you change one of those, update the matching section.
 > Re-verify a claim before relying on it; treat the **Known gaps** as live
@@ -50,6 +50,7 @@
   `logAccess()` is never called) — SPE-169.
 
 ### Highest-value file map
+
 | Concern | File / migration |
 |---|---|
 | Role enum (source of truth) | `supabase/migrations/20260410_add_intervention_role.sql` + live `profiles_role_check` |
@@ -149,6 +150,7 @@ flowchart TD
    scope is granted via `admin_permissions` (§3).
 
 ### Route-guard matrix (from `middleware.ts`)
+
 | Path prefix | Who's allowed | Else → |
 |---|---|---|
 | `/`, `/how-it-works`, `/login`, `/signup`, `/terms`, `/privacy`, `/ferpa`, `/auth/callback` | public | — |
@@ -262,7 +264,7 @@ flowchart TD
       T["on_auth_user_created → handle_new_user()<br/>auto-creates profile, default role = resource"]
     end
 
-    A["Admin creates teacher"] -->|"/api/admin/create-teacher-account"| OK["auth user + profile + teacher row<br/>site-admin gated, rollback on failure,<br/>must_change_password = true"]
+    A["Admin creates teacher"] -->|"/api/admin/create-teacher-account"| OK["auth user + profile + teacher row<br/>site-admin gated, rollback on failure,<br/>returns one-time temp password to admin"]
     OK --> T
 
     B["Self-signup /signup"] --> DEAD["DEAD — admin-only model now<br/>(SPE-111: slated for removal)"]
@@ -274,9 +276,13 @@ flowchart TD
     GATE -->|no| GDEL["delete orphan profile + auth user<br/>→ /login?error=not_provisioned"]
 ```
 
-- **Real:** `app/api/admin/create-teacher-account/route.ts` — creates the auth
-  user + profile + teacher record, site-admin gated, with rollback; sets
-  `must_change_password` so the new user is forced through `/change-password`.
+- **Real:** `app/api/admin/create-teacher-account/route.ts` — site-admin gated;
+  creates the auth user (with a generated **temporary password**) + profile +
+  teacher record, with rollback on failure. The temp password is **returned to
+  the admin once** to relay to the teacher; the route does **not** set
+  `must_change_password`, so the teacher is **not** force-redirected to
+  `/change-password` on first login (that flag is set by the admin
+  password-reset flow, not creation — see §5; tracked in **SPE-190**).
 - **Profile auto-creation trigger:** `on_auth_user_created → handle_new_user()`
   creates a `profiles` row (default role `resource`) for **every** new auth
   user. This is why the SSO gate (§5) can't rely on "profile exists".
@@ -317,6 +323,9 @@ flowchart TD
 - **Middleware** authenticates with `getSession()` and fetches the profile on
   each navigation; sets `x-user-id/-email/-role` headers downstream.
 - **`must_change_password`** locks the user to `/change-password` until cleared.
+  It is set by the **admin password-reset** flow (`app/api/admin/reset-password`),
+  enforced by middleware + `app/api/auth/login`, and cleared by
+  `app/api/auth/change-password`. Account *creation* does **not** set it (SPE-190).
 - **Idle timeout** (`lib/config/session-timeout.ts`): default **45 min**
   (`NEXT_PUBLIC_SESSION_TIMEOUT`, `2_700_000` ms), **2-min** warning,
   **30 s** activity throttle, with `KEEP_ALIVE_ACTIVITIES`
@@ -449,7 +458,7 @@ surface CARE by name match; see §7).
 
 ```mermaid
 erDiagram
-    CARE_REFERRALS    ||--o| CARE_CASES         : "becomes (on activate)"
+    CARE_REFERRALS    ||--o| CARE_CASES         : "case (immediate for Lane B)"
     CARE_CASES        ||--o{ CARE_MEETING_NOTES : "notes"
     CARE_CASES        ||--o{ CARE_ACTION_ITEMS  : "action items"
 
@@ -458,8 +467,11 @@ erDiagram
         text student_name "free text, NOT FK to students"
         text grade
         uuid referring_user_id FK
-        text category "academic|behavioral|attendance|social-emotional|other"
-        text status "pending|active|closed"
+        uuid teacher_id FK
+        text referral_source "drives Lane A vs Lane B"
+        text category "academic|behavioral|attendance|social-emotional|speech|ot|other"
+        text status "pending|active|initial|closed"
+        date request_received_date "compliance lane"
         varchar school_id "scope"
         timestamptz deleted_at "soft delete"
     }
@@ -486,11 +498,17 @@ erDiagram
     }
 ```
 
-- **Lifecycle:** `care_referrals.status` = `pending → active → closed`. A
-  `care_cases` row is created when a referral becomes active; notes and action
-  items hang off the case. The referral→case→notes/action-items workflow (incl.
-  the general-discussion vs. compliance intake lanes) is implemented in
-  `lib/supabase/queries/care-referrals.ts`.
+- **Two intake lanes**, chosen at submit time by `referral_source`
+  (`lib/constants/care.ts`; `addCareReferral` in `care-referrals.ts`):
+  - **Lane A — discussion** (most sources, e.g. `teacher_concern`): the referral
+    starts `status = 'pending'`; a `care_cases` row is created when it becomes
+    `active`; notes and action items hang off the case; it resolves to `closed`.
+  - **Lane B — compliance** (`parent_written_request`, `private_school`): the
+    referral is born directly into `status = 'initial'` with a case created
+    immediately and an `ap_due_date` pre-filled to `request_received_date + 15
+    days` (CA Ed. Code 56321 assessment-plan timeline).
+  - Live values — `status`: `pending | active | initial | closed`; `category`:
+    `academic | behavioral | attendance | social-emotional | speech | ot | other`.
 - **Access:** the CARE dashboard (`/dashboard/care`) is open to **all
   authenticated users** (middleware §2).
 - **RLS:** school-scoped — `school_id IN (profile's school ∪ provider_schools)`;
@@ -504,8 +522,11 @@ erDiagram
   check, so it also covers the district-admin-over-another-school case RLS
   doesn't).
 
-**Source of truth:**
-`supabase/migrations/20251222_create_care_meeting_tables.sql`;
+**Source of truth:** live `care_referrals` CHECK constraints + columns;
+`supabase/migrations/20251222_create_care_meeting_tables.sql`,
+`20260106_care_status_and_initial_stage.sql`,
+`20260107_add_speech_ot_care_categories.sql`,
+`20260516_care_lane_b_compliance.sql`; `lib/constants/care.ts`;
 `lib/supabase/queries/care-referrals.ts`;
 `app/api/admin/care-referrals/[referralId]/route.ts`.
 
@@ -514,7 +535,7 @@ erDiagram
 ## Appendix A — Known gaps (open Linear tickets)
 
 Captured while mapping the model (the board + this doc). Status as of
-2026-06-25 — re-check Linear for current state.
+2026-06-26 — re-check Linear for current state.
 
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
@@ -523,6 +544,7 @@ Captured while mapping the model (the board + this doc). Status as of
 | **SPE-169** | High | Security/FERPA | Build real audit logging; `audit_logs` table + `logAccess()` exist but are unwired/empty. |
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
+| **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142
