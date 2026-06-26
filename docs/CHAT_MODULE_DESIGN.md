@@ -128,6 +128,10 @@ flowchart TD
 - **Site admin** — anyone with a `site_admin` grant in `admin_permissions`
   scoped to the student's `school_id`. Always included.
 
+**District admins are *not* chat participants** (decided 2026-06-26). Only
+**site** admins are auto-added. District admins retain their oversight access to
+the underlying data via existing RLS, but are not added to student chats.
+
 ### The account caveat (must be surfaced in UI, not hidden)
 A teacher (`teachers.account_id`) or SEA can be **linked to a student but have no
 login**. Someone with no account literally cannot be a chat participant. So
@@ -136,9 +140,6 @@ login**. Someone with no account literally cannot be a chat participant. So
 members have accounts") rather than implying full coverage.
 
 ### Decisions deferred to §10
-- Whether **district admins** are auto-participants (could be many; leaning *no*
-  by default — they retain oversight access, but aren't auto-added to every
-  student chat in their district).
 - **Secondary / many-teachers (SPE-194):** today `students.teacher_id` is a
   single FK, so on secondary sites the "linked teachers" set is structurally
   incomplete. The roster will inherit that gap until rostering lands; the
@@ -314,22 +315,23 @@ student's team, and orthogonal to their lesson view-only restriction.
 
 ## 10. Open questions (need a decision before / during build)
 
-1. **District admins in student group chats** — auto-participants or not?
-   (Leaning: **no** auto-add; oversight access can be separate.)
-2. **Audit granularity** — log sends + opens only, or also edits/deletes? What's
+1. **Audit granularity** — log sends + opens only, or also edits/deletes? What's
    the retention of the audit rows themselves?
-3. **Message retention** — keep student-group history forever, or age it out
+2. **Message retention** — keep student-group history forever, or age it out
    (e.g. with the student record / at year transition)?
-4. **Moderation** — can a sender edit/delete their own message? Can a site admin
+3. **Moderation** — can a sender edit/delete their own message? Can a site admin
    remove a message? (`messages.edited_at` / `deleted_at` are provisioned for
    this but the policy is undecided.)
-5. **Empty/again-eligible chats** — if a student temporarily has only one linked
+4. **Empty/again-eligible chats** — if a student temporarily has only one linked
    account, the chat exists but is a monologue. Acceptable? (Probably yes.)
-6. **Notifications** — the Hub flags a "digest model that respects teacher time."
+5. **Notifications** — the Hub flags a "digest model that respects teacher time."
    What's the v-next trigger (in-app only at first; email digest later)?
-7. **DM eligibility precision** — "share a site" via `provider_schools` ∪
+6. **DM eligibility precision** — "share a site" via `provider_schools` ∪
    `profiles.school_id`? Confirm the exact set, and whether cross-site for
    itinerant providers counts.
+
+**Resolved:** *District admins are not chat participants* — only site admins are
+auto-added (decided 2026-06-26; see §4).
 
 ---
 
