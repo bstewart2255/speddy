@@ -15,6 +15,12 @@
 -- targets the (conversation_id, profile_id) primary key, matching the prior
 -- client upsert.
 --
+-- The conflict/UPDATE branch is gated too: Postgres applies the INSERT policy's
+-- WITH CHECK to the *proposed* row of an INSERT ... ON CONFLICT DO UPDATE even
+-- when the statement resolves to the UPDATE path, so a caller who has lost
+-- access cannot advance a stale read cursor — the can_access_conversation check
+-- fails and the write is rejected. Verified empirically against the live DB.
+--
 -- Idempotent.
 CREATE OR REPLACE FUNCTION public.mark_conversation_read(p_conversation_id uuid)
 RETURNS void
