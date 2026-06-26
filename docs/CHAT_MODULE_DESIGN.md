@@ -203,9 +203,10 @@ erDiagram
 - **`conversations`** — `type` is `direct | student_group`. For `student_group`,
   `student_id` is set and **unique** (one chat per student); created lazily on
   first open/message. For `direct`, `student_id` is null. `school_id` carries
-  scope for RLS and cleanup. A DM pair should be deduped (a unique index on the
-  normalized participant pair, or a deterministic lookup before insert) so two
-  people can't accidentally start two DM threads.
+  scope for RLS and cleanup. A DM pair **must** be deduped by a **unique index on
+  the normalized participant pair** (the source of truth, race-safe under
+  concurrent creation); a deterministic pre-insert lookup is only an optimization
+  to avoid a failed insert, not the dedupe guarantee.
 - **`messages`** — append-only in spirit. `deleted_at` allows soft-deleting a
   *single* message (author/admin moderation) without breaking history; it does
   **not** model the membership-driven access in §3 (that's RLS).
@@ -274,8 +275,9 @@ Policy sketch (illustrative, not final SQL):
   the same `can_access` gate governs what a subscriber receives — no separate
   authorization path. Work involved: enable replication on `messages`, a client
   subscription hook scoped to the open `conversation_id`, and
-  reconnection/backfill handling (on reconnect, fetch messages since the last
-  seen `created_at`).
+  reconnection/backfill handling (on reconnect, fetch missed messages using a
+  **stable monotonic cursor** — order and page by `(created_at, id)`, not
+  `created_at` alone, so colliding timestamps can't skip or duplicate a message).
 - **Deferred (post-v1 polish):** typing indicators, presence/online status, read
   receipts, and out-of-app notifications (push/email/digest). None block a
   usable chat.
@@ -295,8 +297,10 @@ consumer of real audit logging.
   must **not** turn into a teacher "scorecard."
 - **Retention / deletion.** Student deletion (`app/api/admin/students/[studentId]`,
   `docs/ARCHITECTURE.md` §7) must account for the student's chat: cascade-delete
-  the `student_group` conversation and its messages (and Realtime publication
-  stays consistent). DMs are not student-anchored and are unaffected by student
+  the `student_group` conversation, its messages, **and all derived
+  per-conversation state** (`conversation_read_state`, and any later
+  per-conversation rows) — `ON DELETE CASCADE` from `conversations` so nothing is
+  orphaned (and Realtime publication stays consistent). DMs are not student-anchored and are unaffected by student
   deletion. A retention window (keep forever vs. N months) is an open question
   (§10).
 - **Scope containment.** A `direct` conversation is constrained to two people who
