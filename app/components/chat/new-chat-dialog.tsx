@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/app/components/ui/modal';
-import { listChatStudents, type ChatStudentOption } from '@/lib/supabase/queries/chat';
+import { listMyChatStudents, type ChatStudentOption } from '@/lib/supabase/queries/chat';
 
 interface NewChatDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onPick: (studentId: string) => void;
+  /** Active school from the school dropdown; scopes the student list. */
+  schoolId?: string | null;
 }
 
-export function NewChatDialog({ isOpen, onClose, onPick }: NewChatDialogProps) {
+export function NewChatDialog({ isOpen, onClose, onPick, schoolId }: NewChatDialogProps) {
   const [students, setStudents] = useState<ChatStudentOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export function NewChatDialog({ isOpen, onClose, onPick }: NewChatDialogProps) {
     setLoading(true);
     setError(null);
     setQuery('');
-    listChatStudents()
+    listMyChatStudents(schoolId)
       .then((s) => {
         if (!cancelled) setStudents(s);
       })
@@ -38,7 +40,7 @@ export function NewChatDialog({ isOpen, onClose, onPick }: NewChatDialogProps) {
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, schoolId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

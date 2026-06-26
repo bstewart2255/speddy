@@ -72,19 +72,24 @@ export function toChatMessage(row: {
  * memberships. Each summary carries the student initials, a last-message
  * preview, and an unread flag (last message newer than the user's read cursor).
  */
-export async function listMyStudentChats(): Promise<ChatConversationSummary[]> {
+export async function listMyStudentChats(
+  schoolId?: string | null,
+): Promise<ChatConversationSummary[]> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data: convos, error } = await supabase
+  let query = supabase
     .from('conversations')
     .select(
       'id, student_id, created_at, students!conversations_student_id_fkey(initials, grade_level)',
     )
     .eq('type', 'student_group');
+  // Scope to the active school (from the school dropdown) when one is selected.
+  if (schoolId) query = query.eq('school_id', schoolId);
+  const { data: convos, error } = await query;
   if (error) throw error;
 
   const conversations = convos ?? [];
@@ -295,18 +300,26 @@ export async function isStudentChatParticipant(studentId: string): Promise<boole
 }
 
 /**
- * Students the current user can start a chat about. RLS on `students` scopes
- * this to their caseload / school. Conversation creation is independently gated
- * by chat_is_student_participant, so this list is only a convenience picker.
+ * Students the current user can actually start a chat about — the ones they are
+ * on the team for (participant set), optionally scoped to the active school.
+ * Backed by the get_my_chat_students RPC. Using the participant set (not every
+ * RLS-visible student) means the picker never offers a student whose chat the
+ * user would be denied from opening.
  */
-export async function listChatStudents(): Promise<ChatStudentOption[]> {
+export async function listMyChatStudents(
+  schoolId?: string | null,
+): Promise<ChatStudentOption[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from('students')
-    .select('id, initials, grade_level')
-    .order('initials', { ascending: true });
+  const { data, error } = await supabase.rpc('get_my_chat_students', {
+    p_school_id: schoolId ?? undefined,
+  });
   if (error) throw error;
-  return (data ?? []).map((s) => ({
+  const rows = (data ?? []) as Array<{
+    id: string;
+    initials: string;
+    grade_level: string | null;
+  }>;
+  return rows.map((s) => ({
     id: s.id,
     initials: s.initials,
     gradeLevel: s.grade_level ?? null,

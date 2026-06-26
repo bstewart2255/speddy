@@ -111,7 +111,7 @@ real account.
 flowchart TD
     S["students row"] --> P1["students.provider_id<br/>(case manager / resource specialist)"]
     S --> P2["students.teacher_id → teachers.account_id<br/>(linked classroom teacher)"]
-    S --> P3["schedule_sessions ACTIVE TEMPLATES for student S<br/>(is_template=true / session_date IS NULL, deleted_at IS NULL)<br/>provider_id, assigned_to_specialist_id<br/>(NOT assigned_to_sea_id — SEAs excluded)"]
+    S --> P3["schedule_sessions ACTIVE TEMPLATES for student S<br/>(is_template=true / session_date IS NULL, deleted_at IS NULL)<br/>provider_id ONLY<br/>(NOT assigned_to_specialist_id — lesson-planning delegation;<br/>NOT assigned_to_sea_id — SEAs excluded)"]
     S --> P4["admin_permissions where role='site_admin'<br/>AND school_id = students.school_id<br/>(site admin — always)"]
     P1 --> U["DISTINCT profiles.id<br/>WITH an account = roster"]
     P2 --> U
@@ -122,12 +122,16 @@ flowchart TD
 - **Case manager / resource specialist** — `students.provider_id`. Almost always
   present.
 - **Linked classroom teacher** — `students.teacher_id → teachers.account_id`.
-- **Assigned providers / specialists** — distinct ids from the student's
-  **active *template*** `schedule_sessions` (`provider_id`,
-  `assigned_to_specialist_id`; **`assigned_to_sea_id` is deliberately omitted —
-  SEAs are excluded, see below**), where
+- **Providers who deliver the student's sessions** — distinct `provider_id`s from
+  the student's **active *template*** `schedule_sessions`, where
   **`is_template = true` (equivalently `session_date IS NULL`) and
-  `deleted_at IS NULL`**. **Not** all non-deleted session rows.
+  `deleted_at IS NULL`**. This is how a speech/OT/counseling provider (who is
+  never the `students.provider_id` case manager) links to a student they serve.
+  **`assigned_to_specialist_id` is deliberately omitted** — a specialist assigned
+  to a session purely for **lesson planning** on a student owned by another case
+  manager is *not* on that student's chat team (decided 2026-06-26).
+  **`assigned_to_sea_id` is also omitted** — SEAs are excluded (see below).
+  **Not** all non-deleted session rows.
   > **Why templates only:** `schedule_sessions` retains dated *instance* rows as
   > history (completed/past occurrences are not always soft-deleted), and the
   > scheduler models a *current* assignment as the template row, not its
@@ -406,5 +410,6 @@ no student group chats, and no DMs, even for students they serve via
 - Membership / eligibility: `chat_is_student_participant`,
   `get_student_chat_participants`, `is_chat_eligible` (role exclusion, e.g. `sea`).
 - Linkage inputs: `students` (`provider_id`, `teacher_id`), `teachers.account_id`,
-  `schedule_sessions` (`provider_id`, `assigned_to_specialist_id` — **not**
-  `assigned_to_sea_id`), `admin_permissions` — see `docs/ARCHITECTURE.md` §3, §6.
+  `schedule_sessions` (`provider_id` only — **not** `assigned_to_specialist_id`,
+  which is lesson-planning delegation, and **not** `assigned_to_sea_id`),
+  `admin_permissions` — see `docs/ARCHITECTURE.md` §3, §6.

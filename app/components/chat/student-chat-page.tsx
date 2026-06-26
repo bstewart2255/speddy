@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/app/components/ui/button';
+import { useSchool } from '@/app/components/providers/school-context';
 import { useStudentChats } from '@/lib/supabase/hooks/use-student-chats';
 import {
   openStudentConversation,
@@ -21,10 +22,18 @@ interface SelectedChat {
 export function StudentChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { chats, loading, error, refresh } = useStudentChats();
+  const { currentSchool } = useSchool();
+  const schoolId = currentSchool?.school_id ?? null;
+  const { chats, loading, error, refresh } = useStudentChats(schoolId);
   const [selected, setSelected] = useState<SelectedChat | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
+
+  // When the active school changes, clear the open thread so the right pane
+  // doesn't show a chat from a school the user is no longer viewing.
+  useEffect(() => {
+    setSelected(null);
+  }, [schoolId]);
 
   const openStudent = useCallback(
     async (studentId: string) => {
@@ -103,7 +112,12 @@ export function StudentChatPage() {
         )}
       </section>
 
-      <NewChatDialog isOpen={showNew} onClose={() => setShowNew(false)} onPick={handlePick} />
+      <NewChatDialog
+        isOpen={showNew}
+        onClose={() => setShowNew(false)}
+        onPick={handlePick}
+        schoolId={schoolId}
+      />
     </div>
   );
 }

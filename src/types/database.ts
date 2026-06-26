@@ -4115,6 +4115,15 @@ export type Database = {
           user_type: string
         }[]
       }
+      get_my_chat_students: {
+        Args: { p_school_id?: string }
+        Returns: {
+          grade_level: string
+          id: string
+          initials: string
+          school_id: string
+        }[]
+      }
       get_my_school_ids: {
         Args: never
         Returns: {
