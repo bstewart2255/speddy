@@ -4288,6 +4288,10 @@ export type Database = {
         Args: { student_uuid: string }
         Returns: boolean
       }
+      mark_conversation_read: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
+      }
       mark_password_reset: {
         Args: { target_user_id: string }
         Returns: boolean

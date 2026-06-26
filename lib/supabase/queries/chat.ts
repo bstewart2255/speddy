@@ -262,21 +262,18 @@ export async function getParticipants(studentId: string): Promise<ChatParticipan
   }));
 }
 
-/** Mark a conversation read up to now for the current user (drives unread). */
+/**
+ * Mark a conversation read up to now for the current user (drives unread).
+ * Uses the mark_conversation_read RPC so the read cursor is stamped with the
+ * server clock (now()) rather than the browser's — message timestamps are
+ * server-generated, so a skewed device clock would otherwise corrupt unread
+ * state. The RPC forces profile_id = auth.uid() and stays RLS-gated.
+ */
 export async function markConversationRead(conversationId: string): Promise<void> {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-  const { error } = await supabase.from('conversation_read_state').upsert(
-    {
-      conversation_id: conversationId,
-      profile_id: user.id,
-      last_read_at: new Date().toISOString(),
-    },
-    { onConflict: 'conversation_id,profile_id' },
-  );
+  const { error } = await supabase.rpc('mark_conversation_read', {
+    p_conversation_id: conversationId,
+  });
   if (error) throw error;
 }
 
