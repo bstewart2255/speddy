@@ -584,6 +584,12 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 > `isSecondary`, so `/dashboard/schedule`, `/dashboard/bell-schedules`,
 > `/dashboard/special-activities`, and `/dashboard/plan` stay reachable by direct
 > URL on a secondary site (RLS still scopes data).
+>
+> **Known gap — SPE-194 (Medium):** the model is **one teacher per student**
+> (`students.teacher_id`, a single FK; the Teacher roster query is
+> `students … eq('teacher_id', …)`). Secondary students have **many** teachers
+> (one per subject/period), which the current model can't represent —
+> foundational for real secondary support; complements the SPE-181 rostering spike.
 
 **Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
 `classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
@@ -606,6 +612,7 @@ Captured while mapping the model (the board + this doc). Status as of
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
 | **SPE-193** | Low | UX / robustness | Elementary/secondary feature gating is client-side only; hidden routes reachable by URL on secondary sites. |
+| **SPE-194** | Medium | Data model | One-teacher-per-student (`students.teacher_id` single FK) can't represent secondary's many-teachers-per-student; foundational for secondary rollout. |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142
