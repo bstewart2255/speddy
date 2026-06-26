@@ -165,20 +165,24 @@ export async function openStudentConversation(studentId: string): Promise<Opened
   } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const { data: student } = await supabase
+  const { data: student, error: studentError } = await supabase
     .from('students')
     .select('initials, grade_level, school_id')
     .eq('id', studentId)
     .single();
+  // Surface the real failure rather than silently proceeding with a null student
+  // (which would then insert a null school_id and fail confusingly downstream).
+  if (studentError) throw new Error(`Couldn't load this student: ${describeDbError(studentError)}`);
   const studentInitials = student?.initials ?? '—';
   const studentGrade = student?.grade_level ?? null;
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('conversations')
     .select('id')
     .eq('type', 'student_group')
     .eq('student_id', studentId)
     .maybeSingle();
+  if (existingError) throw new Error(`Couldn't open this chat: ${describeDbError(existingError)}`);
   if (existing) return { conversationId: existing.id, studentInitials, studentGrade };
 
   const { data: created, error } = await supabase
@@ -202,9 +206,26 @@ export async function openStudentConversation(studentId: string): Promise<Opened
       .eq('student_id', studentId)
       .maybeSingle();
     if (again) return { conversationId: again.id, studentInitials, studentGrade };
-    throw error;
+    // Not a create race — surface the actual error (RLS denial, constraint, network…)
+    // instead of letting the caller show a generic "not on the team" message.
+    throw new Error(`Couldn't start this chat: ${describeDbError(error)}`);
   }
   return { conversationId: created.id, studentInitials, studentGrade };
+}
+
+/**
+ * Turn a Supabase/Postgrest error (a plain object, NOT an Error instance) into a
+ * human-readable string that includes the code, so failures aren't swallowed
+ * behind generic UI messages. Safe for any thrown value.
+ */
+function describeDbError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as { message?: string; code?: string; details?: string; hint?: string };
+    const parts = [e.message, e.details, e.hint].filter(Boolean);
+    const text = parts.join(' — ') || 'Unknown database error';
+    return e.code ? `${text} [${e.code}]` : text;
+  }
+  return typeof err === 'string' ? err : 'Unknown error';
 }
 
 /** Fetch the full message history for a conversation (RLS-gated), oldest first. */

@@ -43,8 +43,12 @@ export function StudentChatPage() {
         setSelected({ conversationId, studentId, studentInitials });
         void refresh();
       } catch (e) {
+        // Log the raw error for diagnosis; show the real message when we have one.
+        console.error('openStudentConversation failed', e);
         setOpenError(
-          e instanceof Error ? e.message : 'Could not open this chat. You may not be on the team.',
+          e instanceof Error
+            ? e.message
+            : 'Could not open this chat. Please try again — if it keeps happening, refresh the page.',
         );
       }
     },
