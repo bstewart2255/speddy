@@ -167,23 +167,28 @@ export interface OpenedConversation {
 export async function openStudentConversation(studentId: string): Promise<OpenedConversation> {
   const supabase = createClient();
 
-  // Display details only; the RPC enforces access independently of this read.
-  const { data: student, error: studentError } = await supabase
-    .from('students')
-    .select('initials, grade_level')
-    .eq('id', studentId)
-    .single();
-  if (studentError) throw new Error(`Couldn't load this student: ${describeDbError(studentError)}`);
-  const studentInitials = student?.initials ?? '—';
-  const studentGrade = student?.grade_level ?? null;
-
+  // Open (or create) the conversation via the authorized RPC first — it is the
+  // source of truth for access. The student read below is display-only and must
+  // not gate opening: students RLS can be stricter than the chat team check, so
+  // a valid team member (e.g. a serving provider) could otherwise be blocked.
   const { data: conversationId, error } = await supabase.rpc('open_student_conversation', {
     p_student_id: studentId,
   });
   if (error) throw new Error(`Couldn't start this chat: ${describeDbError(error)}`);
   if (!conversationId) throw new Error("Couldn't start this chat: no conversation returned.");
 
-  return { conversationId: conversationId as string, studentInitials, studentGrade };
+  // Best-effort display details; a denied/missing read just falls back to placeholders.
+  const { data: student } = await supabase
+    .from('students')
+    .select('initials, grade_level')
+    .eq('id', studentId)
+    .maybeSingle();
+
+  return {
+    conversationId: conversationId as string,
+    studentInitials: student?.initials ?? '—',
+    studentGrade: student?.grade_level ?? null,
+  };
 }
 
 /**
