@@ -19,8 +19,19 @@ export function formatRoleLabel(role: string | null): string {
       return 'Psych';
     case 'specialist':
       return 'Specialist';
+    case 'sea':
+      return 'SEA';
+    case 'site_admin':
+      return 'Site Admin';
+    case 'district_admin':
+      return 'District Admin';
     default:
-      // Capitalize first letter for unknown roles
-      return role.charAt(0).toUpperCase() + role.slice(1);
+      // Title-case each word, splitting snake_case/kebab-case so codes like
+      // "site_admin" render as "Site Admin" rather than "Site_admin".
+      return role
+        .split(/[_\s-]+/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
   }
 }
