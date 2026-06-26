@@ -61,7 +61,7 @@ export function TeamChatButton({
       leftIcon={ChatIcon}
       onClick={() => {
         onNavigate?.();
-        router.push(`/dashboard/chat?student=${studentId}`);
+        router.push(`/dashboard/chat?student=${encodeURIComponent(studentId)}`);
       }}
     >
       Team chat
