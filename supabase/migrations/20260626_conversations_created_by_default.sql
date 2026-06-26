@@ -1,0 +1,17 @@
+-- SPE-197 (Phase 1): default conversations.created_by to auth.uid().
+--
+-- The conversations INSERT RLS policy requires created_by = auth.uid(). Relying
+-- on the browser to send its own id is fragile: if the client's getUser().id
+-- ever drifts from the live access token's auth.uid() (e.g. a stale or
+-- mid-refresh session), or the client sends created_by as null/undefined, the
+-- insert is rejected with a misleading "new row violates row-level security
+-- policy" error — even though the user is a valid team member (this is exactly
+-- the "Couldn't start this chat … [42501]" symptom seen in testing).
+--
+-- Deriving created_by server-side from auth.uid() makes the policy check true by
+-- construction. The client now omits the column and lets this default fill it.
+-- created_by stays nullable (an unauthenticated insert would default to NULL and
+-- then correctly fail the RLS check), so no backfill is required.
+--
+-- Idempotent.
+ALTER TABLE public.conversations ALTER COLUMN created_by SET DEFAULT auth.uid();

@@ -191,7 +191,11 @@ export async function openStudentConversation(studentId: string): Promise<Opened
       type: 'student_group',
       student_id: studentId,
       school_id: student?.school_id ?? null,
-      created_by: user.id,
+      // created_by is set server-side via a DEFAULT of auth.uid(). The INSERT RLS
+      // check requires created_by = auth.uid(); deriving it on the server keeps
+      // that true by construction instead of trusting the client's cached user id
+      // (a stale/mismatched session was causing a misleading 42501 "not on the
+      // team" rejection here).
     })
     .select('id')
     .single();
