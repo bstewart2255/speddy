@@ -22,7 +22,7 @@ that gives people who already share context two ways to talk:
    a **site**.
 2. **Student group chats** — one chat per **student**, whose participants are
    **automatically derived** from everyone currently linked to that student
-   (site admin, case manager / resource specialist, assigned providers/SEAs, and
+   (site admin, case manager / resource specialist, other assigned providers, and
    the linked teacher). The student is the spine; the roster is a live projection
    of the existing assignment data and is **not hand-editable**.
 
@@ -111,7 +111,7 @@ real account.
 flowchart TD
     S["students row"] --> P1["students.provider_id<br/>(case manager / resource specialist)"]
     S --> P2["students.teacher_id → teachers.account_id<br/>(linked classroom teacher)"]
-    S --> P3["schedule_sessions ACTIVE TEMPLATES for student S<br/>(is_template=true / session_date IS NULL, deleted_at IS NULL)<br/>provider_id, assigned_to_specialist_id, assigned_to_sea_id"]
+    S --> P3["schedule_sessions ACTIVE TEMPLATES for student S<br/>(is_template=true / session_date IS NULL, deleted_at IS NULL)<br/>provider_id, assigned_to_specialist_id<br/>(NOT assigned_to_sea_id — SEAs excluded)"]
     S --> P4["admin_permissions where role='site_admin'<br/>AND school_id = students.school_id<br/>(site admin — always)"]
     P1 --> U["DISTINCT profiles.id<br/>WITH an account = roster"]
     P2 --> U
@@ -122,9 +122,10 @@ flowchart TD
 - **Case manager / resource specialist** — `students.provider_id`. Almost always
   present.
 - **Linked classroom teacher** — `students.teacher_id → teachers.account_id`.
-- **Assigned providers / specialists / SEAs** — distinct ids from the student's
+- **Assigned providers / specialists** — distinct ids from the student's
   **active *template*** `schedule_sessions` (`provider_id`,
-  `assigned_to_specialist_id`, `assigned_to_sea_id`), where
+  `assigned_to_specialist_id`; **`assigned_to_sea_id` is deliberately omitted —
+  SEAs are excluded, see below**), where
   **`is_template = true` (equivalently `session_date IS NULL`) and
   `deleted_at IS NULL`**. **Not** all non-deleted session rows.
   > **Why templates only:** `schedule_sessions` retains dated *instance* rows as
@@ -142,8 +143,17 @@ flowchart TD
 **site** admins are auto-added. District admins retain their oversight access to
 the underlying data via existing RLS, but are not added to student chats.
 
+**SEAs / paraprofessionals do *not* get chat at all** (decided 2026-06-26). The
+`sea` role is excluded from the entire module — neither auto-added to student
+group chats (hence `assigned_to_sea_id` is omitted above) nor given the DM
+surface. They are still on the student's care team operationally; they just don't
+participate in chat. **This is enforced at the authorization layer, not just the
+UI:** `is_chat_eligible()` returns false for `sea` and is a factor of every
+`can_access` check and the `conversation_participants` insert policy (§6), so a
+SEA can't read or send even if a participant row is somehow created for them.
+
 ### The account caveat (must be surfaced in UI, not hidden)
-A teacher (`teachers.account_id`) or SEA can be **linked to a student but have no
+A teacher (`teachers.account_id`) can be **linked to a student but have no
 login**. Someone with no account literally cannot be a chat participant. So
 "everyone linked is automatically included" carries an asterisk: *everyone linked
 **who has an account***. The UI should state this honestly (e.g. "4 of 6 team
@@ -235,12 +245,22 @@ A single boolean gate per conversation drives all message RLS:
 
 ```text
 can_access(conversation c, uid) :=
-    c.type = 'direct'
-      ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
-  : c.type = 'student_group'
-      ? chat_is_student_participant(c.student_id, uid)
-  : false
+    is_chat_eligible(uid)                            -- excludes the sea role (see below)
+    AND (
+      c.type = 'direct'
+        ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
+    : c.type = 'student_group'
+        ? chat_is_student_participant(c.student_id, uid)
+    : false
+    )
 ```
+
+`is_chat_eligible(uid)` is a `SECURITY DEFINER` boolean that returns false for the
+`sea` role (and any other excluded role), evaluated against `profiles.role`. It is
+the **authorization-layer** enforcement of the SEA exclusion (§4) — not a UI
+concern. Because it's a factor of `can_access`, a SEA can never read or send in
+*any* conversation even if a `conversation_participants` row is created for them
+by a buggy API path or an admin action.
 
 Policy sketch (illustrative, not final SQL):
 
@@ -248,8 +268,10 @@ Policy sketch (illustrative, not final SQL):
 - **`messages` SELECT / INSERT** — the message's conversation passes
   `can_access(...)` for `auth.uid()`; INSERT additionally requires
   `sender_id = auth.uid()`.
-- **`conversation_participants`** — visible to the two members; inserted only via
-  the DM-creation path (server-side), constrained to same-site eligibility.
+- **`conversation_participants`** — visible to the two members; **INSERT requires
+  `is_chat_eligible(profile_id)`** (so a `sea` row is rejected at the DB, not just
+  hidden in the UI) and is created only via the DM-creation path (server-side),
+  constrained to same-site eligibility.
 - **`conversation_read_state`** — a user may read/write **only their own** row.
 
 > **Performance.** `chat_is_student_participant` runs inside RLS, so it must be
@@ -311,8 +333,9 @@ consumer of real audit logging.
 
 ## 9. Surfaces (where it lives)
 
-Available in the **site-admin, teacher, and provider** portals (not the public
-site, not `/internal`). Likely shape:
+Available in the **site-admin, teacher, and provider** portals only (not the
+public site, not `/internal`, and **not the SEA experience** — SEAs are excluded
+from chat, see §4). Likely shape:
 
 - A **chat entry point** in the navbar (with an unread badge) opening a
   conversation list: student group chats the user is in + their DMs.
@@ -321,9 +344,9 @@ site, not `/internal`). Likely shape:
   in context, not a generic inbox").
 - **Middleware** route guard for the chat routes; RLS is the real gate.
 
-SEAs deliver sessions, so they appear in the group chats for students they serve
-(via `schedule_sessions.assigned_to_sea_id`) — consistent with their being on the
-student's team, and orthogonal to their lesson view-only restriction.
+**SEAs are excluded from chat entirely** (§4) — they get no navbar entry point,
+no student group chats, and no DMs, even for students they serve via
+`assigned_to_sea_id`.
 
 ---
 
@@ -344,8 +367,11 @@ student's team, and orthogonal to their lesson view-only restriction.
    `profiles.school_id`? Confirm the exact set, and whether cross-site for
    itinerant providers counts.
 
-**Resolved:** *District admins are not chat participants* — only site admins are
-auto-added (decided 2026-06-26; see §4).
+**Resolved:**
+- *District admins are not chat participants* — only site admins are auto-added
+  (decided 2026-06-26; see §4).
+- *SEAs / paraprofessionals are excluded from chat entirely* — no group chats, no
+  DMs, no surface (decided 2026-06-26; see §4).
 
 ---
 
@@ -357,6 +383,8 @@ auto-added (decided 2026-06-26; see §4).
 - File/image attachments in messages.
 - Typing indicators, presence, read receipts, push notifications (post-v1 polish).
 - Cross-student or cohort chats.
+- Any chat for **SEAs / paraprofessionals** — the `sea` role is excluded from the
+  whole module (§4).
 
 ---
 
@@ -375,7 +403,8 @@ auto-added (decided 2026-06-26; see §4).
 
 - Schema: the new `conversations` / `messages` / `conversation_participants` /
   `conversation_read_state` migrations.
-- Membership: `chat_is_student_participant`, `get_student_chat_participants`.
+- Membership / eligibility: `chat_is_student_participant`,
+  `get_student_chat_participants`, `is_chat_eligible` (role exclusion, e.g. `sea`).
 - Linkage inputs: `students` (`provider_id`, `teacher_id`), `teachers.account_id`,
-  `schedule_sessions` (`provider_id`, `assigned_to_specialist_id`,
+  `schedule_sessions` (`provider_id`, `assigned_to_specialist_id` — **not**
   `assigned_to_sea_id`), `admin_permissions` — see `docs/ARCHITECTURE.md` §3, §6.
