@@ -121,6 +121,7 @@ export default function Navbar() {
         { name: 'Providers', href: '/dashboard/admin/providers' },
         { name: 'Staff', href: '/dashboard/admin/staff' },
         { name: 'Students', href: '/dashboard/admin/students' },
+        { name: 'Chat', href: '/dashboard/chat' },
         { name: 'CARE', href: '/dashboard/care' },
       ];
     } else if (role === 'teacher') {
@@ -128,6 +129,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard/teacher' },
         { name: 'My Students', href: '/dashboard/teacher/my-students' },
+        { name: 'Chat', href: '/dashboard/chat' },
         { name: 'Special Activities', href: '/dashboard/teacher/special-activities' },
       ];
     } else if (role === 'sea') {
@@ -153,6 +155,7 @@ export default function Navbar() {
           ]
         },
         { name: 'Plan', href: '/dashboard/plan' },
+        { name: 'Chat', href: '/dashboard/chat' },
         { name: 'CARE', href: '/dashboard/care' },
       ];
     } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
@@ -170,6 +173,7 @@ export default function Navbar() {
           ]
         },
         { name: 'Plan', href: '/dashboard/plan' },
+        { name: 'Chat', href: '/dashboard/chat' },
       ];
     } else {
       // Other roles (specialist) see standard navigation
@@ -186,6 +190,7 @@ export default function Navbar() {
           ]
         },
         { name: 'Plan', href: '/dashboard/plan' },
+        { name: 'Chat', href: '/dashboard/chat' },
       ];
     }
   };
