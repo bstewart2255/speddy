@@ -35,7 +35,9 @@ export function useConversations(schoolId?: string | null): UseConversationsRetu
       setError(null);
     } catch (e) {
       if (requestId !== requestIdRef.current) return;
-      setConversations([]);
+      // Keep the current list on a failed refresh (e.g. the manual refresh after
+      // opening a chat) — it's still valid for the active school. School changes
+      // clear the list in the effect below, so we don't need to here.
       setError(e instanceof Error ? e.message : 'Failed to load conversations');
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
