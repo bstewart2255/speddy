@@ -368,7 +368,7 @@ no student group chats, and no DMs, even for students they serve via
 
 ---
 
-## 10. Open questions
+## 10. Resolved decisions
 
 All of the original build-blocking questions are now decided across Phases 1–3.
 
@@ -391,6 +391,8 @@ All of the original build-blocking questions are now decided across Phases 1–3
   (2026-06-27; §8).
 - *Message retention* — **keep forever**; student deletion cascades the chat +
   messages + read-state, no age-out job (2026-06-27; §8).
+
+**Deferred polish:**
 - *Notifications / presence / typing / receipts* — **deferred** to a later polish
   pass: in-app first, then a "respects teacher time" email digest (Hub open item).
 
