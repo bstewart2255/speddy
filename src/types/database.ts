@@ -4132,6 +4132,24 @@ export type Database = {
           school_id: string
         }[]
       }
+      get_my_conversations: {
+        Args: { p_school_id?: string }
+        Returns: {
+          id: string
+          kind: string
+          student_id: string
+          school_id: string
+          student_initials: string
+          student_grade: string
+          other_id: string
+          other_name: string
+          other_role: string
+          last_message_at: string
+          last_message_preview: string
+          created_at: string
+          unread: boolean
+        }[]
+      }
       get_my_school_ids: {
         Args: never
         Returns: {
