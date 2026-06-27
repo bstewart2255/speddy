@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/app/components/ui/button';
 import { useSchool } from '@/app/components/providers/school-context';
-import { useStudentChats } from '@/lib/supabase/hooks/use-student-chats';
+import { useConversations } from '@/lib/supabase/hooks/use-conversations';
 import {
   openStudentConversation,
+  openDirectConversation,
   type ChatConversationSummary,
 } from '@/lib/supabase/queries/chat';
 import { ConversationList } from './conversation-list';
@@ -15,8 +16,9 @@ import { NewChatDialog } from './new-chat-dialog';
 
 interface SelectedChat {
   conversationId: string;
-  studentId: string;
-  studentInitials: string;
+  kind: 'student' | 'direct';
+  studentId: string | null;
+  title: string;
 }
 
 export function StudentChatPage() {
@@ -24,7 +26,7 @@ export function StudentChatPage() {
   const searchParams = useSearchParams();
   const { currentSchool } = useSchool();
   const schoolId = currentSchool?.school_id ?? null;
-  const { chats, loading, error, refresh } = useStudentChats(schoolId);
+  const { conversations, loading, error, refresh } = useConversations(schoolId);
   const [selected, setSelected] = useState<SelectedChat | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -40,15 +42,33 @@ export function StudentChatPage() {
       setOpenError(null);
       try {
         const { conversationId, studentInitials } = await openStudentConversation(studentId);
-        setSelected({ conversationId, studentId, studentInitials });
+        setSelected({ conversationId, kind: 'student', studentId, title: studentInitials });
         void refresh();
       } catch (e) {
-        // Log the raw error for diagnosis; show the real message when we have one.
         console.error('openStudentConversation failed', e);
         setOpenError(
           e instanceof Error
             ? e.message
             : 'Could not open this chat. Please try again — if it keeps happening, refresh the page.',
+        );
+      }
+    },
+    [refresh],
+  );
+
+  const openPerson = useCallback(
+    async (personId: string) => {
+      setOpenError(null);
+      try {
+        const { conversationId, title } = await openDirectConversation(personId);
+        setSelected({ conversationId, kind: 'direct', studentId: null, title });
+        void refresh();
+      } catch (e) {
+        console.error('openDirectConversation failed', e);
+        setOpenError(
+          e instanceof Error
+            ? e.message
+            : 'Could not start this message. Please try again — if it keeps happening, refresh the page.',
         );
       }
     },
@@ -68,14 +88,20 @@ export function StudentChatPage() {
   const handleSelect = (chat: ChatConversationSummary) => {
     setSelected({
       conversationId: chat.id,
+      kind: chat.kind,
       studentId: chat.studentId,
-      studentInitials: chat.studentInitials,
+      title: chat.title,
     });
   };
 
-  const handlePick = (studentId: string) => {
+  const handlePickStudent = (studentId: string) => {
     setShowNew(false);
     void openStudent(studentId);
+  };
+
+  const handlePickPerson = (personId: string) => {
+    setShowNew(false);
+    void openPerson(personId);
   };
 
   return (
@@ -91,7 +117,7 @@ export function StudentChatPage() {
         {openError && <div className="px-4 py-2 text-xs text-red-600">{openError}</div>}
         <div className="flex-1 overflow-y-auto">
           <ConversationList
-            chats={chats}
+            chats={conversations}
             selectedId={selected?.conversationId ?? null}
             onSelect={handleSelect}
             loading={loading}
@@ -106,12 +132,13 @@ export function StudentChatPage() {
           <ChatThread
             key={selected.conversationId}
             conversationId={selected.conversationId}
+            kind={selected.kind}
             studentId={selected.studentId}
-            studentInitials={selected.studentInitials}
+            title={selected.title}
           />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-400">
-            Select a chat on the left, or start a new one to message a student’s team.
+            Select a chat on the left, or start a new one to message a student’s team or a colleague.
           </div>
         )}
       </section>
@@ -119,7 +146,8 @@ export function StudentChatPage() {
       <NewChatDialog
         isOpen={showNew}
         onClose={() => setShowNew(false)}
-        onPick={handlePick}
+        onPickStudent={handlePickStudent}
+        onPickPerson={handlePickPerson}
         schoolId={schoolId}
       />
     </div>
