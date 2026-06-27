@@ -14,19 +14,27 @@ import { ChatParticipantsHeader } from './chat-participants-header';
 
 interface ChatThreadProps {
   conversationId: string;
-  studentId: string;
-  studentInitials: string;
+  kind: 'student' | 'direct';
+  /** Student group chats only — drives the participant header. Null for DMs. */
+  studentId: string | null;
+  /** Student initials (group) or the other person's name (DM). */
+  title: string;
 }
 
-export function ChatThread({ conversationId, studentId, studentInitials }: ChatThreadProps) {
+export function ChatThread({ conversationId, kind, studentId, title }: ChatThreadProps) {
   const { user } = useAuth();
   const { messages, loading, error, sending, send } = useChatThread(conversationId);
   const [participants, setParticipants] = useState<ChatParticipant[]>([]);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Participants (for the header and sender-name resolution).
+  // Student group participants (header + sender-name resolution). DMs have only
+  // two people, so they don't need this lookup.
   useEffect(() => {
+    if (kind !== 'student' || !studentId) {
+      setParticipants([]);
+      return;
+    }
     let cancelled = false;
     getParticipants(studentId)
       .then((p) => {
@@ -38,7 +46,7 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
     return () => {
       cancelled = true;
     };
-  }, [studentId]);
+  }, [kind, studentId]);
 
   // Mark read on open and whenever new messages arrive while open.
   useEffect(() => {
@@ -58,6 +66,14 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
     return m;
   }, [participants]);
 
+  // In a DM there are exactly two people, so any message that isn't mine is from
+  // the other person (whose name is the thread title).
+  const senderNameFor = (senderId: string | null, isMine: boolean): string => {
+    if (!senderId) return 'Former member';
+    if (kind === 'direct') return isMine ? 'You' : title;
+    return nameById.get(senderId) ?? 'Former team member';
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const body = input;
@@ -74,7 +90,14 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
 
   return (
     <div className="flex h-full flex-col">
-      <ChatParticipantsHeader studentInitials={studentInitials} participants={participants} />
+      {kind === 'student' ? (
+        <ChatParticipantsHeader studentInitials={title} participants={participants} />
+      ) : (
+        <div className="border-b border-gray-200 px-4 py-3">
+          <div className="text-sm font-semibold text-gray-900">{title}</div>
+          <div className="text-xs text-gray-500">Direct message</div>
+        </div>
+      )}
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
         {loading ? (
@@ -86,16 +109,17 @@ export function ChatThread({ conversationId, studentId, studentInitials }: ChatT
             No messages yet. Say hello to the team.
           </div>
         ) : (
-          messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isMine={!!user && m.senderId === user.id}
-              senderName={
-                m.senderId ? nameById.get(m.senderId) ?? 'Former team member' : 'Former team member'
-              }
-            />
-          ))
+          messages.map((m) => {
+            const isMine = !!user && m.senderId === user.id;
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isMine={isMine}
+                senderName={senderNameFor(m.senderId, isMine)}
+              />
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

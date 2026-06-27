@@ -36,7 +36,7 @@ export function ConversationList({
   if (chats.length === 0) {
     return (
       <div className="px-4 py-6 text-sm text-gray-400">
-        No student chats yet. Start one with “New chat”.
+        No conversations yet. Start one with “New chat”.
       </div>
     );
   }
@@ -54,19 +54,25 @@ export function ConversationList({
                 isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
               }`}
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-                {chat.studentInitials}
+              <div
+                className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  chat.kind === 'direct'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}
+              >
+                {chat.avatarText}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium text-gray-900">
-                    {chat.studentInitials}
-                    {chat.studentGrade ? (
-                      <span className="ml-1 font-normal text-gray-400">· {chat.studentGrade}</span>
+                    {chat.title}
+                    {chat.subtitle ? (
+                      <span className="ml-1 font-normal text-gray-400">· {chat.subtitle}</span>
                     ) : null}
                   </span>
                   <span className="flex-shrink-0 text-[11px] text-gray-400">
-                    {formatWhen(chat.lastMessageAt)}
+                    {formatWhen(chat.lastMessageAt ?? chat.createdAt)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">

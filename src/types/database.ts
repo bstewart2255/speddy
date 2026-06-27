@@ -4115,6 +4115,14 @@ export type Database = {
           user_type: string
         }[]
       }
+      get_dm_eligible_people: {
+        Args: { p_school_id: string }
+        Returns: {
+          full_name: string
+          id: string
+          role: string
+        }[]
+      }
       get_my_chat_students: {
         Args: { p_school_id?: string }
         Returns: {
@@ -4298,6 +4306,10 @@ export type Database = {
       }
       normalize_district_name: {
         Args: { district_name: string }
+        Returns: string
+      }
+      open_direct_conversation: {
+        Args: { p_other_id: string }
         Returns: string
       }
       open_student_conversation: {

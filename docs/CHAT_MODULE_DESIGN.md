@@ -249,7 +249,7 @@ A single boolean gate per conversation drives all message RLS:
 
 ```text
 can_access(conversation c, uid) :=
-    is_chat_eligible(uid)                            -- excludes the sea role (see below)
+    is_chat_eligible(uid)                            -- excludes sea and district_admin (see below)
     AND (
       c.type = 'direct'
         ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
@@ -260,11 +260,14 @@ can_access(conversation c, uid) :=
 ```
 
 `is_chat_eligible(uid)` is a `SECURITY DEFINER` boolean that returns false for the
-`sea` role (and any other excluded role), evaluated against `profiles.role`. It is
-the **authorization-layer** enforcement of the SEA exclusion (§4) — not a UI
-concern. Because it's a factor of `can_access`, a SEA can never read or send in
-*any* conversation even if a `conversation_participants` row is created for them
-by a buggy API path or an admin action.
+`sea` and `district_admin` roles, evaluated against `profiles.role`. It is the
+**authorization-layer** enforcement of the SEA and district-admin exclusions
+(§4) — not a UI concern. Because it's a factor of `can_access`, an excluded role
+can never read or send in *any* conversation (group or DM) even if a
+`conversation_participants` row is created for them by a buggy API path or an
+admin action. It also gates DM eligibility: `open_direct_conversation` requires
+both people to be chat-eligible (so you cannot start a DM with a SEA or district
+admin), in addition to sharing a site.
 
 Policy sketch (illustrative, not final SQL):
 
