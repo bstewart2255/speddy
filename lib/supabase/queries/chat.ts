@@ -93,180 +93,63 @@ export function toChatMessage(row: {
 // ---------------------------------------------------------------------------
 
 /**
- * For a set of conversation ids, fetch the latest non-deleted message per
- * conversation and the caller's own read cursors. Shared by the student-chat and
- * DM list builders. (DB-side aggregation is tracked as a follow-up — SPE-200.)
- */
-async function lastMessageAndReadMaps(ids: string[]) {
-  const supabase = createClient();
-  const { data: msgs, error: msgsError } = await supabase
-    .from('messages')
-    .select('conversation_id, body, created_at')
-    .in('conversation_id', ids)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
-  if (msgsError) throw msgsError;
-
-  const lastByConvo = new Map<string, { body: string; created_at: string }>();
-  for (const m of msgs ?? []) {
-    if (!lastByConvo.has(m.conversation_id)) {
-      lastByConvo.set(m.conversation_id, { body: m.body, created_at: m.created_at });
-    }
-  }
-
-  const { data: reads, error: readsError } = await supabase
-    .from('conversation_read_state')
-    .select('conversation_id, last_read_at')
-    .in('conversation_id', ids);
-  if (readsError) throw readsError;
-  const readBy = new Map<string, string | null>(
-    (reads ?? []).map((r) => [r.conversation_id, r.last_read_at]),
-  );
-
-  return { lastByConvo, readBy };
-}
-
-function isUnread(
-  last: { created_at: string } | null,
-  lastRead: string | null | undefined,
-): boolean {
-  return !!last && (!lastRead || new Date(last.created_at) > new Date(lastRead));
-}
-
-const byMostRecent = (a: ChatConversationSummary, b: ChatConversationSummary) =>
-  (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt);
-
-export async function listMyStudentChats(
-  schoolId?: string | null,
-): Promise<ChatConversationSummary[]> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  let query = supabase
-    .from('conversations')
-    .select(
-      'id, student_id, created_at, students!conversations_student_id_fkey(initials, grade_level)',
-    )
-    .eq('type', 'student_group');
-  // Scope to the active school (from the school dropdown) when one is selected.
-  if (schoolId) query = query.eq('school_id', schoolId);
-  const { data: convos, error } = await query;
-  if (error) throw error;
-
-  const conversations = convos ?? [];
-  const ids = conversations.map((c) => c.id);
-  if (ids.length === 0) return [];
-
-  const { lastByConvo, readBy } = await lastMessageAndReadMaps(ids);
-
-  const summaries: ChatConversationSummary[] = conversations.map((c) => {
-    // Supabase returns the FK relation as an object or array depending on shape.
-    const studentRel = c.students as
-      | { initials: string; grade_level: string | null }
-      | { initials: string; grade_level: string | null }[]
-      | null;
-    const student = Array.isArray(studentRel) ? studentRel[0] : studentRel;
-    const initials = student?.initials ?? '—';
-    const last = lastByConvo.get(c.id) ?? null;
-    return {
-      id: c.id,
-      kind: 'student',
-      title: initials,
-      subtitle: student?.grade_level ?? null,
-      avatarText: initials,
-      studentId: c.student_id as string,
-      lastMessageAt: last?.created_at ?? null,
-      createdAt: c.created_at as string,
-      lastMessagePreview: last?.body ?? null,
-      unread: isUnread(last, readBy.get(c.id)),
-    };
-  });
-
-  return summaries.sort(byMostRecent);
-}
-
-/**
- * List the current user's 1:1 direct messages. RLS returns only DMs the user is
- * a participant of. Each summary shows the *other* participant's name and role.
- * Scoped to the active school (the DM's shared site) when one is selected, so
- * the conversation list tracks the school dropdown like student chats do.
- */
-export async function listMyDirectMessages(
-  schoolId?: string | null,
-): Promise<ChatConversationSummary[]> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  let query = supabase
-    .from('conversations')
-    .select('id, created_at, conversation_participants(profile_id)')
-    .eq('type', 'direct');
-  if (schoolId) query = query.eq('school_id', schoolId);
-  const { data: convos, error } = await query;
-  if (error) throw error;
-
-  const conversations = convos ?? [];
-  const ids = conversations.map((c) => c.id);
-  if (ids.length === 0) return [];
-
-  // The other participant (the one who isn't me) for each DM.
-  const otherByConvo = new Map<string, string>();
-  for (const c of conversations) {
-    const parts = (c.conversation_participants ?? []) as { profile_id: string }[];
-    const other = parts.find((p) => p.profile_id !== user.id);
-    if (other) otherByConvo.set(c.id, other.profile_id);
-  }
-
-  const otherIds = [...new Set(otherByConvo.values())];
-  const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
-    .select('id, full_name, role')
-    .in('id', otherIds.length ? otherIds : ['00000000-0000-0000-0000-000000000000']);
-  if (profilesError) throw profilesError;
-  const profById = new Map((profiles ?? []).map((p) => [p.id, p]));
-
-  const { lastByConvo, readBy } = await lastMessageAndReadMaps(ids);
-
-  const summaries: ChatConversationSummary[] = conversations.map((c) => {
-    const otherId = otherByConvo.get(c.id);
-    const prof = otherId ? profById.get(otherId) : null;
-    const name = prof?.full_name ?? 'Unknown';
-    const last = lastByConvo.get(c.id) ?? null;
-    return {
-      id: c.id,
-      kind: 'direct',
-      title: name,
-      subtitle: prof?.role ? formatRoleLabel(prof.role) : null,
-      avatarText: initialsOf(name),
-      studentId: null,
-      lastMessageAt: last?.created_at ?? null,
-      createdAt: c.created_at as string,
-      lastMessagePreview: last?.body ?? null,
-      unread: isUnread(last, readBy.get(c.id)),
-    };
-  });
-
-  return summaries.sort(byMostRecent);
-}
-
-/**
- * The unified conversation list: the user's student group chats plus their
- * direct messages, both scoped to the active school, most-recent first.
+ * The unified conversation list — the user's student group chats and direct
+ * messages, scoped to the active school, most-recent first. Backed by the
+ * get_my_conversations RPC, which computes the latest-message preview and unread
+ * flag DB-side in one round-trip (no full message-history scan — see SPE-200).
  */
 export async function listMyConversations(
   schoolId?: string | null,
 ): Promise<ChatConversationSummary[]> {
-  const [students, dms] = await Promise.all([
-    listMyStudentChats(schoolId),
-    listMyDirectMessages(schoolId),
-  ]);
-  return [...students, ...dms].sort(byMostRecent);
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('get_my_conversations', {
+    p_school_id: schoolId ?? undefined,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    id: string;
+    kind: 'student' | 'direct';
+    student_id: string | null;
+    student_initials: string | null;
+    student_grade: string | null;
+    other_name: string | null;
+    other_role: string | null;
+    last_message_at: string | null;
+    last_message_preview: string | null;
+    created_at: string;
+    unread: boolean;
+  }>;
+  // The RPC already orders rows by recency (latest message, else creation time).
+  return rows.map((r) => {
+    if (r.kind === 'direct') {
+      const name = r.other_name ?? 'Unknown';
+      return {
+        id: r.id,
+        kind: 'direct',
+        title: name,
+        subtitle: r.other_role ? formatRoleLabel(r.other_role) : null,
+        avatarText: initialsOf(name),
+        studentId: null,
+        lastMessageAt: r.last_message_at,
+        createdAt: r.created_at,
+        lastMessagePreview: r.last_message_preview,
+        unread: r.unread,
+      };
+    }
+    const initials = r.student_initials ?? '—';
+    return {
+      id: r.id,
+      kind: 'student',
+      title: initials,
+      subtitle: r.student_grade,
+      avatarText: initials,
+      studentId: r.student_id,
+      lastMessageAt: r.last_message_at,
+      createdAt: r.created_at,
+      lastMessagePreview: r.last_message_preview,
+      unread: r.unread,
+    };
+  });
 }
 
 export interface OpenedConversation {
