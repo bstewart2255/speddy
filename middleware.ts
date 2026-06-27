@@ -125,10 +125,13 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/dashboard/admin')
   const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
   const isCareRoute = pathname.startsWith('/dashboard/care')
+  const isChatRoute = pathname.startsWith('/dashboard/chat')
   const isDashboardRoute = pathname.startsWith('/dashboard')
 
-  // CARE routes are accessible to all authenticated users
-  if (isCareRoute) {
+  // CARE and Chat are cross-role surfaces: exempt them from the admin/teacher
+  // section redirects below so site admins and teachers can reach them. (Chat
+  // eligibility — e.g. the SEA exclusion — is enforced by RLS and the nav.)
+  if (isCareRoute || isChatRoute) {
     return response
   }
 

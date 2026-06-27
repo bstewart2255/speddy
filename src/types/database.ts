@@ -4115,6 +4115,15 @@ export type Database = {
           user_type: string
         }[]
       }
+      get_my_chat_students: {
+        Args: { p_school_id?: string }
+        Returns: {
+          grade_level: string
+          id: string
+          initials: string
+          school_id: string
+        }[]
+      }
       get_my_school_ids: {
         Args: never
         Returns: {
@@ -4279,12 +4288,20 @@ export type Database = {
         Args: { student_uuid: string }
         Returns: boolean
       }
+      mark_conversation_read: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
+      }
       mark_password_reset: {
         Args: { target_user_id: string }
         Returns: boolean
       }
       normalize_district_name: {
         Args: { district_name: string }
+        Returns: string
+      }
+      open_student_conversation: {
+        Args: { p_student_id: string }
         Returns: string
       }
       normalize_existing_school_data: {
