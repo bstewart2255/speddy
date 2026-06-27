@@ -329,9 +329,13 @@ consumer of real audit logging.
 - **Moderation.** **Decided (Phase 3):** a sender may **soft-delete their own**
   message and a **site admin may soft-delete any** message in chats they're in;
   **no editing**. Enforced via a `delete_chat_message(message_id)` SECURITY
-  DEFINER RPC (messages have no UPDATE RLS policy, so the RPC is the sole write
-  path) setting `deleted_at = now()`; deleted messages render as "message
-  deleted". `messages.edited_at` stays provisioned but unused.
+  DEFINER RPC that sets `deleted_at = now()` for the sender or a qualifying site
+  admin; deleted messages render as "message deleted". Note: the Phase-0
+  `messages_update_own` UPDATE policy currently lets a sender update their own
+  message row (including `body`), so Phase 3 **replaces/tightens** it — the RPC
+  becomes the sole moderation write path (and it's the only route for the
+  site-admin case, which isn't own-message-scoped). `messages.edited_at` stays
+  provisioned but unused.
 - **Retention / deletion.** **Decided (Phase 3): keep history forever.** Student
   deletion (`app/api/admin/students/[studentId]`, `docs/ARCHITECTURE.md` §7)
   already cascades the `student_group` conversation, its messages, and all derived
