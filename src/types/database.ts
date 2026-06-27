@@ -4136,16 +4136,16 @@ export type Database = {
         Args: { p_school_id?: string }
         Returns: {
           id: string
-          kind: string
-          student_id: string
-          school_id: string
-          student_initials: string
-          student_grade: string
-          other_id: string
-          other_name: string
-          other_role: string
-          last_message_at: string
-          last_message_preview: string
+          kind: 'student' | 'direct'
+          student_id: string | null
+          school_id: string | null
+          student_initials: string | null
+          student_grade: string | null
+          other_id: string | null
+          other_name: string | null
+          other_role: string | null
+          last_message_at: string | null
+          last_message_preview: string | null
           created_at: string
           unread: boolean
         }[]
