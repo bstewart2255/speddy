@@ -43,9 +43,9 @@ export function useConversations(schoolId?: string | null): UseConversationsRetu
   }, [schoolId]);
 
   useEffect(() => {
-    // Clear immediately on school switch so the prior school's student chats
-    // don't linger under the new selection while the fresh load is in flight.
-    setConversations([]);
+    // Drop only the school-scoped student chats on a school switch; DMs aren't
+    // school-anchored, so keep them visible while the fresh load is in flight.
+    setConversations((prev) => prev.filter((c) => c.kind === 'direct'));
     void refresh();
   }, [refresh]);
 

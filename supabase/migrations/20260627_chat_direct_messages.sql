@@ -53,6 +53,13 @@ AS $$
   SELECT EXISTS (SELECT 1 FROM a JOIN b USING (school_id));
 $$;
 
+-- Internal helper only — called by open_direct_conversation (as owner). It is
+-- SECURITY DEFINER and reads profiles/provider_schools/admin_permissions, so it
+-- must NOT be directly callable by clients (a caller could otherwise probe
+-- whether two profile UUIDs share a school). Lock it out of the exposed API.
+REVOKE EXECUTE ON FUNCTION public.chat_shares_site(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.chat_shares_site(uuid, uuid) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 3. get_dm_eligible_people(p_school_id): people the caller can start a DM with
 --    at a given school. Scoped to the active school (the picker is school-scoped

@@ -68,9 +68,9 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
 
   // In a DM there are exactly two people, so any message that isn't mine is from
   // the other person (whose name is the thread title).
-  const senderNameFor = (senderId: string | null): string => {
+  const senderNameFor = (senderId: string | null, isMine: boolean): string => {
     if (!senderId) return 'Former member';
-    if (kind === 'direct') return title;
+    if (kind === 'direct') return isMine ? 'You' : title;
     return nameById.get(senderId) ?? 'Former team member';
   };
 
@@ -109,14 +109,17 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
             No messages yet. Say hello to the team.
           </div>
         ) : (
-          messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isMine={!!user && m.senderId === user.id}
-              senderName={senderNameFor(m.senderId)}
-            />
-          ))
+          messages.map((m) => {
+            const isMine = !!user && m.senderId === user.id;
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isMine={isMine}
+                senderName={senderNameFor(m.senderId, isMine)}
+              />
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

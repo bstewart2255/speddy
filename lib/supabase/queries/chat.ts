@@ -29,6 +29,9 @@ export interface ChatConversationSummary {
   /** Set for student group chats (drives the participant header); null for DMs. */
   studentId: string | null;
   lastMessageAt: string | null;
+  /** Conversation creation time — recency fallback so a brand-new, empty chat
+   * doesn't sort to the bottom until its first message. */
+  createdAt: string;
   lastMessagePreview: string | null;
   unread: boolean;
 }
@@ -131,7 +134,7 @@ function isUnread(
 }
 
 const byMostRecent = (a: ChatConversationSummary, b: ChatConversationSummary) =>
-  (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '');
+  (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt);
 
 export async function listMyStudentChats(
   schoolId?: string | null,
@@ -176,6 +179,7 @@ export async function listMyStudentChats(
       avatarText: initials,
       studentId: c.student_id as string,
       lastMessageAt: last?.created_at ?? null,
+      createdAt: c.created_at as string,
       lastMessagePreview: last?.body ?? null,
       unread: isUnread(last, readBy.get(c.id)),
     };
@@ -199,7 +203,7 @@ export async function listMyDirectMessages(): Promise<ChatConversationSummary[]>
 
   const { data: convos, error } = await supabase
     .from('conversations')
-    .select('id, conversation_participants(profile_id)')
+    .select('id, created_at, conversation_participants(profile_id)')
     .eq('type', 'direct');
   if (error) throw error;
 
@@ -216,10 +220,11 @@ export async function listMyDirectMessages(): Promise<ChatConversationSummary[]>
   }
 
   const otherIds = [...new Set(otherByConvo.values())];
-  const { data: profiles } = await supabase
+  const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
     .select('id, full_name, role')
     .in('id', otherIds.length ? otherIds : ['00000000-0000-0000-0000-000000000000']);
+  if (profilesError) throw profilesError;
   const profById = new Map((profiles ?? []).map((p) => [p.id, p]));
 
   const { lastByConvo, readBy } = await lastMessageAndReadMaps(ids);
@@ -237,6 +242,7 @@ export async function listMyDirectMessages(): Promise<ChatConversationSummary[]>
       avatarText: initialsOf(name),
       studentId: null,
       lastMessageAt: last?.created_at ?? null,
+      createdAt: c.created_at as string,
       lastMessagePreview: last?.body ?? null,
       unread: isUnread(last, readBy.get(c.id)),
     };

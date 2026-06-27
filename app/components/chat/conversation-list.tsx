@@ -72,7 +72,7 @@ export function ConversationList({
                     ) : null}
                   </span>
                   <span className="flex-shrink-0 text-[11px] text-gray-400">
-                    {formatWhen(chat.lastMessageAt)}
+                    {formatWhen(chat.lastMessageAt ?? chat.createdAt)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">

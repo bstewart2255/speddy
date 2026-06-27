@@ -249,7 +249,7 @@ A single boolean gate per conversation drives all message RLS:
 
 ```text
 can_access(conversation c, uid) :=
-    is_chat_eligible(uid)                            -- excludes the sea role (see below)
+    is_chat_eligible(uid)                            -- excludes sea and district_admin (see below)
     AND (
       c.type = 'direct'
         ? EXISTS (conversation_participants where conversation_id = c.id and profile_id = uid)
