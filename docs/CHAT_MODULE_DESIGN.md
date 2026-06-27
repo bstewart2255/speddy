@@ -318,20 +318,31 @@ Policy sketch (illustrative, not final SQL):
 These messages are **student-linked PII**. This module is a natural first
 consumer of real audit logging.
 
-- **Audit (SPE-169).** Audit logging is currently scaffolded but unwired
-  (`audit_logs` table empty, `logAccess()` never called). A named-student chat is
-  a strong candidate to be the **first** surface that actually writes audit rows
-  — at minimum log message sends and conversation opens (who/when/which
-  student). Decision in §10 on exact granularity. Per the Hub principle, audit
-  must **not** turn into a teacher "scorecard."
-- **Retention / deletion.** Student deletion (`app/api/admin/students/[studentId]`,
-  `docs/ARCHITECTURE.md` §7) must account for the student's chat: cascade-delete
-  the `student_group` conversation, its messages, **and all derived
-  per-conversation state** (`conversation_read_state`, and any later
-  per-conversation rows) — `ON DELETE CASCADE` from `conversations` so nothing is
-  orphaned (and Realtime publication stays consistent). DMs are not student-anchored and are unaffected by student
-  deletion. A retention window (keep forever vs. N months) is an open question
-  (§10).
+- **Audit (SPE-169).** `audit_logs` is scaffolded but unwired (table empty,
+  `logAccess()` never called). Chat is the **first** real consumer. **Decided
+  (Phase 3):** log **message sends, conversation opens, and deletes**
+  **server-side** so it can't be skipped — a trigger on `messages` INSERT
+  (`chat.message_sent`), a `log_conversation_open(conversation_id)` RPC
+  (`chat.conversation_opened`), and the delete RPC (`chat.message_deleted`). Audit
+  rows are **kept forever**. Per the Hub principle, this is access logging, **not**
+  a teacher "scorecard" — no per-teacher analytics surface.
+- **Moderation.** **Decided (Phase 3):** a sender may **soft-delete their own**
+  message and a **site admin may soft-delete any** message in chats they're in;
+  **no editing**. Enforced via a `delete_chat_message(message_id)` SECURITY
+  DEFINER RPC that sets `deleted_at = now()` for the sender or a qualifying site
+  admin; deleted messages render as "message deleted". Note: the Phase-0
+  `messages_update_own` UPDATE policy currently lets a sender update their own
+  message row (including `body`), so Phase 3 **replaces/tightens** it — the RPC
+  becomes the sole moderation write path (and it's the only route for the
+  site-admin case, which isn't own-message-scoped). `messages.edited_at` stays
+  provisioned but unused.
+- **Retention / deletion.** **Decided (Phase 3): keep history forever.** Student
+  deletion (`app/api/admin/students/[studentId]`, `docs/ARCHITECTURE.md` §7)
+  already cascades the `student_group` conversation, its messages, and all derived
+  per-conversation state (`conversation_read_state`) via `ON DELETE CASCADE` from
+  `conversations` — verified in the DB, so nothing is orphaned and the Realtime
+  publication stays consistent, with no age-out job. DMs are not student-anchored
+  and are unaffected by student deletion.
 - **Scope containment.** A `direct` conversation is constrained to two people who
   share a site at creation time; a `student_group` is school-scoped via
   `students.school_id`. RLS never lets a message escape these scopes.
@@ -357,28 +368,33 @@ no student group chats, and no DMs, even for students they serve via
 
 ---
 
-## 10. Open questions (need a decision before / during build)
+## 10. Resolved decisions
 
-1. **Audit granularity** — log sends + opens only, or also edits/deletes? What's
-   the retention of the audit rows themselves?
-2. **Message retention** — keep student-group history forever, or age it out
-   (e.g. with the student record / at year transition)?
-3. **Moderation** — can a sender edit/delete their own message? Can a site admin
-   remove a message? (`messages.edited_at` / `deleted_at` are provisioned for
-   this but the policy is undecided.)
-4. **Empty/again-eligible chats** — if a student temporarily has only one linked
-   account, the chat exists but is a monologue. Acceptable? (Probably yes.)
-5. **Notifications** — the Hub flags a "digest model that respects teacher time."
-   What's the v-next trigger (in-app only at first; email digest later)?
-6. **DM eligibility precision** — "share a site" via `provider_schools` ∪
-   `profiles.school_id`? Confirm the exact set, and whether cross-site for
-   itinerant providers counts.
+All of the original build-blocking questions are now decided across Phases 1–3.
 
 **Resolved:**
 - *District admins are not chat participants* — only site admins are auto-added
-  (decided 2026-06-26; see §4).
-- *SEAs / paraprofessionals are excluded from chat entirely* — no group chats, no
-  DMs, no surface (decided 2026-06-26; see §4).
+  (2026-06-26; §4).
+- *SEAs / paraprofessionals are excluded entirely* — no group chats, no DMs, no
+  surface; enforced at the authorization layer via `is_chat_eligible` (which also
+  excludes `district_admin`) (2026-06-26; §4, §6).
+- *DM eligibility ("share a site")* — the union of `provider_schools`,
+  `profiles.school_id`, and site-admin `admin_permissions`; the people picker is
+  scoped to the active school and DM threads are school-scoped (Phase 2,
+  2026-06-27; §6).
+- *Empty / again-eligible chats* — acceptable; a student with one linked account
+  still has a (single-participant) chat.
+- *Moderation* — sender **soft-deletes their own** message; a **site admin
+  soft-deletes any** message in chats they're in; **no editing** (2026-06-27; §8).
+- *Audit granularity* — log message **sends, conversation opens, and deletes**,
+  **server-side**; audit rows kept forever; not a teacher "scorecard"
+  (2026-06-27; §8).
+- *Message retention* — **keep forever**; student deletion cascades the chat +
+  messages + read-state, no age-out job (2026-06-27; §8).
+
+**Deferred polish:**
+- *Notifications / presence / typing / receipts* — **deferred** to a later polish
+  pass: in-app first, then a "respects teacher time" email digest (Hub open item).
 
 ---
 
