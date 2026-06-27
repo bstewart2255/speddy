@@ -191,20 +191,24 @@ export async function listMyStudentChats(
 /**
  * List the current user's 1:1 direct messages. RLS returns only DMs the user is
  * a participant of. Each summary shows the *other* participant's name and role.
- * Not school-scoped — DMs are between people, not anchored to a school, so they
- * stay visible regardless of the active-school dropdown.
+ * Scoped to the active school (the DM's shared site) when one is selected, so
+ * the conversation list tracks the school dropdown like student chats do.
  */
-export async function listMyDirectMessages(): Promise<ChatConversationSummary[]> {
+export async function listMyDirectMessages(
+  schoolId?: string | null,
+): Promise<ChatConversationSummary[]> {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data: convos, error } = await supabase
+  let query = supabase
     .from('conversations')
     .select('id, created_at, conversation_participants(profile_id)')
     .eq('type', 'direct');
+  if (schoolId) query = query.eq('school_id', schoolId);
+  const { data: convos, error } = await query;
   if (error) throw error;
 
   const conversations = convos ?? [];
@@ -252,13 +256,16 @@ export async function listMyDirectMessages(): Promise<ChatConversationSummary[]>
 }
 
 /**
- * The unified conversation list: the user's student group chats (scoped to the
- * active school) plus all of their direct messages, most-recent first.
+ * The unified conversation list: the user's student group chats plus their
+ * direct messages, both scoped to the active school, most-recent first.
  */
 export async function listMyConversations(
   schoolId?: string | null,
 ): Promise<ChatConversationSummary[]> {
-  const [students, dms] = await Promise.all([listMyStudentChats(schoolId), listMyDirectMessages()]);
+  const [students, dms] = await Promise.all([
+    listMyStudentChats(schoolId),
+    listMyDirectMessages(schoolId),
+  ]);
   return [...students, ...dms].sort(byMostRecent);
 }
 

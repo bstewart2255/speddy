@@ -31,11 +31,11 @@ export function StudentChatPage() {
   const [showNew, setShowNew] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
 
-  // When the active school changes, clear an open *student* chat (it belongs to
-  // the school the user just left). DMs aren't school-scoped — they stay in the
-  // list across schools — so leave an open DM in place.
+  // Conversations (student chats and DMs) are scoped to the active school, so
+  // when it changes, close the open thread — it belongs to the school the user
+  // just left and won't be in the re-scoped list.
   useEffect(() => {
-    setSelected((current) => (current?.kind === 'student' ? null : current));
+    setSelected(null);
   }, [schoolId]);
 
   const openStudent = useCallback(
