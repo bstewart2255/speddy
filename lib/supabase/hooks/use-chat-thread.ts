@@ -90,7 +90,15 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
           if (cancelled) return;
           setMessages((prev) => {
             const byId = new Map(prev.map((m) => [m.id, m]));
-            for (const m of history) if (!byId.has(m.id)) byId.set(m.id, m);
+            // Merge the snapshot in. Soft-delete is monotonic (deleted_at only
+            // goes null→set, body only gets scrubbed), so when both sides have a
+            // row, keep whichever shows it as deleted: that way a tombstone in the
+            // snapshot can't be ignored, and an older snapshot can't revert a
+            // newer realtime tombstone back to showing the body.
+            for (const m of history) {
+              const existing = byId.get(m.id);
+              if (!existing || (m.deletedAt && !existing.deletedAt)) byId.set(m.id, m);
+            }
             return [...byId.values()].sort((a, b) =>
               a.createdAt === b.createdAt
                 ? a.id.localeCompare(b.id)

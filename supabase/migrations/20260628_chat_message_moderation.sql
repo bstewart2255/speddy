@@ -15,7 +15,8 @@
 --      makes delete_chat_message the SOLE moderation write path (and the only
 --      route for the site-admin case, which isn't own-message-scoped).
 --   2. Adds delete_chat_message(p_message_id), a SECURITY DEFINER RPC that does
---      its own authorization and stamps deleted_at = now() as the owner.
+--      its own authorization, then stamps deleted_at and scrubs the body as the
+--      owner (so deleted content can't be recovered via a direct read).
 --
 -- Realtime needs NO change here: supabase_realtime already publishes UPDATE and
 -- `messages` is already in the publication (Phase 1). RLS still gates delivery
@@ -38,18 +39,25 @@ DROP POLICY IF EXISTS messages_update_own ON public.messages;
 REVOKE UPDATE ON public.messages FROM authenticated, anon;
 
 -- ---------------------------------------------------------------------------
--- 2. delete_chat_message(p_message_id): soft-delete a single message.
+-- 2. delete_chat_message(p_message_id): soft-delete + scrub a single message.
 --
 -- Authorization (done inside the RPC, owner-privileged):
---   * the SENDER may soft-delete their own message; OR
---   * a SITE ADMIN of the conversation's school may soft-delete any message in a
---     conversation they can access (can_access_conversation). For a student_group
---     this is the school-scoped admin who is already a derived participant; for a
---     direct DM, an admin is not a participant so can_access fails — only the
---     sender can delete, which is correct.
+--   * the SENDER may soft-delete their own message (any conversation type); OR
+--   * admin moderation, STUDENT GROUP chats only: a SITE ADMIN of the student's
+--     school may delete any message in a chat they can access. A direct DM is a
+--     private 1:1 — own-delete only, no admin moderation (so an admin who happens
+--     to be a site admin of the DM's shared school can't delete the other party's
+--     message).
 --
--- Soft delete is idempotent: re-deleting an already-deleted message is a no-op
--- (the deleted_at timestamp is not moved). No editing — `body` is never touched.
+-- Deletion SCRUBS the body, not just hides it: messages_select still returns the
+-- row to participants, so leaving `body` intact would let anyone recover the text
+-- via a direct query (the UI tombstone is cosmetic). We overwrite body with a
+-- sentinel (the body CHECK requires non-empty). PR2 will capture the original
+-- body into the server-only audit log BEFORE this scrub.
+--
+-- Idempotent + concurrency-safe: the `deleted_at IS NULL` predicate on the UPDATE
+-- is the real guard, so two concurrent calls can't both stamp / move deleted_at.
+-- No editing — body is only ever overwritten by this delete path.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.delete_chat_message(p_message_id uuid)
 RETURNS void
@@ -61,6 +69,7 @@ DECLARE
   v_uid             uuid := auth.uid();
   v_sender_id       uuid;
   v_conversation_id uuid;
+  v_type            text;
   v_school_id       varchar;
   v_already_deleted boolean;
 BEGIN
@@ -69,8 +78,8 @@ BEGIN
   END IF;
 
   -- Definer bypasses RLS, so read the message + its conversation scope directly.
-  SELECT m.sender_id, m.conversation_id, (m.deleted_at IS NOT NULL), c.school_id
-    INTO v_sender_id, v_conversation_id, v_already_deleted, v_school_id
+  SELECT m.sender_id, m.conversation_id, c.type, c.school_id, (m.deleted_at IS NOT NULL)
+    INTO v_sender_id, v_conversation_id, v_type, v_school_id, v_already_deleted
   FROM public.messages m
   JOIN public.conversations c ON c.id = m.conversation_id
   WHERE m.id = p_message_id;
@@ -82,7 +91,8 @@ BEGIN
   IF NOT (
     v_sender_id = v_uid
     OR (
-      public.can_access_conversation(v_conversation_id, v_uid)
+      v_type = 'student_group'
+      AND public.can_access_conversation(v_conversation_id, v_uid)
       AND EXISTS (
         SELECT 1 FROM public.admin_permissions ap
         WHERE ap.admin_id = v_uid
@@ -94,11 +104,12 @@ BEGIN
     RAISE EXCEPTION 'Not allowed to delete this message' USING ERRCODE = '42501';
   END IF;
 
-  -- Only stamp the first delete (don't move the timestamp on re-call).
   IF NOT v_already_deleted THEN
     UPDATE public.messages
-    SET deleted_at = now()
-    WHERE id = p_message_id;
+    SET deleted_at = now(),
+        body       = '[deleted]'
+    WHERE id = p_message_id
+      AND deleted_at IS NULL;
   END IF;
 END;
 $$;

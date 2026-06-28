@@ -141,7 +141,9 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
         ) : (
           messages.map((m) => {
             const isMine = !!user && m.senderId === user.id;
-            const canDelete = !m.deletedAt && (isMine || isSiteAdmin);
+            // Admin moderation is student-group only (mirrors the RPC); DMs are
+            // private 1:1 — own-delete only — so admins don't get a button there.
+            const canDelete = !m.deletedAt && (isMine || (kind === 'student' && isSiteAdmin));
             return (
               <MessageBubble
                 key={m.id}
