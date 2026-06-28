@@ -76,12 +76,17 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
   }, [conversationId, messages.length]);
 
   // Record the open once per conversation (server-side audit; fire-and-forget).
-  // Keyed on conversationId only — an access event per open, not per message.
+  // Wait for auth: log_conversation_open is a no-op when auth.uid() is null, so
+  // firing before useAuth() resolves would silently drop the first open after a
+  // cold load. Keying on the user id makes the effect retry once auth arrives,
+  // once per (conversation, user) — an access event per open, not per message.
+  const userId = user?.id;
   useEffect(() => {
+    if (!userId) return;
     logConversationOpen(conversationId).catch(() => {
       /* non-fatal: audit is best-effort from the client; RPC is the gate */
     });
-  }, [conversationId]);
+  }, [conversationId, userId]);
 
   // Keep the latest message in view.
   useEffect(() => {

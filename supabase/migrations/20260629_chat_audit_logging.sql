@@ -152,18 +152,23 @@ BEGIN
     WHERE id = p_message_id AND deleted_at IS NULL;
 
     -- Only audit a delete that actually happened (FOUND guards against a
-    -- concurrent caller double-logging). The original body is preserved here in
-    -- the server-only audit log before it is scrubbed from the message.
+    -- concurrent caller double-logging). This row carries the ORIGINAL body
+    -- (retained for FERPA/moderation review), so it must NOT be client-readable:
+    -- user_id is left NULL precisely so the "view own audit logs" policy
+    -- (user_id = auth.uid()) can never surface it to the deleter — otherwise the
+    -- deleter could recover the scrubbed content from their own audit history.
+    -- Only service_role (RLS-bypass) reads it; the actor is in metadata.deleted_by.
     IF FOUND THEN
       INSERT INTO public.audit_logs (user_id, action, resource_type, resource_id, metadata, "timestamp")
       VALUES (
-        v_uid, 'chat.message_deleted', 'chat_message', p_message_id::text,
+        NULL, 'chat.message_deleted', 'chat_message', p_message_id::text,
         jsonb_build_object(
           'conversation_id', v_conversation_id,
           'conversation_type', v_type,
           'student_id', v_student,
           'school_id', v_school_id,
           'sender_id', v_sender_id,
+          'deleted_by', v_uid,
           'original_body', v_body
         ),
         now()
