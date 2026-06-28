@@ -289,6 +289,22 @@ export async function sendMessage(conversationId: string, body: string): Promise
 }
 
 /**
+ * Soft-delete a single message (moderation). Goes through the delete_chat_message
+ * RPC (SECURITY DEFINER) — the sole moderation write path now that the direct
+ * UPDATE policy is gone. The RPC authorizes the caller itself: the sender may
+ * delete their own message; a site admin may delete any message in a conversation
+ * they can access. There is no editing. The soft-delete propagates to other open
+ * threads via the Realtime UPDATE listener (use-chat-thread).
+ */
+export async function deleteChatMessage(messageId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc('delete_chat_message', {
+    p_message_id: messageId,
+  });
+  if (error) throw new Error(`Couldn't delete this message: ${describeDbError(error)}`);
+}
+
+/**
  * Chat-eligible participants for a student's chat (those with a Speddy account).
  * Backed by the get_student_chat_participants RPC, which itself requires the
  * caller to be on the student's team.
@@ -345,6 +361,27 @@ export async function isStudentChatParticipant(studentId: string): Promise<boole
   });
   if (error) return false;
   return data === true;
+}
+
+/**
+ * The current user's profile role (e.g. 'resource', 'site_admin'), or null if it
+ * can't be read. Used to decide whether to show the admin delete affordance —
+ * a site admin may soft-delete any message, not just their own. The RPC remains
+ * the real authority; this only gates whether the button is offered.
+ */
+export async function getCurrentUserRole(): Promise<string | null> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) return null;
+  return data?.role ?? null;
 }
 
 /**

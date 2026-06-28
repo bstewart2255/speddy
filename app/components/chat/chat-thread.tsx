@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { useAuth } from '@/app/components/providers/auth-provider';
 import { useChatThread } from '@/lib/supabase/hooks/use-chat-thread';
 import {
+  getCurrentUserRole,
   getParticipants,
   markConversationRead,
   type ChatParticipant,
@@ -23,10 +24,28 @@ interface ChatThreadProps {
 
 export function ChatThread({ conversationId, kind, studentId, title }: ChatThreadProps) {
   const { user } = useAuth();
-  const { messages, loading, error, sending, send } = useChatThread(conversationId);
+  const { messages, loading, error, sending, send, remove } = useChatThread(conversationId);
   const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [isSiteAdmin, setIsSiteAdmin] = useState(false);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Site admins may delete any message in chats they're in, not just their own.
+  // The delete_chat_message RPC re-checks this server-side; this just decides
+  // whether the affordance is offered on other people's messages.
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUserRole()
+      .then((role) => {
+        if (!cancelled) setIsSiteAdmin(role === 'site_admin');
+      })
+      .catch(() => {
+        /* non-fatal: default to no admin affordance */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Student group participants (header + sender-name resolution). DMs have only
   // two people, so they don't need this lookup.
@@ -88,6 +107,13 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
     }
   };
 
+  const handleDelete = (messageId: string) => {
+    if (!window.confirm('Delete this message? This can’t be undone.')) return;
+    // Errors surface via the hook's `error` state; the optimistic tombstone is
+    // applied on success inside `remove`.
+    void remove(messageId).catch(() => {});
+  };
+
   return (
     <div className="flex h-full flex-col">
       {kind === 'student' ? (
@@ -100,23 +126,30 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
       )}
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+        {/* Non-blocking banner so a failed send/delete doesn't hide the thread. */}
+        {error && (
+          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+        )}
         {loading ? (
           <div className="text-sm text-gray-400">Loading messages…</div>
-        ) : error ? (
-          <div className="text-sm text-red-600">{error}</div>
         ) : messages.length === 0 ? (
-          <div className="mt-8 text-center text-sm text-gray-400">
-            No messages yet. Say hello to the team.
-          </div>
+          error ? null : (
+            <div className="mt-8 text-center text-sm text-gray-400">
+              No messages yet. Say hello to the team.
+            </div>
+          )
         ) : (
           messages.map((m) => {
             const isMine = !!user && m.senderId === user.id;
+            const canDelete = !m.deletedAt && (isMine || isSiteAdmin);
             return (
               <MessageBubble
                 key={m.id}
                 message={m}
                 isMine={isMine}
                 senderName={senderNameFor(m.senderId, isMine)}
+                canDelete={canDelete}
+                onDelete={handleDelete}
               />
             );
           })

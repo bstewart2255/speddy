@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import {
+  deleteChatMessage,
   getMessages,
   sendMessage,
   toChatMessage,
@@ -14,13 +15,16 @@ interface UseChatThreadReturn {
   error: string | null;
   sending: boolean;
   send: (body: string) => Promise<void>;
+  remove: (messageId: string) => Promise<void>;
 }
 
 /**
- * Loads a conversation's messages and subscribes to live INSERTs via Supabase
- * Realtime (same pattern as use-session-sync). RLS gates which rows the
+ * Loads a conversation's messages and subscribes to live INSERTs and UPDATEs via
+ * Supabase Realtime (same pattern as use-session-sync). RLS gates which rows the
  * subscriber receives. New messages are de-duped by id so the sender's own
- * optimistic append and the Realtime echo don't double up.
+ * optimistic append and the Realtime echo don't double up; UPDATEs (e.g. a
+ * moderation soft-delete) replace the existing row in place so a "message
+ * deleted" tombstone propagates live to everyone in the thread.
  */
 export function useChatThread(conversationId: string | null): UseChatThreadReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -30,15 +34,33 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
   const channelRef = useRef<RealtimeChannel | null>(null);
   const supabase = createClient();
 
+  // Insert a new message, or replace an existing one in place when it changed
+  // (e.g. a soft-delete arriving via the UPDATE listener). created_at/id are
+  // immutable, so a replacement never changes ordering — no re-sort needed.
+  // When nothing changed (the sender's own INSERT echo), return the same
+  // reference so it doesn't trigger a needless re-render.
   const upsertMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      const next = [...prev, msg];
-      next.sort((a, b) =>
-        a.createdAt === b.createdAt
-          ? a.id.localeCompare(b.id)
-          : a.createdAt.localeCompare(b.createdAt),
-      );
+      const idx = prev.findIndex((m) => m.id === msg.id);
+      if (idx === -1) {
+        const next = [...prev, msg];
+        next.sort((a, b) =>
+          a.createdAt === b.createdAt
+            ? a.id.localeCompare(b.id)
+            : a.createdAt.localeCompare(b.createdAt),
+        );
+        return next;
+      }
+      const existing = prev[idx];
+      if (
+        existing.body === msg.body &&
+        existing.editedAt === msg.editedAt &&
+        existing.deletedAt === msg.deletedAt
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      next[idx] = msg;
       return next;
     });
   }, []);
@@ -99,6 +121,21 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
           upsertMessage(toChatMessage(payload.new as Parameters<typeof toChatMessage>[0]));
         },
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          if (cancelled) return;
+          // The new row carries the full message (incl. deleted_at); upsertMessage
+          // replaces it in place so a soft-delete tombstone appears live.
+          upsertMessage(toChatMessage(payload.new as Parameters<typeof toChatMessage>[0]));
+        },
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           loadHistory();
@@ -136,5 +173,29 @@ export function useChatThread(conversationId: string | null): UseChatThreadRetur
     [conversationId, upsertMessage],
   );
 
-  return { messages, loading, error, sending, send };
+  const remove = useCallback(
+    async (messageId: string) => {
+      try {
+        await deleteChatMessage(messageId);
+        // Optimistically tombstone it for the moderator right away. The Realtime
+        // UPDATE echo also arrives and reconciles (upsertMessage replaces by id);
+        // doing it here too keeps the deleter's view correct even if Realtime is
+        // down. We don't overwrite an existing deleted_at (idempotent re-delete).
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, deletedAt: m.deletedAt ?? new Date().toISOString() }
+              : m,
+          ),
+        );
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to delete message');
+        throw e;
+      }
+    },
+    [],
+  );
+
+  return { messages, loading, error, sending, send, remove };
 }
