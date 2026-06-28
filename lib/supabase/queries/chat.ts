@@ -345,6 +345,20 @@ export async function markConversationRead(conversationId: string): Promise<void
 }
 
 /**
+ * Record that the current user opened a conversation (server-side audit —
+ * chat.conversation_opened). Fire-and-forget from the thread-open path; the RPC
+ * (SECURITY DEFINER) authorizes the caller itself and is a silent no-op for a
+ * conversation they can't access, so this never blocks or disrupts the UI.
+ */
+export async function logConversationOpen(conversationId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc('log_conversation_open', {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw error;
+}
+
+/**
  * Whether the current user is on a given student's chat team. Backs the
  * contextual "Team chat" entry point, so it only shows for actual participants
  * (and never for SEAs, who are excluded from the membership union).

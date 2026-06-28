@@ -7,6 +7,7 @@ import { useChatThread } from '@/lib/supabase/hooks/use-chat-thread';
 import {
   getCurrentUserRole,
   getParticipants,
+  logConversationOpen,
   markConversationRead,
   type ChatParticipant,
 } from '@/lib/supabase/queries/chat';
@@ -73,6 +74,14 @@ export function ChatThread({ conversationId, kind, studentId, title }: ChatThrea
       /* non-fatal: the unread badge may be briefly stale */
     });
   }, [conversationId, messages.length]);
+
+  // Record the open once per conversation (server-side audit; fire-and-forget).
+  // Keyed on conversationId only — an access event per open, not per message.
+  useEffect(() => {
+    logConversationOpen(conversationId).catch(() => {
+      /* non-fatal: audit is best-effort from the client; RPC is the gate */
+    });
+  }, [conversationId]);
 
   // Keep the latest message in view.
   useEffect(() => {
