@@ -3993,6 +3993,10 @@ export type Database = {
         Args: { user_email: string; user_id: string; user_metadata: Json }
         Returns: undefined
       }
+      delete_chat_message: {
+        Args: { p_message_id: string }
+        Returns: undefined
+      }
       find_all_team_members_multi_school: {
         Args: { current_user_id: string; target_school_id: string }
         Returns: {
