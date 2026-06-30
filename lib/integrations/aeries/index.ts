@@ -27,6 +27,7 @@ export {
   mapStudent,
   isSpedProgram,
   isEvaluationProgram,
+  isCurrentProgram,
   indexSpedStudents,
   SPED_PROGRAM_CODE,
   SPED_EVALUATION_PROGRAM_CODE,

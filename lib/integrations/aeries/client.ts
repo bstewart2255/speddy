@@ -133,6 +133,7 @@ export class AeriesClient {
   ): Promise<T[]> {
     const { pageSize = AERIES_DEFAULT_PAGE_SIZE, ...rest } = options;
     const all: T[] = [];
+    let completed = false;
 
     for (let page = 0; page < MAX_PAGES; page++) {
       const startingRecord = page * pageSize + 1;
@@ -143,9 +144,27 @@ export class AeriesClient {
         endingRecord,
       });
 
-      if (!Array.isArray(batch) || batch.length === 0) break;
+      if (!Array.isArray(batch) || batch.length === 0) {
+        completed = true;
+        break;
+      }
       all.push(...batch);
-      if (batch.length < pageSize) break;
+      if (batch.length < pageSize) {
+        completed = true;
+        break;
+      }
+    }
+
+    // If we exhausted MAX_PAGES without ever seeing a short/empty page, there
+    // may be more records than we fetched. Fail loudly rather than hand back a
+    // silently truncated set (which could drop students/teachers).
+    if (!completed) {
+      throw new AeriesApiError(
+        `Aeries pagination exceeded ${MAX_PAGES} pages for ${path}; ` +
+          'aborting to avoid returning silently truncated results',
+        508,
+        path,
+      );
     }
 
     return all;

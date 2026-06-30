@@ -106,6 +106,19 @@ describe('AeriesClient.getAllPages', () => {
     expect(all).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('throws rather than silently truncating when the page cap is hit', async () => {
+    // Always return a full page → never a short/empty page → exhausts MAX_PAGES.
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, json: async () => [{ id: 1 }] });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const client = new AeriesClient(config);
+
+    await expect(
+      client.getAllPages('schools/1/students', { pageSize: 1 }),
+    ).rejects.toMatchObject({ name: 'AeriesApiError', status: 508 });
+  });
 });
 
 describe('AeriesApiError', () => {

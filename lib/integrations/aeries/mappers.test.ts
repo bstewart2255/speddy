@@ -4,6 +4,7 @@ import {
   mapStudent,
   isSpedProgram,
   isEvaluationProgram,
+  isCurrentProgram,
   indexSpedStudents,
 } from './mappers';
 import type {
@@ -145,5 +146,80 @@ describe('SpEd program helpers', () => {
     expect(index.get(1)).toEqual({ beingEvaluated: false });
     expect(index.has(2)).toBe(false);
     expect(index.get(3)).toEqual({ beingEvaluated: true });
+  });
+});
+
+describe('isCurrentProgram', () => {
+  const asOf = new Date('2026-06-30T00:00:00Z');
+
+  it('treats an open-ended program (no end dates) as current', () => {
+    expect(isCurrentProgram({ StudentID: 1, ProgramCode: '144' }, asOf)).toBe(true);
+  });
+
+  it('treats a future-dated end as current', () => {
+    expect(
+      isCurrentProgram(
+        { StudentID: 1, ProgramCode: '144', ParticipationEndDate: '2027-01-01T00:00:00' },
+        asOf,
+      ),
+    ).toBe(true);
+  });
+
+  it('treats a past end date as ended', () => {
+    expect(
+      isCurrentProgram(
+        { StudentID: 1, ProgramCode: '144', ParticipationEndDate: '2025-06-01T00:00:00' },
+        asOf,
+      ),
+    ).toBe(false);
+  });
+
+  it('uses the latest of participation/eligibility end dates', () => {
+    expect(
+      isCurrentProgram(
+        {
+          StudentID: 1,
+          ProgramCode: '144',
+          EligibilityEndDate: '2025-01-01T00:00:00',
+          ParticipationEndDate: '2027-01-01T00:00:00',
+        },
+        asOf,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('indexSpedStudents — ended program filtering', () => {
+  const asOf = new Date('2026-06-30T00:00:00Z');
+
+  it('excludes students whose only SpEd record has ended', () => {
+    const index = indexSpedStudents(
+      [
+        { StudentID: 1, ProgramCode: '144', ParticipationEndDate: '2025-06-01T00:00:00' },
+        { StudentID: 2, ProgramCode: '144' }, // open-ended → current
+      ],
+      { asOf },
+    );
+    expect(index.has(1)).toBe(false);
+    expect(index.has(2)).toBe(true);
+  });
+
+  it('keeps a current record even when an older one has ended', () => {
+    const index = indexSpedStudents(
+      [
+        { StudentID: 1, ProgramCode: '144', ParticipationEndDate: '2024-06-01T00:00:00' },
+        { StudentID: 1, ProgramCode: '144x' }, // current eval record
+      ],
+      { asOf },
+    );
+    expect(index.get(1)).toEqual({ beingEvaluated: true });
+  });
+
+  it('can include ended records when asked', () => {
+    const index = indexSpedStudents(
+      [{ StudentID: 1, ProgramCode: '144', ParticipationEndDate: '2025-06-01T00:00:00' }],
+      { asOf, includeEnded: true },
+    );
+    expect(index.has(1)).toBe(true);
   });
 });

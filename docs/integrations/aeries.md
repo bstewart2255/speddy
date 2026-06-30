@@ -67,7 +67,7 @@ page large reads. `client.getAllPages()` walks in bounded batches.
 
 Set in the server environment (see `.env.example`):
 
-```
+```dotenv
 AERIES_BASE_URL=https://yourdistrict.aeries.net/aeries/api/v5
 AERIES_CERTIFICATE=your-32-char-vendor-certificate
 ```

@@ -108,16 +108,44 @@ export function isEvaluationProgram(program: RawAeriesProgram): boolean {
   );
 }
 
+/** Parse an Aeries date string to epoch ms, or null if absent/unparseable. */
+function parseAeriesDate(value: unknown): number | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * True when a program is current as of `asOf` (default now). The Aeries programs
+ * endpoint returns historical records too, so a former SpEd student keeps their
+ * closed `144` rows. A program is "ended" when its latest present end date
+ * (participation or eligibility) is before `asOf`; open-ended (no end date) or
+ * future-dated programs are current.
+ */
+export function isCurrentProgram(
+  program: RawAeriesProgram,
+  asOf: Date = new Date(),
+): boolean {
+  const ends = [program.ParticipationEndDate, program.EligibilityEndDate]
+    .map(parseAeriesDate)
+    .filter((ms): ms is number => ms !== null);
+  if (ends.length === 0) return true;
+  return Math.max(...ends) >= asOf.getTime();
+}
+
 /**
  * Build a set of SpEd student IDs (with their evaluation flag) from a list of
  * program records — the join used to filter a school's students down to SpEd.
  */
 export function indexSpedStudents(
   programs: RawAeriesProgram[],
+  options: { includeEnded?: boolean; asOf?: Date } = {},
 ): Map<number, { beingEvaluated: boolean }> {
   const index = new Map<number, { beingEvaluated: boolean }>();
   for (const program of programs) {
     if (!isSpedProgram(program)) continue;
+    // Skip closed/historical SpEd records so former students don't linger.
+    if (!options.includeEnded && !isCurrentProgram(program, options.asOf)) continue;
     const existing = index.get(program.StudentID);
     const beingEvaluated =
       (existing?.beingEvaluated ?? false) || isEvaluationProgram(program);

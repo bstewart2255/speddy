@@ -45,8 +45,20 @@ function normalizeBaseUrl(url: string): string {
 export function getAeriesConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): AeriesConnectionConfig {
+  const hasBaseUrl = Boolean(env.AERIES_BASE_URL);
+  const hasCertificate = Boolean(env.AERIES_CERTIFICATE);
   const baseUrl = normalizeBaseUrl(env.AERIES_BASE_URL || AERIES_DEMO_BASE_URL);
   const certificate = env.AERIES_CERTIFICATE || '';
+
+  // Base URL + certificate are a required pair for a district instance. A cert
+  // without a base URL would silently target the demo host with district
+  // credentials — reject it rather than produce confusing auth failures.
+  if (hasCertificate && !hasBaseUrl) {
+    throw new Error(
+      'Aeries base URL missing: set AERIES_BASE_URL when AERIES_CERTIFICATE is ' +
+        'configured (leave both unset to use the read-only demo instance).',
+    );
+  }
 
   if (baseUrl === normalizeBaseUrl(AERIES_DEMO_BASE_URL) && !certificate) {
     return { baseUrl, certificate: AERIES_DEMO_CERTIFICATE };
