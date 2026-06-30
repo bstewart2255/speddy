@@ -4318,6 +4318,10 @@ export type Database = {
         Args: { student_uuid: string }
         Returns: boolean
       }
+      log_conversation_open: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
+      }
       mark_conversation_read: {
         Args: { p_conversation_id: string }
         Returns: undefined
