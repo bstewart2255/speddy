@@ -97,13 +97,15 @@ export function mapStudent(
 
 /** True when a program record is a SpEd record (`144` or `144x`). */
 export function isSpedProgram(program: RawAeriesProgram): boolean {
-  const code = cleanString(program.Code)?.toLowerCase();
+  const code = cleanString(program.ProgramCode)?.toLowerCase();
   return code === SPED_PROGRAM_CODE || code === SPED_EVALUATION_PROGRAM_CODE;
 }
 
 /** True when a program record is the `144x` "being evaluated" variant. */
 export function isEvaluationProgram(program: RawAeriesProgram): boolean {
-  return cleanString(program.Code)?.toLowerCase() === SPED_EVALUATION_PROGRAM_CODE;
+  return (
+    cleanString(program.ProgramCode)?.toLowerCase() === SPED_EVALUATION_PROGRAM_CODE
+  );
 }
 
 /**

@@ -65,16 +65,21 @@ export interface RawAeriesStudent {
 
 /**
  * A program record from `GET /schools/{SchoolCode}/students/{StudentID}/programs`.
- * Special Education is program `Code` 144 (`144x` while a student is being
+ * Special Education is `ProgramCode` 144 (`144x` while a student is being
  * evaluated for, but not yet receiving, services).
+ *
+ * NOTE: the endpoint uses `ProgramCode`/`ProgramDescription` and split
+ * eligibility/participation dates — not `Code`/`Name`/`StartDate`/`EndDate`.
  */
 export interface RawAeriesProgram {
   StudentID: number;
   /** e.g. "144" (SpEd) or "144x" (being evaluated). */
-  Code: string;
-  Name?: string;
-  StartDate?: string;
-  EndDate?: string;
+  ProgramCode: string;
+  ProgramDescription?: string;
+  EligibilityStartDate?: string;
+  EligibilityEndDate?: string;
+  ParticipationStartDate?: string;
+  ParticipationEndDate?: string;
   [key: string]: unknown;
 }
 

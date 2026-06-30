@@ -118,7 +118,10 @@ describe('mapStudent', () => {
 });
 
 describe('SpEd program helpers', () => {
-  const prog = (Code: string, StudentID = 1): RawAeriesProgram => ({ StudentID, Code });
+  const prog = (ProgramCode: string, StudentID = 1): RawAeriesProgram => ({
+    StudentID,
+    ProgramCode,
+  });
 
   it('recognizes 144 and 144x as SpEd, case-insensitively', () => {
     expect(isSpedProgram(prog('144'))).toBe(true);
