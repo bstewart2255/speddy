@@ -1,4 +1,4 @@
-import { ScheduleSession } from '../../src/types/database';
+import { ScheduleSession } from '@/src/types';
 import { filterScheduledSessions } from './session-helpers';
 
 // View mode type matching calendar-week-view.tsx

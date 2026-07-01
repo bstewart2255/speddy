@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { type SchoolIdentifier } from '@/lib/school-helpers';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
-import type { Database, SchoolHour } from '../../../src/types/database';
+import type { Database, SchoolHour } from '@/src/types';
 
 type SchoolHoursInput = Database['public']['Tables']['school_hours']['Insert'];
 

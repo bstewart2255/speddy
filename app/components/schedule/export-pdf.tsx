@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ScheduleSession } from "../../../src/types/database";
+import { ScheduleSession } from "@/src/types";
 import { exportWeekToPDF } from "@/lib/utils/export-week-to-pdf";
 import { LongHoverTooltip } from "../ui/long-hover-tooltip";
 

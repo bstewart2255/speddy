@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { sessionUpdateService } from '../../services/session-update-service';
 import { deleteOrArchiveTemplate } from '../queries/schedule-sessions';
-import type { Database, ScheduleSession } from '../../../src/types/database';
+import type { Database, ScheduleSession } from '@/src/types';
 
 type Student = Database['public']['Tables']['students']['Row'];
 
