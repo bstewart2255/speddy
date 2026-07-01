@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { isAdminForSchool } from '@/lib/supabase/queries/admin-accounts';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 
 type StaffRow = Database['public']['Tables']['staff']['Row'];
 type StaffHoursRow = Database['public']['Tables']['staff_hours']['Row'];

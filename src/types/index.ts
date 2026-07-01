@@ -15,6 +15,19 @@ export type StudentDetails = Database['public']['Tables']['student_details']['Ro
 export type Teacher = Database['public']['Tables']['teachers']['Row'];
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AdminPermission = Database['public']['Tables']['admin_permissions']['Row'];
+export type School = Database['public']['Tables']['schools']['Row'];
+export type District = Database['public']['Tables']['districts']['Row'];
+export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
+export type Staff = Database['public']['Tables']['staff']['Row'];
+export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
+export type YardDutyAssignment = Database['public']['Tables']['yard_duty_assignments']['Row'];
+export type InstructionSchedule = Database['public']['Tables']['instruction_schedules']['Row'];
+
+// CARE module types
+export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];
+export type CareCase = Database['public']['Tables']['care_cases']['Row'];
+export type CareMeetingNote = Database['public']['Tables']['care_meeting_notes']['Row'];
+export type CareActionItem = Database['public']['Tables']['care_action_items']['Row'];
 
 // Table insert types (for INSERT operations)
 export type BellScheduleInsert = Database['public']['Tables']['bell_schedules']['Insert'];

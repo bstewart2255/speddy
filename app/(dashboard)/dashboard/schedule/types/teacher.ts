@@ -1,4 +1,4 @@
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 
 export type Teacher = Database['public']['Tables']['teachers']['Row'];
 

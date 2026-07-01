@@ -8,7 +8,7 @@ import { updateYardDutyAssignment, deleteYardDutyAssignment } from '../../../../
 import { updateInstructionSchedule, deleteInstructionSchedule } from '../../../../../../lib/supabase/queries/instruction-schedules';
 import { SPECIAL_ACTIVITY_TYPES, BELL_SCHEDULE_ACTIVITIES, INSTRUCTION_SUBJECTS } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
-import type { SpecialActivity, Teacher, YardDutyAssignment, InstructionSchedule } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, InstructionSchedule } from '@/src/types';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';

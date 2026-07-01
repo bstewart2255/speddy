@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Teacher } from '@/src/types/database';
+import type { Teacher } from '@/src/types';
 
 const ALL_GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
 

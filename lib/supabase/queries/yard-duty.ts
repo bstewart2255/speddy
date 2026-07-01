@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { getCurrentSchoolYear } from '@/lib/school-year';
-import type { YardDutyAssignment } from '@/src/types/database';
-import type { Database } from '@/src/types/database';
+import type { YardDutyAssignment, Database } from '@/src/types';
 
 /**
  * Fetch all yard duty assignments for a school/year.

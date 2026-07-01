@@ -7,7 +7,7 @@ import {
   removeRotationGroupMember,
   type RotationGroupMemberWithTeacher,
 } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity } from '@/src/types/database';
+import type { SpecialActivity } from '@/src/types';
 
 interface RotationQuickEditModalProps {
   member: RotationGroupMemberWithTeacher;

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { getCurrentSchoolYear } from '@/lib/school-year';
-import { SpecialActivity } from '../../../src/types/database';
+import { SpecialActivity } from '@/src/types';
 import type { Database } from '../../../src/types/database';
 
 /**

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
-import type { ScheduleSession, Student } from '@/src/types/database';
+import type { ScheduleSession, Student } from '@/src/types';
 
 const GRADE_COLOR_MAP: { [key: string]: string } = {
   TK: 'bg-pink-400 hover:bg-pink-500',

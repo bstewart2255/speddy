@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { SidebarSection } from './sidebar-section';
 import type { ProviderOption } from '../../../../../../lib/supabase/queries/staff';
-import type { YardDutyAssignment } from '@/src/types/database';
+import type { YardDutyAssignment } from '@/src/types';
 
 interface ProvidersPanelProps {
   providers: ProviderOption[];

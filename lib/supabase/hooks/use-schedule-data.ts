@@ -7,7 +7,7 @@ import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
-import type { Database, SchoolHour } from '../../../src/types/database';
+import type { Database, SchoolHour } from '@/src/types';
 
 type Student = Database['public']['Tables']['students']['Row'];
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];

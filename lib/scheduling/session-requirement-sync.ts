@@ -6,7 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { deleteOrArchiveTemplate } from '@/lib/supabase/queries/schedule-sessions';
 

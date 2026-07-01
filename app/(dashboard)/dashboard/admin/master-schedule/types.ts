@@ -17,4 +17,4 @@ export interface BellScheduleWithCreator {
 }
 
 // Re-export from database types for convenience
-export type { YardDutyAssignment } from '@/src/types/database';
+export type { YardDutyAssignment } from '@/src/types';

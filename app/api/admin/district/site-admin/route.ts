@@ -1,6 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { Database } from '@/src/types/database';
+import { Database } from '@/src/types';
 import { logger } from '@/lib/logger';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { withRoute } from '@/lib/api/with-route';

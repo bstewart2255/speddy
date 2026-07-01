@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '../contexts/toast-context';
 import { cn } from '@/src/utils/cn';
 import { useSchool } from '@/app/components/providers/school-context';
-import { ScheduleSession } from '@/src/types/database';
+import { ScheduleSession } from '@/src/types';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
 import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';

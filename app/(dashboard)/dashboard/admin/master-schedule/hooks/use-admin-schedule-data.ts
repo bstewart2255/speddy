@@ -6,7 +6,7 @@ import { getYardDutyAssignments } from '../../../../../../lib/supabase/queries/y
 import { getSchoolStaffMembers, getSchoolProviders } from '../../../../../../lib/supabase/queries/staff';
 import { getSchoolHoursBySchoolId } from '../../../../../../lib/supabase/queries/school-hours';
 import { getInstructionSchedules } from '../../../../../../lib/supabase/queries/instruction-schedules';
-import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { BellScheduleWithCreator } from '../types';
 

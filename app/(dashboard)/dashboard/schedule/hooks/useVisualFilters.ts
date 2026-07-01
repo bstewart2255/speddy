@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Teacher } from '../types/teacher';
-import type { Student } from '@/src/types/database';
+import type { Student } from '@/src/types';
 
 export type VisualFilters = {
   grade: string | null;

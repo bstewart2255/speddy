@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 import type {
   Student,
   ScheduleSession,

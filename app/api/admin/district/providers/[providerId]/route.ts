@@ -1,6 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { Database } from '@/src/types/database';
+import { Database } from '@/src/types';
 import { logger } from '@/lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { withRoute } from '@/lib/api/with-route';
