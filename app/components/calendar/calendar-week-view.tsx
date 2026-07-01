@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createClient } from '@/lib/supabase/client';
-import type { Database } from "@/src/types/database";
+import type { Database } from "@/src/types";
 import type { LessonContent } from "@/lib/types/lesson";
 import { AIContentModal } from "../ai-content-modal";
 import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";

@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
-import type { BellSchedule, SpecialActivity, Student } from '@/src/types/database';
+import type { BellSchedule, SpecialActivity, Student } from '@/src/types';
 import type { Teacher } from '../types/teacher';
 
 interface ConflictFilterPanelProps {

@@ -1,4 +1,4 @@
-import type { ScheduleSession } from '@/src/types/database';
+import type { ScheduleSession } from '@/src/types';
 import type { SessionFilter } from './session-filters';
 
 export type AssignmentUpdate = {

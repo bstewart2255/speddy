@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 
 interface RateLimitResult {
   allowed: boolean;

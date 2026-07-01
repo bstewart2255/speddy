@@ -9,7 +9,7 @@ import { addInstructionSchedule } from '../../../../../../lib/supabase/queries/i
 import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES, INSTRUCTION_SUBJECTS } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
-import type { Teacher, YardDutyAssignment, SpecialActivity } from '@/src/types/database';
+import type { Teacher, YardDutyAssignment, SpecialActivity } from '@/src/types';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';

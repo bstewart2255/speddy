@@ -1,4 +1,4 @@
-import type { ScheduleSession } from '@/src/types/database';
+import type { ScheduleSession } from '@/src/types';
 
 /**
  * Type representing a fully scheduled session with non-null scheduling fields

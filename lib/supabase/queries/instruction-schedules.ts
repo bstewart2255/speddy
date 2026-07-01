@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { getCurrentSchoolYear } from '@/lib/school-year';
-import type { InstructionSchedule } from '@/src/types/database';
+import type { InstructionSchedule } from '@/src/types';
 
 /**
  * Fetch all instruction schedules for a school/year.

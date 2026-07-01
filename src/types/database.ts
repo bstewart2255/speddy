@@ -4571,25 +4571,3 @@ export const Constants = {
     },
   },
 } as const
-
-
-export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
-export type Student = Database['public']['Tables']['students']['Row'];
-export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
-export type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
-export type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
-export type SchoolHour = Database['public']['Tables']['school_hours']['Row'];
-export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type School = Database['public']['Tables']['schools']['Row'];
-export type District = Database['public']['Tables']['districts']['Row'];
-export type Teacher = Database['public']['Tables']['teachers']['Row'];
-export type Staff = Database['public']['Tables']['staff']['Row'];
-export type StaffHours = Database['public']['Tables']['staff_hours']['Row'];
-export type YardDutyAssignment = Database['public']['Tables']['yard_duty_assignments']['Row'];
-export type InstructionSchedule = Database['public']['Tables']['instruction_schedules']['Row'];
-
-// CARE module types
-export type CareReferral = Database['public']['Tables']['care_referrals']['Row'];
-export type CareCase = Database['public']['Tables']['care_cases']['Row'];
-export type CareMeetingNote = Database['public']['Tables']['care_meeting_notes']['Row'];
-export type CareActionItem = Database['public']['Tables']['care_action_items']['Row'];

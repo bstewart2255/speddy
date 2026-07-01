@@ -9,7 +9,7 @@ import type {
   SchoolHour,
   SpecialActivity,
   Student,
-} from '@/src/types/database';
+} from '@/src/types';
 import type { Teacher } from '../types/teacher';
 import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
 

@@ -15,7 +15,7 @@ import {
 } from '@/lib/supabase/queries/admin-dashboard';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
-import type { District, Profile } from '@/src/types/database';
+import type { District, Profile } from '@/src/types';
 
 type AdminPermission = Awaited<ReturnType<typeof getCurrentAdminPermissions>>[number];
 

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { Database } from '@/src/types/database';
+import { Database } from '@/src/types';
 import { logger } from '@/lib/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { withRoute } from '@/lib/api/with-route';

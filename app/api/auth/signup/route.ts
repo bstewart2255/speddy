@@ -2,7 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { Database } from '@/src/types/database';
+import { Database } from '@/src/types';
 import { asyncHandler, ErrorFactory } from '@/lib/error-handler';
 import { logger } from '@/lib/logger';
 

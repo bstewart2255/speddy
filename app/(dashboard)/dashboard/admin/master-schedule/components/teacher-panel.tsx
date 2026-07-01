@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { SidebarSection } from './sidebar-section';
-import type { Teacher, YardDutyAssignment } from '@/src/types/database';
+import type { Teacher, YardDutyAssignment } from '@/src/types';
 
 interface TeacherPanelProps {
   teachers: Teacher[];

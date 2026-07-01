@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DEFAULT_SCHEDULING_CONFIG } from '../../../../../lib/scheduling/scheduling-config';
-import type { ScheduleSession } from '@/src/types/database';
+import type { ScheduleSession } from '@/src/types';
 
 export interface ScheduleDragPosition {
   day: number;

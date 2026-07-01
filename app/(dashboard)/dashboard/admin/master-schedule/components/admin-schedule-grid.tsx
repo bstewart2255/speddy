@@ -10,7 +10,7 @@ import { CreateItemModal } from './create-item-modal';
 import { EditItemModal } from './edit-item-modal';
 import { DailyTimeMarker } from './daily-time-marker';
 import { removeRotationGroupMember } from '../../../../../../lib/supabase/queries/rotation-groups';
-import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types/database';
+import type { SpecialActivity, Teacher, YardDutyAssignment, SchoolHour, InstructionSchedule } from '@/src/types';
 import type { StaffWithHours, ProviderOption } from '../../../../../../lib/supabase/queries/staff';
 import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-duty-zones';
 import type { BellScheduleWithCreator } from '../types';

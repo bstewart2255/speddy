@@ -20,7 +20,7 @@ import { useOtherProviderSessions } from './hooks/useOtherProviderSessions';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { filterScheduleSessions } from './utils/session-filters';
 import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
-import type { ScheduleSession } from '@/src/types/database';
+import type { ScheduleSession } from '@/src/types';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();

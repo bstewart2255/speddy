@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { ScheduleSession } from '@/src/types/database';
+import { ScheduleSession } from '@/src/types';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 interface OptimisticUpdate {

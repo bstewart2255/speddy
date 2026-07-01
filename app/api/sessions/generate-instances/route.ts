@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createInstancesFromTemplate, getSchoolYearEndDate, InstanceGenerationOptions } from '@/lib/services/session-instance-generator';
 import { log } from '@/lib/monitoring/logger';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 import { withRoute } from '@/lib/api/with-route';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];

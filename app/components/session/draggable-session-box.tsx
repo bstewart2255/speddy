@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ScheduleSession } from '@/src/types/database';
+import { ScheduleSession } from '@/src/types';
 import { cn } from '@/src/utils/cn';
 
 export interface DraggableSessionBoxProps {

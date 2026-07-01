@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 import { compressImage, validateImageFile, extractImageMetadata } from '@/lib/image-utils';
 import { trackEvent, getDeviceType } from '@/lib/analytics-client';
 import { 

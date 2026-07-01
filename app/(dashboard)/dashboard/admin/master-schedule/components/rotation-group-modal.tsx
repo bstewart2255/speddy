@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../../../../../components/ui/button';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../../../../lib/constants/activity-types';
-import type { Teacher } from '@/src/types/database';
+import type { Teacher } from '@/src/types';
 import {
   createRotationPair,
   createRotationGroup,

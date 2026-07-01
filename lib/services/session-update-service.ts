@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types/database';
+import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
 import { formatDateLocal } from '@/lib/utils/date-helpers';

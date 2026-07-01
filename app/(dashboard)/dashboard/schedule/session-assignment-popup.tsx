@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
 import { formatTime } from '@/lib/utils/time-options';
-import type { Database, ScheduleSession, Student } from '@/src/types/database';
+import type { Database, ScheduleSession, Student } from '@/src/types';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
 type ScheduleSessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { ScheduleSession } from '@/src/types/database';
+import { ScheduleSession } from '@/src/types';
 import { format, parse } from 'date-fns';
 import { useToast } from '@/app/contexts/toast-context';
 

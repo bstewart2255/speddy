@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { Database } from '@/src/types/database';
+import { Database } from '@/src/types';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { log } from '@/lib/monitoring/logger';

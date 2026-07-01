@@ -15,7 +15,7 @@ import type {
   SchoolHour,
   SpecialActivity,
   Student,
-} from '@/src/types/database';
+} from '@/src/types';
 import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
 import type { Teacher } from '../types/teacher';
 import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';

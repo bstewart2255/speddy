@@ -1,5 +1,5 @@
 import { SessionGenerator } from './session-generator';
-import type { Database } from '@/src/types/database';
+import type { Database } from '@/src/types';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 

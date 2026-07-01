@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { StudentSessionGroup } from './student-session-group';
-import type { ScheduleSession, Student } from '@/src/types/database';
+import type { ScheduleSession, Student } from '@/src/types';
 
 interface UnscheduledSessionsPanelProps {
   unscheduledSessions: ScheduleSession[];
