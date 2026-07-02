@@ -319,7 +319,17 @@ learning specialists serving several campuses is common in both segments).
 ## Appendix — Verification record
 
 **Confirmed findings:** 7 synthesized from 21 claims, each passing a 3-voter
-adversarial panel (votes shown inline above).
+adversarial panel. Claim → source map:
+
+| # | Finding (section) | Confidence | Panel vote | Sources |
+|---|---|---|---|---|
+| F1 | Charter segment size & growth (§1.1) | High | 3-0 ×4 merged claims | [NCES Fast Facts #30](https://nces.ed.gov/fastfacts/display.asp?id=30); [NCES CoE charter enrollment](https://nces.ed.gov/programs/coe/indicator/cgb/public-charter-enrollment) |
+| F2 | Charter SWD enrollment rates & distribution (§1.1) | High | 3-0 ×2 | [GAO-12-543](https://www.gao.gov/products/gao-12-543); 2024 Center for Learner Equity analysis of 2020-21 CRDC |
+| F3 | Equitable services owned/funded by districts (§1.3) | High | 3-0 ×3 | 34 CFR 300.130–300.144 (ecfr.gov); [US ED IDEA Q&A, rev. Feb 2022](https://sites.ed.gov/idea); [WA PAVE](https://wapave.org/navigating-special-education-private-school/) |
+| F4 | Private schools' discretionary learning-support layer (§1.3) | Medium | 3-0 ×3 | [NAIS Independent Ideas, Aug 2022](https://www.nais.org/learn/independent-ideas/august-2022/is-your-school-ready-to-support-neurodiversity/) (single secondary source) |
+| F5 | EdMod adjacent-not-direct competitor; Presence acquisition (§1.4) | Medium | 3-0 ×3 | [educationmodified.com](https://educationmodified.com/); info.educationmodified.com charter webinar; pulse2.com acquisition coverage, May 2026 |
+| F6 | SEIS near-saturation of CA SELPAs; no scheduling features (§1.2) | High | 3-0 ×5 | [seis.org](https://seis.org/); [El Dorado Charter SELPA guides](https://charterselpa.org/); SJCOE/CEDR documentation; cross-checked vs SIRAS's claimed footprint |
+| F7 | Sales-led, per-site buying process (§1.5) | Medium | 3-0 ×2 | [EdMod district pricing](https://educationmodified.com/district-pricing/); NAIS Aug 2022 (directional — one vendor + one article) |
 
 **Refuted claims (do not rely on these):**
 - Own-LEA vs district-arm charter SPED responsibility binary (0-3, GAO-12-543).
