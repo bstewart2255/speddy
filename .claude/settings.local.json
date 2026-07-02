@@ -98,7 +98,8 @@
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__get_issue",
       "mcp__Linear__save_issue",
       "mcp__Linear__save_project",
-      "mcp__Supabase__create_branch"
+      "mcp__Supabase__create_branch",
+      "Workflow(deep-research)"
     ],
     "deny": []
   },
