@@ -290,12 +290,6 @@ export default function LoginForm() {
         Continue with Google
       </button>
 
-      <p className="hidden text-center text-sm text-gray-600">
-        Don&apos;t have an account?{' '}
-        <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
-          Sign up
-        </Link>
-      </p>
       <div className="text-xs text-gray-500 mb-4 text-center">
         By using this service, you agree to our{' '}
         <Link href="/terms" className="text-blue-600 hover:text-blue-500">

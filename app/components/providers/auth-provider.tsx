@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { User } from "@supabase/supabase-js";
 import { supabase } from "../../../lib/supabase/client";
 import { useRouter, usePathname } from "next/navigation";
-import { validatePassword } from "../../../lib/utils/password-validation";
 import { useActivityTracker } from "../../../lib/hooks/use-activity-tracker";
 import { TimeoutWarningModal } from "../auth/timeout-warning-modal";
 import { SESSION_CONFIG, isExemptRoute } from "../../../lib/config/session-timeout";
@@ -15,30 +14,15 @@ interface AuthContextType {
   initialized: boolean;
   checkSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (
-    email: string,
-    password: string,
-    metadata: SignUpMetadata,
-  ) => Promise<{ error: Error | null }>;
   signOut: (isTimeoutLogout?: boolean) => Promise<void>;
   extendSession: () => void;
   keepAlive: (activityType: string) => void;
 }
 
-interface SignUpMetadata {
-  full_name: string;
-  role: string;
-  state: string;
-  school_district: string;
-  school_site: string;
-  works_at_multiple_schools?: boolean;
-  additional_schools?: string[];
-}
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Define public routes that don't need auth
-const PUBLIC_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password', '/how-it-works'];
+const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password', '/how-it-works'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -107,88 +91,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (
-    email: string,
-    password: string,
-    metadata: SignUpMetadata & { works_at_multiple_schools?: boolean },
-  ) => {
-    try {
-      setLoading(true);
-
-      // Validate password requirements
-      const passwordValidation = validatePassword(password);
-      if (!passwordValidation.isValid) {
-        throw new Error(passwordValidation.errors[0]);
-      }
-
-      // Role mapping from form values to database values
-      const roleMap: { [key: string]: string } = {
-        resource_specialist: "resource",
-        speech_therapist: "speech",
-        occupational_therapist: "ot",
-        counselor: "counseling",
-        program_specialist: "specialist",
-        sea: "sea",
-        other: "resource",
-      };
-
-      const dbRole = roleMap[metadata.role] || metadata.role;
-
-      // Validate district email domain (case-insensitive)
-      const emailDomain = email.split("@")[1]?.toLowerCase();
-      if (
-        !emailDomain ||
-        (!emailDomain.endsWith(".edu") &&
-          !emailDomain.endsWith(".org") &&
-          !emailDomain.includes(".k12.") &&
-          !emailDomain.endsWith(".gov") &&
-          !emailDomain.endsWith(".us"))
-      ) {
-        throw new Error("Please use your district email address");
-      }
-
-      // Validate school site name (no abbreviations)
-      if (metadata.school_site.length < 5 || !/\s/.test(metadata.school_site)) {
-        throw new Error(
-          "Please enter your full school site name (no abbreviations - and spell correctly!)",
-        );
-      }
-
-      // Use our API route to handle signup with profile creation
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          metadata: {
-            full_name: metadata.full_name,
-            state: metadata.state,
-            school_district: metadata.school_district,
-            school_site: metadata.school_site,
-            role: dbRole,
-            works_at_multiple_schools: metadata.works_at_multiple_schools || false,
-            additional_schools: metadata.additional_schools || []
-          },
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Signup failed');
-      }
-
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const signOut = useCallback(async (isTimeoutLogout = false) => {
     try {
       if (typeof window !== 'undefined') {
@@ -246,7 +148,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initialized,
     checkSession,
     signIn,
-    signUp,
     signOut,
     extendSession,
     keepAlive,
