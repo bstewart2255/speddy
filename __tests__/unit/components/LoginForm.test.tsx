@@ -27,7 +27,8 @@ describe('LoginForm', () => {
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
-    expect(screen.getByText(/don't have an account/i)).toBeInTheDocument()
+    // Self-signup removed (SPE-111): admin-only account creation, so the login
+    // page no longer offers a "Don't have an account? Sign up" link.
   })
 
   it('clears stale lastActivity on mount so a fresh login is not auto-timed-out', () => {
