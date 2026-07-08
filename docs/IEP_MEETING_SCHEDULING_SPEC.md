@@ -164,8 +164,9 @@ rep, one conference room) — is enforced internally by site rules regardless.
 
 - **Contact info is not currently imported** (not in the SEIS import today).
   Capture manually at first "invite the family": prompt the case manager for
-  name, phone and/or email, preferred language, preferred channel; store on
-  the student for reuse (annuals recur — collect once, "still current?" nudge
+  name, phone and/or email, preferred language, preferred channel; persist in
+  `student_parent_contacts` (§11) for reuse — not on `student_details`, to
+  avoid duplicating parent PII (annuals recur — collect once, "still current?" nudge
   each fall). This is **new PII entering Speddy** → update
   `docs/data-inventory.md` and the NDPA docs when built. Future enhancement:
   SEIS holds parent contact info; extend the import.
@@ -212,9 +213,11 @@ from manual-pick to auto-assembly.
 - **District IT:** Workspace admins can block third-party OAuth apps; some
   districts will need to allowlist Speddy — a one-time, per-district
   conversation, same trust surface as the IEP data Speddy already holds.
-  Free/busy-read is the easiest scope class to get approved. Fallback for
-  no-sharing districts: domain-wide delegation via district admin consent
-  (more IT friction, zero per-teacher steps) — validate demand before building.
+  Free/busy-read is the easiest scope class to get approved. In a no-sharing
+  district, v1's supported path is per-user OAuth connects (each relevant staff
+  member connects once). Domain-wide delegation via district admin consent
+  (zero per-user steps, more IT friction) is a **possible future fallback,
+  explicitly out of v1** (§12) — validate demand before building it.
 - **Token security:** encrypted at rest, minimal scopes, revocation handling,
   no tokens in logs. This is a genuinely new security surface in a FERPA app —
   it gets its own review before launch (and is a natural first consumer of
