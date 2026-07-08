@@ -98,7 +98,8 @@
       "mcp__52287d5e-942b-4bb1-a760-a897e4851102__get_issue",
       "mcp__Linear__save_issue",
       "mcp__Linear__save_project",
-      "mcp__Supabase__create_branch"
+      "mcp__Supabase__create_branch",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__unsubscribe_pr_activity"
     ],
     "deny": []
   },
