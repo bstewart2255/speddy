@@ -127,6 +127,43 @@ describe('getSlotConflicts', () => {
     expect(conflicts.map(c => c.kind)).toContain('blackout');
   });
 
+  it('names site_capacity and meeting_overlap conflicts', () => {
+    const conflicts = getSlotConflicts(
+      { date: '2027-03-02', start_minutes: 885, end_minutes: 945 },
+      {
+        site: SITE,
+        attendees: [FREE_ATTENDEE],
+        existingMeetings: [
+          { date: '2027-03-02', start_minutes: 900, end_minutes: 960 },
+        ],
+      }
+    );
+    expect(conflicts.map(c => c.kind)).toEqual(
+      expect.arrayContaining(['site_capacity', 'meeting_overlap'])
+    );
+  });
+
+  it('names attendee_busy and attendee_unavailable conflicts', () => {
+    const busyTeacher: AttendeeConstraints = {
+      key: 'busy-teacher',
+      busy: [
+        { day_of_week: 2, start_minutes: 885, end_minutes: 945, source: 'session' },
+      ],
+    };
+    const prepOnlyTeacher: AttendeeConstraints = {
+      key: 'prep-teacher',
+      busy: [],
+      availableWindows: [{ start_minutes: 0, end_minutes: 800 }],
+    };
+    const conflicts = getSlotConflicts(
+      { date: '2027-03-02', start_minutes: 885, end_minutes: 945 },
+      { site: SITE, attendees: [busyTeacher, prepOnlyTeacher], existingMeetings: [] }
+    );
+    const kinds = conflicts.map(c => c.kind);
+    expect(kinds).toContain('attendee_busy');
+    expect(kinds).toContain('attendee_unavailable');
+  });
+
   it('returns empty for a valid slot', () => {
     const conflicts = getSlotConflicts(
       { date: '2027-03-02', start_minutes: 885, end_minutes: 945 },

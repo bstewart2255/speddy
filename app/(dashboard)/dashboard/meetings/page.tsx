@@ -113,7 +113,8 @@ export default function MeetingsPage() {
   const dueSoonCount = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + 60);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    // Local-date string, consistent with todayStr()/dueDate comparisons
+    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
     return unscheduled.filter(s => s.dueDate! <= cutoffStr).length;
   }, [unscheduled]);
 
@@ -161,8 +162,17 @@ export default function MeetingsPage() {
     setReserving(true);
     setError(null);
     try {
-      const count = await reserveMeetings(schoolId, drafts, planning.leaRep);
-      setReservedCount(count);
+      const { reserved, attendeesFailed } = await reserveMeetings(
+        schoolId,
+        drafts,
+        planning.leaRep
+      );
+      setReservedCount(reserved);
+      if (attendeesFailed) {
+        setError(
+          'Meetings were reserved, but some attendees could not be added — check each meeting and re-add missing team members.'
+        );
+      }
       setResults(null);
       setPlannerOpen(false);
       await load();

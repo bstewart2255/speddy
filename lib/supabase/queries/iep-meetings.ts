@@ -68,6 +68,7 @@ export async function getMyMeetings(
     .eq('school_id', schoolId)
     .neq('status', 'cancelled')
     .is('deleted_at', null)
+    .gte('scheduled_start', new Date().toISOString())
     .order('scheduled_start', { ascending: true });
 
   if (error) {
@@ -124,9 +125,20 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       supabase.rpc('get_school_site_admins', { p_school_id: schoolId }),
     ]);
 
-  if (studentsRes.error) {
-    console.error('Error fetching caseload:', studentsRes.error);
-    throw studentsRes.error;
+  // Every source feeds planning constraints — a silently-failed fetch would
+  // produce a plan that looks valid but ignores real conflicts.
+  const failures: [string, unknown][] = [
+    ['caseload', studentsRes.error],
+    ['site rules', rulesRes.error],
+    ['sessions', sessionsRes.error],
+    ['meetings', meetingsRes.error],
+    ['site admins', adminsRes.error],
+  ];
+  for (const [what, err] of failures) {
+    if (err) {
+      console.error(`Error fetching ${what}:`, err);
+      throw err;
+    }
   }
 
   const rules = rulesRes.data as SiteMeetingRules | null;
@@ -158,9 +170,10 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
     };
   });
 
+  const now = Date.now();
   const studentsWithMeetings = new Set(
     (meetingsRes.data ?? [])
-      .filter(m => (m.scheduled_start as string) >= new Date().toISOString())
+      .filter(m => new Date(m.scheduled_start as string).getTime() >= now)
       .map(m => m.student_id)
   );
 
@@ -292,7 +305,7 @@ export async function reserveMeetings(
   schoolId: string,
   drafts: MeetingDraft[],
   leaRep: { admin_id: string; full_name: string } | null
-): Promise<number> {
+): Promise<{ reserved: number; attendeesFailed: boolean }> {
   const supabase = createClient<Database>();
   const {
     data: { user },
@@ -358,25 +371,35 @@ export async function reserveMeetings(
     return rows;
   });
 
+  let attendeesFailed = false;
   if (attendeeRows.length > 0) {
     const { error: attendeeError } = await supabase
       .from('iep_meeting_attendees')
       .insert(attendeeRows);
     if (attendeeError) {
-      // Meetings exist; attendees can be re-added from the meeting view
+      // Meetings exist; surface the partial failure so the caller can warn
       console.error('Error adding attendees:', attendeeError);
+      attendeesFailed = true;
     }
   }
 
-  return inserted?.length ?? 0;
+  return { reserved: inserted?.length ?? 0, attendeesFailed };
 }
 
 export async function cancelMeeting(meetingId: string): Promise<void> {
   const supabase = createClient<Database>();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // RLS scopes updates to the school; restrict cancellation to the
+  // organizer at the query level as well.
   const { error } = await supabase
     .from('iep_meetings')
     .update({ status: 'cancelled' })
-    .eq('id', meetingId);
+    .eq('id', meetingId)
+    .eq('organizer_id', user.id);
   if (error) {
     console.error('Error cancelling meeting:', error);
     throw error;
