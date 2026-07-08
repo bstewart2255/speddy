@@ -497,6 +497,53 @@ export type Database = {
           },
         ]
       }
+      calendar_connections: {
+        Row: {
+          access_token_encrypted: string | null
+          created_at: string | null
+          id: string
+          profile_id: string
+          provider: string
+          refresh_token_encrypted: string | null
+          scopes: string[] | null
+          status: string
+          token_expires_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          created_at?: string | null
+          id?: string
+          profile_id: string
+          provider?: string
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          created_at?: string | null
+          id?: string
+          profile_id?: string
+          provider?: string
+          refresh_token_encrypted?: string | null
+          scopes?: string[] | null
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_connections_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_events: {
         Row: {
           all_day: boolean | null
@@ -1464,6 +1511,146 @@ export type Database = {
           },
         ]
       }
+      iep_meeting_attendees: {
+        Row: {
+          attendee_role: string
+          created_at: string | null
+          display_name: string | null
+          id: string
+          is_required: boolean
+          meeting_id: string
+          parent_contact_id: string | null
+          profile_id: string | null
+          rsvp_source: string | null
+          rsvp_status: string
+          updated_at: string | null
+        }
+        Insert: {
+          attendee_role: string
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          is_required?: boolean
+          meeting_id: string
+          parent_contact_id?: string | null
+          profile_id?: string | null
+          rsvp_source?: string | null
+          rsvp_status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          attendee_role?: string
+          created_at?: string | null
+          display_name?: string | null
+          id?: string
+          is_required?: boolean
+          meeting_id?: string
+          parent_contact_id?: string | null
+          profile_id?: string | null
+          rsvp_source?: string | null
+          rsvp_status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "iep_meeting_attendees_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "iep_meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "iep_meeting_attendees_parent_contact_id_fkey"
+            columns: ["parent_contact_id"]
+            isOneToOne: false
+            referencedRelation: "student_parent_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "iep_meeting_attendees_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      iep_meetings: {
+        Row: {
+          confirmation_log: string | null
+          created_at: string | null
+          deleted_at: string | null
+          due_date: string | null
+          google_event_id: string | null
+          id: string
+          location: string | null
+          meeting_type: string
+          organizer_id: string | null
+          scheduled_end: string | null
+          scheduled_start: string | null
+          school_id: string | null
+          status: string
+          student_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          confirmation_log?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          due_date?: string | null
+          google_event_id?: string | null
+          id?: string
+          location?: string | null
+          meeting_type?: string
+          organizer_id?: string | null
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          school_id?: string | null
+          status?: string
+          student_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          confirmation_log?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          due_date?: string | null
+          google_event_id?: string | null
+          id?: string
+          location?: string | null
+          meeting_type?: string
+          organizer_id?: string | null
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          school_id?: string | null
+          status?: string
+          student_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "iep_meetings_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "iep_meetings_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "iep_meetings_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instruction_schedules: {
         Row: {
           created_at: string | null
@@ -1920,6 +2107,54 @@ export type Database = {
             columns: ["sender_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parent_confirmation_tokens: {
+        Row: {
+          contact_id: string
+          created_at: string | null
+          expires_at: string
+          id: string
+          meeting_id: string
+          responded_at: string | null
+          response: string | null
+          token_hash: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          meeting_id: string
+          responded_at?: string | null
+          response?: string | null
+          token_hash: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          meeting_id?: string
+          responded_at?: string | null
+          response?: string | null
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_confirmation_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "student_parent_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_confirmation_tokens_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "iep_meetings"
             referencedColumns: ["id"]
           },
         ]
@@ -2874,6 +3109,50 @@ export type Database = {
         }
         Relationships: []
       }
+      site_meeting_rules: {
+        Row: {
+          allowed_windows: Json
+          blackout_ranges: Json
+          created_at: string | null
+          external_iep_calendar_id: string | null
+          id: string
+          max_meetings_per_day: number | null
+          rooms: string[] | null
+          school_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_windows?: Json
+          blackout_ranges?: Json
+          created_at?: string | null
+          external_iep_calendar_id?: string | null
+          id?: string
+          max_meetings_per_day?: number | null
+          rooms?: string[] | null
+          school_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_windows?: Json
+          blackout_ranges?: Json
+          created_at?: string | null
+          external_iep_calendar_id?: string | null
+          id?: string
+          max_meetings_per_day?: number | null
+          rooms?: string[] | null
+          school_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_meeting_rules_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: true
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       special_activities: {
         Row: {
           activity_name: string | null
@@ -3229,6 +3508,66 @@ export type Database = {
           },
         ]
       }
+      student_parent_contacts: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          preferred_channel: string | null
+          preferred_language: string | null
+          relationship: string | null
+          school_id: string | null
+          student_id: string
+          updated_at: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          preferred_channel?: string | null
+          preferred_language?: string | null
+          relationship?: string | null
+          school_id?: string | null
+          student_id: string
+          updated_at?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          preferred_channel?: string | null
+          preferred_language?: string | null
+          relationship?: string | null
+          school_id?: string | null
+          student_id?: string
+          updated_at?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_parent_contacts_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_parent_contacts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_performance_metrics: {
         Row: {
           accuracy_trend: Json | null
@@ -3369,6 +3708,60 @@ export type Database = {
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teacher_availability_prefs: {
+        Row: {
+          created_at: string | null
+          id: string
+          meeting_time_preference: string | null
+          prep_description: string | null
+          prep_end: string | null
+          prep_start: string | null
+          profile_id: string
+          school_id: string | null
+          school_year: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          meeting_time_preference?: string | null
+          prep_description?: string | null
+          prep_end?: string | null
+          prep_start?: string | null
+          profile_id: string
+          school_id?: string | null
+          school_year: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          meeting_time_preference?: string | null
+          prep_description?: string | null
+          prep_end?: string | null
+          prep_start?: string | null
+          profile_id?: string
+          school_id?: string | null
+          school_year?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_availability_prefs_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teacher_availability_prefs_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
             referencedColumns: ["id"]
           },
         ]
