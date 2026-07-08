@@ -120,6 +120,38 @@ which give the compliance due windows directly.
   works). Non-responders trigger a "call the family" nudge to the case
   manager with an offline-confirmation log (§7).
 
+## 4.5 Navigation & entry points (UX)
+
+Principle: **one destination per persona who owns something, zero destinations
+for personas who just participate.**
+
+| Persona | Destination | Entry points |
+|---|---|---|
+| Case manager / provider | New **top-level nav item "Meetings"** (`/dashboard/meetings`) | Nav item; student detail modal (meeting section + "Schedule meeting"); provider-dashboard due-date widget ("3 annuals due in 60 days — 1 unscheduled") deep-linking into the planner |
+| Site admin | **"Meetings"** in the admin nav (beside Master Schedule) | Year-at-a-glance dashboard; site rules setup lives here as a settings surface within the page (visited ~once/year, not its own nav item) |
+| Gen-ed teacher | **None (deliberate)** | One-time dismissible fall card on the teacher dashboard (availability prompt); everything else arrives as Google Calendar invites. A read-only "upcoming meetings for my students" card is a possible later add — not v1 |
+| SEA | None | Not a required IEP-team role; attend via invite when added manually |
+| Parent | **No dashboard, no login** | Standalone, mobile-first tokenized route (e.g. `/meet/[token]`) outside the auth'd `/dashboard` tree; one job: confirm or pick a time — the "confirm a doctor's appointment by text" pattern |
+
+Why "Meetings" is top-level for providers, not nested in the Schedule dropdown:
+
+1. **Different mental model** — Schedule is the recurring service-delivery week
+   (sessions, bell schedules); meetings are dated one-off multi-person events
+   with statuses and a compliance clock.
+2. **Secondary gating** — the Schedule group is in `SECONDARY_HIDDEN_HREFS`
+   (hidden at secondary sites, §9 of ARCHITECTURE.md), but meetings must work
+   K-12. Top-level keeps the feature out of that blast radius. Do **not** add
+   `/dashboard/meetings` to the hidden set.
+
+Naming: the nav label is **"Meetings"** (future-proof for CARE-lane initials,
+504s, SSTs in v2+); "IEP meeting" remains the type label within the feature.
+
+Contextual entry points matter more than the nav item for adoption — case
+managers think student-first, so the student modal and the due-date nudges are
+expected to be the most-used doors; the nav item is the home, not the main door.
+First visit to `/dashboard/meetings` runs the setup checklist (connect Google,
+site rules if admin, etc.).
+
 ## 5. Availability engine
 
 Busy time per person = union of available sources:
