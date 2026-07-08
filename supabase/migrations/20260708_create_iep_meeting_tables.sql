@@ -63,10 +63,14 @@ CREATE TABLE IF NOT EXISTS iep_meeting_attendees (
   meeting_id UUID NOT NULL REFERENCES iep_meetings(id) ON DELETE CASCADE,
 
   -- Exactly one identity: staff profile, parent contact, or free-text name
-  -- (interpreter, outside provider — keeps the manual path first-class)
+  -- (interpreter, outside provider — keeps the manual path first-class).
+  -- parent_contact_id cascades: with the exactly-one CHECK below, SET NULL
+  -- would make contact deletion fail.
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  parent_contact_id UUID REFERENCES student_parent_contacts(id) ON DELETE SET NULL,
+  parent_contact_id UUID REFERENCES student_parent_contacts(id) ON DELETE CASCADE,
   display_name TEXT,
+  CONSTRAINT iep_meeting_attendees_one_identity
+    CHECK (num_nonnulls(profile_id, parent_contact_id, display_name) = 1),
 
   attendee_role TEXT NOT NULL
     CHECK (attendee_role IN ('lea_rep', 'case_manager', 'teacher', 'provider', 'parent', 'other')),
@@ -303,8 +307,11 @@ CREATE POLICY "site_meeting_rules_insert" ON site_meeting_rules
     EXISTS (
       SELECT 1 FROM admin_permissions ap
       WHERE ap.admin_id = auth.uid()
-        AND (ap.school_id = site_meeting_rules.school_id
-             OR ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        AND (
+          (ap.role = 'site_admin' AND ap.school_id = site_meeting_rules.school_id)
+          OR (ap.role = 'district_admin'
+              AND ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        )
     )
   );
 
@@ -314,8 +321,11 @@ CREATE POLICY "site_meeting_rules_update" ON site_meeting_rules
     EXISTS (
       SELECT 1 FROM admin_permissions ap
       WHERE ap.admin_id = auth.uid()
-        AND (ap.school_id = site_meeting_rules.school_id
-             OR ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        AND (
+          (ap.role = 'site_admin' AND ap.school_id = site_meeting_rules.school_id)
+          OR (ap.role = 'district_admin'
+              AND ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        )
     )
   );
 
@@ -325,8 +335,11 @@ CREATE POLICY "site_meeting_rules_delete" ON site_meeting_rules
     EXISTS (
       SELECT 1 FROM admin_permissions ap
       WHERE ap.admin_id = auth.uid()
-        AND (ap.school_id = site_meeting_rules.school_id
-             OR ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        AND (
+          (ap.role = 'site_admin' AND ap.school_id = site_meeting_rules.school_id)
+          OR (ap.role = 'district_admin'
+              AND ap.district_id = (SELECT district_id FROM schools s WHERE s.id = site_meeting_rules.school_id))
+        )
     )
   );
 
