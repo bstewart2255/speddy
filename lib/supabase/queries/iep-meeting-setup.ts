@@ -106,11 +106,17 @@ export async function upsertMyTeacherAvailabilityPref(pref: {
   if (!user) throw new Error('Not authenticated');
 
   // school_id denormalized from the teacher's own profile for RLS reads
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('school_id')
     .eq('id', user.id)
     .single();
+
+  if (profileError) {
+    // Without school_id the pref would be invisible to organizers' scoped reads
+    console.error('Error fetching profile for availability pref:', profileError);
+    throw profileError;
+  }
 
   const { data, error } = await supabase
     .from('teacher_availability_prefs')

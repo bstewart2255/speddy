@@ -72,6 +72,19 @@ export default function AdminMeetingsPage() {
 
   const handleSave = async () => {
     if (!schoolId) return;
+    const invalidWindow = windows.some(
+      w => !w.start_time || !w.end_time || w.start_time >= w.end_time
+    );
+    const invalidBlackout = blackouts.some(
+      b => !b.start_date || !b.end_date || b.start_date > b.end_date
+    );
+    if (invalidWindow || invalidBlackout) {
+      setError(
+        'Each meeting window needs a start time before its end time, and each blackout needs a valid date range.'
+      );
+      return;
+    }
+    const parsedMaxPerDay = maxPerDay ? parseInt(maxPerDay, 10) : NaN;
     setSaving(true);
     setError(null);
     try {
@@ -83,7 +96,7 @@ export default function AdminMeetingsPage() {
         allowed_windows: windows,
         blackout_ranges: blackouts,
         rooms: rooms.length ? rooms : null,
-        max_meetings_per_day: maxPerDay ? parseInt(maxPerDay, 10) : null,
+        max_meetings_per_day: parsedMaxPerDay > 0 ? parsedMaxPerDay : null,
         external_iep_calendar_id: calendarId.trim() || null,
       });
       setSavedAt(new Date());

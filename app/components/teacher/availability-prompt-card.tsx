@@ -49,9 +49,14 @@ export function AvailabilityPromptCard() {
   }, [dismissKey, schoolYear]);
 
   const showPrepFields = preference === 'prep' || preference === 'any';
+  // Prep times are the scheduler's only availability source for secondary
+  // teachers — a prep preference without times would be unusable and the
+  // prompt never re-asks once a row exists.
+  const prepTimesMissing = showPrepFields && (!prepStart || !prepEnd);
+  const canSave = !!preference && !prepTimesMissing;
 
   const handleSave = async () => {
-    if (!preference) return;
+    if (!canSave || !preference) return;
     setSaving(true);
     setError(null);
     try {
@@ -76,7 +81,11 @@ export function AvailabilityPromptCard() {
   };
 
   const handleDismiss = () => {
-    localStorage.setItem(dismissKey, '1');
+    try {
+      localStorage.setItem(dismissKey, '1');
+    } catch {
+      // Storage unavailable (e.g. private mode) — still hide for this session
+    }
     setVisible(false);
   };
 
@@ -163,10 +172,15 @@ export function AvailabilityPromptCard() {
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-4">
-        <Button size="sm" onClick={handleSave} disabled={!preference} isLoading={saving}>
+      <div className="mt-4 flex items-center gap-3">
+        <Button size="sm" onClick={handleSave} disabled={!canSave} isLoading={saving}>
           Save availability
         </Button>
+        {preference && prepTimesMissing && (
+          <span className="text-sm text-blue-700">
+            Enter your prep start and end times to save.
+          </span>
+        )}
       </div>
     </div>
   );
