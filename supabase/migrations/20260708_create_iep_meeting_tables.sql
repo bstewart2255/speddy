@@ -180,7 +180,7 @@ CREATE UNIQUE INDEX idx_iep_meeting_attendees_unique_profile
   ON iep_meeting_attendees(meeting_id, profile_id) WHERE profile_id IS NOT NULL;
 
 -- Keep updated_at fresh on UPDATE (update_updated_at_column() defined in
--- 20250820_add_student_assessments_table.sql)
+-- 20250830_fix_function_search_paths.sql)
 CREATE TRIGGER update_student_parent_contacts_updated_at
   BEFORE UPDATE ON student_parent_contacts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
