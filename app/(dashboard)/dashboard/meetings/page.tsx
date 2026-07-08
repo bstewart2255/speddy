@@ -5,6 +5,7 @@ import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { useSchool } from '@/app/components/providers/school-context';
 import {
+  DEFAULT_MEETING_WINDOWS,
   minutesToTime,
   planMeetings,
   type AttendeeConstraints,
@@ -127,11 +128,16 @@ export default function MeetingsPage() {
       }
       return { key: student.id, dueDate: student.dueDate, attendees };
     });
+    // No admin-configured windows yet? Case managers aren't blocked —
+    // fall back to general school-day hours and say so in the UI.
+    const site = planning.hasSiteRules
+      ? planning.site
+      : { ...planning.site, windows: DEFAULT_MEETING_WINDOWS };
     const planned = planMeetings(requests, {
       from: todayStr(),
       to: horizon,
       durationMinutes: 60,
-      site: planning.site,
+      site,
       existingMeetings: planning.existingMeetings,
     });
     setResults(planned);
@@ -274,13 +280,14 @@ export default function MeetingsPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-1">
             Plan meetings
           </h2>
-          {!planning?.hasSiteRules ? (
-            <p className="text-gray-600 text-sm">
-              Your site admin hasn&apos;t set meeting windows yet — planning
-              needs the school&apos;s allowed meeting times. Ask them to fill
-              in Meetings settings on the admin dashboard.
-            </p>
-          ) : unscheduled.length === 0 ? (
+          {planning && !planning.hasSiteRules && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm mb-4">
+              Your site admin hasn&apos;t set meeting windows yet, so drafts
+              use general school-day hours (Mon–Fri, 8:00–4:00). Once site
+              rules are configured, planning will respect them automatically.
+            </div>
+          )}
+          {unscheduled.length === 0 ? (
             <p className="text-gray-600 text-sm">
               Nothing to plan — every student with an upcoming IEP due date
               already has a meeting scheduled. Students without due dates on

@@ -78,6 +78,16 @@ export interface FindSlotsParams {
   limit?: number;
 }
 
+/**
+ * Fallback when a site has no admin-configured meeting windows yet:
+ * general school-day hours, all weekdays. Attendee constraints (sessions,
+ * prep windows) still apply; the UI shows a notice that these are
+ * defaults, not site rules.
+ */
+export const DEFAULT_MEETING_WINDOWS: DayWindow[] = [1, 2, 3, 4, 5].map(
+  day_of_week => ({ day_of_week, start_time: '08:00', end_time: '16:00' })
+);
+
 export function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + (m || 0);
