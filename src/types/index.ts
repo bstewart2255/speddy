@@ -29,6 +29,15 @@ export type CareCase = Database['public']['Tables']['care_cases']['Row'];
 export type CareMeetingNote = Database['public']['Tables']['care_meeting_notes']['Row'];
 export type CareActionItem = Database['public']['Tables']['care_action_items']['Row'];
 
+// IEP meeting scheduling types
+export type IepMeeting = Database['public']['Tables']['iep_meetings']['Row'];
+export type IepMeetingAttendee = Database['public']['Tables']['iep_meeting_attendees']['Row'];
+export type StudentParentContact = Database['public']['Tables']['student_parent_contacts']['Row'];
+export type ParentConfirmationToken = Database['public']['Tables']['parent_confirmation_tokens']['Row'];
+export type CalendarConnection = Database['public']['Tables']['calendar_connections']['Row'];
+export type SiteMeetingRules = Database['public']['Tables']['site_meeting_rules']['Row'];
+export type TeacherAvailabilityPref = Database['public']['Tables']['teacher_availability_prefs']['Row'];
+
 // Table insert types (for INSERT operations)
 export type BellScheduleInsert = Database['public']['Tables']['bell_schedules']['Insert'];
 export type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
@@ -39,6 +48,9 @@ export type StudentDetailsInsert = Database['public']['Tables']['student_details
 export type TeacherInsert = Database['public']['Tables']['teachers']['Insert'];
 export type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
 export type AdminPermissionInsert = Database['public']['Tables']['admin_permissions']['Insert'];
+export type IepMeetingInsert = Database['public']['Tables']['iep_meetings']['Insert'];
+export type IepMeetingAttendeeInsert = Database['public']['Tables']['iep_meeting_attendees']['Insert'];
+export type StudentParentContactInsert = Database['public']['Tables']['student_parent_contacts']['Insert'];
 
 // Table update types (for UPDATE operations)
 export type BellScheduleUpdate = Database['public']['Tables']['bell_schedules']['Update'];
