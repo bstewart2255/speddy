@@ -230,11 +230,16 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
   ) as string[];
   const teacherConstraints = new Map<string, AttendeeConstraints>();
   if (teacherProfileIds.length > 0) {
-    const { data: prefs } = await supabase
+    const { data: prefs, error: prefsError } = await supabase
       .from('teacher_availability_prefs')
       .select('*')
       .in('profile_id', teacherProfileIds)
       .eq('school_year', getCurrentSchoolYear());
+    if (prefsError) {
+      // A swallowed failure would silently drop teachers' prep constraints
+      console.error('Error fetching teacher availability prefs:', prefsError);
+      throw prefsError;
+    }
     for (const pref of prefs ?? []) {
       // Prep windows are hard constraints when times exist; before/after
       // school preferences stay soft until bell-schedule/school-hours
