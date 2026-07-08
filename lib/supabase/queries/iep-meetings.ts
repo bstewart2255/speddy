@@ -45,8 +45,14 @@ export interface PlanningData {
   leaRep: { admin_id: string; full_name: string } | null;
 }
 
-/** Meetings this user organizes, soonest first (cancelled/deleted excluded). */
-export async function getMyMeetings(): Promise<MeetingListItem[]> {
+/**
+ * Meetings this user organizes at one school, soonest first
+ * (cancelled/deleted excluded). School-scoped so itinerant providers see
+ * only the active school's meetings.
+ */
+export async function getMyMeetings(
+  schoolId: string
+): Promise<MeetingListItem[]> {
   const supabase = createClient<Database>();
   const {
     data: { user },
@@ -59,6 +65,7 @@ export async function getMyMeetings(): Promise<MeetingListItem[]> {
       '*, students(initials, grade_level), iep_meeting_attendees(id, attendee_role, rsvp_status, display_name, profile_id)'
     )
     .eq('organizer_id', user.id)
+    .eq('school_id', schoolId)
     .neq('status', 'cancelled')
     .is('deleted_at', null)
     .order('scheduled_start', { ascending: true });

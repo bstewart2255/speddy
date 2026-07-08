@@ -51,9 +51,10 @@ function formatTimestamp(ts: string | null): string {
 }
 
 function defaultHorizon(): string {
-  // End of the current school year (June 30)
+  // End of the current school year: June 30, rolling to next year from
+  // July onward so the default is never in the past.
   const now = new Date();
-  const year = now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear();
+  const year = now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
   return `${year}-06-30`;
 }
 
@@ -84,7 +85,7 @@ export default function MeetingsPage() {
     setError(null);
     try {
       const [meetingList, planningData] = await Promise.all([
-        getMyMeetings(),
+        getMyMeetings(schoolId),
         getPlanningData(schoolId),
       ]);
       setMeetings(meetingList);
@@ -118,7 +119,10 @@ export default function MeetingsPage() {
 
   const runPlanner = useCallback(() => {
     if (!planning) return;
-    const requests = unscheduled.map(student => {
+    // The horizon filters by DUE DATE (spec §2.1): "plan meetings due
+    // through [date]" — students due later wait for the next planning pass.
+    const inHorizon = unscheduled.filter(s => s.dueDate! <= horizon);
+    const requests = inHorizon.map(student => {
       const attendees: AttendeeConstraints[] = [
         { key: 'organizer', busy: planning.organizerBusy },
       ];
