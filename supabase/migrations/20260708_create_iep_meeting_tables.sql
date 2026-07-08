@@ -179,6 +179,27 @@ CREATE INDEX idx_teacher_availability_prefs_school ON teacher_availability_prefs
 CREATE UNIQUE INDEX idx_iep_meeting_attendees_unique_profile
   ON iep_meeting_attendees(meeting_id, profile_id) WHERE profile_id IS NOT NULL;
 
+-- Keep updated_at fresh on UPDATE (update_updated_at_column() defined in
+-- 20250820_add_student_assessments_table.sql)
+CREATE TRIGGER update_student_parent_contacts_updated_at
+  BEFORE UPDATE ON student_parent_contacts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_iep_meetings_updated_at
+  BEFORE UPDATE ON iep_meetings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_iep_meeting_attendees_updated_at
+  BEFORE UPDATE ON iep_meeting_attendees
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_calendar_connections_updated_at
+  BEFORE UPDATE ON calendar_connections
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_site_meeting_rules_updated_at
+  BEFORE UPDATE ON site_meeting_rules
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_teacher_availability_prefs_updated_at
+  BEFORE UPDATE ON teacher_availability_prefs
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Enable RLS
 ALTER TABLE student_parent_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE iep_meetings ENABLE ROW LEVEL SECURITY;

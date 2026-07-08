@@ -51,6 +51,10 @@ export type AdminPermissionInsert = Database['public']['Tables']['admin_permissi
 export type IepMeetingInsert = Database['public']['Tables']['iep_meetings']['Insert'];
 export type IepMeetingAttendeeInsert = Database['public']['Tables']['iep_meeting_attendees']['Insert'];
 export type StudentParentContactInsert = Database['public']['Tables']['student_parent_contacts']['Insert'];
+export type ParentConfirmationTokenInsert = Database['public']['Tables']['parent_confirmation_tokens']['Insert'];
+export type CalendarConnectionInsert = Database['public']['Tables']['calendar_connections']['Insert'];
+export type SiteMeetingRulesInsert = Database['public']['Tables']['site_meeting_rules']['Insert'];
+export type TeacherAvailabilityPrefInsert = Database['public']['Tables']['teacher_availability_prefs']['Insert'];
 
 // Table update types (for UPDATE operations)
 export type BellScheduleUpdate = Database['public']['Tables']['bell_schedules']['Update'];
