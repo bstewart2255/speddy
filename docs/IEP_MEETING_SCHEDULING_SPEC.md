@@ -50,9 +50,10 @@ Not a per-meeting Calendly clone. Three connected capabilities:
 
 Speddy is uniquely positioned because it already holds most of the inputs: the
 team (profiles, roles, student↔case-manager/teacher links), provider service
-schedules (`schedule_sessions`), bell schedules and special activities, and the
-IEP date per student (`student_details.goals_iep_date`, from the SEIS import),
-from which annual-review due windows are computable.
+schedules (`schedule_sessions`), bell schedules and special activities, and the upcoming IEP/triennial dates per
+student (`student_details.upcoming_iep_date` / `upcoming_triennial_date`,
+populated by the SEIS extension import and editable in the student modal),
+which give the compliance due windows directly.
 
 ## 3. Design principles (load-bearing — do not trade away)
 
@@ -221,9 +222,15 @@ from manual-pick to auto-assembly.
 
 ## 10. Compliance layer
 
-- Due windows computed from `student_details.goals_iep_date` (annual = +1yr;
-  triennials flagged). Precedent for deadline-driven workflows: CARE Lane B's
-  15-day assessment-plan timeline.
+- Due dates come from `student_details.upcoming_iep_date` and
+  `upcoming_triennial_date` — the authoritative deadline fields (SEIS import
+  writes `futureIepDate` → `upcoming_iep_date`; also manually editable in the
+  student modal). Do **not** derive deadlines from `goals_iep_date` — that is
+  the goals-effective date used only for goal-staleness validation; deriving
+  "+1yr" from it would ignore manually maintained deadlines. Where an upcoming
+  date is missing, `goals_iep_date + 1yr` may serve as a *suggested* fallback,
+  clearly flagged for confirmation. Precedent for deadline-driven workflows:
+  CARE Lane B's 15-day assessment-plan timeline.
 - Dashboard: upcoming due dates without a scheduled meeting ("annual due in 45
   days — start scheduling"), at-risk flags (meeting scheduled after due date,
   parent unresponsive), June rollup (meetings held, % inside window, average
