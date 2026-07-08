@@ -36,10 +36,21 @@ the email problem in a different UI and will not be adopted.
 
 Not a per-meeting Calendly clone. Three connected capabilities:
 
-1. **Fall bulk planner** — generate and reserve the entire year's IEP meetings
-   from the caseload's IEP due dates, respecting everyone's availability and
-   the site's capacity rules. Parents are not contacted at this stage; these
-   are internal reservations delivered as ordinary Google Calendar invites.
+1. **Bulk planner** — generate and reserve IEP meetings from the caseload's
+   IEP due dates, respecting everyone's availability and the site's capacity
+   rules. Parents are not contacted at this stage; these are internal
+   reservations delivered as ordinary Google Calendar invites.
+   The **planning horizon is a parameter, not a fixed year**: "plan meetings
+   due through [date]", with full-year as the default preset (others: through
+   winter break, this semester). Meetings place relative to due dates, so
+   filtering by "due within horizon" is natural — a spring annual needs no
+   fall reservation. The planner is **idempotent and incremental**: re-running
+   it never touches existing reservations, only fills gaps (students newly due
+   within an extended horizon, mid-year move-ins, new initials). A
+   **horizon-expiry nudge** ("N meetings due after [horizon end] aren't
+   scheduled — plan the next window?") ensures partial planning never silently
+   becomes missed deadlines. This also serves cautious adoption: a skeptical
+   site can plan "just through October," see reservations hold, then extend.
 2. **Confirmation pass** — ~4–6 weeks before each meeting, bring the family in:
    the parent gets a tokenized link (no account, no login) to confirm the
    reserved time or pick from pre-validated alternatives.
@@ -90,8 +101,9 @@ which give the compliance due windows directly.
   point Speddy at an existing shared IEP Calendar if one exists. Gets the
   year-at-a-glance dashboard: every meeting, color-coded by status
   (reserved / confirmed / held / at-risk), plus June compliance stats.
-- **Case manager** (organizer): connects Google once. Runs the fall planner
-  over their caseload: Speddy drafts a full-year placement honoring due
+- **Case manager** (organizer): connects Google once. Runs the bulk planner
+  over their caseload at a horizon of their choosing (full year, semester,
+  etc.): Speddy drafts placements honoring due
   windows and all constraints, flags unplaceable students for manual
   resolution, supports drag-to-adjust with live conflict re-check, then
   "Reserve all." Later: per-meeting confirmation nudges, reschedules.
@@ -266,7 +278,8 @@ and per principle #1 must not be constrained by them.
 ## 12. Phasing
 
 **V1 (the coherent minimum — smaller cuts recreate the email problem):**
-fall bulk planner; availability engine with the §5 sources; Google OAuth +
+bulk planner with selectable horizon + incremental re-runs; availability
+engine with the §5 sources; Google OAuth +
 organizer-centric free/busy; native event creation + RSVP watch; site rules +
 IEP-calendar read + published feed; confirmation pass with tokenized parent
 links + offline path + manual contact capture; reschedule flow; due-date
