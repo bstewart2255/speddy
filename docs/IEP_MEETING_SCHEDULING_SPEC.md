@@ -1,6 +1,7 @@
 # IEP Meeting Scheduling — Product & Technical Spec (Draft)
 
-> **Status:** Draft for discussion — not yet scheduled for build.
+> **Status:** Direction agreed — §13 questions resolved by the product owner;
+> not yet scheduled for build.
 > **Last updated:** 2026-07-08.
 > **Companion reading:** `docs/ARCHITECTURE.md` §1 (roles), §6 (scheduling model),
 > §9 (elementary vs secondary). Related tickets: SPE-194 (one-teacher-per-student
@@ -288,24 +289,37 @@ dashboard basics.
 **Explicitly out of v1:** Outlook/M365; two-way sync beyond RSVP; domain-wide
 delegation; SEIS parent-contact import; secondary auto-assembly (needs
 SPE-194/181); translation beyond the initial language set; legal meeting-notice
-generation; per-teacher OAuth.
+generation; per-teacher OAuth; initial-IEP and amendment meetings (v1 is
+annuals/triennials only — the CARE Lane B integration for initials is v2+,
+per §13.6; the `meeting_type` enum still models them so nothing needs a
+migration when they land).
 
-## 13. Open questions (validate before build)
+## 13. Resolved questions (decided 2026-07-08, product owner)
 
-1. **Governance:** who owns the fall plan — site admin or each case manager?
-   Probably shapes the UX more than any technical choice. (Lean: case manager
-   drafts own caseload; admin sees/approves the site-wide picture.)
-2. **Trust in September bookings:** will admins treat reserved slots as real
-   holds, or as suggestions to be trampled? Interview 2–3 site admins.
-3. **Calendar-sharing prevalence:** confirmed pattern is admin/SpEd/district
-   sharing with heavy calendarers, teachers rarely. Validate across 2–3
-   districts that this holds (it's what the organizer-centric model rides on).
-4. **District IT posture** on third-party OAuth apps — sample a few districts.
-5. **Parent contact quality:** how often does the case manager actually have a
-   working email/phone at confirmation time?
-6. **Amendments/initials:** v1 targets annuals/triennials (computable dates).
-   Initial IEPs come from the CARE Lane B pipeline — natural integration
-   point, but is it v1?
+Originally open validation questions; all six are now decided and the rest of
+this spec is written to match.
+
+1. **Governance — decided:** the **case manager** is responsible for
+   scheduling out their caseload's IEPs. The site admin consumes the
+   site-wide dashboard; they don't own the plan.
+2. **Trust in September bookings — decided:** admins honor IEP holds on
+   their calendar. Last-minute conflicts happen (that's what the reschedule
+   flow is for), but a reserved slot is treated as real, not a suggestion.
+3. **Calendar depth — decided:** the **free/busy model is sufficient**. No
+   deeper calendar integration is needed; don't build past it.
+4. **District IT — decided:** districts will allowlist Speddy's OAuth app
+   provided it is properly vetted (verification, minimal scopes, security
+   documentation). There is no meaningful alternative path — any calendar
+   read passes the same Workspace app gate — so vetting/allowlisting is the
+   plan, with manual slot entry as the degradation for the unapproved gap.
+5. **Parent contact — decided:** case managers reliably have at least one
+   good family contact, but it lives outside Speddy today. The §7/§11
+   capture flow (`student_parent_contacts`) is therefore a **required v1
+   piece**, not a nice-to-have — it's what moves that contact from the case
+   manager's head into the product.
+6. **Amendments/initials — decided:** **v2 or later.** V1 is
+   annuals/triennials only; the CARE Lane B integration for initial IEPs is
+   deferred.
 
 ## 14. Security & FERPA notes
 
