@@ -10,6 +10,7 @@ import {
 } from '@/lib/supabase/queries/teacher-portal';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { AvailabilityPromptCard } from '@/app/components/teacher/availability-prompt-card';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -244,6 +245,8 @@ export default function TeacherDashboardPage() {
           Manage your students in resource and coordinate with resource specialists
         </p>
       </div>
+
+      <AvailabilityPromptCard />
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 mb-8">

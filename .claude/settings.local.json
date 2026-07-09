@@ -99,7 +99,8 @@
       "mcp__Linear__save_issue",
       "mcp__Linear__save_project",
       "mcp__Supabase__create_branch",
-      "Workflow(deep-research)"
+      "Workflow(deep-research)",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__unsubscribe_pr_activity"
     ],
     "deny": []
   },

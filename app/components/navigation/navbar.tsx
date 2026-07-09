@@ -123,6 +123,7 @@ export default function Navbar() {
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Master Schedule', href: '/dashboard/admin/master-schedule' },
+        { name: 'Meetings', href: '/dashboard/admin/meetings' },
         { name: 'Teachers', href: '/dashboard/admin/teachers' },
         { name: 'Providers', href: '/dashboard/admin/providers' },
         { name: 'Staff', href: '/dashboard/admin/staff' },
@@ -160,6 +161,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Meetings', href: '/dashboard/meetings' },
         { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Chat', href: '/dashboard/chat' },
         { name: 'CARE', href: '/dashboard/care' },
@@ -178,6 +180,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Meetings', href: '/dashboard/meetings' },
         { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Chat', href: '/dashboard/chat' },
       ];
@@ -195,6 +198,7 @@ export default function Navbar() {
             { name: 'Special Activities', href: '/dashboard/special-activities' }
           ]
         },
+        { name: 'Meetings', href: '/dashboard/meetings' },
         { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Chat', href: '/dashboard/chat' },
       ];

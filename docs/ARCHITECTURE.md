@@ -261,8 +261,9 @@ erDiagram
 
 ## 4. Account Creation & Invite Flows
 
-Accounts are **created by admins**, not by end users. There are three relevant
-paths — one real, one dead, one broken:
+Accounts are **created by admins**, not by end users. Self-signup has been
+**removed** (SPE-111, PR #678); the remaining paths are one real (admin
+creation), one broken (`send_invite`), plus Google SSO sign-in:
 
 ```mermaid
 flowchart TD
@@ -273,7 +274,7 @@ flowchart TD
     A["Admin creates teacher"] -->|"/api/admin/create-teacher-account"| OK["auth user + profile + teacher row<br/>site-admin gated, rollback on failure,<br/>returns one-time temp password to admin"]
     OK --> T
 
-    B["Self-signup /signup"] --> DEAD["DEAD — admin-only model now<br/>(SPE-111: slated for removal)"]
+    B["Self-signup /signup"] --> GONE["REMOVED at app level (SPE-111, PR #678)<br/>⚠ Supabase Auth enable_signup still TRUE →<br/>direct /auth/v1/signup via anon key still creates<br/>an account until disabled in the dashboard"]
 
     C["send_invite checkbox"] -->|"admin-accounts.ts:436-440"| NOOP["SILENT NO-OP — only console.warn<br/>(SPE-95: admin thinks invite sent)"]
 
@@ -292,9 +293,16 @@ flowchart TD
 - **Profile auto-creation trigger:** `on_auth_user_created → handle_new_user()`
   creates a `profiles` row (default role `resource`) for **every** new auth
   user. This is why the SSO gate (§5) can't rely on "profile exists".
-- **Dead — SPE-111 (High):** the self-signup UI (`app/(auth)/signup/*`) and
-  `app/api/auth/signup/route.ts` plus subscription/billing remnants are dead
-  code in the admin-only model; slated for removal.
+- **Removed — SPE-111 (done, PR #678):** the self-signup UI (`app/(auth)/signup/*`),
+  `app/api/auth/signup/route.ts`, the auth-provider `signUp()`, and the `/signup`
+  route-allowlist entries are **deleted** — account creation is admin-only. (There
+  were no real subscription/billing remnants — only an unused `STRIPE_ERROR` enum.)
+  > **Residual gap (open):** the app-level removal does **not** disable Supabase
+  > Auth itself. `enable_signup = true` (`supabase/config.toml`) plus the
+  > `handle_new_user` trigger means a direct `POST /auth/v1/signup` with the public
+  > anon key still creates an auth user + profile. To fully enforce admin-only,
+  > **disable Auth-level email signup in the production Supabase dashboard.** Safe:
+  > all admin flows use `auth.admin.createUser`, which bypasses `enable_signup`.
 - **Broken — SPE-95 (Urgent):** the `send_invite` branch in
   `lib/supabase/queries/admin-accounts.ts:436-440` only `console.warn`s — no
   invite, no auth user. Admins believe a teacher was invited when nothing
@@ -606,7 +614,7 @@ Captured while mapping the model (the board + this doc). Status as of
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
 | **SPE-95** | Urgent | Account creation | `send_invite` teacher flow is a silent no-op (`admin-accounts.ts:436-440`). |
-| **SPE-111** | High | Cleanup | Remove dead self-signup + subscription/billing code (admin-only model now). |
+| **SPE-111** | High | Cleanup / Security | ✅ App-level self-signup removed (PR #678). **Still open:** disable production Supabase Auth `enable_signup` — a direct `/auth/v1/signup` via the anon key still creates an account (see §4 residual gap). No real billing remnants existed. |
 | **SPE-169** | High | Security/FERPA | Build real audit logging; `audit_logs` table + `logAccess()` exist but are unwired/empty. |
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
