@@ -359,6 +359,8 @@ function PillGroup<T extends string>({
         {label}
       </span>
       <div
+        role="group"
+        aria-label={label}
         style={{
           display: 'inline-flex',
           padding: 4,
@@ -487,6 +489,7 @@ export default function SpeddyLanding() {
           background: '#FFF',
           padding: `clamp(44px, 7vw, 76px) ${SECTION_X} clamp(40px, 6vw, 60px)`,
           textAlign: 'center',
+          scrollMarginTop: 80,
         }}
       >
         <div
@@ -642,7 +645,10 @@ export default function SpeddyLanding() {
       </section>
 
       {/* What you get */}
-      <section id="how" style={{ padding: `clamp(56px, 9vw, 96px) ${SECTION_X}` }}>
+      <section
+        id="how"
+        style={{ padding: `clamp(56px, 9vw, 96px) ${SECTION_X}`, scrollMarginTop: 80 }}
+      >
         <div style={{ textAlign: 'center', marginBottom: 'clamp(36px, 5vw, 52px)' }}>
           <div
             style={{
