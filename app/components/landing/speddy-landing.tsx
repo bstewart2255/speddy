@@ -311,7 +311,7 @@ function resolve(sel: Sel): Resolved {
   }
 
   const supporting =
-    'Teachers see when their students are pulled and flag their own class activities; SEAs get a daily plan of exactly where to be; families confirm meeting times by text or phone — no account, ever.';
+    'Teachers see when their students are pulled and flag their own class activities, SEAs get a daily plan of exactly where to be, and families confirm meeting times by phone or email — with no account needed.';
 
   const stamp = (c: RawCap): Cap => {
     const s = ST[c.status];
