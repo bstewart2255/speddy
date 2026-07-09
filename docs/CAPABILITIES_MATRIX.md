@@ -161,9 +161,9 @@ chain. The organizer sees everyone's availability without asking anyone.
   triennial due dates. Speddy drafts times that respect the whole team's
   availability and the site's capacity, flags students it can't place, and
   reserves the rest as real calendar holds.
-- **Site dashboard:** year-at-a-glance for the admin — every meeting,
-  color-coded by status, plus compliance stats (due dates without a meeting,
-  at-risk meetings).
+- **Site dashboard (planned):** year-at-a-glance for the admin — every
+  meeting, color-coded by status, plus compliance stats (due dates without a
+  meeting, at-risk meetings).
 - **Family confirmation (planned):** ~4–6 weeks out, the family gets a
   text/email in their home language with a one-tap confirm or pre-validated
   alternative times. No parent account, ever. A phone-call path is
@@ -266,7 +266,9 @@ entering data.
   exactly where to be and with whom. SEAs belong to the school, so any
   provider there can coordinate with them.
 - Chat: built-in messaging between staff at the school — the scheduling
-  conversation happens next to the schedule.
+  conversation happens next to the schedule. Available to providers, site
+  admins, and teachers; SEAs and district admins are deliberately excluded
+  from the chat module.
 - Teacher portal: teachers see when their students are pulled and add their
   own class activities (Library day, field trips) that providers'
   conflict-detection respects.
@@ -306,12 +308,12 @@ in charter networks and private-school learning-support teams.
 |---|---|---|---|---|---|
 | Provider schedule building | 👁 | 👁 | ✅ | 👁 (their students) | 👁 (assigned sessions) |
 | Master Schedule (bells, specials, yard duty) | 👁 | ✅ | ✏️ (can enter site data; consumes it) | ✏️ (own class activities) | — |
-| IEP meeting calendaring 🗓️ | 👁 (planned) | ✅ rules + dashboard | ✅ planner + reschedule | ✏️ one-time availability; receives invites | — |
+| IEP meeting calendaring 🗓️ | 👁 (planned) | 🔶 rules setup shipped; dashboard planned | 🗓️ planner in review; reschedule planned | ✏️ one-time availability (shipped) | — |
 | Referral tracking (CARE) | 👁 across schools | ✅ oversight | ✅ works the queue | ✏️ submits + follows | 👁 |
 | Student & caseload management | 👁 across schools | 👁 school-wide | ✅ | 👁 (their students) | 👁 (their students) |
 | Lesson planning & materials | — | — | ✅ | — | 👁 view-only |
 | Progress monitoring & assessment | 👁 | 👁 | ✅ | — | ✏️ (curriculum progress) |
-| Team coordination & chat | — | ✅ | ✅ | ✅ | ✅ |
+| Team coordination & chat | — | ✅ | ✅ | ✅ | 🔶 session assignments only — no chat (excluded by design) |
 | Staff & account administration | ✅ district-wide | ✅ site | — | — | — |
 | Multi-school support | ✅ (scope is the district) | — | ✅ | — | — |
 
@@ -326,7 +328,7 @@ never change with level.
 |---|---|---|---|
 | Provider schedule building | ✅ | 🗓️ hidden today; period-based scheduling is the Middle/High module roadmap | 🗓️ same as middle |
 | Master Schedule (site admin) | ✅ | ✅ | ✅ |
-| IEP meeting calendaring | 🗓️ ✅ auto-assembles the team (single classroom teacher) | 🗓️ ✅ case manager picks the gen-ed teacher(s) | 🗓️ same as middle |
+| IEP meeting calendaring | 🗓️ auto-assembles the team (single classroom teacher) | 🗓️ case manager picks the gen-ed teacher(s) | 🗓️ same as middle |
 | Referral tracking (CARE) | ✅ | ✅ | ✅ |
 | Student & caseload management | ✅ full, incl. sessions/minutes and attendance | 🔶 caseload-first: goals, accommodations, assessments; session/attendance fields hidden | 🔶 same as middle |
 | Lesson planning & materials | ✅ (Plan calendar + materials) | 🔶 materials are grade-driven and work; the Plan calendar is hidden | 🔶 same as middle |
@@ -338,17 +340,25 @@ never change with level.
 **Honest summary for the landing page:** elementary is the complete product;
 middle/high is a solid caseload-management, meetings, and referral product
 today, with period-based scheduling in active development. K-8 and K-12
-campuses run the elementary experience.
+campuses are classified as elementary, so nothing is hidden — the
+elementary-shaped scheduling tools serve their lower grades, and their upper
+grades share the same period-based-scheduling roadmap as middle/high.
 
 ---
 
 ## 5. Matrix — feature group × school type
 
+**Reading the Private column:** it grades how well each capability *fits* a
+private school's learning-support work, not whether a private school can sign
+up today — they can't yet. Onboarding a standalone private school requires the
+org-model work noted in the Staff & account administration row and the
+type-by-type read below (today every school must sit under a district).
+
 | Feature group | Public district | Charter | Private / independent |
 |---|---|---|---|
 | Provider schedule building | ✅ | ✅ as-is | ✅ mechanics transfer directly to learning-support sessions |
 | Master Schedule (site admin) | ✅ | ✅ as-is | ✅ as-is (bell schedules and specials exist everywhere) |
-| IEP meeting calendaring | 🗓️ | 🗓️ as-is (charters run IEPs) | 🔶 reframed: support-plan / family meetings — same engine, no IDEA clock |
+| IEP meeting calendaring | 🗓️ | 🗓️ as-is (charters run IEPs) | 🗓️ reframed: support-plan / family meetings — same engine, no IDEA clock |
 | Referral tracking (CARE) | ✅ both lanes, incl. the private-school referral intake **received by the district** | ✅ both lanes | 🔶 discussion lane fits (internal concern → learning-support review); the statutory compliance lane doesn't apply |
 | Student & caseload management | ✅ IEP-organized | ✅ IEP-organized | 🔶 the goal/accommodation/minutes mechanics fit **support plans**; IEP-specific fields (triennials, IDEA categories) don't apply |
 | Lesson planning & materials | 🔶 (AI flag) | 🔶 same | 🔶 same — grade-driven, not school-type-driven |
