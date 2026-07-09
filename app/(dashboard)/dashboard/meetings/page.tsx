@@ -110,6 +110,15 @@ export default function MeetingsPage() {
     [planning]
   );
 
+  const missingDueDateCount = useMemo(
+    () =>
+      (planning?.caseload ?? []).filter(
+        s =>
+          !s.hasUpcomingMeeting && (!s.dueDate || s.dueDate < todayStr())
+      ).length,
+    [planning]
+  );
+
   const dueSoonCount = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + 60);
@@ -303,9 +312,21 @@ export default function MeetingsPage() {
           )}
           {unscheduled.length === 0 ? (
             <p className="text-gray-600 text-sm">
-              Nothing to plan — every student with an upcoming IEP due date
-              already has a meeting scheduled. Students without due dates on
-              file need one added in their student details first.
+              {missingDueDateCount > 0 ? (
+                <>
+                  Nothing to plan yet — {missingDueDateCount} of your{' '}
+                  {planning?.caseload.length ?? 0} students{' '}
+                  {missingDueDateCount === 1 ? 'has' : 'have'} no upcoming IEP
+                  date on file. Add an Upcoming IEP or Triennial date in each
+                  student&apos;s details (or run the SEIS import) and they&apos;ll
+                  appear here ready to schedule.
+                </>
+              ) : (
+                <>
+                  Nothing to plan — every student with an upcoming IEP due
+                  date already has a meeting scheduled.
+                </>
+              )}
             </p>
           ) : (
             <>
