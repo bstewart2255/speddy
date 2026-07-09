@@ -418,7 +418,10 @@ export default function SpeddyLanding() {
         background: '#F3F5F8',
         minHeight: '100%',
         width: '100%',
-        overflowX: 'hidden',
+        // `clip` (not `hidden`) guards against horizontal overflow WITHOUT
+        // turning this wrapper into a scroll container — `overflow-x: hidden`
+        // would promote overflow-y to `auto` and break the sticky selector bar.
+        overflowX: 'clip',
       }}
     >
       <style>{RESPONSIVE_CSS}</style>

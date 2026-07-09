@@ -888,8 +888,13 @@ function StructuralMock() {
 // ── CARE · referral queue ───────────────────────────────────────────
 function CareMock({ type }: { type: SchoolType }) {
   const priv = type === 'private';
+  // Private schools run a discretionary learning-support program; the statutory
+  // compliance lane (and its clock) belongs to the local district. So for private
+  // we drop the Compliance case + running-clock badge to match the page copy.
   const cases = [
-    { name: 'R. Okafor · 2nd', type: 'Compliance', c: '#DC2626', bg: '#FEE2E2', due: 'Plan due Feb 3', lane: priv ? 'Learning-support review' : 'Assessment plan · 15 days' },
+    priv
+      ? { name: 'R. Okafor · 2nd', type: 'Academic', c: '#3B82F6', bg: '#DBEAFE', due: 'Review Feb 3', lane: 'Learning-support review' }
+      : { name: 'R. Okafor · 2nd', type: 'Compliance', c: '#DC2626', bg: '#FEE2E2', due: 'Plan due Feb 3', lane: 'Assessment plan · 15 days' },
     { name: 'T. Nguyen · 4th', type: 'Behavioral', c: '#F59E0B', bg: '#FEF3C7', due: 'SST Feb 11', lane: 'Action items · 2 open' },
     { name: 'M. Silva · 1st', type: 'Academic', c: '#3B82F6', bg: '#DBEAFE', due: 'Review Feb 18', lane: 'Discussion lane' },
     { name: 'K. Brooks · 5th', type: 'Speech', c: '#A78BFA', bg: '#EDE9FE', due: 'Follow-up Feb 24', lane: 'Active case' },
@@ -914,18 +919,20 @@ function CareMock({ type }: { type: SchoolType }) {
             4 active cases
           </div>
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            padding: '4px 10px',
-            borderRadius: 999,
-            background: '#FEE2E2',
-            color: '#DC2626',
-          }}
-        >
-          1 clock running
-        </span>
+        {priv ? null : (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: '#FEE2E2',
+              color: '#DC2626',
+            }}
+          >
+            1 clock running
+          </span>
+        )}
       </div>
       <div style={{ padding: '6px 12px' }}>
         {cases.map((c, i) => (
