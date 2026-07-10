@@ -43,9 +43,11 @@ the production database that:
 These are the rules that make "fake data in prod" survivable. Every script and
 every future addition to the sim district must preserve all seven.
 
-1. **Everything is manifest-keyed.** Every sim row either carries a fixed ID
-   declared in the manifest or foreign-keys (directly or transitively) to one.
-   No exceptions, no ad-hoc rows.
+1. **Everything is manifest-keyed.** Every sim row either carries a
+   manifest-owned ID — fixed in the manifest, or deterministically derived
+   from the manifest's UUIDv5 namespace + natural keys, so the full set is
+   enumerable from the manifest without DB access — or foreign-keys
+   (directly or transitively) to one. No exceptions, no ad-hoc rows.
 2. **No unscoped writes, ever.** Seed/teardown scripts never issue a delete or
    update whose WHERE clause is not an equality match on a manifest-owned
    identity — a fixed manifest ID, a `SIM-` district/school id, or the
@@ -84,7 +86,7 @@ or query result — and collision-proof against real NCES/CDS data:
 | Org display names | Start with `Sim ` | `Sim Willow Elementary` |
 | People (profiles, teachers, student_details, CARE names) | Surname ends `-Sim` | `Rachel Okafor-Sim` |
 | Emails | All under one sim domain | `rsp.willow@sim.speddy.test` |
-| Domain-row UUIDs (students, sessions, …) | Fixed UUIDs checked into the manifest | stable across reseeds |
+| Domain-row UUIDs (students, sessions, …) | Fixed in the manifest, or UUIDv5-derived from the manifest's namespace + natural key — either way enumerable from the manifest alone | stable across reseeds |
 
 **Email domain — recommendation: `sim.speddy.test`.** `.test` is an
 IETF-reserved TLD: mail is undeliverable by design, and nobody can ever own
@@ -99,8 +101,10 @@ notifications to a real mailbox). If a feature someday needs to test actual
 mail delivery, that is a §10 lifecycle decision — design per-channel
 suppression first — not a standing carve-out.
 *Implementation prerequisite:* verify app-side email validation accepts
-`.test` addresses; if anything rejects them, fall back to a subdomain we own
-(e.g. `sim.speddy.app`) with no MX record — still never a personal inbox.
+`.test` addresses. If anything rejects them, that is an implementation
+**blocker** to surface to the owner — fix the over-strict validator (`.test`
+is an RFC-reserved TLD) or explicitly re-decide the namespace together;
+never a silent fallback to a different domain.
 
 **Auth users** are keyed by email in the manifest (Supabase assigns their
 UUIDs at creation; a lookup helper resolves email → id at runtime). All other
@@ -183,7 +187,7 @@ doesn't earn its place with a distinct behavior, it's not in v1.
 | 5 | Rachel Okafor-Sim | `resource` | Willow | `rsp.willow` | Single-site RSP **at the CA statutory cap (28 students)** — the densest realistic schedule; supervises the SEA; bell schedules, groups |
 | 6 | Alicia Grant-Sim | `resource` | Maple | `rsp.maple` | Second RSP: cross-provider district rollups; provider at a school with **no site admin**; mid-size caseload |
 | 7 | Victor Chen-Sim | `resource` | Redwood | `rsp.redwood` | Provider whose **only** site is secondary → the trimmed UX is his entire experience (contrast with Jun, who sees both) |
-| 8 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the SLP cap (48 of 55)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
+| 8 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the 55-case SLP average (48)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
 | 9 | Jun Park-Sim | `ot` | Maple (primary) + Redwood | `ot.itinerant` | **Both UXes on one login** — elementary UX at Maple, trimmed secondary UX at Redwood (§9's exact scenario); OT service type |
 | 10 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
 | 11 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
@@ -213,8 +217,11 @@ admin. Each is a small manifest addition when a feature actually targets it.
 
 **126 student rows** across five caseloads, sized to CA reality (owner
 decision, 2026-07-10): California caps resource specialist caseloads at
-**28** and SLP caseloads at **55**; OT has no CA statutory cap (seeded at a
-typical ~18). The sim deliberately seeds the lead RSP **at cap** — if Speddy
+**28** (Ed Code §56362 — a hard per-provider cap) and sets a **55-case
+average** for SLPs (Ed Code §56363.3 — a SELPA-wide average, not a
+per-provider cap; local plans may allow more); OT has no CA statutory cap
+(seeded at a typical ~18). The sim deliberately seeds the lead RSP **at
+cap** — if Speddy
 strains anywhere at legal caseload sizes (students list, schedule grid,
 dashboards), the sim district should be the first place that shows, not a
 real school.
@@ -228,7 +235,7 @@ exists, including that quirk:
 | Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 4 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); 2 in a group session |
 | Alicia (RSP) | Maple | 12 | provider + caseload at a school with no site admin |
 | Victor (RSP) | Redwood | 20 | secondary-only site: full caseload/goals/accommodations data, **no session instances** (see §7) |
-| Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (cap 55)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster |
+| Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (of the 55 average)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster |
 | Jun (OT) | Maple 8 · Redwood 10 | 18 | elementary + high-school split on one login |
 
 **The manifest holds generator rules, not 126 hand-written rows.** Per
@@ -236,7 +243,10 @@ caseload: counts, grade distributions, teacher assignments, and
 minutes/frequency mixes — plus an explicit list of the edge-case rows above.
 Student UUIDs are UUIDv5 of a fixed namespace + natural key
 (`student:willow:rsp:007`), so generated rows keep stable, greppable IDs
-across reseeds without hand-maintaining a giant list.
+across reseeds without hand-maintaining a giant list. Because the namespace
+and natural keys live in the manifest, preflight, teardown, and verify
+enumerate exactly the same derived ID set — generated rows sit inside the
+same safety contract (invariants 1–2) as hand-fixed ones.
 
 Field conventions:
 
@@ -265,7 +275,7 @@ Small but representative; exact values live in the manifest.
 | `school_hours` | Per provider per **elementary** site they serve (table is provider-scoped). |
 | `special_activities` | Each elementary: PE / Music / Library entries against its teachers (school-wide visibility). |
 | `user_site_schedules` | Tomás: Willow Mon–Tue, Juniper Wed, Cedar Thu–Fri. Jun: Maple Mon–Wed, Redwood Thu–Fri. |
-| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — roughly 90 elementary-caseload students × 1–3/wk ≈ 700–900 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
+| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — 78 elementary-caseload students (Rachel 28 + Alicia 12 + Tomás 30 + Jun 8) × 1–3/wk over 4 weeks ≈ 550–700 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
 | `attendance` | Marked for most past-week instances (mix of present/absent with `absence_reason`). |
 | `teachers` | 3 linked (teacher login personas via `account_id`) + 11 record-only, across all five schools. |
 | `care_referrals` + case tree | 6 referrals across Willow, Cedar, and Redwood: **(a)** Lane A `teacher_concern` from Nora, `pending`; **(b)** Lane A `active` with `care_cases` row, 2 meeting notes, 1 action item assigned to Rachel, status history; **(c)** Lane B `parent_written_request` → born `initial` with case + `ap_due_date = request_received_date + 15 days`; **(d)** one `closed` (full lifecycle); **(e)** one **soft-deleted** (`deleted_at` set — verifies list exclusion); **(f)** one at Redwood referred by Naomi (secondary-site referral). Student names are free-text fictional (`Maya Torres-Sim`), loosely matching seeded students. Referrers spread across teacher/provider/admin. |
@@ -457,8 +467,9 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 3. **Naming:** "Sim Unified" + botanical school names — approved.
 4. **History depth:** 2 weeks back / 2 weeks forward — approved.
 5. **Caseloads at CA scale:** RSP seeded at the 28-student statutory cap;
-   SLP at 48 of the 55 cap; OT ~18. Standing requirement: the sim stays
-   valid at legal caseload maxima — realism is the point (§6).
+   SLP at 48 against CA's 55-case average threshold (§56363.3); OT ~18.
+   Standing requirement: the sim stays valid at legal caseload maxima —
+   realism is the point (§6).
 6. **Multi-site providers:** SLP across 3 sites, OT across 2 (one
    elementary + one secondary) — very common in real districts (§5).
 7. **Deferred roles** (`psychologist`, `counseling`, `intervention`):
