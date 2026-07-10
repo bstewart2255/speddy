@@ -14,6 +14,7 @@ import {
   assertProjectRef,
   createAdmin,
   deleteWhereIn,
+  idsForIdentity,
   requireYesFlag,
   resolveSimAuthUsers,
 } from './lib';
@@ -45,10 +46,7 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
 
   // 2. Swept tables — rows the app created during verification runs (invariant 4).
   for (const sweep of SWEPT_TABLES) {
-    const ids =
-      sweep.identity === 'user' ? simUserIds :
-      sweep.identity === 'student' ? simStudentIds :
-      SIM_SCHOOL_IDS;
+    const ids = idsForIdentity(sweep.identity, { users: simUserIds, students: simStudentIds });
     deleted[`${sweep.table} (swept)`] = await deleteWhereIn(admin, sweep.table, sweep.column, ids);
   }
 
