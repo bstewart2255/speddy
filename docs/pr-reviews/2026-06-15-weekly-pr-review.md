@@ -1,5 +1,11 @@
 # Weekly PR Quality Review — 2026-06-15
 
+> **Archival note (2026-07-10):** preserved verbatim from the orphaned branch
+> `claude/brave-albattani-bemp5e` (never PR'd) during branch cleanup. This is a
+> point-in-time review, not living guidance; post-hoc critiques of some of its
+> recommendations are recorded in the PR #693 review threads. Findings 1 and 2
+> are tracked as SPE-215 and SPE-216.
+
 **Period covered:** 2026-06-08 → 2026-06-15  
 **PRs reviewed:** 15 merged (#644 – #658)  
 **Verdict: Generally HIGH quality, 5 targeted findings logged below.**

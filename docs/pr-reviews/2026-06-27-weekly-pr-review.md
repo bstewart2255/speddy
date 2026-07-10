@@ -1,5 +1,12 @@
 # Weekly PR Quality Review — 2026-06-27
 
+> **Archival note (2026-07-10):** preserved verbatim from the orphaned branch
+> `claude/brave-albattani-7Wtyz` (never PR'd) during branch cleanup. The date in
+> the filename/title is the review's run date; it covers an earlier backlog
+> period (May 22 – June 1). This is a point-in-time review, not living
+> guidance; post-hoc critiques of some of its process recommendations are
+> recorded in the PR #693 review threads.
+
 **Period covered:** May 22 – June 1, 2026  
 **PRs reviewed:** #624–#643 (20 PRs)
 
