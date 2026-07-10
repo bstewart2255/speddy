@@ -12,7 +12,7 @@
   matching section (each ends with a "Source of truth" file list).
 - **Sim district:** permanent fake tenant in the prod DB for cross-role,
   end-to-end verification; spec + personas in `docs/SIM_DISTRICT.md`. Lifecycle:
-  `npm run sim:reset -- --yes`, `sim:verify`, `sim:teardown -- --yes` (env vars
+  `npm run sim:reset -- --yes`, `npm run sim:verify`, `npm run sim:teardown -- --yes` (env vars
   are configured in the Claude remote environment). Prefer resetting it before
   cross-role verification runs; only ever touch sim data through these scripts.
 
