@@ -241,16 +241,18 @@ function resolve(sel: Sel): Resolved {
   } else if (role === 'site') {
     hero = {
       eyebrow: 'For site admins — principals & APs',
-      h1: 'Your whole school’s schedule,',
+      h1: isSec ? 'Your whole SpEd program,' : 'Your whole school’s schedule,',
       h1em: 'in one source of truth.',
-      sub: 'Build bell schedules, special activities, yard duty and SpEd services across every grade — then keep them in sync as the year evolves.',
+      sub: isSec
+        ? 'Oversee IEP meetings, referrals, staff and services across every grade — and keep it all running without chasing anyone.'
+        : 'Build bell schedules, special activities, yard duty and SpEd services across every grade — then keep them in sync as the year evolves.',
     };
     capsHeadline = 'Everything a principal needs, in one tab.';
-    closing = 'Make every August easier.';
+    closing = isSec ? 'Keep your whole SpEd program on track.' : 'Make every August easier.';
     placeholder = 'admin@school.edu';
-    primaryGraphic = 'master';
-    secondaryGraphic = 'structural';
-    appUrl = 'speddy.xyz / master-schedule';
+    primaryGraphic = isSec ? 'meetings' : 'master';
+    secondaryGraphic = isSec ? 'care' : 'structural';
+    appUrl = isSec ? 'speddy.xyz / meetings' : 'speddy.xyz / master-schedule';
     caps = [
       {
         name: 'Master Schedule',
