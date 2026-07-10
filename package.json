@@ -29,7 +29,10 @@
     "test:performance": "node scripts/performance-benchmark.js",
     "populate:schools": "tsx scripts/populate-school-data.ts",
     "populate:schools:test": "BATCH_SIZE=10 tsx scripts/populate-school-data.ts",
-    "test:schools:setup": "tsx scripts/test-school-import.ts"
+    "test:schools:setup": "tsx scripts/test-school-import.ts",
+    "sim:reset": "tsx scripts/sim-district/seed.ts",
+    "sim:teardown": "tsx scripts/sim-district/teardown.ts",
+    "sim:verify": "tsx scripts/sim-district/verify.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",

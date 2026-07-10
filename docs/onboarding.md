@@ -32,7 +32,7 @@ This guide walks new contributors through setting up Speddy locally and understa
 - SQL migrations live in `supabase/migrations/` and follow `YYYYMMDD_description.sql` naming.
 - Apply migrations to a Supabase instance with the service role key via `node scripts/run-migrations.js`.
 - For production, migrations are executed manually in Supabase; keep the migration files committed for traceability.
-- Seed data: use `scripts/seed.js` after setting `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SEED_PROVIDER_ID` to load basic fixtures.
+- Test data: the sim district (`docs/SIM_DISTRICT.md`) is the canonical fixture set — `npm run sim:reset -- --yes` rebuilds it (requires `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SIM_DISTRICT_PASSWORD` in `.env.local`). The old `scripts/seed.js` (unscoped table wipes) was removed.
 
 ## 3) Replit usage
 - Replit is the always-on deployment target; production runs directly from the main branch pulled into Replit.
