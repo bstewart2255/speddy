@@ -49,6 +49,20 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
     deleted[`${sweep.table} (swept)`] = await deleteWhereIn(admin, sweep.table, sweep.column, ids);
   }
 
+  // debug_signup_log: the auth signup triggers log every sim user creation,
+  // and a user's first row has NULL metadata. Metadata-tagged rows recover
+  // user ids orphaned by earlier teardowns; everything sweeps by user_id.
+  {
+    const debugIds = new Set(simUserIds);
+    const { data, error } = await admin
+      .from('debug_signup_log')
+      .select('user_id')
+      .eq('metadata->>school_district', DISTRICT.name);
+    if (error) throw new Error(`debug_signup_log scan failed: ${error.message}`);
+    for (const row of data ?? []) if (row.user_id) debugIds.add(row.user_id);
+    deleted['debug_signup_log (swept)'] = await deleteWhereIn(admin, 'debug_signup_log', 'user_id', [...debugIds]);
+  }
+
   // 3. School-scoped schedule scaffolding (school_id match catches all seeded
   //    rows; provider_id match catches any strays created by sim providers).
   for (const table of ['special_activities', 'bell_schedules', 'school_hours'] as const) {

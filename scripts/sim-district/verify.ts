@@ -82,6 +82,18 @@ async function collectCounts(admin: Admin) {
     const ids = sweep.identity === 'user' ? simUserIds : simStudentIds;
     counts[`${sweep.table} (swept)`] = ids.length > 0 ? await countWhereIn(admin, sweep.table, sweep.column, ids) : 0;
   }
+
+  // debug_signup_log rows from the signup triggers, tagged to the sim district
+  // via metadata (NULL-metadata rows are swept by user_id in teardown but are
+  // not attributable here once the users are gone).
+  {
+    const { count, error } = await admin
+      .from('debug_signup_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('metadata->>school_district', DISTRICT.name);
+    if (error) throw new Error(`debug_signup_log scan failed: ${error.message}`);
+    counts['debug_signup_log (sim-tagged)'] = count ?? 0;
+  }
   return counts;
 }
 
@@ -126,6 +138,9 @@ async function main() {
     expect('care_case_status_history', n => n === expectedHistory, String(expectedHistory));
     expect('provider_schools', n => n > 0, '> 0');
     expect('user_site_schedules', n => n > 0, '> 0');
+    // Signup triggers tag their log rows with the sim district name via
+    // metadata; a zero here would mean the real-path trigger never fired.
+    expect('debug_signup_log (sim-tagged)', n => n > 0, '> 0');
   }
 
   console.log(expectEmpty ? 'Orphan scan (expect zero everywhere):\n' : 'Post-seed verification:\n');
