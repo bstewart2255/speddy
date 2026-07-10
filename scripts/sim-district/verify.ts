@@ -13,10 +13,12 @@
 import {
   ALL_SIM_EMAILS,
   CARE_REFERRALS,
+  DECLARED_UNSEEDED_TABLES,
   DISTRICT,
   PERSONAS,
   RECORD_TEACHERS,
   SCHOOLS,
+  SEEDED_TABLES,
   SWEPT_TABLES,
   TOTAL_STUDENTS,
   careCaseId,
@@ -26,6 +28,7 @@ import {
   assertProjectRef,
   countWhereIn,
   createAdmin,
+  listPublicRelations,
   resolveSimAuthUsers,
 } from './lib';
 
@@ -143,12 +146,41 @@ async function main() {
     expect('debug_signup_log (sim-tagged)', n => n > 0, '> 0');
   }
 
+  // Coverage: every public relation must be classified in the manifest
+  // (seeded, swept, or declared-unseeded) so schema drift surfaces at every
+  // reset instead of mid-verification-run (spec §7). Runs in both modes.
+  const declared = new Set<string>([
+    ...SEEDED_TABLES,
+    ...SWEPT_TABLES.map(s => s.table),
+    ...DECLARED_UNSEEDED_TABLES,
+  ]);
+  let unaccounted: string[] = [];
+  try {
+    unaccounted = (await listPublicRelations()).filter(t => !declared.has(t)).sort();
+    results.push({
+      what: 'schema coverage (manifest)',
+      actual: unaccounted.length,
+      expected: '0 unclassified',
+      ok: unaccounted.length === 0,
+    });
+  } catch (err) {
+    // A failed schema fetch must not discard the count report above it.
+    results.push({ what: 'schema coverage (manifest)', actual: -1, expected: '0 unclassified', ok: false });
+    console.error(`Schema coverage check failed to run: ${(err as Error).message}`);
+  }
+
   console.log(expectEmpty ? 'Orphan scan (expect zero everywhere):\n' : 'Post-seed verification:\n');
   let failed = 0;
   for (const r of results) {
     const mark = r.ok ? 'ok  ' : 'FAIL';
     if (!r.ok) failed++;
     console.log(`  [${mark}] ${r.what.padEnd(32)} actual=${String(r.actual).padEnd(6)} expected=${r.expected}`);
+  }
+  if (unaccounted.length > 0) {
+    console.error(
+      `\nUnclassified public relations — add each to SEEDED_TABLES, SWEPT_TABLES, or ` +
+        `DECLARED_UNSEEDED_TABLES in scripts/sim-district/manifest.ts (spec §7):\n  ${unaccounted.join(', ')}`,
+    );
   }
 
   if (failed > 0) {

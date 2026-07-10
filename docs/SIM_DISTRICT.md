@@ -313,7 +313,11 @@ territory), the generator gains those sites — and the sim is already shaped
 to test it.
 
 **Deliberately NOT seeded in v1** — features under test should create their
-own data *through the app*, so creation flows get exercised too:
+own data *through the app*, so creation flows get exercised too. The
+authoritative list is `DECLARED_UNSEEDED_TABLES` in the manifest; `sim:verify`
+fails on any public relation missing from the manifest's declared sets, so a
+table added by a new migration must be classified as part of that feature's
+work. The table below records the rationale per group:
 
 | Skipped | Why |
 |---|---|
@@ -332,9 +336,11 @@ tables join the manifest's **swept** set — cleaned by FK-equality to sim
 identities (persona user ids, student ids, `SIM-` school/district ids) — and
 `verify.ts` scans both seeded and swept sets for leftovers. A feature whose
 rows are *not* reachable by sim-identity FK must add an explicit sim marker
-as part of its verification setup, before the run happens. The manifest's two
-declared-table sets are the authoritative version of this split; this section
-summarizes intent.
+as part of its verification setup, before the run happens. The manifest's
+three declared-table sets (`SEEDED_TABLES`, `SWEPT_TABLES`,
+`DECLARED_UNSEEDED_TABLES`) are the authoritative version of this split —
+`sim:verify`'s schema-coverage check enforces that together they account for
+every exposed public relation; this section summarizes intent.
 
 ---
 
@@ -428,7 +434,11 @@ The loop this district exists for — the owner asks *"run feature X through
 the sim district"* and gets back a defensible *"everything checks out"* (or
 a precise account of what doesn't):
 
-1. **Reset:** `npm run sim:reset -- --yes` → known-good state, stable IDs.
+1. **Reset:** `npm run sim:reset -- --yes` → known-good state, stable IDs —
+   then confirm `npm run sim:verify` is green (including its schema-coverage
+   check) before walking personas. Seeded data is date-relative to the seed
+   date, so never run step 2 against a namespace that wasn't reset for THIS
+   run; a failing reset is itself a finding to fix first.
 2. **Walk the personas:** for each affected persona, drive the real UI with
    Playwright — log in with the persona's derived password, perform the
    flow, assert what they **see and can do**, and equally what they **must

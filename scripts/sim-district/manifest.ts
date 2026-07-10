@@ -532,3 +532,43 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   { table: 'lessons', column: 'provider_id', identity: 'user' },
   { table: 'worksheets', column: 'student_id', identity: 'student' },
 ];
+
+/**
+ * Every OTHER public relation, declared so verify's coverage check can prove
+ * the manifest accounts for the entire exposed schema (spec §7). Features
+ * under test create their own rows through the app (and their tables join
+ * SWEPT_TABLES before the run); global/infra tables are never sim-owned.
+ * A table added by a new migration MUST be classified here (or in
+ * SEEDED/SWEPT) as part of that feature's work — sim:verify fails until it is.
+ */
+export const DECLARED_UNSEEDED_TABLES: string[] = [
+  // Feature-under-test surfaces — verification runs create these live, via the app:
+  'conversations', 'conversation_participants', 'conversation_read_state', 'messages',
+  'iep_meetings', 'iep_meeting_attendees', 'student_parent_contacts',
+  'parent_confirmation_tokens', 'provider_availability', 'teacher_availability_prefs',
+  'site_meeting_rules',
+  // AI-generated content (AI gated off; generation costs real tokens):
+  'exit_tickets', 'exit_ticket_results', 'progress_checks', 'progress_check_results',
+  'saved_worksheets', 'worksheet_submissions', 'lesson_adjustment_queue',
+  'lesson_performance_history',
+  // Progress/assessment surfaces:
+  'iep_goal_progress', 'manual_goal_progress', 'student_assessments',
+  'student_performance_metrics', 'assessment_types', 'progress_notifications',
+  // Staffing / master-schedule (site-admin surface; seed when a feature needs it):
+  'staff', 'staff_hours', 'staff_teacher_assignments', 'instruction_schedules',
+  'yard_duty_assignments', 'yard_duty_zones', 'rotation_groups',
+  'rotation_group_members', 'rotation_activity_pairs', 'rotation_week_assignments',
+  'activity_type_availability', 'activated_school_years', 'school_year_config',
+  'holidays',
+  // Personal / auxiliary:
+  'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',
+  'api_keys', 'teams', 'team_members', 'material_constraints',
+  // Global / infra — never sim-owned:
+  'states', 'landing_signups', 'analytics_events', 'audit_logs',
+  'api_rate_limits', 'upload_rate_limits',
+  // Signup-trigger debug log — swept bespoke in teardown (metadata-tagged):
+  'debug_signup_log',
+  // Read-only views (PostgREST exposes them alongside base tables):
+  'cross_provider_visibility', 'shared_students', 'unmatched_student_teachers',
+  'upload_analytics_summary',
+];

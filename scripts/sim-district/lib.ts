@@ -157,6 +157,35 @@ export function expectedSimEmails(): string[] {
   return ALL_SIM_EMAILS.map(e => e.toLowerCase());
 }
 
+/**
+ * Every relation PostgREST exposes in the public schema (tables AND views),
+ * from the OpenAPI schema root. Feeds verify's coverage check: each name must
+ * be classified in the manifest (SEEDED / SWEPT / DECLARED_UNSEEDED).
+ * Caveat: PostgREST serves this from its schema cache, which can lag briefly
+ * after a migration — a coverage run immediately post-migration may
+ * transiently miss brand-new relations.
+ */
+export async function listPublicRelations(): Promise<string[]> {
+  const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const key = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(`${url}/rest/v1/`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`schema root fetch failed: HTTP ${res.status}`);
+    const spec = (await res.json()) as { definitions?: Record<string, unknown> };
+    if (!spec.definitions) {
+      throw new Error('schema root returned no definitions — cannot run the coverage check');
+    }
+    return Object.keys(spec.definitions);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Chunk an array (Supabase .in() lists and bulk inserts stay bounded). */
 export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];

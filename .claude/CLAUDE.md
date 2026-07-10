@@ -13,8 +13,14 @@
 - **Sim district:** permanent fake tenant in the prod DB for cross-role,
   end-to-end verification; spec + personas in `docs/SIM_DISTRICT.md`. Lifecycle:
   `npm run sim:reset -- --yes`, `npm run sim:verify`, `npm run sim:teardown -- --yes` (env vars
-  are configured in the Claude remote environment). Prefer resetting it before
-  cross-role verification runs; only ever touch sim data through these scripts.
+  are configured in the Claude remote environment). **Freshness contract:**
+  every verification run STARTS with a reset and a green `sim:verify` — seeded
+  data is date-relative to the seed date, so a stale namespace gives wrong
+  answers; a failing reset is a finding to fix, never something to work around.
+  `sim:verify` also fails on any public table the manifest doesn't classify —
+  when a feature adds tables, classifying them in
+  `scripts/sim-district/manifest.ts` (seeded / swept / declared-unseeded) is
+  part of that feature's work. Only ever touch sim data through these scripts.
 
 ## Autonomous execution for high-confidence, non-UX work
 
