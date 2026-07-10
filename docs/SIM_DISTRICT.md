@@ -47,7 +47,11 @@ every future addition to the sim district must preserve all seven.
    manifest-owned ID — fixed in the manifest, or deterministically derived
    from the manifest's UUIDv5 namespace + natural keys, so the full set is
    enumerable from the manifest without DB access — or foreign-keys
-   (directly or transitively) to one. No exceptions, no ad-hoc rows.
+   (directly or transitively) to one. The single exception: **auth users**,
+   whose UUIDs Supabase assigns at creation. Their manifest-owned identity
+   is the sim-domain **email**; teardown and verify resolve email → id at
+   runtime and treat the resolved ids as manifest-owned. No other
+   exceptions, no ad-hoc rows.
 2. **No unscoped writes, ever.** Seed/teardown scripts never issue a delete or
    update whose WHERE clause is not an equality match on a manifest-owned
    identity — a fixed manifest ID, a `SIM-` district/school id, or the
@@ -130,8 +134,8 @@ districts (owner decision, 2026-07-10):
 flowchart TD
     D["Sim Unified School District<br/>SIM-D001 · CA"]
     D --> W["Sim Willow Elementary<br/>SIM-S001 · TK-5 · elementary UX<br/>site admin: yes"]
-    D --> M["Sim Maple Elementary<br/>SIM-S002 · TK-5 · elementary UX<br/>site admin: NO"]
-    D --> J["Sim Juniper Elementary<br/>SIM-S003 · TK-5 · elementary UX<br/>site admin: NO · no RSP (vacancy)"]
+    D --> M["Sim Maple Elementary<br/>SIM-S002 · TK-5 · elementary UX<br/>site admin: yes"]
+    D --> J["Sim Juniper Elementary<br/>SIM-S003 · TK-5 · elementary UX<br/>site admin: yes"]
     D --> C["Sim Cedar Middle School<br/>SIM-S004 · 6-8 · SECONDARY UX<br/>site admin: yes"]
     D --> H["Sim Redwood High School<br/>SIM-S005 · 9-12 · SECONDARY UX<br/>site admin: yes"]
 ```
@@ -147,13 +151,15 @@ flowchart TD
 - **Three elementaries** make district-level surfaces behave like a real
   district (rollups, pickers, cross-school staffing comparisons) instead of a
   toy, and give itinerant providers realistic multi-site assignments.
+- **Every site is fully staffed** — a site admin at all five schools and RSP
+  coverage everywhere (owner correction, 2026-07-10: unstaffed sites are the
+  rare exception in reality, so the sim doesn't model them). What varies is
+  the staffing *pattern*: Willow runs one at-cap RSP; Maple and Juniper each
+  combine a full-time RSP with a shared two-site itinerant RSP — the
+  configuration the owner sees in real local districts.
 - **Willow** is the main stage — full elementary scheduling surface
-  (Schedule, Bell Schedules, Special Activities, Plan), a site admin, the
-  SEA, and an at-cap RSP caseload (§6).
-- **Maple** has providers but **no site admin** → district-admin-only
-  coverage over an actively-served school.
-- **Juniper** has **no RSP at all** (a vacancy — common in real districts) →
-  empty-staffing states; SLP-only service at a school.
+  (Schedule, Bell Schedules, Special Activities, Plan), the SEA, and the
+  single at-cap RSP caseload (§6).
 - **Cedar (6–8)** and **Redwood (9–12)** exercise the trimmed secondary UX
   (`isSecondarySchool`, ARCHITECTURE §9), the "Case Manager" teacher view,
   and the SPE-193/SPE-194 territory at both middle- and high-school level.
@@ -172,34 +178,41 @@ is logged as a product ticket rather than papered over.
 
 ## 5. Personas
 
-**Thirteen login personas + eleven record-only teachers.** Every persona
-exists to exercise a specific scoping rule or UX branch — if a persona
-doesn't earn its place with a distinct behavior, it's not in v1.
+**Eighteen login personas + eighteen record-only teachers.** Every persona
+earns its place one of two ways: it exercises a distinct scoping rule or UX
+branch, **or** it exists because real districts are staffed that way (owner
+rule, 2026-07-10: every site has a site admin and RSP coverage — unstaffed
+sites are the rare exception, so the sim doesn't model them).
 
 ### Login personas
 
 | # | Name | Role | School(s) | Email (localpart) | Exists to exercise |
 |---|---|---|---|---|---|
-| 1 | Dana Alvarez-Sim | `district_admin` | whole district | `district.admin` | District-wide `admin_permissions` scope; rollups across 5 schools; sole admin coverage for Maple & Juniper |
+| 1 | Dana Alvarez-Sim | `district_admin` | whole district | `district.admin` | District-wide `admin_permissions` scope; rollups across 5 schools and 8 providers |
 | 2 | Priya Natarajan-Sim | `site_admin` | Willow | `siteadmin.willow` | School-scoped admin: teacher accounts, student CRUD, master schedule |
-| 3 | Marcus Webb-Sim | `site_admin` | Cedar | `siteadmin.cedar` | Admin portal on a secondary (middle) site — admin UX is *not* trimmed; verifies that |
-| 4 | Naomi Castillo-Sim | `site_admin` | Redwood | `siteadmin.redwood` | Admin portal on a high school; grades 9–12 rosters |
-| 5 | Rachel Okafor-Sim | `resource` | Willow | `rsp.willow` | Single-site RSP **at the CA statutory cap (28 students)** — the densest realistic schedule; supervises the SEA; bell schedules, groups |
-| 6 | Alicia Grant-Sim | `resource` | Maple | `rsp.maple` | Second RSP: cross-provider district rollups; provider at a school with **no site admin**; mid-size caseload |
-| 7 | Victor Chen-Sim | `resource` | Redwood | `rsp.redwood` | Provider whose **only** site is secondary → the trimmed UX is his entire experience (contrast with Jun, who sees both) |
-| 8 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the 55-case SLP average (48)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
-| 9 | Jun Park-Sim | `ot` | Maple (primary) + Redwood | `ot.itinerant` | **Both UXes on one login** — elementary UX at Maple, trimmed secondary UX at Redwood (§9's exact scenario); OT service type |
-| 10 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
-| 11 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
-| 12 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students |
-| 13 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
+| 3 | Elena Rodriguez-Sim | `site_admin` | Maple | `siteadmin.maple` | Admin over a school staffed by a full-time **and** an itinerant RSP |
+| 4 | Kwame Mensah-Sim | `site_admin` | Juniper | `siteadmin.juniper` | Same multi-provider staffing view from the second elementary |
+| 5 | Marcus Webb-Sim | `site_admin` | Cedar | `siteadmin.cedar` | Admin portal on a secondary (middle) site — admin UX is *not* trimmed; verifies that |
+| 6 | Naomi Castillo-Sim | `site_admin` | Redwood | `siteadmin.redwood` | Admin portal on a high school; grades 9–12 rosters |
+| 7 | Rachel Okafor-Sim | `resource` | Willow | `rsp.willow` | Single-site RSP **at the CA statutory cap (28 students)** — the densest realistic schedule; supervises the SEA; bell schedules, groups |
+| 8 | Alicia Grant-Sim | `resource` | Maple | `rsp.maple` | Full-time RSP #2 (26 students); cross-provider district rollups |
+| 9 | Derek Holloway-Sim | `resource` | Juniper | `rsp.juniper` | Full-time RSP #3 (24 students); rounds out one-per-elementary coverage |
+| 10 | Maria Vasquez-Sim | `resource` | Maple + Juniper | `rsp.itinerant` | **The owner-described pattern:** a two-site itinerant RSP with ~10 students per school, layered on top of each site's full-timer |
+| 11 | Hannah Cho-Sim | `resource` | Cedar | `rsp.cedar` | Middle-school case manager — secondary-only provider at 6–8 |
+| 12 | Victor Chen-Sim | `resource` | Redwood | `rsp.redwood` | High-school case manager — secondary-only provider at 9–12 (with Hannah: the trimmed UX as a provider's *entire* experience, at both secondary levels) |
+| 13 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the 55-case SLP average (48)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
+| 14 | Jun Park-Sim | `ot` | Maple (primary) + Redwood | `ot.itinerant` | **Both UXes on one login** — elementary UX at Maple, trimmed secondary UX at Redwood (§9's exact scenario); OT service type |
+| 15 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
+| 16 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
+| 17 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students |
+| 18 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
 
 ### Record-only teachers (no login)
 
 `teachers` rows with `account_id = NULL`, `created_by_admin = true` — the
 "teacher exists as a record, not an account" state that admin rosters and the
-(currently broken, SPE-95) invite flow deal with. **Eleven across all five
-schools** (4 at Willow, 2 at Maple, 2 at Juniper, 1 at Cedar, 2 at Redwood),
+(currently broken, SPE-95) invite flow deal with. **Eighteen across all five
+schools** (5 at Willow, 4 at Maple, 4 at Juniper, 2 at Cedar, 3 at Redwood),
 so every school's roster looks staffed and every seeded student has a
 homeroom teacher to hang off. Names (all `-Sim`) and grade assignments live
 in the manifest.
@@ -215,8 +228,8 @@ admin. Each is a small manifest addition when a feature actually targets it.
 
 ## 6. Students & caseloads
 
-**126 student rows** across five caseloads, sized to CA reality (owner
-decision, 2026-07-10): California caps resource specialist caseloads at
+**202 student rows** across eight caseloads, sized to CA reality (owner
+decisions, 2026-07-10): California caps resource specialist caseloads at
 **28** (Ed Code §56362 — a hard per-provider cap) and sets a **55-case
 average** for SLPs (Ed Code §56363.3 — a SELPA-wide average, not a
 per-provider cap; local plans may allow more); OT has no CA statutory cap
@@ -232,10 +245,13 @@ exists, including that quirk:
 
 | Caseload | School(s) | Count | Notable rows |
 |---|---|---|---|
-| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 4 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); 2 in a group session |
-| Alicia (RSP) | Maple | 12 | provider + caseload at a school with no site admin |
-| Victor (RSP) | Redwood | 20 | secondary-only site: full caseload/goals/accommodations data, **no session instances** (see §7) |
-| Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (of the 55 average)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster |
+| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 5 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); 2 in a group session |
+| Alicia (RSP) | Maple | 26 | full-time caseload #2 |
+| Derek (RSP) | Juniper | 24 | full-time caseload #3 |
+| Maria (RSP, itinerant) | Maple 10 · Juniper 10 | 20 | the owner-described two-site RSP pattern, layered over each site's full-timer |
+| Hannah (RSP) | Cedar | 18 | secondary-only site: full caseload/goals/accommodations data, **no session instances** (see §7) |
+| Victor (RSP) | Redwood | 20 | secondary-only site: same posture as Hannah, at 9–12 |
+| Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (of the 55 average)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster alongside Hannah's |
 | Jun (OT) | Maple 8 · Redwood 10 | 18 | elementary + high-school split on one login |
 
 **The manifest holds generator rules, not 126 hand-written rows.** Per
@@ -258,7 +274,7 @@ Field conventions:
   the dual-system reality (ARCHITECTURE §3).
 - `sessions_per_week` 1–3, `minutes_per_session` 20–30, varied per caseload
   rules.
-- `student_details` for ~40 students: 2–3 `iep_goals`, `accommodations`,
+- `student_details` for ~60 students: 2–3 `iep_goals`, `accommodations`,
   `upcoming_iep_date` / `upcoming_triennial_date` spread across the next 12
   months (feeds the IEP-meetings feature), a few stale `goals_iep_date`
   values.
@@ -274,21 +290,23 @@ Small but representative; exact values live in the manifest.
 | `bell_schedules` | Willow, Maple, Juniper: each grade × Mon–Fri (AM block, recess, lunch, PM block). Cedar & Redwood: **none** (secondary — surface hidden). `school_year` from a manifest constant. |
 | `school_hours` | Per provider per **elementary** site they serve (table is provider-scoped). |
 | `special_activities` | Each elementary: PE / Music / Library entries against its teachers (school-wide visibility). |
-| `user_site_schedules` | Tomás: Willow Mon–Tue, Juniper Wed, Cedar Thu–Fri. Jun: Maple Mon–Wed, Redwood Thu–Fri. |
-| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — 78 elementary-caseload students (Rachel 28 + Alicia 12 + Tomás 30 + Jun 8) × 1–3/wk over 4 weeks ≈ 550–700 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
+| `user_site_schedules` | Tomás: Willow Mon–Tue, Juniper Wed, Cedar Thu–Fri. Jun: Maple Mon–Wed, Redwood Thu–Fri. Maria: Maple Mon–Wed, Juniper Thu–Fri. |
+| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — 136 elementary-caseload students (Rachel 28 + Alicia 26 + Derek 24 + Maria 20 + Tomás 30 + Jun 8) × 1–3/wk over 4 weeks ≈ 900–1,300 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
 | `attendance` | Marked for most past-week instances (mix of present/absent with `absence_reason`). |
-| `teachers` | 3 linked (teacher login personas via `account_id`) + 11 record-only, across all five schools. |
+| `teachers` | 3 linked (teacher login personas via `account_id`) + 18 record-only, across all five schools. |
 | `care_referrals` + case tree | 6 referrals across Willow, Cedar, and Redwood: **(a)** Lane A `teacher_concern` from Nora, `pending`; **(b)** Lane A `active` with `care_cases` row, 2 meeting notes, 1 action item assigned to Rachel, status history; **(c)** Lane B `parent_written_request` → born `initial` with case + `ap_due_date = request_received_date + 15 days`; **(d)** one `closed` (full lifecycle); **(e)** one **soft-deleted** (`deleted_at` set — verifies list exclusion); **(f)** one at Redwood referred by Naomi (secondary-site referral). Student names are free-text fictional (`Maya Torres-Sim`), loosely matching seeded students. Referrers spread across teacher/provider/admin. |
-| `admin_permissions` | Dana → district scope; Priya → Willow; Marcus → Cedar; Naomi → Redwood. |
-| `provider_schools` | Rachel → Willow (primary). Alicia → Maple (primary). Victor → Redwood (primary). Tomás → Willow (primary) + Juniper + Cedar. Jun → Maple (primary) + Redwood. Legacy text + FK ids both set. |
+| `admin_permissions` | Dana → district scope; Priya → Willow; Elena → Maple; Kwame → Juniper; Marcus → Cedar; Naomi → Redwood. |
+| `provider_schools` | Rachel → Willow (primary). Alicia → Maple (primary). Derek → Juniper (primary). Maria → Maple (primary) + Juniper. Hannah → Cedar (primary). Victor → Redwood (primary). Tomás → Willow (primary) + Juniper + Cedar. Jun → Maple (primary) + Redwood. Legacy text + FK ids both set. |
 
 **Secondary-site session policy.** Speddy's scheduling surfaces are hidden on
 secondary sites today (client-side, SPE-193), so the sim matches the
-product's posture: Victor's Redwood caseload and the secondary halves of
-Tomás/Jun carry full student, goal, and accommodation data plus
-`sessions_per_week` metadata, but **no session instances** are seeded there.
-When secondary scheduling becomes real (SPE-194 territory), the generator
-gains those sites — and the sim is already shaped to test it.
+product's posture: Hannah's Cedar caseload, Victor's Redwood caseload, and
+the secondary halves of Tomás/Jun carry full student, goal, and
+accommodation data plus `sessions_per_week` metadata, but **no session
+instances** are seeded there — the sim only contains states reachable
+through real product use. When secondary scheduling becomes real (SPE-194
+territory), the generator gains those sites — and the sim is already shaped
+to test it.
 
 **Deliberately NOT seeded in v1** — features under test should create their
 own data *through the app*, so creation flows get exercised too:
@@ -452,6 +470,7 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 | **AI features enabled** (SPE-174) | Sim-driven generation burns real API budget; keep generation steps deliberate and budgeted in verification runs. |
 | **Billing / payments return** | Sim users need an explicit exemption path before any billing integration ships. |
 | **Outbound email / notifications ship** | Re-confirm the sim domain can never receive or leak mail; decide per-channel whether sim users are suppressed or plus-addressed. |
+| **Secondary rostering ships (SPE-194)** | Today the sim mirrors the current one-teacher-per-student model even at Cedar/Redwood — a known simplification the owner has flagged (real secondary students have a teacher per period). When multi-teacher rostering lands, the sim gains per-period teacher assignments and the secondary session seeding switches on (§7). |
 | **Any new integration** | Standing question in its design: *"what does the sim district do here?"* |
 
 ---
@@ -477,6 +496,20 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 8. **Standing quality bar:** the district must "live and breathe" like a
    real district — the owner asks for a feature run, and gets back a Sim Run
    Report (§9) they can trust without re-checking by hand.
+9. **Full staffing everywhere (round 2):** every site has a site admin;
+   every elementary has a full-time RSP, plus a fourth RSP splitting Maple
+   and Juniper at ~10 students each — the pattern the owner sees in real
+   districts. The earlier "no-site-admin" and "RSP vacancy" edge cases were
+   dropped as unrealistic. Cedar and Redwood each carry a secondary RSP
+   (case manager) to honor the every-site-has-an-RSP rule.
+10. **SLP/OT presence at secondary sites:** kept deliberately — it buys the
+    both-UXes-on-one-login coverage (§5 #13–14) and speech/OT services do
+    continue at secondary when IEPs require them, at the modest volumes
+    seeded here. Owner flagged uncertainty; swappable without ripple if a
+    realism review says otherwise.
+11. **Secondary multi-teacher reality:** the one-teacher-per-student model
+    is a known gap the owner wants baked in eventually — tracked as SPE-194
+    and now a named lifecycle trigger (§10).
 
 **Still open:**
 
