@@ -28,6 +28,7 @@ import {
   assertProjectRef,
   countWhereIn,
   createAdmin,
+  idsForIdentity,
   listPublicRelations,
   resolveSimAuthUsers,
 } from './lib';
@@ -82,7 +83,7 @@ async function collectCounts(admin: Admin) {
     care_case_status_history: await countWhereIn(admin, 'care_case_status_history', 'case_id', careCaseIds),
   };
   for (const sweep of SWEPT_TABLES) {
-    const ids = sweep.identity === 'user' ? simUserIds : simStudentIds;
+    const ids = idsForIdentity(sweep.identity, { users: simUserIds, students: simStudentIds });
     counts[`${sweep.table} (swept)`] = ids.length > 0 ? await countWhereIn(admin, sweep.table, sweep.column, ids) : 0;
   }
 

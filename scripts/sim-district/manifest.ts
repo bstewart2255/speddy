@@ -526,11 +526,19 @@ export const SEEDED_TABLES = [
  * surface — adding a feature's tables here is part of that feature's
  * verification setup (spec §7).
  */
-export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | 'student' }[] = [
+export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | 'student' | 'school' }[] = [
   { table: 'sign_in_logs', column: 'user_id', identity: 'user' },
   { table: 'todos', column: 'user_id', identity: 'user' },
   { table: 'lessons', column: 'provider_id', identity: 'user' },
   { table: 'worksheets', column: 'student_id', identity: 'student' },
+  // IEP meetings (SPE-203/206/208): verification runs create these through
+  // the app. Deleting iep_meetings cascades attendees + confirmation tokens;
+  // site_meeting_rules has NO cascade path from schools, so its sweep is what
+  // lets teardown's school delete succeed.
+  { table: 'iep_meetings', column: 'student_id', identity: 'student' },
+  { table: 'student_parent_contacts', column: 'student_id', identity: 'student' },
+  { table: 'teacher_availability_prefs', column: 'profile_id', identity: 'user' },
+  { table: 'site_meeting_rules', column: 'school_id', identity: 'school' },
 ];
 
 /**
@@ -544,9 +552,10 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
 export const DECLARED_UNSEEDED_TABLES: string[] = [
   // Feature-under-test surfaces — verification runs create these live, via the app:
   'conversations', 'conversation_participants', 'conversation_read_state', 'messages',
-  'iep_meetings', 'iep_meeting_attendees', 'student_parent_contacts',
-  'parent_confirmation_tokens', 'provider_availability', 'teacher_availability_prefs',
-  'site_meeting_rules',
+  'provider_availability',
+  // Children of swept IEP tables — cleaned by ON DELETE CASCADE from
+  // iep_meetings / student_parent_contacts, so no direct sweep key needed:
+  'iep_meeting_attendees', 'parent_confirmation_tokens',
   // AI-generated content (AI gated off; generation costs real tokens):
   'exit_tickets', 'exit_ticket_results', 'progress_checks', 'progress_check_results',
   'saved_worksheets', 'worksheet_submissions', 'lesson_adjustment_queue',

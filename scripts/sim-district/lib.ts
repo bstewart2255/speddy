@@ -11,6 +11,7 @@ import {
   SCHOOLS,
   SIM_EMAIL_DOMAIN,
   SUPABASE_PROJECT_REF,
+  SWEPT_TABLES,
 } from './manifest';
 
 config({ path: '.env.local' });
@@ -155,6 +156,22 @@ export async function assertSentinel(admin: Admin): Promise<'exists' | 'bootstra
 /** Expected sim emails, for teardown/verify sweeps. */
 export function expectedSimEmails(): string[] {
   return ALL_SIM_EMAILS.map(e => e.toLowerCase());
+}
+
+/**
+ * Resolve a swept-table identity to the sim ids it sweeps by. Exhaustive so
+ * a future identity value fails to compile instead of silently mapping to
+ * schools (shared by teardown and verify).
+ */
+export function idsForIdentity(
+  identity: (typeof SWEPT_TABLES)[number]['identity'],
+  resolved: { users: string[]; students: string[] },
+): string[] {
+  switch (identity) {
+    case 'user': return resolved.users;
+    case 'student': return resolved.students;
+    case 'school': return SCHOOLS.map(s => s.id);
+  }
 }
 
 /**
