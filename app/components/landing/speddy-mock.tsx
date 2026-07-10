@@ -17,7 +17,10 @@ export type MockKind =
   | 'district'
   | 'structural'
   | 'care'
-  | 'meetings';
+  | 'meetings'
+  | 'progress'
+  | 'multisite'
+  | 'staff';
 
 export type SchoolType = 'public' | 'charter' | 'private';
 
@@ -1061,6 +1064,388 @@ function MeetingsMock({ type }: { type: SchoolType }) {
   );
 }
 
+// ── Provider · progress monitoring ──────────────────────────────────
+function ProgressMock() {
+  const goals = [
+    { label: 'Reading fluency', c: '#3B82F6', cur: 78, base: 42, unit: ' wpm', data: [42, 48, 55, 60, 68, 72, 78] },
+    { label: 'Math problem-solving', c: '#22C55E', cur: 64, base: 35, unit: '%', data: [35, 40, 44, 52, 58, 60, 64] },
+    { label: 'On-task behavior', c: '#F59E0B', cur: 82, base: 55, unit: '%', data: [55, 60, 58, 66, 72, 78, 82] },
+  ];
+  const spark = (data: number[], c: string) => {
+    const w = 150;
+    const ht = 44;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const rng = max - min || 1;
+    const pts = data.map((v, i) => [10 + i * ((w - 20) / (data.length - 1)), ht - 7 - ((v - min) / rng) * (ht - 14)]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const area = line + ` L ${pts[pts.length - 1][0].toFixed(1)} ${ht} L ${pts[0][0].toFixed(1)} ${ht} Z`;
+    return (
+      <svg
+        width="100%"
+        height={ht}
+        viewBox={`0 0 ${w} ${ht}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ display: 'block', maxWidth: w }}
+      >
+        <path d={area} fill={c + '16'} />
+        <path d={line} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <circle
+            key={i}
+            cx={p[0]}
+            cy={p[1]}
+            r={i === pts.length - 1 ? 4 : 2.4}
+            fill={i === pts.length - 1 ? c : '#fff'}
+            stroke={c}
+            strokeWidth={1.6}
+          />
+        ))}
+      </svg>
+    );
+  };
+
+  return (
+    <Card>
+      <div
+        style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(15,23,42,0.06)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, color: 'rgba(15,23,42,0.55)', fontWeight: 500 }}>Progress monitoring</div>
+          <div style={{ fontSize: 18, color: '#0F172A', fontWeight: 700, marginTop: 2 }}>D. Garza · 3 goals</div>
+        </div>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: '#DCFCE7',
+            color: '#15803D',
+          }}
+        >
+          On track
+        </span>
+      </div>
+      <div>
+        {goals.map((g, i) => {
+          const gain = g.cur - g.base;
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                padding: '14px 18px',
+                borderTop: i === 0 ? 'none' : '1px solid rgba(15,23,42,0.05)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0F172A' }}>{g.label}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(15,23,42,0.5)' }}>{`Baseline ${g.base}${g.unit}`}</span>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#15803D',
+                      background: '#DCFCE7',
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                    }}
+                  >
+                    {'▲ +' + gain}
+                  </span>
+                </div>
+              </div>
+              <div style={{ flex: '0 1 150px', minWidth: 0 }}>{spark(g.data, g.c)}</div>
+              <div style={{ flexShrink: 0, textAlign: 'right', minWidth: 56 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: g.c, letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {g.cur + (g.unit === '%' ? '%' : '')}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(15,23,42,0.45)', marginTop: 3 }}>current</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          background: '#F3F5F8',
+          padding: '11px 18px',
+          fontSize: 12,
+          color: 'rgba(15,23,42,0.6)',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <span style={{ width: 7, height: 7, borderRadius: 999, background: '#3B82F6' }} />
+        From 47 exit tickets logged during sessions
+      </div>
+    </Card>
+  );
+}
+
+// ── Provider / District · multi-school switcher ─────────────────────
+function MultisiteMock() {
+  const sites = [
+    { name: 'Lincoln Elementary', cases: 18, sessions: 24, active: true },
+    { name: 'Roosevelt K-5', cases: 11, sessions: 15, active: false },
+    { name: 'Garfield Primary', cases: 7, sessions: 9, active: false },
+  ];
+  return (
+    <Card>
+      <div
+        style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(15,23,42,0.06)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, color: 'rgba(15,23,42,0.55)', fontWeight: 500 }}>Your schools</div>
+          <div style={{ fontSize: 18, color: '#0F172A', fontWeight: 700, marginTop: 2 }}>One login · 3 sites</div>
+        </div>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: '#EFF5FF',
+            color: '#2452F5',
+          }}
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          Single sign-on
+        </span>
+      </div>
+      <div>
+        {sites.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '15px 18px',
+              borderTop: i === 0 ? 'none' : '1px solid rgba(15,23,42,0.05)',
+              background: s.active ? '#F5F9FF' : 'transparent',
+              borderLeft: s.active ? '3px solid #2452F5' : '3px solid transparent',
+            }}
+          >
+            <span
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: s.active ? '#2452F5' : '#EEF2F7',
+                color: s.active ? '#fff' : 'rgba(15,23,42,0.55)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 15,
+                fontWeight: 800,
+                flexShrink: 0,
+              }}
+            >
+              {s.name[0]}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0F172A' }}>{s.name}</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#EEF2F7', color: 'rgba(15,23,42,0.6)' }}>
+                  {s.cases + ' students'}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#EEF2F7', color: 'rgba(15,23,42,0.6)' }}>
+                  {s.sessions + ' sessions/wk'}
+                </span>
+              </div>
+            </div>
+            {s.active ? (
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: '#2452F5',
+                  color: '#fff',
+                }}
+              >
+                Viewing
+              </span>
+            ) : (
+              <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: '#2452F5' }}>Switch →</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Site admin / District · staff & accounts ────────────────────────
+function StaffMock() {
+  const ROLEC: Record<string, string> = {
+    RSP: '#3B82F6',
+    SLP: '#A78BFA',
+    OT: '#F59E0B',
+    Psych: '#22C55E',
+    Teacher: '#64748B',
+  };
+  const STAT: Record<string, { c: string; bg: string }> = {
+    Active: { c: '#15803D', bg: '#DCFCE7' },
+    Invited: { c: '#2452F5', bg: '#EFF5FF' },
+    'Duplicate?': { c: '#92400E', bg: '#FEF3C7' },
+  };
+  const people = [
+    { name: 'Jordan Reyes', role: 'RSP', status: 'Active' },
+    { name: 'Maria Kim', role: 'SLP', status: 'Active' },
+    { name: 'Alex Turner', role: 'OT', status: 'Invited' },
+    { name: 'Dana Brooks', role: 'Teacher', status: 'Active' },
+    { name: 'Sam Patel', role: 'Psych', status: 'Invited' },
+    { name: 'Chris Lane', role: 'Teacher', status: 'Duplicate?' },
+  ];
+  return (
+    <Card>
+      <div
+        style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(15,23,42,0.06)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, color: 'rgba(15,23,42,0.55)', fontWeight: 500 }}>Staff & accounts</div>
+          <div style={{ fontSize: 18, color: '#0F172A', fontWeight: 700, marginTop: 2 }}>6 people</div>
+        </div>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: '#F5EFE7',
+            color: '#6B5638',
+          }}
+        >
+          Admin-created
+        </span>
+      </div>
+      <div>
+        {people.map((p, i) => {
+          const rc = ROLEC[p.role];
+          const st = STAT[p.status];
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '12px 18px',
+                borderTop: i === 0 ? 'none' : '1px solid rgba(15,23,42,0.05)',
+              }}
+            >
+              <span
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 999,
+                  background: rc + '22',
+                  color: rc,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {p.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{p.name}</div>
+              </div>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: 6,
+                  background: rc + '18',
+                  color: rc,
+                  letterSpacing: '0.02em',
+                  flexShrink: 0,
+                }}
+              >
+                {p.role}
+              </span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: 999,
+                  background: st.bg,
+                  color: st.c,
+                  flexShrink: 0,
+                  minWidth: 64,
+                  textAlign: 'center',
+                }}
+              >
+                {p.status}
+              </span>
+              {p.status === 'Duplicate?' ? (
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#2452F5', flexShrink: 0 }}>Resolve</span>
+              ) : (
+                <span style={{ width: 44, flexShrink: 0 }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export function SpeddyMock({
   kind = 'schedule',
   type = 'public',
@@ -1081,6 +1466,12 @@ export function SpeddyMock({
       return <CareMock type={type} />;
     case 'meetings':
       return <MeetingsMock type={type} />;
+    case 'progress':
+      return <ProgressMock />;
+    case 'multisite':
+      return <MultisiteMock />;
+    case 'staff':
+      return <StaffMock />;
     default:
       return <ScheduleMock type={type} />;
   }
