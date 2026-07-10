@@ -1081,7 +1081,13 @@ function ProgressMock() {
     const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
     const area = line + ` L ${pts[pts.length - 1][0].toFixed(1)} ${ht} L ${pts[0][0].toFixed(1)} ${ht} Z`;
     return (
-      <svg width={w} height={ht} viewBox={`0 0 ${w} ${ht}`} style={{ display: 'block' }}>
+      <svg
+        width="100%"
+        height={ht}
+        viewBox={`0 0 ${w} ${ht}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ display: 'block', maxWidth: w }}
+      >
         <path d={area} fill={c + '16'} />
         <path d={line} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
         {pts.map((p, i) => (
@@ -1162,7 +1168,7 @@ function ProgressMock() {
                   </span>
                 </div>
               </div>
-              <div style={{ flexShrink: 0 }}>{spark(g.data, g.c)}</div>
+              <div style={{ flex: '0 1 150px', minWidth: 0 }}>{spark(g.data, g.c)}</div>
               <div style={{ flexShrink: 0, textAlign: 'right', minWidth: 56 }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: g.c, letterSpacing: '-0.02em', lineHeight: 1 }}>
                   {g.cur + (g.unit === '%' ? '%' : '')}
