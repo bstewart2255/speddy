@@ -113,6 +113,7 @@ export async function assertSentinel(admin: Admin): Promise<'exists' | 'bootstra
     { table: 'special_activities', column: 'school_id', ids: simSchoolIds },
     { table: 'care_referrals', column: 'school_id', ids: simSchoolIds },
     { table: 'provider_schools', column: 'school_id', ids: simSchoolIds },
+    { table: 'user_site_schedules', column: 'school_id', ids: simSchoolIds },
     { table: 'admin_permissions', column: 'district_id', ids: [DISTRICT.id] },
   ];
   for (const check of scopedChecks) {
