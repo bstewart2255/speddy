@@ -154,13 +154,20 @@ async function main() {
     ...SWEPT_TABLES.map(s => s.table),
     ...DECLARED_UNSEEDED_TABLES,
   ]);
-  const unaccounted = (await listPublicRelations()).filter(t => !declared.has(t)).sort();
-  results.push({
-    what: 'schema coverage (manifest)',
-    actual: unaccounted.length,
-    expected: '0 unclassified',
-    ok: unaccounted.length === 0,
-  });
+  let unaccounted: string[] = [];
+  try {
+    unaccounted = (await listPublicRelations()).filter(t => !declared.has(t)).sort();
+    results.push({
+      what: 'schema coverage (manifest)',
+      actual: unaccounted.length,
+      expected: '0 unclassified',
+      ok: unaccounted.length === 0,
+    });
+  } catch (err) {
+    // A failed schema fetch must not discard the count report above it.
+    results.push({ what: 'schema coverage (manifest)', actual: -1, expected: '0 unclassified', ok: false });
+    console.error(`Schema coverage check failed to run: ${(err as Error).message}`);
+  }
 
   console.log(expectEmpty ? 'Orphan scan (expect zero everywhere):\n' : 'Post-seed verification:\n');
   let failed = 0;
