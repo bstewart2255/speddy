@@ -957,6 +957,8 @@ export default function SpeddyLanding() {
                           strokeWidth="3.2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
+                          aria-hidden="true"
+                          focusable="false"
                         >
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
