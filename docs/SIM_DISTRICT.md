@@ -46,16 +46,20 @@ every future addition to the sim district must preserve all seven.
    declared in the manifest or foreign-keys (directly or transitively) to one.
    No exceptions, no ad-hoc rows.
 2. **No unscoped writes, ever.** Seed/teardown scripts never issue a delete or
-   update whose WHERE clause is not a manifest-ID match. (The existing
-   `scripts/seed.js` violates this by design — it wipes whole tables — and is
-   removed as part of this work.)
+   update whose WHERE clause is not an equality match on a manifest-owned
+   identity — a fixed manifest ID, a `SIM-` district/school id, or the
+   auth-user id of a sim persona. (The existing `scripts/seed.js` violates
+   this by design — it wipes whole tables — and is removed as part of this
+   work.)
 3. **Shared reference data is read-only.** `states`, real rows in
    `districts`/`schools`, `assessment_types`, `material_constraints`,
    `school_year_config`, `holidays` (global rows) are never written by sim
    scripts. The sim district writes only rows it owns.
-4. **The manifest declares every table the seed may touch.** Adding a table to
-   the sim's write-set is a reviewable diff to the manifest, not a silent
-   script change.
+4. **The manifest declares every table the sim may touch — in two sets.**
+   *Seeded* tables (rows planted by `seed.ts` with fixed manifest IDs) and
+   *swept* tables (rows the app itself creates during verification runs,
+   cleaned by FK-equality to sim identities). Adding a table to either set is
+   a reviewable diff to the manifest, not a silent script change.
 5. **Sim identities are fake by construction.** No sim user is ever
    `is_speddy_admin`. No real person's name or email. No real student data is
    ever copied in — all student content is fictional (see naming conventions).
@@ -86,21 +90,28 @@ it. No flow requires the sim to *receive* email (users are created with
 `email_confirm: true` via the admin API; passwords are set directly, so no
 reset emails are needed). `profiles.district_domain` becomes
 `sim.speddy.test`, which keeps any email-domain-matching logic self-contained
-— sim users can never domain-match a real user. If a future test specifically
-needs deliverable mail, that one persona can be plus-addressed
-(`bstew510+sim.xxx@gmail.com`) as an explicit exception.
-*Implementation note:* verify app-side email validation accepts `.test`; if
-anything rejects it, fall back to a subdomain of a domain we own (e.g.
-`sim.speddy.app`) with no MX record.
+— sim users can never domain-match a real user. There is **no real-inbox
+fallback**: every sim email lives under the sim domain, no exceptions
+(anything else would contradict invariant 5 and could route future
+notifications to a real mailbox). If a feature someday needs to test actual
+mail delivery, that is a §10 lifecycle decision — design per-channel
+suppression first — not a standing carve-out.
+*Implementation prerequisite:* verify app-side email validation accepts
+`.test` addresses; if anything rejects them, fall back to a subdomain we own
+(e.g. `sim.speddy.app`) with no MX record — still never a personal inbox.
 
 **Auth users** are keyed by email in the manifest (Supabase assigns their
 UUIDs at creation; a lookup helper resolves email → id at runtime). All other
 seeded rows use fixed manifest UUIDs so tests and docs can reference stable
 IDs forever.
 
-**One shared password** for all sim users (`SIM_DISTRICT_PASSWORD` in
-`.env.local`, also set in the local env Claude Code runs with). Rotating it is
-a one-script operation.
+**Per-persona passwords, one secret.** A single `SIM_DISTRICT_PASSWORD`
+secret lives in `.env.local` (and in the local env Claude Code runs with);
+each persona's actual password is derived from it deterministically (HMAC of
+the persona email, shaped to satisfy the password policy — exact scheme in
+`manifest.ts`). No two personas share a password — a leaked provider
+credential doesn't unlock admin accounts — yet there is exactly one secret to
+manage, and rotation is re-running `sim:reset` with a new value.
 
 ---
 
@@ -240,8 +251,17 @@ own data *through the app*, so creation flows get exercised too:
 | `todos`, `documents`, `curriculum_tracking`, `calendar_events`, `api_keys`, `teams` | Personal/auxiliary; trivial manifest additions later |
 | `analytics_events`, `audit_logs`, logs | Never seeded; sim-generated rows are swept by teardown (user-keyed) |
 
-The manifest's declared-tables list is the authoritative version of this
-split; this section summarizes intent.
+**The teardown contract covers verification-created rows too.** Rows the app
+creates during a verification run (an IEP meeting scheduled through the UI, a
+chat thread, sign-in log entries) belong to the sim from the moment a sim
+identity creates them. Before a verification run exercises a new feature, its
+tables join the manifest's **swept** set — cleaned by FK-equality to sim
+identities (persona user ids, student ids, `SIM-` school/district ids) — and
+`verify.ts` scans both seeded and swept sets for leftovers. A feature whose
+rows are *not* reachable by sim-identity FK must add an explicit sim marker
+as part of its verification setup, before the run happens. The manifest's two
+declared-table sets are the authoritative version of this split; this section
+summarizes intent.
 
 ---
 
@@ -252,21 +272,46 @@ scripts/sim-district/
   manifest.ts    ← THE single source of truth: every fixed ID, persona,
                     roster, schedule, and the declared-tables list
   seed.ts        ← full reset: teardown + seed (idempotent by construction)
-  teardown.ts    ← delete ONLY by manifest IDs; children → parents → auth users
-  verify.ts      ← post-seed sanity counts; post-teardown orphan scan (must be 0)
+  teardown.ts    ← delete ONLY by manifest-owned identities (fixed IDs +
+                    sim-identity FK sweeps); children → parents → auth users
+  verify.ts      ← post-seed sanity counts; post-teardown orphan scan across
+                    seeded AND swept tables (must be 0); always read-only
 ```
 
 npm scripts: `sim:reset`, `sim:teardown`, `sim:verify`
 (all `npx tsx`, all requiring `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `SIM_DISTRICT_PASSWORD` from `.env.local`).
 
+**Preflight, before any write.** Scripts hard-fail unless: **(a)** the
+project ref extracted from `NEXT_PUBLIC_SUPABASE_URL` equals the ref pinned
+in `manifest.ts` — env vars alone don't prove which database you're pointed
+at; **(b)** the sim sentinel checks out — district `SIM-D001` exists with the
+exact expected name (or, on first seed only, is absent); and **(c)** the
+destructive scripts (`sim:teardown`, `sim:reset`) were invoked with an
+explicit `--yes` flag. `sim:verify` is read-only and always safe to run.
+
+**Concurrency.** All sim writers are operator-controlled — verification runs
+and open sim browser sessions. Production cron jobs only *delete* aged rows;
+they never create sim data. So v1's rule is operational, not mechanical:
+don't run teardown mid-verification, and close sim sessions first. Teardown
+is idempotent — if `verify` finds stragglers from a forgotten session, re-run
+it. A teardown lock / app-level maintenance mode is deliberately out of scope
+until sim runs become automated or concurrent (e.g. CI), where a real race
+would exist.
+
 **Fidelity ladder** (which creation path each layer uses):
 
-1. **Auth users** → `auth.admin.createUser` with `email_confirm: true` and
-   role metadata, which fires the real `handle_new_user` trigger →
-   `profiles` row; then a profile patch fills the structured FK ids the
-   trigger doesn't set. This is the same path the real admin-creation route
-   uses (ARCHITECTURE §4), so seeded users are state-realistic.
+1. **Auth users + profiles** → `auth.admin.createUser` with
+   `email_confirm: true` and role metadata (the live
+   `on_auth_user_created → handle_new_user` trigger creates the skeleton
+   profile — verified against the prod DB), then the
+   `create_profile_for_new_user` RPC (`INSERT … ON CONFLICT (id) DO UPDATE`)
+   enriches it, resolving the structured FK ids by school/district name.
+   This is the exact two-step sequence the real admin creation routes use
+   (`app/api/admin/create-teacher-account`, `app/api/admin/district/*`).
+   Seed order matters: schools are seeded before users so name→id resolution
+   works; afterwards the seed **asserts** the resolved FK ids equal the
+   manifest values rather than trusting the name matcher blindly.
 2. **Domain rows** (students, sessions, bell schedules, CARE, …) →
    service-role inserts with fixed manifest UUIDs, always setting **both**
    legacy-text and structured-FK scoping fields.
@@ -326,7 +371,7 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 
 | Trigger | Action |
 |---|---|
-| **First real district onboards** | Add `districts.is_test` flag (migration — discuss first) so pickers, analytics, and exports can exclude the sim structurally; re-evaluate whether the sim should move to a Supabase branch. Until then, name/ID conventions suffice — nobody but us sees the pickers. |
+| **First real district onboards** | **Blocking precondition, not a nice-to-have:** add the `districts.is_test` flag (migration — discuss first) and wire pickers, analytics, and exports to exclude the sim structurally *before* any real user can see a picker. Re-evaluate whether the sim should move to a Supabase branch. Until that day, name/ID conventions suffice — no one but us sees the pickers, and the flag would be speculative schema surface. |
 | **AI features enabled** (SPE-174) | Sim-driven generation burns real API budget; keep generation steps deliberate and budgeted in verification runs. |
 | **Billing / payments return** | Sim users need an explicit exemption path before any billing integration ships. |
 | **Outbound email / notifications ship** | Re-confirm the sim domain can never receive or leak mail; decide per-channel whether sim users are suppressed or plus-addressed. |
