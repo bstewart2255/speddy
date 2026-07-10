@@ -1,6 +1,7 @@
 # Sim District — Specification
 
-> **Status: DRAFT — for review.** Nothing in this document is implemented yet.
+> **Status: DRAFT v2 — owner decisions of 2026-07-10 folded in** (see §11).
+> Nothing in this document is implemented yet.
 > This spec defines the permanent simulated district that lives in the
 > production database so cross-role features can be exercised end-to-end
 > (backend + frontend) by a human or by Claude Code, without real users.
@@ -49,8 +50,9 @@ every future addition to the sim district must preserve all seven.
    update whose WHERE clause is not an equality match on a manifest-owned
    identity — a fixed manifest ID, a `SIM-` district/school id, or the
    auth-user id of a sim persona. (The existing `scripts/seed.js` violates
-   this by design — it wipes whole tables — and is removed as part of this
-   work.)
+   this by design — it wipes whole tables with the service role. Deleting it
+   is a **blocking prerequisite** of the implementation PR: the invariant is
+   not satisfied while that script exists.)
 3. **Shared reference data is read-only.** `states`, real rows in
    `districts`/`schools`, `assessment_types`, `material_constraints`,
    `school_year_config`, `holidays` (global rows) are never written by sim
@@ -63,7 +65,7 @@ every future addition to the sim district must preserve all seven.
 5. **Sim identities are fake by construction.** No sim user is ever
    `is_speddy_admin`. No real person's name or email. No real student data is
    ever copied in — all student content is fictional (see naming conventions).
-6. **Credentials are never committed.** The shared sim password lives in
+6. **Credentials are never committed.** The sim password secret lives in
    `.env.local` (`SIM_DISTRICT_PASSWORD`); docs reference the env var only.
 7. **Teardown is verified, not assumed.** After teardown, a verify pass counts
    rows referencing any manifest ID across all declared tables and must find
@@ -81,7 +83,7 @@ or query result — and collision-proof against real NCES/CDS data:
 | District/school IDs (`varchar` PKs) | `SIM-` prefix (NCES/CDS ids are numeric — collision impossible) | `SIM-D001`, `SIM-S001` |
 | Org display names | Start with `Sim ` | `Sim Willow Elementary` |
 | People (profiles, teachers, student_details, CARE names) | Surname ends `-Sim` | `Rachel Okafor-Sim` |
-| Emails | All under one sim domain | `resource.willow@sim.speddy.test` |
+| Emails | All under one sim domain | `rsp.willow@sim.speddy.test` |
 | Domain-row UUIDs (students, sessions, …) | Fixed UUIDs checked into the manifest | stable across reseeds |
 
 **Email domain — recommendation: `sim.speddy.test`.** `.test` is an
@@ -117,95 +119,124 @@ manage, and rotation is re-running `sim:reset` with a new value.
 
 ## 4. District shape
 
-One district, three schools, chosen so the org chart itself is a test matrix:
+One unified district, **five schools** — sized to mirror real local CA
+districts (owner decision, 2026-07-10):
 
 ```mermaid
 flowchart TD
     D["Sim Unified School District<br/>SIM-D001 · CA"]
-    D --> W["Sim Willow Elementary<br/>SIM-S001 · K-6 · elementary UX<br/>site admin: yes"]
-    D --> C["Sim Cedar Middle School<br/>SIM-S002 · 7-8 · SECONDARY (trimmed) UX<br/>site admin: yes"]
-    D --> B["Sim Bayview K-8<br/>SIM-S003 · K-8 · classified ELEMENTARY<br/>site admin: NO (district-admin coverage)"]
+    D --> W["Sim Willow Elementary<br/>SIM-S001 · TK-5 · elementary UX<br/>site admin: yes"]
+    D --> M["Sim Maple Elementary<br/>SIM-S002 · TK-5 · elementary UX<br/>site admin: NO"]
+    D --> J["Sim Juniper Elementary<br/>SIM-S003 · TK-5 · elementary UX<br/>site admin: NO · no RSP (vacancy)"]
+    D --> C["Sim Cedar Middle School<br/>SIM-S004 · 6-8 · SECONDARY UX<br/>site admin: yes"]
+    D --> H["Sim Redwood High School<br/>SIM-S005 · 9-12 · SECONDARY UX<br/>site admin: yes"]
 ```
 
-| Field | District | Willow | Cedar | Bayview |
-|---|---|---|---|---|
-| `id` | `SIM-D001` | `SIM-S001` | `SIM-S002` | `SIM-S003` |
-| `name` | Sim Unified School District | Sim Willow Elementary | Sim Cedar Middle School | Sim Bayview K-8 |
-| `state_id` | `CA` (real state — required for state-scoped pickers/flows) | — | — | — |
-| `school_type` | `Unified` (district_type) | `Elementary` | `Middle` | `K-8` |
-| `grade_span` | — | K–6 | 7–8 | K–8 |
+| Field | District | Willow | Maple | Juniper | Cedar | Redwood |
+|---|---|---|---|---|---|---|
+| `id` | `SIM-D001` | `SIM-S001` | `SIM-S002` | `SIM-S003` | `SIM-S004` | `SIM-S005` |
+| `name` | Sim Unified School District | Sim Willow Elementary | Sim Maple Elementary | Sim Juniper Elementary | Sim Cedar Middle School | Sim Redwood High School |
+| type / span | `Unified`, `CA` | `Elementary`, TK–5 | `Elementary`, TK–5 | `Elementary`, TK–5 | `Middle`, 6–8 | `High`, 9–12 |
 
-**Why these three:**
+**Why this shape:**
 
-- **Willow** is the main stage — Speddy is elementary-first, so the full
-  scheduling surface (Schedule, Bell Schedules, Special Activities, Plan)
-  lives here.
-- **Cedar** is secondary → exercises the trimmed provider/teacher/SEA UX
-  (`isSecondarySchool`, ARCHITECTURE §9), the "Case Manager" teacher view, and
-  the known gaps SPE-193/SPE-194 whenever we work in that area.
-- **Bayview** is the classification edge case: K-8 is **elementary by product
-  decision** despite spanning middle grades. It also deliberately has **no
-  site admin**, so district-admin-only coverage paths get exercised.
+- **Three elementaries** make district-level surfaces behave like a real
+  district (rollups, pickers, cross-school staffing comparisons) instead of a
+  toy, and give itinerant providers realistic multi-site assignments.
+- **Willow** is the main stage — full elementary scheduling surface
+  (Schedule, Bell Schedules, Special Activities, Plan), a site admin, the
+  SEA, and an at-cap RSP caseload (§6).
+- **Maple** has providers but **no site admin** → district-admin-only
+  coverage over an actively-served school.
+- **Juniper** has **no RSP at all** (a vacancy — common in real districts) →
+  empty-staffing states; SLP-only service at a school.
+- **Cedar (6–8)** and **Redwood (9–12)** exercise the trimmed secondary UX
+  (`isSecondarySchool`, ARCHITECTURE §9), the "Case Manager" teacher view,
+  and the SPE-193/SPE-194 territory at both middle- and high-school level.
 - District sits under real `CA` (states are shared reference data; CARE
   Lane B's 15-day timeline is CA Ed Code-based).
+
+*Deliberately absent for now:* a K-8 combined site (the "classified
+elementary by product decision" classification edge) — add a sixth school
+when work targets that logic. *TK note:* the schools span TK–5, but seeded
+students only use grade values the app demonstrably supports — whether `TK`
+works as a `grade_level` (students, bell schedules) is verified at
+implementation; if it doesn't, TK-age students are seeded as `K` and the gap
+is logged as a product ticket rather than papered over.
 
 ---
 
 ## 5. Personas
 
-Ten login personas + four record-only teachers. Every persona exists to
-exercise a specific scoping rule or UX branch — if a persona doesn't earn its
-place with a distinct behavior, it's not in v1.
+**Thirteen login personas + eleven record-only teachers.** Every persona
+exists to exercise a specific scoping rule or UX branch — if a persona
+doesn't earn its place with a distinct behavior, it's not in v1.
 
 ### Login personas
 
 | # | Name | Role | School(s) | Email (localpart) | Exists to exercise |
 |---|---|---|---|---|---|
-| 1 | Dana Alvarez-Sim | `district_admin` | whole district | `district.admin` | District-wide `admin_permissions` scope; cross-school rollups; sole admin coverage for Bayview |
+| 1 | Dana Alvarez-Sim | `district_admin` | whole district | `district.admin` | District-wide `admin_permissions` scope; rollups across 5 schools; sole admin coverage for Maple & Juniper |
 | 2 | Priya Natarajan-Sim | `site_admin` | Willow | `siteadmin.willow` | School-scoped admin: teacher accounts, student CRUD, master schedule |
-| 3 | Marcus Webb-Sim | `site_admin` | Cedar | `siteadmin.cedar` | Admin portal on a **secondary** site (admin UX is *not* trimmed — verifies that) |
-| 4 | Rachel Okafor-Sim | `resource` | Willow | `resource.willow` | Single-site provider; largest caseload; supervises the SEA (delegated sessions); bell schedules, groups |
-| 5 | Tomás Reyes-Sim | `speech` | Willow (primary) + Bayview | `speech.itinerant` | Itinerant: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, cross-school caseload |
-| 6 | Jun Park-Sim | `ot` | Bayview (primary) + Cedar | `ot.itinerant` | **Both UXes on one login** — elementary UX at Bayview, trimmed secondary UX at Cedar (§9's exact scenario) |
-| 7 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
-| 8 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
-| 9 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students |
-| 10 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
+| 3 | Marcus Webb-Sim | `site_admin` | Cedar | `siteadmin.cedar` | Admin portal on a secondary (middle) site — admin UX is *not* trimmed; verifies that |
+| 4 | Naomi Castillo-Sim | `site_admin` | Redwood | `siteadmin.redwood` | Admin portal on a high school; grades 9–12 rosters |
+| 5 | Rachel Okafor-Sim | `resource` | Willow | `rsp.willow` | Single-site RSP **at the CA statutory cap (28 students)** — the densest realistic schedule; supervises the SEA; bell schedules, groups |
+| 6 | Alicia Grant-Sim | `resource` | Maple | `rsp.maple` | Second RSP: cross-provider district rollups; provider at a school with **no site admin**; mid-size caseload |
+| 7 | Victor Chen-Sim | `resource` | Redwood | `rsp.redwood` | Provider whose **only** site is secondary → the trimmed UX is his entire experience (contrast with Jun, who sees both) |
+| 8 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the SLP cap (48 of 55)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
+| 9 | Jun Park-Sim | `ot` | Maple (primary) + Redwood | `ot.itinerant` | **Both UXes on one login** — elementary UX at Maple, trimmed secondary UX at Redwood (§9's exact scenario); OT service type |
+| 10 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
+| 11 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
+| 12 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students |
+| 13 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
 
 ### Record-only teachers (no login)
 
 `teachers` rows with `account_id = NULL`, `created_by_admin = true` — the
 "teacher exists as a record, not an account" state that admin rosters and the
-(currently broken, SPE-95) invite flow deal with:
-
-| Name | School | Grade |
-|---|---|---|
-| Omar Bautista-Sim | Willow | K |
-| Grace Lindqvist-Sim | Willow | 1 |
-| Henry Adeyemi-Sim | Cedar | 8 |
-| Ines Moreau-Sim | Bayview | 2 |
+(currently broken, SPE-95) invite flow deal with. **Eleven across all five
+schools** (4 at Willow, 2 at Maple, 2 at Juniper, 1 at Cedar, 2 at Redwood),
+so every school's roster looks staffed and every seeded student has a
+homeroom teacher to hang off. Names (all `-Sim`) and grade assignments live
+in the manifest.
 
 **Deliberately absent from v1:** `counseling`, `psychologist`,
 `specialist`, `intervention` personas (they behave identically to the seeded
 provider roles at the RLS/delivery layer — `delivered_by='specialist'`); a
-second district; a state-scoped admin. Each is a small manifest addition when
-a feature actually targets it.
+high-school **teacher login** (record-only HS teachers hold the rosters;
+Fatima covers the secondary teacher UX); a second district; a state-scoped
+admin. Each is a small manifest addition when a feature actually targets it.
 
 ---
 
 ## 6. Students & caseloads
 
-**15 student rows** across three caseloads. Students are provider-owned rows
-(`students.provider_id`), so "one child on two caseloads" is genuinely two
-rows — the sim reflects the model as it exists, including that quirk:
+**126 student rows** across five caseloads, sized to CA reality (owner
+decision, 2026-07-10): California caps resource specialist caseloads at
+**28** and SLP caseloads at **55**; OT has no CA statutory cap (seeded at a
+typical ~18). The sim deliberately seeds the lead RSP **at cap** — if Speddy
+strains anywhere at legal caseload sizes (students list, schedule grid,
+dashboards), the sim district should be the first place that shows, not a
+real school.
 
-| Caseload | School | Count | Notable rows |
+Students are provider-owned rows (`students.provider_id`), so "one child on
+two caseloads" is genuinely two rows — the sim reflects the model as it
+exists, including that quirk:
+
+| Caseload | School(s) | Count | Notable rows |
 |---|---|---|---|
-| Rachel (resource) | Willow | 6 (K–5) | 3 in Nora's class (`teacher_id` → Nora); 2 with record-only teachers; **1 with zero scheduled sessions** (unscheduled alert); 1 in a group session |
-| Tomás (speech) | Willow | 3 | 1 is the "same child" as a Rachel student (same initials + teacher — the cross-provider identity quirk, on purpose) |
-| Tomás (speech) | Bayview | 2 | grades 1 and 6 (K-8 span) |
-| Jun (ot) | Bayview | 2 | — |
-| Jun (ot) | Cedar | 2 | grade 7, both in Fatima's class → feeds her secondary roster |
+| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 4 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); 2 in a group session |
+| Alicia (RSP) | Maple | 12 | provider + caseload at a school with no site admin |
+| Victor (RSP) | Redwood | 20 | secondary-only site: full caseload/goals/accommodations data, **no session instances** (see §7) |
+| Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (cap 55)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster |
+| Jun (OT) | Maple 8 · Redwood 10 | 18 | elementary + high-school split on one login |
+
+**The manifest holds generator rules, not 126 hand-written rows.** Per
+caseload: counts, grade distributions, teacher assignments, and
+minutes/frequency mixes — plus an explicit list of the edge-case rows above.
+Student UUIDs are UUIDv5 of a fixed namespace + natural key
+(`student:willow:rsp:007`), so generated rows keep stable, greppable IDs
+across reseeds without hand-maintaining a giant list.
 
 Field conventions:
 
@@ -215,10 +246,12 @@ Field conventions:
   `school_district`) **and** structured FKs (`school_id`, `district_id`,
   `state_id`), plus `teacher_name` text **and** `teacher_id` FK — mirroring
   the dual-system reality (ARCHITECTURE §3).
-- `sessions_per_week` 1–3, `minutes_per_session` 20–30, varied.
-- `student_details` for ~8 of 15: 2–3 `iep_goals`, `accommodations`,
+- `sessions_per_week` 1–3, `minutes_per_session` 20–30, varied per caseload
+  rules.
+- `student_details` for ~40 students: 2–3 `iep_goals`, `accommodations`,
   `upcoming_iep_date` / `upcoming_triennial_date` spread across the next 12
-  months (feeds the IEP-meetings feature), one stale `goals_iep_date`.
+  months (feeds the IEP-meetings feature), a few stale `goals_iep_date`
+  values.
 
 ---
 
@@ -228,16 +261,24 @@ Small but representative; exact values live in the manifest.
 
 | Table | What gets seeded |
 |---|---|
-| `bell_schedules` | Willow: grades K–6 × Mon–Fri (AM block, recess, lunch, PM block). Bayview: K–8 equivalent. Cedar: **none** (secondary — surface hidden). `school_year` from a manifest constant. |
-| `school_hours` | Per provider per school for Willow + Bayview (table is provider-scoped). |
-| `special_activities` | Willow: PE / Music / Library for Nora + record-only teachers (school-wide visibility). |
-| `user_site_schedules` | Tomás: Willow Mon–Wed, Bayview Thu–Fri. Jun: Bayview Mon–Tue, Cedar Wed–Thu. |
-| `schedule_sessions` | Templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned). Includes: 1 session delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), 1 group session (2–3 students, `group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
+| `bell_schedules` | Willow, Maple, Juniper: each grade × Mon–Fri (AM block, recess, lunch, PM block). Cedar & Redwood: **none** (secondary — surface hidden). `school_year` from a manifest constant. |
+| `school_hours` | Per provider per **elementary** site they serve (table is provider-scoped). |
+| `special_activities` | Each elementary: PE / Music / Library entries against its teachers (school-wide visibility). |
+| `user_site_schedules` | Tomás: Willow Mon–Tue, Juniper Wed, Cedar Thu–Fri. Jun: Maple Mon–Wed, Redwood Thu–Fri. |
+| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — roughly 90 elementary-caseload students × 1–3/wk ≈ 700–900 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
 | `attendance` | Marked for most past-week instances (mix of present/absent with `absence_reason`). |
-| `teachers` | 4 linked (login personas 8–10 + `account_id`) + 4 record-only. |
-| `care_referrals` + case tree | 5 referrals: **(a)** Lane A `teacher_concern` from Nora, `pending`; **(b)** Lane A `active` with `care_cases` row, 2 meeting notes, 1 action item assigned to Rachel, status history; **(c)** Lane B `parent_written_request` → born `initial` with case + `ap_due_date = request_received_date + 15 days`; **(d)** one `closed` (full lifecycle); **(e)** one **soft-deleted** (`deleted_at` set — verifies list exclusion). Student names are free-text fictional (`Maya Torres-Sim`), loosely matching seeded students. Referrers spread across teacher/provider/admin. |
-| `admin_permissions` | Dana → district scope; Priya → Willow; Marcus → Cedar. |
-| `provider_schools` | Rachel → Willow (primary). Tomás → Willow (primary) + Bayview. Jun → Bayview (primary) + Cedar. Legacy text + FK ids both set. |
+| `teachers` | 3 linked (teacher login personas via `account_id`) + 11 record-only, across all five schools. |
+| `care_referrals` + case tree | 6 referrals across Willow, Cedar, and Redwood: **(a)** Lane A `teacher_concern` from Nora, `pending`; **(b)** Lane A `active` with `care_cases` row, 2 meeting notes, 1 action item assigned to Rachel, status history; **(c)** Lane B `parent_written_request` → born `initial` with case + `ap_due_date = request_received_date + 15 days`; **(d)** one `closed` (full lifecycle); **(e)** one **soft-deleted** (`deleted_at` set — verifies list exclusion); **(f)** one at Redwood referred by Naomi (secondary-site referral). Student names are free-text fictional (`Maya Torres-Sim`), loosely matching seeded students. Referrers spread across teacher/provider/admin. |
+| `admin_permissions` | Dana → district scope; Priya → Willow; Marcus → Cedar; Naomi → Redwood. |
+| `provider_schools` | Rachel → Willow (primary). Alicia → Maple (primary). Victor → Redwood (primary). Tomás → Willow (primary) + Juniper + Cedar. Jun → Maple (primary) + Redwood. Legacy text + FK ids both set. |
+
+**Secondary-site session policy.** Speddy's scheduling surfaces are hidden on
+secondary sites today (client-side, SPE-193), so the sim matches the
+product's posture: Victor's Redwood caseload and the secondary halves of
+Tomás/Jun carry full student, goal, and accommodation data plus
+`sessions_per_week` metadata, but **no session instances** are seeded there.
+When secondary scheduling becomes real (SPE-194 territory), the generator
+gains those sites — and the sim is already shaped to test it.
 
 **Deliberately NOT seeded in v1** — features under test should create their
 own data *through the app*, so creation flows get exercised too:
@@ -278,17 +319,24 @@ scripts/sim-district/
                     seeded AND swept tables (must be 0); always read-only
 ```
 
-npm scripts: `sim:reset`, `sim:teardown`, `sim:verify`
-(all `npx tsx`, all requiring `NEXT_PUBLIC_SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SIM_DISTRICT_PASSWORD` from `.env.local`).
+npm scripts: `sim:reset`, `sim:teardown`, `sim:verify` (all `npx tsx`).
+Env requirements are scoped per command: all three need
+`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`;
+`SIM_DISTRICT_PASSWORD` is required **only** by `sim:reset` (it sets persona
+passwords) — read-only `sim:verify` and delete-only `sim:teardown` never
+receive the credential secret.
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the
 project ref extracted from `NEXT_PUBLIC_SUPABASE_URL` equals the ref pinned
 in `manifest.ts` — env vars alone don't prove which database you're pointed
-at; **(b)** the sim sentinel checks out — district `SIM-D001` exists with the
-exact expected name (or, on first seed only, is absent); and **(c)** the
-destructive scripts (`sim:teardown`, `sim:reset`) were invoked with an
-explicit `--yes` flag. `sim:verify` is read-only and always safe to run.
+at; **(b)** the sim sentinel checks out — district `SIM-D001` exists with
+the exact expected name; on first seed, sentinel-absent is **not** taken as
+proof of emptiness — bootstrap requires a manifest-wide zero-state check
+(no SIM-owned IDs and no sim-domain auth users anywhere), so a half-failed
+prior seed is a preflight failure to clean up via teardown, never something
+to seed over; and **(c)** the destructive scripts (`sim:teardown`,
+`sim:reset`) were invoked with an explicit `--yes` flag. `sim:verify` is
+read-only and always safe to run.
 
 **Concurrency.** All sim writers are operator-controlled — verification runs
 and open sim browser sessions. Production cron jobs only *delete* aged rows;
@@ -326,31 +374,50 @@ nothing else.
 
 **Legacy cleanup (one-time, part of first implementation PR):**
 
-- Delete `scripts/seed.js` (unscoped table wipes + unchecked errors — a
-  service-role footgun with no remaining purpose).
-- Absorb and remove the Hayward Unified test accounts
-  (`scripts/create-test-accounts.ts`: `district-test@husd.us`,
-  `admin-test@husd.us`, `provider-test@husd.us`) — they live inside a **real**
-  district's namespace on a **real** district's email domain, which is exactly
-  what the sim district exists to avoid. The script is retired in favor of
-  `sim:reset`. (The real Hayward district/school reference rows stay — they're
-  legitimate reference data.)
+- Delete `scripts/seed.js` — **blocking prerequisite** (invariant 2): its
+  unscoped service-role table wipes + unchecked errors are a live footgun
+  with no remaining purpose.
+- Retire the three Hayward Unified test **accounts** — *pending owner
+  confirmation* (§11): `district-test@husd.us`, `admin-test@husd.us`,
+  `provider-test@husd.us` live inside a **real** district's scope on a
+  **real** district's email domain — the situation the sim district exists
+  to avoid — and the sim provides strictly better replacements. To be
+  explicit: this deletes only the three test *logins* and retires
+  `scripts/create-test-accounts.ts`; the Hayward **district/school reference
+  rows stay** — they're legitimate shared reference data used by pickers.
 
 ---
 
 ## 9. How a verification run works
 
-The loop this district exists for, e.g. "we changed X — verify it across
-roles":
+The loop this district exists for — the owner asks *"run feature X through
+the sim district"* and gets back a defensible *"everything checks out"* (or
+a precise account of what doesn't):
 
-1. **Reset:** `npm run sim:reset` → known-good state, stable IDs.
+1. **Reset:** `npm run sim:reset -- --yes` → known-good state, stable IDs.
 2. **Walk the personas:** for each affected persona, drive the real UI with
-   Playwright — log in (`SIM_DISTRICT_PASSWORD`), perform the flow, assert
-   what they **see and can do**, and equally what they **must not** see
-   (the SEA edit-block, the cross-school leak, the secondary-hidden nav).
+   Playwright — log in with the persona's derived password, perform the
+   flow, assert what they **see and can do**, and equally what they **must
+   not** see (the SEA edit-block, the cross-school leak, the
+   secondary-hidden nav).
 3. **Check the backend:** assert DB state underneath via Supabase
    (RLS-relevant rows, triggers fired, scoping columns correct).
-4. **Report:** persona-by-persona pass/fail, with screenshots where useful.
+4. **Report:** the Sim Run Report (below).
+
+**The deliverable — a Sim Run Report.** Every run ends with the same
+artifact, so "checks out" always means the same thing:
+
+- **Scope:** the change under test, which personas are affected, and which
+  flows were walked. Any affected persona *not* walked is listed as
+  **not covered** — never silently implied to pass.
+- **Per persona:** positive assertions (what they saw and did, screenshots
+  where useful) **and negative assertions** (what they must not see or do).
+  Negative space is mandatory, not optional — most multi-role bugs are
+  leaks, and a run that only checks happy paths proves nothing about
+  scoping.
+- **DB layer:** the rows/RLS effects verified underneath the UI.
+- **Verdict:** pass / fail per persona. Anything ambiguous is flagged for a
+  human call, never rounded up to a pass.
 
 **Where it points:**
 
@@ -379,24 +446,37 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 
 ---
 
-## 11. Open questions for review
+## 11. Decisions log & remaining questions
 
-1. **Email domain:** `@sim.speddy.test` (recommended: undeliverable by
-   design, self-contained `district_domain`) vs. plus-addressing on
-   `bstew510@gmail.com` (real inbox for every persona, but
-   `district_domain` becomes `gmail.com`)?
-2. **Size:** 3 schools / 10 logins / 15 students — right ballpark for v1, or
-   trim/grow anywhere?
-3. **Names & shape:** happy with "Sim Unified" / Willow-Cedar-Bayview and the
-   persona roster? (Pure taste — easy to change now, annoying later since IDs
-   and docs will reference them.)
-4. **History depth:** seed 2 weeks of past sessions + attendance (recommended
-   — feeds dashboards/attendance widgets), or start schedules future-only?
-5. **Hayward cleanup:** retire the three `@husd.us` test accounts in the same
-   PR that first seeds the sim district (recommended), or keep both alive
-   during a transition period?
-6. **Additional provider roles** (`psychologist`, `counseling`,
-   `intervention`): agree to defer until a feature targets them?
+**Resolved 2026-07-10 (owner review):**
+
+1. **Email domain:** `@sim.speddy.test`, exclusively (no real-inbox
+   fallback).
+2. **Shape:** 5 schools — 3 elementary (TK–5), 1 middle (6–8), 1 high
+   (9–12) — mirroring the owner's local CA districts (§4).
+3. **Naming:** "Sim Unified" + botanical school names — approved.
+4. **History depth:** 2 weeks back / 2 weeks forward — approved.
+5. **Caseloads at CA scale:** RSP seeded at the 28-student statutory cap;
+   SLP at 48 of the 55 cap; OT ~18. Standing requirement: the sim stays
+   valid at legal caseload maxima — realism is the point (§6).
+6. **Multi-site providers:** SLP across 3 sites, OT across 2 (one
+   elementary + one secondary) — very common in real districts (§5).
+7. **Deferred roles** (`psychologist`, `counseling`, `intervention`):
+   confirmed deferred until a feature targets them.
+8. **Standing quality bar:** the district must "live and breathe" like a
+   real district — the owner asks for a feature run, and gets back a Sim Run
+   Report (§9) they can trust without re-checking by hand.
+
+**Still open:**
+
+1. **Hayward test accounts.** Recommendation: once the sim district is
+   seeded and verified, delete the three test *logins*
+   (`district-test@husd.us`, `admin-test@husd.us`, `provider-test@husd.us`)
+   and retire `scripts/create-test-accounts.ts`. They sit inside the real
+   Hayward Unified's scope on its real email domain, and every job they do,
+   the sim does better. The Hayward **district/school reference rows are
+   untouched** either way. Owner to confirm nothing depends on those three
+   logins day-to-day.
 
 ---
 
