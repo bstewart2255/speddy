@@ -405,14 +405,16 @@ nothing else.
 - Delete `scripts/seed.js` — **blocking prerequisite** (invariant 2): its
   unscoped service-role table wipes + unchecked errors are a live footgun
   with no remaining purpose.
-- Retire the three Hayward Unified test **accounts** — *pending owner
-  confirmation* (§11): `district-test@husd.us`, `admin-test@husd.us`,
-  `provider-test@husd.us` live inside a **real** district's scope on a
-  **real** district's email domain — the situation the sim district exists
-  to avoid — and the sim provides strictly better replacements. To be
-  explicit: this deletes only the three test *logins* and retires
-  `scripts/create-test-accounts.ts`; the Hayward **district/school reference
-  rows stay** — they're legitimate shared reference data used by pickers.
+- The three Hayward Unified logins (`district-test@husd.us`,
+  `admin-test@husd.us`, `provider-test@husd.us`) **stay** — owner decision,
+  2026-07-10: they were handed to a **prospective customer** for future
+  hands-on testing. From now on they are customer-facing demo accounts, not
+  internal test accounts — sim tooling never touches them and verification
+  runs never log into them. Consequence: `scripts/create-test-accounts.ts`
+  is still **deleted** — re-running it wipes and recreates those three auth
+  users, which would reset the customer's passwords and orphan any data she
+  creates. The accounts stay; the reset tool goes. (Hayward district/school
+  reference rows were never in question — shared reference data.)
 
 ---
 
@@ -466,7 +468,7 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 
 | Trigger | Action |
 |---|---|
-| **First real district onboards** | **Blocking precondition, not a nice-to-have:** add the `districts.is_test` flag (migration — discuss first) and wire pickers, analytics, and exports to exclude the sim structurally *before* any real user can see a picker. Re-evaluate whether the sim should move to a Supabase branch. Until that day, name/ID conventions suffice — no one but us sees the pickers, and the flag would be speculative schema surface. |
+| **First real district onboards** | **Blocking precondition, not a nice-to-have:** add the `districts.is_test` flag (migration — discuss first) and wire pickers, analytics, and exports to exclude the sim structurally *before* any real user can see a picker. Re-evaluate whether the sim should move to a Supabase branch. Until that day, name/ID conventions suffice — no one but us sees the pickers, and the flag would be speculative schema surface. *Note:* a prospective customer already holds the Hayward-scoped demo logins (§8), so this trigger is closer than "zero users" suggests — the moment she begins actively testing, treat it as fired. |
 | **AI features enabled** (SPE-174) | Sim-driven generation burns real API budget; keep generation steps deliberate and budgeted in verification runs. |
 | **Billing / payments return** | Sim users need an explicit exemption path before any billing integration ships. |
 | **Outbound email / notifications ship** | Re-confirm the sim domain can never receive or leak mail; decide per-channel whether sim users are suppressed or plus-addressed. |
@@ -511,16 +513,21 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
     is a known gap the owner wants baked in eventually — tracked as SPE-194
     and now a named lifecycle trigger (§10).
 
-**Still open:**
+12. **Hayward logins stay** (resolved 2026-07-10): the three `@husd.us`
+    demo accounts were given to a prospective customer for future testing
+    and remain untouched — customer-facing from now on, never used by sim
+    tooling or verification runs. `scripts/create-test-accounts.ts` is
+    still deleted (re-running it would reset her credentials and orphan
+    her data — §8). Standing isolation assertion: nothing sim-namespaced
+    may ever be reachable from Hayward-scoped accounts (enforced by
+    school/district scoping; spot-checked in runs that touch
+    district-wide surfaces).
+13. **Secondary session policy confirmed** (resolved 2026-07-10): the sim
+    shows exactly what a production user would experience — no seeded
+    session instances at secondary sites while the product hides
+    scheduling there (§7).
 
-1. **Hayward test accounts.** Recommendation: once the sim district is
-   seeded and verified, delete the three test *logins*
-   (`district-test@husd.us`, `admin-test@husd.us`, `provider-test@husd.us`)
-   and retire `scripts/create-test-accounts.ts`. They sit inside the real
-   Hayward Unified's scope on its real email domain, and every job they do,
-   the sim does better. The Hayward **district/school reference rows are
-   untouched** either way. Owner to confirm nothing depends on those three
-   logins day-to-day.
+**Still open:** none — the spec is implementation-ready.
 
 ---
 
