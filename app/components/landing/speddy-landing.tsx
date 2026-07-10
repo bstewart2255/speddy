@@ -338,6 +338,13 @@ function resolve(sel: Sel): Resolved {
         note: '',
       },
     ];
+    // Bell-schedule / master-schedule building is an elementary concern — at
+    // middle & high there's no single bell grid to own, so the two scheduling
+    // sections (Master Schedule + the structural foundation) drop out for site
+    // admins at secondary.
+    if (isSec) {
+      caps = caps.filter((c) => c.graphic !== 'master' && c.graphic !== 'structural');
+    }
   } else {
     hero = {
       eyebrow: 'For district SpEd directors',
