@@ -6,7 +6,8 @@
  * seed/teardown/verify all derive their world from this file, which is what
  * makes the safety invariants checkable:
  *   - every seeded row carries an ID that is either written here or derived
- *     via UUIDv5 from SIM_UUID_NAMESPACE + a natural key listed here;
+ *     deterministically (SHA-256 over SIM_UUID_NAMESPACE + a natural key
+ *     listed here, formatted as an RFC 9562 UUIDv8);
  *   - auth users are the one exception: their manifest-owned identity is the
  *     @sim.speddy.test email; UUIDs are resolved at runtime.
  */
@@ -23,18 +24,22 @@ export const SUPABASE_PROJECT_REF = 'qkcruccytmmdajfavpgb';
 /** Reserved, undeliverable email domain — the sole sim identity namespace. */
 export const SIM_EMAIL_DOMAIN = 'sim.speddy.test';
 
-/** Fixed UUIDv5 namespace for all derived sim IDs. Never change after first seed. */
+/** Fixed namespace for all derived sim IDs. Never change after first seed. */
 export const SIM_UUID_NAMESPACE = '51dd0000-5e1f-4a11-b0b0-000000000001';
 
-/** RFC 4122 UUIDv5 (SHA-1, name-based) — no dependency needed. */
-export function uuidv5(name: string, namespace: string = SIM_UUID_NAMESPACE): string {
+/**
+ * Deterministic name-based UUID: SHA-256 over namespace + name, laid out as an
+ * RFC 9562 UUIDv8 (the version reserved for custom schemes). Same stable-ID
+ * property as UUIDv5 without SHA-1 (CodeQL: weak-crypto).
+ */
+export function simUuid(name: string, namespace: string = SIM_UUID_NAMESPACE): string {
   const nsBytes = Buffer.from(namespace.replace(/-/g, ''), 'hex');
-  const hash = createHash('sha1')
+  const hash = createHash('sha256')
     .update(nsBytes)
     .update(Buffer.from(name, 'utf8'))
     .digest();
   const bytes = Buffer.from(hash.subarray(0, 16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x50; // version 5
+  bytes[6] = (bytes[6] & 0x0f) | 0x80; // version 8 (custom)
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -214,7 +219,7 @@ export const RECORD_TEACHERS: RecordTeacher[] = [
 ];
 
 export function teacherRecordId(key: string): string {
-  return uuidv5(`teacher:${key}`);
+  return simUuid(`teacher:${key}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -247,7 +252,7 @@ export const CASELOADS: CaseloadRule[] = [
 export const TOTAL_STUDENTS = CASELOADS.reduce((n, c) => n + c.count, 0); // 202
 
 export function studentId(providerKey: string, schoolId: string, index: number): string {
-  return uuidv5(`student:${providerKey}:${schoolId}:${index}`);
+  return simUuid(`student:${providerKey}:${schoolId}:${index}`);
 }
 
 /** Deterministic frequency/minutes mix (index-cycled). */
@@ -303,7 +308,7 @@ export const EDGE = {
   zeroSessionsIndex: 5,
   /** Indexes sharing a group session. */
   groupIndexes: [3, 4],
-  groupId: uuidv5('group:rachel:reading-a'),
+  groupId: simUuid('group:rachel:reading-a'),
   groupName: 'Reading Group A',
   groupColor: 3,
   /** Index whose sessions are delegated to the SEA (Leah). */
@@ -356,12 +361,17 @@ export const ACCOMMODATION_BANK = [
 // Schedules (spec §7)
 // ---------------------------------------------------------------------------
 
+/**
+ * Bell schedules model BLOCKED (non-teaching) windows, and period_name has a
+ * CHECK constraint (20260103_add_daily_time_period_names.sql):
+ * Recess | Lunch | Lunch Recess | Snack | PE | School Start | Dismissal |
+ * Early Dismissal. Session slots below deliberately avoid these windows.
+ */
 export const BELL_PERIODS = [
-  { name: 'Morning Block', start: '08:30', end: '10:00' },
+  { name: 'School Start', start: '08:15', end: '08:30' },
   { name: 'Recess', start: '10:00', end: '10:15' },
-  { name: 'Mid-Morning Block', start: '10:15', end: '11:45' },
   { name: 'Lunch', start: '11:45', end: '12:30' },
-  { name: 'Afternoon Block', start: '12:30', end: '14:30' },
+  { name: 'Dismissal', start: '14:30', end: '14:45' },
 ] as const;
 
 export const SESSION_SLOTS = ['08:45', '09:30', '10:30', '12:45', '13:30'] as const;
@@ -372,39 +382,39 @@ export const SCHOOL_DAY = { start: '08:30', end: '14:30' } as const;
 export const INSTANCE_WINDOW_DAYS = 14;
 
 export function bellScheduleId(schoolId: string, grade: string, day: number, period: string): string {
-  return uuidv5(`bell:${schoolId}:${grade}:${day}:${period}`);
+  return simUuid(`bell:${schoolId}:${grade}:${day}:${period}`);
 }
 
 export function schoolHoursId(providerKey: string, schoolId: string, grade: string, day: number): string {
-  return uuidv5(`hours:${providerKey}:${schoolId}:${grade}:${day}`);
+  return simUuid(`hours:${providerKey}:${schoolId}:${grade}:${day}`);
 }
 
 export function specialActivityId(schoolId: string, teacherKey: string, activity: string): string {
-  return uuidv5(`activity:${schoolId}:${teacherKey}:${activity}`);
+  return simUuid(`activity:${schoolId}:${teacherKey}:${activity}`);
 }
 
 export function providerSchoolId(personaKey: string, schoolId: string): string {
-  return uuidv5(`provsch:${personaKey}:${schoolId}`);
+  return simUuid(`provsch:${personaKey}:${schoolId}`);
 }
 
 export function userSiteScheduleId(personaKey: string, schoolId: string, day: number): string {
-  return uuidv5(`usq:${personaKey}:${schoolId}:${day}`);
+  return simUuid(`usq:${personaKey}:${schoolId}:${day}`);
 }
 
 export function sessionTemplateId(studentUuid: string, slot: number): string {
-  return uuidv5(`template:${studentUuid}:${slot}`);
+  return simUuid(`template:${studentUuid}:${slot}`);
 }
 
 export function sessionInstanceId(templateUuid: string, isoDate: string): string {
-  return uuidv5(`instance:${templateUuid}:${isoDate}`);
+  return simUuid(`instance:${templateUuid}:${isoDate}`);
 }
 
 export function attendanceId(instanceUuid: string): string {
-  return uuidv5(`attendance:${instanceUuid}`);
+  return simUuid(`attendance:${instanceUuid}`);
 }
 
 export function studentDetailsId(studentUuid: string): string {
-  return uuidv5(`details:${studentUuid}`);
+  return simUuid(`details:${studentUuid}`);
 }
 
 export const SPECIAL_ACTIVITIES = ['PE', 'Music', 'Library'] as const;
@@ -482,19 +492,19 @@ export const CARE_REFERRALS: CareSpec[] = [
 ];
 
 export function careReferralId(key: string): string {
-  return uuidv5(`care:referral:${key}`);
+  return simUuid(`care:referral:${key}`);
 }
 export function careCaseId(key: string): string {
-  return uuidv5(`care:case:${key}`);
+  return simUuid(`care:case:${key}`);
 }
 export function careNoteId(key: string, index: number): string {
-  return uuidv5(`care:note:${key}:${index}`);
+  return simUuid(`care:note:${key}:${index}`);
 }
 export function careActionItemId(key: string): string {
-  return uuidv5(`care:action:${key}`);
+  return simUuid(`care:action:${key}`);
 }
 export function careHistoryId(key: string, status: string): string {
-  return uuidv5(`care:history:${key}:${status}`);
+  return simUuid(`care:history:${key}:${status}`);
 }
 
 // ---------------------------------------------------------------------------

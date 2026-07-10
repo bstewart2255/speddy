@@ -19,6 +19,7 @@ import {
   SCHOOLS,
   SWEPT_TABLES,
   TOTAL_STUDENTS,
+  careCaseId,
 } from './manifest';
 import {
   Admin,
@@ -53,6 +54,7 @@ async function collectCounts(admin: Admin) {
     for (const row of data ?? []) studentIds.add(row.id);
   }
   const simStudentIds = [...studentIds];
+  const careCaseIds = CARE_REFERRALS.filter(c => c.withCase).map(c => careCaseId(c.key));
 
   const counts: Record<string, number> = {
     'auth users (@sim domain)': simUsers.size,
@@ -71,6 +73,10 @@ async function collectCounts(admin: Admin) {
     schedule_sessions: simUserIds.length > 0 ? await countWhereIn(admin, 'schedule_sessions', 'provider_id', simUserIds) : 0,
     attendance: simStudentIds.length > 0 ? await countWhereIn(admin, 'attendance', 'student_id', simStudentIds) : 0,
     care_referrals: await countWhereIn(admin, 'care_referrals', 'school_id', SIM_SCHOOL_IDS),
+    care_cases: await countWhereIn(admin, 'care_cases', 'id', careCaseIds),
+    care_meeting_notes: await countWhereIn(admin, 'care_meeting_notes', 'case_id', careCaseIds),
+    care_action_items: await countWhereIn(admin, 'care_action_items', 'case_id', careCaseIds),
+    care_case_status_history: await countWhereIn(admin, 'care_case_status_history', 'case_id', careCaseIds),
   };
   for (const sweep of SWEPT_TABLES) {
     const ids = sweep.identity === 'user' ? simUserIds : simStudentIds;
@@ -110,6 +116,14 @@ async function main() {
     expect('schedule_sessions', n => n > 0, '> 0');
     expect('attendance', n => n > 0, '> 0');
     expect('care_referrals', n => n === CARE_REFERRALS.length, String(CARE_REFERRALS.length));
+    const withCase = CARE_REFERRALS.filter(c => c.withCase);
+    const expectedNotes = withCase.reduce((n, c) => n + (c.notes?.length ?? 0), 0);
+    const expectedItems = withCase.filter(c => c.actionItem).length;
+    const expectedHistory = withCase.reduce((n, c) => n + (c.statusHistory?.length ?? 0), 0);
+    expect('care_cases', n => n === withCase.length, String(withCase.length));
+    expect('care_meeting_notes', n => n === expectedNotes, String(expectedNotes));
+    expect('care_action_items', n => n === expectedItems, String(expectedItems));
+    expect('care_case_status_history', n => n === expectedHistory, String(expectedHistory));
     expect('provider_schools', n => n > 0, '> 0');
     expect('user_site_schedules', n => n > 0, '> 0');
   }

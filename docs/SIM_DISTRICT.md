@@ -49,7 +49,7 @@ every future addition to the sim district must preserve all seven.
 
 1. **Everything is manifest-keyed.** Every sim row either carries a
    manifest-owned ID — fixed in the manifest, or deterministically derived
-   from the manifest's UUIDv5 namespace + natural keys, so the full set is
+   from the manifest's UUID namespace + natural keys (SHA-256, UUIDv8 layout), so the full set is
    enumerable from the manifest without DB access — or foreign-keys
    (directly or transitively) to one. The single exception: **auth users**,
    whose UUIDs Supabase assigns at creation. Their manifest-owned identity
@@ -94,7 +94,7 @@ or query result — and collision-proof against real NCES/CDS data:
 | Org display names | Start with `Sim ` | `Sim Willow Elementary` |
 | People (profiles, teachers, student_details, CARE names) | Surname ends `-Sim` | `Rachel Okafor-Sim` |
 | Emails | All under one sim domain | `rsp.willow@sim.speddy.test` |
-| Domain-row UUIDs (students, sessions, …) | Fixed in the manifest, or UUIDv5-derived from the manifest's namespace + natural key — either way enumerable from the manifest alone | stable across reseeds |
+| Domain-row UUIDs (students, sessions, …) | Fixed in the manifest, or derived from the manifest's namespace + natural key (SHA-256, UUIDv8 layout) — either way enumerable from the manifest alone | stable across reseeds |
 
 **Email domain — recommendation: `sim.speddy.test`.** `.test` is an
 IETF-reserved TLD: mail is undeliverable by design, and nobody can ever own
@@ -261,7 +261,7 @@ exists, including that quirk:
 **The manifest holds generator rules, not 126 hand-written rows.** Per
 caseload: counts, grade distributions, teacher assignments, and
 minutes/frequency mixes — plus an explicit list of the edge-case rows above.
-Student UUIDs are UUIDv5 of a fixed namespace + natural key
+Student UUIDs are derived from a fixed namespace + natural key (SHA-256, UUIDv8 layout)
 (`student:willow:rsp:007`), so generated rows keep stable, greppable IDs
 across reseeds without hand-maintaining a giant list. Because the namespace
 and natural keys live in the manifest, preflight, teardown, and verify

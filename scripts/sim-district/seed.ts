@@ -324,7 +324,7 @@ async function main() {
             school_id: school.id,
             school_year: schoolYear,
             created_by_id: rspId,
-            created_by_role: 'resource',
+            created_by_role: 'provider', // CHECK: 'provider' | 'site_admin'
           });
         }
       }
@@ -346,7 +346,7 @@ async function main() {
         district_id: DISTRICT.id,
         school_year: schoolYear,
         created_by_id: rspId,
-        created_by_role: 'resource',
+        created_by_role: 'provider',
       });
     });
   }
@@ -411,7 +411,16 @@ async function main() {
           group_color: isGrouped && k === 0 ? EDGE.groupColor : null,
           manually_placed: isRachel && i === EDGE.manuallyPlacedIndex && k === 0,
         };
-        sessionRows.push({ ...base, id: templateId, is_template: true, session_date: null, template_id: null });
+        sessionRows.push({
+          ...base,
+          id: templateId,
+          is_template: true,
+          session_date: null,
+          template_id: null,
+          is_completed: false, // NOT NULL — set explicitly on templates
+          student_absent: false,
+          outside_schedule_conflict: false,
+        });
         for (const d of window.filter(w => w.dayOfWeek === dayOfWeek)) {
           const instanceId = sessionInstanceId(templateId, d.iso);
           const completed = d.inPast && (i + k + d.dayOfWeek) % 5 !== 0;
@@ -421,6 +430,8 @@ async function main() {
             is_template: false,
             template_id: templateId,
             session_date: d.iso,
+            student_absent: false,
+            outside_schedule_conflict: false,
             is_completed: completed,
             completed_at: completed ? `${d.iso}T22:00:00Z` : null,
             completed_by: completed ? providerId : null,
@@ -478,12 +489,20 @@ async function main() {
 
     if (spec.withCase) {
       const requestReceived = spec.requestReceivedDaysAgo != null ? addDays(seedDate, -spec.requestReceivedDaysAgo) : null;
+      // current_disposition CHECK allows only enum-like codes
+      // (20260107_add_close_case_disposition.sql): teacher_consult,
+      // wait_for_report_card, wait_for_assessment_data, intervention,
+      // counseling_referral, schedule_sst, send_ap, move_to_initials, close_case.
+      const disposition = spec.status === 'closed' ? 'close_case'
+        : spec.status === 'initial' ? 'send_ap'
+        : spec.status === 'active' ? 'intervention'
+        : null;
       const { error: caseErr } = await admin.from('care_cases').insert({
         id: careCaseId(spec.key),
         referral_id: careReferralId(spec.key),
         assigned_to: spec.actionItem ? userIds.get(spec.actionItem.assigneeKey)! : referrerId,
         follow_up_date: spec.status === 'closed' ? null : addDays(seedDate, 14),
-        current_disposition: spec.status === 'closed' ? 'Resolved — behavior contract successful' : null,
+        current_disposition: disposition,
         ap_due_date: requestReceived ? addDays(new Date(`${requestReceived}T00:00:00Z`), 15) : null,
       });
       if (caseErr) throw new Error(`care_cases insert failed (${spec.key}): ${caseErr.message}`);
