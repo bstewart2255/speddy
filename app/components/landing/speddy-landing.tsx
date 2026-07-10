@@ -27,8 +27,16 @@ const ST: Record<StatusKey, { label: string; color: string; bg: string }> = {
   dev: { label: 'In development', color: '#92400E', bg: '#FEF3C7' },
 };
 
-type RawCap = { name: string; status: StatusKey; benefit: string; note: string };
-type Cap = RawCap & { stLabel: string; stColor: string; stBg: string; hasNote: boolean };
+type RawCap = {
+  name: string;
+  status: StatusKey;
+  graphic: MockKind;
+  benefit: string;
+  points: string[];
+  note: string;
+};
+type StampedCap = RawCap & { stLabel: string; stColor: string; stBg: string; hasNote: boolean };
+type Cap = StampedCap & { reverse: boolean; index: number };
 type Banner = { label: string; text: string; bg: string; border: string; dot: string };
 
 type Resolved = {
@@ -72,11 +80,12 @@ const ROLE_TO_AUDIENCE: Record<Role, Audience> = {
 const RESPONSIVE_CSS = `
 .sp-selbar { display: flex; flex-wrap: wrap; gap: 22px 28px; align-items: center; justify-content: center; }
 .sp-heroprod { display: grid; gap: 18px; align-items: start; }
-.sp-caps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 760px) {
+.sp-feature[data-reverse="true"] { flex-direction: row-reverse; }
+@media (max-width: 900px) {
   .sp-heroprod { grid-template-columns: 1fr !important; }
-  .sp-caps { grid-template-columns: 1fr; }
   .sp-selgroup { justify-content: center; }
+  .sp-feature, .sp-feature[data-reverse="true"] { flex-direction: column !important; }
+  .sp-feature-visual, .sp-feature-text { width: 100%; }
 }
 `;
 
@@ -116,9 +125,21 @@ function resolve(sel: Sel): Resolved {
       {
         name: 'Visual weekly schedule',
         status: isSec ? 'dev' : 'live',
+        graphic: 'schedule',
         benefit: isSec
           ? 'The scheduler built around a bell-schedule day. Period-based scheduling for middle & high is in active development.'
           : 'Every session for every student, built by drag-and-drop and color-coded by grade — with conflict detection before you commit.',
+        points: isSec
+          ? [
+              'Built around a real bell-schedule day',
+              'Same drag-and-drop engine you see for elementary',
+              'Period-based scheduling actively in the works',
+            ]
+          : [
+              'Drag sessions into place — no spreadsheet math',
+              'Grade-color coded so overlaps jump right out',
+              'Conflicts flagged before you ever commit',
+            ],
         note: isSec
           ? 'Today at your level you get everything below: caseload, meetings, referrals and progress.'
           : '',
@@ -126,9 +147,21 @@ function resolve(sel: Sel): Resolved {
       {
         name: isPriv ? 'Support plans & caseload' : 'Students & caseload',
         status: 'live',
+        graphic: 'minutes',
         benefit: isPriv
           ? 'Every student you support in one place — goals, accommodations, assessments and support-plan details, imported from the file you already keep.'
           : 'Every student in one place — grade, teacher, service minutes, goals and due dates. Import in bulk or straight from a SEIS export.',
+        points: isPriv
+          ? [
+              'Goals, accommodations and assessments together',
+              'Imported from the file you already keep',
+              'Support-plan details always current',
+            ]
+          : [
+              'Grade, teacher, minutes and due dates in one row',
+              'Import in bulk or from a SEIS export',
+              'Delivery tracked against each goal automatically',
+            ],
         note:
           isSec && !isPriv
             ? 'Caseload-first at secondary: goals, accommodations and assessments; session/minute fields are hidden.'
@@ -139,17 +172,41 @@ function resolve(sel: Sel): Resolved {
       {
         name: isPriv ? 'Support-plan meetings' : 'IEP meeting planning',
         status: 'rolling',
+        graphic: 'meetings',
         benefit: isPriv
           ? 'Plan support-plan and family meetings around everyone’s availability — the same scheduling engine, without the IDEA compliance clock.'
           : 'Plan a whole term of meetings that respect the team’s availability and the site’s capacity — families confirm by text or phone, no account. Works K-12.',
+        points: isPriv
+          ? [
+              'A whole term planned around real availability',
+              'Families confirm by text or phone — no account',
+              'No IDEA compliance clock to manage',
+            ]
+          : [
+              'Respects team availability and room capacity',
+              'Families confirm by text or phone — no account',
+              'Works across K-12',
+            ],
         note: '',
       },
       {
         name: 'Referral tracking (CARE)',
         status: 'live',
+        graphic: 'care',
         benefit: isPriv
           ? 'A shared queue for student concerns: a teacher or staff concern enters a pending queue and becomes an active learning-support case.'
           : 'A shared queue for every concern — academic, behavioral, speech, OT — with two intake lanes and the assessment-plan clock calculated for you.',
+        points: isPriv
+          ? [
+              'One queue for every student concern',
+              'Concerns move from pending to active case',
+              'Nothing lost between teacher and specialist',
+            ]
+          : [
+              'One queue: academic, behavioral, speech & OT',
+              'Two intake lanes keep concerns moving',
+              'Assessment-plan clock counted for you',
+            ],
         note: isPriv
           ? 'The statutory compliance lane belongs to the local district, so it’s off here.'
           : '',
@@ -157,15 +214,27 @@ function resolve(sel: Sel): Resolved {
       {
         name: 'Progress monitoring',
         status: 'live',
+        graphic: 'progress',
         benefit:
           'Exit tickets and progress checks turn into per-goal trend dashboards — evidence collected as you work, not reconstructed before a meeting.',
+        points: [
+          'Exit tickets roll up into per-goal trends',
+          'Evidence gathered as you teach, not the night before',
+          'Walk into every meeting with the data ready',
+        ],
         note: isSec ? 'Goal-driven tools work at secondary; attendance widgets are hidden.' : '',
       },
       {
         name: 'Multi-school caseloads',
         status: 'live',
+        graphic: 'multisite',
         benefit:
           'One login across every building you serve — a separate caseload and schedule per site, each showing that school’s appropriate view.',
+        points: [
+          'One login for every building you serve',
+          'A separate caseload and schedule per site',
+          'Each school shows its own correct view',
+        ],
         note: '',
       },
     ];
@@ -186,44 +255,86 @@ function resolve(sel: Sel): Resolved {
       {
         name: 'Master Schedule',
         status: 'live',
+        graphic: 'master',
         benefit:
           'Bell schedules, special activities and yard-duty rotations for the whole school in one view — filter by grade, activity or zone, and roll it forward to next year.',
+        points: [
+          'Bell, specials and yard duty in one grid',
+          'Filter by grade, activity or zone',
+          'Roll the whole thing forward each year',
+        ],
         note: '',
       },
       {
         name: 'The foundation your team builds on',
         status: 'live',
+        graphic: 'structural',
         benefit:
           'Enter the structural data once and every provider schedules against it — no more re-sharing the August spreadsheet.',
+        points: [
+          'Enter the structure once',
+          'Every provider schedules against it',
+          'No more re-sharing the August spreadsheet',
+        ],
         note: '',
       },
       {
         name: isPriv ? 'Support-plan meeting rules' : 'IEP meeting rules & capacity',
         status: 'live',
+        graphic: 'meetings',
         benefit:
           'Set meeting days, room capacity and blackout windows once; teachers answer a one-time availability preference. The year-at-a-glance dashboard is rolling out.',
+        points: [
+          'Set meeting days, rooms and blackouts once',
+          'Teachers answer availability a single time',
+          'Year-at-a-glance dashboard rolling out',
+        ],
         note: '',
       },
       {
         name: 'Referral oversight (CARE)',
         status: 'live',
+        graphic: 'care',
         benefit:
           'See your school’s whole referral queue — every concern, its status and next step — instead of sticky notes and hallway conversations.',
+        points: [
+          'Every concern and its next step, at a glance',
+          'Status in one place, not on sticky notes',
+          'Nothing slips between staff',
+        ],
         note: isPriv ? 'The statutory compliance lane belongs to the local district.' : '',
       },
       {
         name: 'Staff & account administration',
         status: isPriv ? 'dev' : 'live',
+        graphic: 'staff',
         benefit: isPriv
           ? 'Standalone private-school accounts need the org-model work that’s on the way — today a school sits under a district record.'
           : 'Create teacher and staff accounts, manage your directories and resolve duplicates — accounts are admin-created, part of the FERPA posture.',
+        points: isPriv
+          ? [
+              'Standalone private-school accounts on the way',
+              'Today a school sits under a district record',
+              'Same directory tools once onboarding lands',
+            ]
+          : [
+              'Create teacher and staff accounts',
+              'Resolve duplicates in a click',
+              'Admin-created — part of the FERPA posture',
+            ],
         note: isCharter ? 'A charter that’s its own LEA is modeled as a one-school district today.' : '',
       },
       {
         name: 'School-wide visibility',
         status: 'live',
+        graphic: 'minutes',
         benefit:
           'Live oversight of how SpEd services are running at your site — without asking three people on a Friday afternoon.',
+        points: [
+          'Live view of how services are running',
+          'No Friday-afternoon status chases',
+          'Everything in one tab',
+        ],
         note: '',
       },
     ];
@@ -247,45 +358,81 @@ function resolve(sel: Sel): Resolved {
       {
         name: 'District-wide visibility',
         status: 'live',
+        graphic: 'district',
         benefit:
           'A live, read-only view of every school — schedules, caseloads, who’s serving whom, what’s happening this week.',
+        points: [
+          'Live, read-only view of every school',
+          'See who’s serving whom, this week',
+          'Zero data entry on your part',
+        ],
         note: '',
       },
       {
         name: 'User & access management',
         status: 'live',
+        graphic: 'staff',
         benefit:
           'Add, remove and re-role site admins, providers and staff as people change buildings or leave. Scope site admins to their schools.',
+        points: [
+          'Add, remove and re-role in seconds',
+          'Scope site admins to their own schools',
+          'Move people as buildings change',
+        ],
         note: '',
       },
       {
         name: 'Referral oversight across schools',
         status: 'live',
+        graphic: 'care',
         benefit:
           'The whole ' +
           (isCharter ? 'network' : 'district') +
           '’s CARE queue in one place — including the private-school referrals your district receives.',
+        points: [
+          'Every school’s CARE queue in one place',
+          'Includes private-school referrals you receive',
+          'Spot bottlenecks before they grow',
+        ],
         note: '',
       },
       {
         name: 'Caseload & schedule oversight',
         status: 'live',
+        graphic: 'schedule',
         benefit:
           'See every site’s caseloads and provider schedules without building or logging anything yourself.',
+        points: [
+          'Every site’s caseloads and schedules',
+          'Nothing to build or log yourself',
+          'Drill into any building on demand',
+        ],
         note: '',
       },
       {
         name: 'Meetings dashboard',
         status: 'dev',
+        graphic: 'meetings',
         benefit:
           'A year-at-a-glance compliance view — due dates without a meeting, at-risk meetings — is planned as Meetings rolls out.',
+        points: [
+          'Due dates without a meeting, surfaced',
+          'At-risk meetings flagged early',
+          'Planned as Meetings rolls out',
+        ],
         note: '',
       },
       {
         name: isCharter ? 'The network is your scope' : 'The district is your scope',
         status: 'live',
+        graphic: 'multisite',
         benefit:
           'Multi-school by design — everything rolls up to you, deliberately read-oriented so you never touch a schedule.',
+        points: [
+          'Multi-school by design',
+          'Everything rolls up to you',
+          'Read-oriented — you never touch a schedule',
+        ],
         note: isCharter ? 'A single-LEA charter is represented today as a one-school district.' : '',
       },
     ];
@@ -313,14 +460,14 @@ function resolve(sel: Sel): Resolved {
   const supporting =
     'Teachers see when their students are pulled and flag their own class activities, SEAs get a daily plan of exactly where to be, and families confirm meeting times by phone or email — with no account needed.';
 
-  const stamp = (c: RawCap): Cap => {
+  const stamp = (c: RawCap): StampedCap => {
     const s = ST[c.status];
     return { ...c, stLabel: s.label, stColor: s.color, stBg: s.bg, hasNote: !!c.note };
   };
 
   return {
     hero,
-    caps: caps.map(stamp),
+    caps: caps.map(stamp).map((c, i) => ({ ...c, reverse: i % 2 === 1, index: i + 1 })),
     capsHeadline,
     closing,
     placeholder,
@@ -439,7 +586,12 @@ export default function SpeddyLanding() {
           flexWrap: 'wrap',
         }}
       >
-        <SpeddyMark size={32} />
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <SpeddyMark size={32} />
+          <span style={{ fontSize: 14, fontWeight: 500, color: 'rgba(15,23,42,0.5)' }}>
+            The special ed platform.
+          </span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 15, fontWeight: 600 }}>
           <a href="#how" style={{ color: '#0F172A', textDecoration: 'none' }}>
             How it works
@@ -677,76 +829,157 @@ export default function SpeddyLanding() {
             {data.capsHeadline}
           </h2>
         </div>
-        <div className="sp-caps" style={{ maxWidth: 1000, margin: '0 auto' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'clamp(52px, 7vw, 92px)',
+            maxWidth: 1120,
+            margin: '0 auto',
+          }}
+        >
           {data.caps.map((cap, i) => (
             <div
               key={i}
-              style={{
-                background: '#FFF',
-                border: '1px solid rgba(15,23,42,0.08)',
-                borderRadius: 16,
-                padding: 24,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
+              className="sp-feature"
+              data-reverse={cap.reverse ? 'true' : 'false'}
+              style={{ display: 'flex', gap: 'clamp(28px, 4.5vw, 60px)', alignItems: 'center' }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
+              <div className="sp-feature-visual" style={{ flex: '1 1 0', minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 17,
+                    background: 'linear-gradient(160deg, #FBFCFE, #EEF2F7)',
+                    border: '1px solid rgba(15,23,42,0.07)',
+                    borderRadius: 20,
+                    padding: 'clamp(16px, 2.4vw, 26px)',
+                    boxShadow: '0 30px 60px -34px rgba(15,23,42,0.22)',
+                  }}
+                >
+                  <SpeddyMock kind={cap.graphic} type={sel.type} />
+                </div>
+              </div>
+              <div className="sp-feature-text" style={{ flex: '1 1 0', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: 'rgba(15,23,42,0.28)',
+                      letterSpacing: '0.04em',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {cap.index}
+                  </span>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      whiteSpace: 'nowrap',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      padding: '5px 11px',
+                      borderRadius: 999,
+                      background: cap.stBg,
+                      color: cap.stColor,
+                    }}
+                  >
+                    <span style={{ width: 5, height: 5, borderRadius: 999, background: cap.stColor }} />
+                    {cap.stLabel}
+                  </span>
+                </div>
+                <h3
+                  style={{
+                    fontSize: 'clamp(22px, 3vw, 30px)',
                     fontWeight: 700,
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.15,
+                    margin: '0 0 14px',
                     color: '#0F172A',
-                    letterSpacing: '-0.01em',
-                    lineHeight: 1.3,
+                    textWrap: 'balance',
                   }}
                 >
                   {cap.name}
-                </div>
-                <span
+                </h3>
+                <p
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    flexShrink: 0,
-                    whiteSpace: 'nowrap',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: 999,
-                    background: cap.stBg,
-                    color: cap.stColor,
+                    fontSize: 'clamp(15px, 1.7vw, 17px)',
+                    lineHeight: 1.6,
+                    color: 'rgba(15,23,42,0.68)',
+                    margin: '0 0 20px',
                   }}
                 >
-                  <span
-                    style={{ width: 5, height: 5, borderRadius: 999, background: cap.stColor }}
-                  />
-                  {cap.stLabel}
-                </span>
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.55, color: 'rgba(15,23,42,0.68)' }}>
-                {cap.benefit}
-              </div>
-              {cap.hasNote ? (
-                <div
+                  {cap.benefit}
+                </p>
+                <ul
                   style={{
-                    fontSize: 12.5,
-                    lineHeight: 1.5,
-                    color: 'rgba(15,23,42,0.5)',
-                    borderTop: '1px dashed rgba(15,23,42,0.1)',
-                    paddingTop: 10,
+                    listStyle: 'none',
+                    margin: 0,
+                    padding: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 11,
                   }}
                 >
-                  {cap.note}
-                </div>
-              ) : null}
+                  {cap.points.map((pt, j) => (
+                    <li
+                      key={j}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 11,
+                        fontSize: 15,
+                        lineHeight: 1.45,
+                        color: '#334155',
+                      }}
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          marginTop: 2,
+                          width: 19,
+                          height: 19,
+                          borderRadius: 999,
+                          background: '#E4EDFF',
+                          color: '#2452F5',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </span>
+                      <span>{pt}</span>
+                    </li>
+                  ))}
+                </ul>
+                {cap.hasNote ? (
+                  <div
+                    style={{
+                      marginTop: 20,
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      color: 'rgba(15,23,42,0.55)',
+                      paddingLeft: 14,
+                      borderLeft: '2px solid rgba(15,23,42,0.12)',
+                    }}
+                  >
+                    {cap.note}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ))}
         </div>
@@ -846,7 +1079,7 @@ export default function SpeddyLanding() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <SpeddyMark size={24} color="#FFF" />
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>
-            Made by SpEd people, for SpEd people.
+            The special ed platform.
           </span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, fontSize: 13 }}>
