@@ -103,6 +103,10 @@ export async function assertSentinel(admin: Admin): Promise<'exists' | 'bootstra
   // half-failed prior seed must fail HERE with a clear message, not surface
   // as a duplicate-key error mid-seed.
   const problems: string[] = [];
+  const simUsers = await resolveSimAuthUsers(admin);
+  if (simUsers.size > 0) problems.push(`${simUsers.size} @${SIM_EMAIL_DOMAIN} auth user(s)`);
+  const simUserIds = [...simUsers.values()];
+
   const simSchoolIds = SCHOOLS.map(s => s.id);
   const scopedChecks: { table: string; column: string; ids: string[] }[] = [
     { table: 'schools', column: 'id', ids: simSchoolIds },
@@ -113,9 +117,15 @@ export async function assertSentinel(admin: Admin): Promise<'exists' | 'bootstra
     { table: 'special_activities', column: 'school_id', ids: simSchoolIds },
     { table: 'care_referrals', column: 'school_id', ids: simSchoolIds },
     { table: 'provider_schools', column: 'school_id', ids: simSchoolIds },
-    { table: 'user_site_schedules', column: 'school_id', ids: simSchoolIds },
     { table: 'admin_permissions', column: 'district_id', ids: [DISTRICT.id] },
   ];
+  // These two have no school_id column — reachable only via sim user ids.
+  if (simUserIds.length > 0) {
+    scopedChecks.push(
+      { table: 'schedule_sessions', column: 'provider_id', ids: simUserIds },
+      { table: 'user_site_schedules', column: 'user_id', ids: simUserIds },
+    );
+  }
   for (const check of scopedChecks) {
     const { count, error } = await admin
       .from(check.table)
@@ -125,26 +135,12 @@ export async function assertSentinel(admin: Admin): Promise<'exists' | 'bootstra
     if ((count ?? 0) > 0) problems.push(`${count} ${check.table} row(s)`);
   }
 
-  const simUsers = await resolveSimAuthUsers(admin);
-  if (simUsers.size > 0) problems.push(`${simUsers.size} @${SIM_EMAIL_DOMAIN} auth user(s)`);
-  const simUserIds = [...simUsers.values()];
-
   const { count: profileCount, error: profileErr } = await admin
     .from('profiles')
     .select('id', { count: 'exact', head: true })
     .like('email', `%@${SIM_EMAIL_DOMAIN}`);
   if (profileErr) throw new Error(`Zero-state profile check failed: ${profileErr.message}`);
   if ((profileCount ?? 0) > 0) problems.push(`${profileCount} sim profile row(s)`);
-
-  // schedule_sessions has no school_id — reachable only via sim providers.
-  if (simUserIds.length > 0) {
-    const { count, error } = await admin
-      .from('schedule_sessions')
-      .select('*', { count: 'exact', head: true })
-      .in('provider_id', simUserIds);
-    if (error) throw new Error(`Zero-state session check failed: ${error.message}`);
-    if ((count ?? 0) > 0) problems.push(`${count} schedule_sessions row(s)`);
-  }
 
   if (problems.length > 0) {
     console.error(

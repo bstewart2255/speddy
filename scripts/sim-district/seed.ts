@@ -68,6 +68,7 @@ import {
   assertSentinel,
   bulkInsert,
   createAdmin,
+  deleteWhereIn,
   minutesAfter,
   requireEnv,
   requireYesFlag,
@@ -206,6 +207,12 @@ async function main() {
       }
     });
   }
+  // handle_new_user_schools() fires on auth user creation and inserts a
+  // primary-school provider_schools row (random id) for multi-school personas.
+  // UNIQUE (provider_id, school_district, school_site) would reject our
+  // manifest-keyed rows, and user_site_schedules.site_id needs the manifest
+  // ids — so replace the trigger's rows with ours.
+  await deleteWhereIn(admin, 'provider_schools', 'provider_id', [...userIds.values()]);
   counts['provider_schools'] = await bulkInsert(admin, 'provider_schools', providerSchoolRows);
   counts['user_site_schedules'] = await bulkInsert(admin, 'user_site_schedules', siteScheduleRows);
 

@@ -82,6 +82,18 @@ async function collectCounts(admin: Admin) {
     const ids = sweep.identity === 'user' ? simUserIds : simStudentIds;
     counts[`${sweep.table} (swept)`] = ids.length > 0 ? await countWhereIn(admin, sweep.table, sweep.column, ids) : 0;
   }
+
+  // debug_signup_log rows from the signup triggers, tagged to the sim district
+  // via metadata (NULL-metadata rows are swept by user_id in teardown but are
+  // not attributable here once the users are gone).
+  {
+    const { count, error } = await admin
+      .from('debug_signup_log')
+      .select('*', { count: 'exact', head: true })
+      .eq('metadata->>school_district', DISTRICT.name);
+    if (error) throw new Error(`debug_signup_log scan failed: ${error.message}`);
+    counts['debug_signup_log (sim-tagged)'] = count ?? 0;
+  }
   return counts;
 }
 
