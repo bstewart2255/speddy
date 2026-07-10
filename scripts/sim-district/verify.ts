@@ -138,6 +138,9 @@ async function main() {
     expect('care_case_status_history', n => n === expectedHistory, String(expectedHistory));
     expect('provider_schools', n => n > 0, '> 0');
     expect('user_site_schedules', n => n > 0, '> 0');
+    // Signup triggers tag their log rows with the sim district name via
+    // metadata; a zero here would mean the real-path trigger never fired.
+    expect('debug_signup_log (sim-tagged)', n => n > 0, '> 0');
   }
 
   console.log(expectEmpty ? 'Orphan scan (expect zero everywhere):\n' : 'Post-seed verification:\n');

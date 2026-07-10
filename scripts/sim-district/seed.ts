@@ -212,7 +212,8 @@ async function main() {
   // UNIQUE (provider_id, school_district, school_site) would reject our
   // manifest-keyed rows, and user_site_schedules.site_id needs the manifest
   // ids — so replace the trigger's rows with ours.
-  await deleteWhereIn(admin, 'provider_schools', 'provider_id', [...userIds.values()]);
+  counts['provider_schools (trigger rows removed)'] =
+    await deleteWhereIn(admin, 'provider_schools', 'provider_id', [...userIds.values()]);
   counts['provider_schools'] = await bulkInsert(admin, 'provider_schools', providerSchoolRows);
   counts['user_site_schedules'] = await bulkInsert(admin, 'user_site_schedules', siteScheduleRows);
 
