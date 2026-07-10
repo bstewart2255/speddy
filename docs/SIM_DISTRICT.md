@@ -1,7 +1,11 @@
 # Sim District — Specification
 
-> **Status: DRAFT v2 — owner decisions of 2026-07-10 folded in** (see §11).
-> Nothing in this document is implemented yet.
+> **Status: spec approved; scripts implemented** (`scripts/sim-district/` —
+> manifest, seed, teardown, verify; see §8). The first production seed is
+> pending: run `npm run sim:reset -- --yes` locally (requires
+> `SIM_DISTRICT_PASSWORD` alongside the Supabase env vars in `.env.local`),
+> or add those env vars to the Claude remote environment so resets can run
+> autonomously during verification sessions.
 > This spec defines the permanent simulated district that lives in the
 > production database so cross-role features can be exercised end-to-end
 > (backend + frontend) by a human or by Claude Code, without real users.
