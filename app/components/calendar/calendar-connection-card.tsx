@@ -17,7 +17,7 @@ import {
 const BANNERS: Record<string, { style: string; text: string }> = {
   connected: {
     style: 'bg-green-50 border-green-200 text-green-700',
-    text: 'Google Calendar connected. The planner now sees your real availability.',
+    text: 'Google Calendar connected. Speddy will use this connection as calendar-aware scheduling rolls out.',
   },
   denied: {
     style: 'bg-amber-50 border-amber-200 text-amber-800',
@@ -153,8 +153,8 @@ export function CalendarConnectionCard({ className }: { className?: string }) {
               <p className="text-sm text-amber-800">
                 Speddy&apos;s access to{' '}
                 {conn?.googleEmail ?? 'your Google Calendar'} has expired or
-                been revoked, so the planner can&apos;t see that availability
-                right now. Reconnecting takes a few seconds.
+                been revoked. Reconnecting takes a few seconds and keeps this
+                connection ready for calendar-aware scheduling.
               </p>
             </div>
             <Button onClick={connect}>Reconnect</Button>
@@ -168,11 +168,12 @@ export function CalendarConnectionCard({ className }: { className?: string }) {
                 Connect Google Calendar
               </h2>
               <p className="text-sm text-gray-600 mb-1">
-                One-time setup: the planner reads your real availability, and
-                confirmed meetings arrive as ordinary Google Calendar invites.
-                Speddy asks for the minimum access — availability (free/busy)
-                and events on your own calendar — and you can disconnect at
-                any time.
+                One-time setup for calendar-aware scheduling. As those
+                features roll out, the planner will read your real
+                availability and confirmed meetings will arrive as ordinary
+                Google Calendar invites. Speddy asks for the minimum access —
+                availability (free/busy) and events on your own calendar —
+                and you can disconnect at any time.
               </p>
               <p className="text-xs text-gray-500">{ALL_DAY_TIP}</p>
             </div>
