@@ -36,10 +36,11 @@ Key points, detailed in the attached one-page packet:
 
 - **Per-user consent only** — no service account, no domain-wide delegation;
   trusting the app just lets individual staff choose to connect.
-- **Minimal scopes** — free/busy availability plus managing events on the
-  user's **own** calendar (Google's wording: see, create, change, delete);
-  no Gmail, Drive, or Contacts, and free/busy shows times only, not event
-  contents.
+- **Minimal scopes** — free/busy availability (times only, not event
+  contents) plus reading and managing events on the user's **own** calendar
+  (Google's wording: see, create, change, delete) for conflict detection,
+  meeting invitations, and RSVP tracking. Speddy modifies or deletes only
+  events it created; no Gmail, Drive, or Contacts access.
 - **Staff accounts only** — no student Google accounts are involved.
 - Tokens are encrypted at the application layer, never logged, and
   revocable by the user, by Speddy, or domain-wide by you at any time.
