@@ -17,11 +17,13 @@ special-education provider in the district and also Speddy's developer, so
 happy to answer anything directly.]
 
 Speddy is a FERPA-positioned special-education service management platform
-(scheduling, IEP compliance). Its newest feature is rolling out in phases:
-staff first connect their Google Calendar (live today), and the meeting
-scheduler will then use those connections to check staff **free/busy
-availability** and send meetings as normal Google Calendar invites. We're
-requesting approval once, ahead of that rollout. Per the district's
+(scheduling, IEP compliance). Its newest feature is rolling out in phases.
+Live today: staff connect their Google Calendar, the meeting scheduler
+checks staff **free/busy availability**, and reserved meetings appear as
+initials-only holds on the organizer's own calendar (no attendees are
+invited). In a later confirmation phase, confirmed meetings go out as
+normal Google Calendar invites. We're requesting approval once, covering
+both phases. Per the district's
 recent policy on unverified third-party connections, staff who try to
 connect their district Google account currently see Google's
 "Access blocked: admin_policy_enforced" screen.
@@ -38,9 +40,10 @@ Key points, detailed in the attached one-page packet:
   trusting the app just lets individual staff choose to connect.
 - **Minimal scopes** — free/busy availability (times only, not event
   contents) plus reading and managing events on the user's **own** calendar
-  (Google's wording: see, create, change, delete) for conflict detection,
-  meeting invitations, and RSVP tracking. Speddy modifies or deletes only
-  events it created; no Gmail, Drive, or Contacts access.
+  (Google's wording: see, create, change, delete) for conflict detection
+  and meeting holds today, and invitations/RSVP tracking in the later
+  confirmation phase. Speddy modifies or deletes only events it created;
+  no Gmail, Drive, or Contacts access.
 - **Staff accounts only** — no student Google accounts are involved.
 - Tokens are encrypted at the application layer, never logged, and
   revocable by the user, by Speddy, or domain-wide by you at any time.

@@ -4,19 +4,23 @@
  * to them under Google's sharing rules (spec §5, organizer-centric).
  *
  * "Not connected" is a normal response ({connected:false}), not an error:
- * the planner degrades to internal sources.
+ * the planner degrades to internal sources. Google's per-request caps (time
+ * span, calendars per request) are handled inside freeBusyQuery — nothing
+ * is silently truncated here.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import {
-  CalendarReconnectRequiredError,
-  getValidGoogleAccessToken,
-} from '@/lib/calendar/connections';
 import { freeBusyQuery } from '@/lib/calendar/google-calendar-api';
+import {
+  getCalendarAccessTokenOrResponse,
+  parseJsonObjectBody,
+} from '@/lib/calendar/route-helpers';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
-const MAX_EMAILS = 25;
+/** Request-size guard only — real Google caps are batched in freeBusyQuery. */
+const MAX_EMAILS = 100;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -27,10 +31,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  let body: { timeMin?: string; timeMax?: string; emails?: unknown };
-  try {
-    body = await request.json();
-  } catch {
+  const body = await parseJsonObjectBody(request);
+  if (!body) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
@@ -48,31 +50,28 @@ export async function POST(request: NextRequest) {
   }
 
   const emails = Array.isArray(body.emails)
-    ? body.emails
-        .filter((e): e is string => typeof e === 'string' && e.includes('@'))
-        .slice(0, MAX_EMAILS)
+    ? body.emails.filter(
+        (e): e is string => typeof e === 'string' && e.includes('@')
+      )
     : [];
-
-  let accessToken: string;
-  try {
-    accessToken = await getValidGoogleAccessToken(supabase, user.id);
-  } catch (err) {
-    if (err instanceof CalendarReconnectRequiredError) {
-      return NextResponse.json({ connected: false });
-    }
-    console.error(
-      'Free/busy token lookup failed:',
-      err instanceof Error ? err.message : 'unknown error'
-    );
+  if (emails.length > MAX_EMAILS) {
+    // Explicit failure beats silently planning without someone's calendar.
     return NextResponse.json(
-      { error: 'Calendar availability unavailable' },
-      { status: 502 }
+      { error: `Too many calendars requested (max ${MAX_EMAILS})` },
+      { status: 400 }
     );
   }
 
+  const token = await getCalendarAccessTokenOrResponse(
+    supabase,
+    user.id,
+    'Calendar availability unavailable'
+  );
+  if (token.response) return token.response;
+
   try {
     const calendars = await freeBusyQuery({
-      accessToken,
+      accessToken: token.accessToken,
       timeMin,
       timeMax,
       calendarIds: ['primary', ...emails],

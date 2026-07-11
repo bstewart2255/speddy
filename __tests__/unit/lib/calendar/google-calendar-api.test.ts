@@ -27,7 +27,7 @@ describe('chunkTimeRange', () => {
   it('splits long ranges into contiguous chunks ending at timeMax', () => {
     const start = '2026-09-01T00:00:00Z';
     const end = new Date(Date.parse(start) + 100 * DAY_MS).toISOString();
-    const chunks = chunkTimeRange(start, end, 42);
+    const chunks = chunkTimeRange(start, end);
     expect(chunks).toHaveLength(3);
     for (let i = 1; i < chunks.length; i++) {
       expect(chunks[i].timeMin).toBe(chunks[i - 1].timeMax);
@@ -45,7 +45,7 @@ describe('chunkTimeRange', () => {
   it('caps runaway ranges at the total-day limit', () => {
     const start = '2026-01-01T00:00:00Z';
     const end = new Date(Date.parse(start) + 3000 * DAY_MS).toISOString();
-    const chunks = chunkTimeRange(start, end, 42);
+    const chunks = chunkTimeRange(start, end);
     const totalMs =
       Date.parse(chunks[chunks.length - 1].timeMax) - Date.parse(start);
     expect(totalMs).toBeLessThanOrEqual(370 * DAY_MS);
@@ -90,6 +90,47 @@ describe('freeBusyQuery', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(result.primary).toHaveLength(2);
     expect(result['blocked@district.org']).toEqual([]);
+  });
+
+  it('batches large calendar lists so nothing is silently dropped', async () => {
+    const ids = ['primary', ...Array.from({ length: 25 }, (_, i) => `t${i}@d.org`)];
+    const fetchMock = jest.fn().mockImplementation(async (_url, init) => {
+      const sent = JSON.parse((init as RequestInit).body as string);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          calendars: Object.fromEntries(
+            sent.items.map((item: { id: string }) => [
+              item.id,
+              {
+                busy: [
+                  { start: '2026-09-01T09:00:00Z', end: '2026-09-01T10:00:00Z' },
+                ],
+              },
+            ])
+          ),
+        }),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await freeBusyQuery({
+      accessToken: 'token',
+      timeMin: '2026-09-01T00:00:00Z',
+      timeMax: '2026-09-08T00:00:00Z', // single time chunk
+      calendarIds: ids,
+    });
+
+    // 26 calendars → two batches (20 + 6) within the one time chunk.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const call of fetchMock.mock.calls) {
+      const sent = JSON.parse((call[1] as RequestInit).body as string);
+      expect(sent.items.length).toBeLessThanOrEqual(20);
+    }
+    // Every calendar got data — including those beyond the first batch.
+    expect(result['t24@d.org']).toHaveLength(1);
+    expect(Object.keys(result)).toHaveLength(26);
   });
 
   it('throws a GoogleOAuthError shape on API failure without token material', async () => {

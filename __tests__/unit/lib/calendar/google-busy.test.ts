@@ -75,12 +75,11 @@ describe('isoIntervalsToBusyBlocks', () => {
   });
 
   it('labels blocks for the availability engine', () => {
-    const [block] = isoIntervalsToBusyBlocks(
-      [{ start: localIso(2026, 9, 15, 9, 0), end: localIso(2026, 9, 15, 9, 30) }],
-      'Shared calendar'
-    );
+    const [block] = isoIntervalsToBusyBlocks([
+      { start: localIso(2026, 9, 15, 9, 0), end: localIso(2026, 9, 15, 9, 30) },
+    ]);
     expect(block.source).toBe('google');
-    expect(block.label).toBe('Shared calendar');
+    expect(block.label).toBe('Google Calendar');
   });
 });
 

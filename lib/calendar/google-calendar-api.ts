@@ -13,8 +13,14 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 /** Google caps freeBusy query spans; stay comfortably under it per request. */
 const FREEBUSY_MAX_DAYS_PER_REQUEST = 42;
-/** Planning horizons are within a school year; hard-cap runaway ranges. */
+/**
+ * Planning horizons are within a school year; hard-cap runaway ranges.
+ * Callers bound their range to what the planner actually consults (latest
+ * due date), so this cap is a backstop, not an expected path.
+ */
 const FREEBUSY_MAX_TOTAL_DAYS = 370;
+/** Google limits calendars per freeBusy request; batch and merge. */
+const FREEBUSY_MAX_CALENDARS_PER_REQUEST = 20;
 
 async function calendarRequest(
   accessToken: string,
@@ -60,12 +66,11 @@ export interface IsoInterval {
 
 /**
  * Split [timeMin, timeMax) into consecutive sub-ranges no longer than
- * maxDays, for APIs that cap the queryable span. Exported for tests.
+ * Google's per-request span limit. Exported for tests.
  */
 export function chunkTimeRange(
   timeMin: string,
-  timeMax: string,
-  maxDays: number = FREEBUSY_MAX_DAYS_PER_REQUEST
+  timeMax: string
 ): { timeMin: string; timeMax: string }[] {
   const startMs = Date.parse(timeMin);
   const endMs = Date.parse(timeMax);
@@ -76,7 +81,7 @@ export function chunkTimeRange(
     endMs,
     startMs + FREEBUSY_MAX_TOTAL_DAYS * 24 * 60 * 60 * 1000
   );
-  const stepMs = maxDays * 24 * 60 * 60 * 1000;
+  const stepMs = FREEBUSY_MAX_DAYS_PER_REQUEST * 24 * 60 * 60 * 1000;
   const chunks: { timeMin: string; timeMax: string }[] = [];
   for (let cursor = startMs; cursor < cappedEndMs; cursor += stepMs) {
     chunks.push({
@@ -87,12 +92,23 @@ export function chunkTimeRange(
   return chunks;
 }
 
+function chunkList<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size));
+  }
+  return batches;
+}
+
 /**
- * freebusy.query over an arbitrary range (chunked), for the user's own
- * calendar ('primary') plus any other calendar ids (colleague emails).
- * Calendars the token can't see come back with per-calendar errors from
- * Google — those are skipped, contributing no busy data, by design
- * (spec §5: sources are additive, never required).
+ * freebusy.query over an arbitrary range and calendar count, for the user's
+ * own calendar ('primary') plus any other calendar ids (colleague emails).
+ * Both Google caps are handled here — the time span (chunked windows) and
+ * the calendars-per-request limit (batched ids) — so callers never silently
+ * lose coverage. Independent read-only requests run in parallel. Calendars
+ * the token can't see come back with per-calendar errors from Google —
+ * those are skipped, contributing no busy data, by design (spec §5:
+ * sources are additive, never required).
  */
 export async function freeBusyQuery(params: {
   accessToken: string;
@@ -103,28 +119,45 @@ export async function freeBusyQuery(params: {
   const busyByCalendar: Record<string, IsoInterval[]> = {};
   for (const id of params.calendarIds) busyByCalendar[id] = [];
 
+  const idBatches = chunkList(
+    params.calendarIds,
+    FREEBUSY_MAX_CALENDARS_PER_REQUEST
+  );
+  const requests: { chunk: { timeMin: string; timeMax: string }; ids: string[] }[] =
+    [];
   for (const chunk of chunkTimeRange(params.timeMin, params.timeMax)) {
-    const res = await calendarRequest(params.accessToken, '/freeBusy', {
-      method: 'POST',
-      body: {
-        timeMin: chunk.timeMin,
-        timeMax: chunk.timeMax,
-        items: params.calendarIds.map(id => ({ id })),
-      },
-    });
-    await raiseForStatus(res, 'free/busy query');
-    const body = await res.json();
-    const calendars = body?.calendars ?? {};
-    for (const id of params.calendarIds) {
-      const entry = calendars[id];
-      if (!entry || Array.isArray(entry.errors)) continue; // not visible — skip
-      for (const interval of entry.busy ?? []) {
-        if (interval?.start && interval?.end) {
-          busyByCalendar[id].push({ start: interval.start, end: interval.end });
-        }
-      }
+    for (const ids of idBatches) {
+      requests.push({ chunk, ids });
     }
   }
+
+  await Promise.all(
+    requests.map(async ({ chunk, ids }) => {
+      const res = await calendarRequest(params.accessToken, '/freeBusy', {
+        method: 'POST',
+        body: {
+          timeMin: chunk.timeMin,
+          timeMax: chunk.timeMax,
+          items: ids.map(id => ({ id })),
+        },
+      });
+      await raiseForStatus(res, 'free/busy query');
+      const body = await res.json();
+      const calendars = body?.calendars ?? {};
+      for (const id of ids) {
+        const entry = calendars[id];
+        if (!entry || Array.isArray(entry.errors)) continue; // not visible — skip
+        for (const interval of entry.busy ?? []) {
+          if (interval?.start && interval?.end) {
+            busyByCalendar[id].push({
+              start: interval.start,
+              end: interval.end,
+            });
+          }
+        }
+      }
+    })
+  );
   return busyByCalendar;
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { CalendarConnectionCard } from '@/app/components/calendar/calendar-connection-card';
@@ -9,12 +9,12 @@ import {
   DEFAULT_MEETING_WINDOWS,
   minutesToTime,
   planMeetings,
-  type AttendeeConstraints,
   type BusyBlock,
   type PlanResult,
 } from '@/lib/iep-meetings/availability';
 import { fetchGoogleBusyBlocks } from '@/lib/calendar/google-busy';
 import {
+  buildPlanRequests,
   cancelMeeting,
   getMyMeetings,
   getPlanningData,
@@ -84,6 +84,10 @@ export default function MeetingsPage() {
   const [drafting, setDrafting] = useState(false);
   const [googleNote, setGoogleNote] = useState<string | null>(null);
   const [holdsCreated, setHoldsCreated] = useState<number>(0);
+  // Staleness guards: an async draft run or hold-sync response that isn't
+  // the latest must never write state computed for an earlier world.
+  const plannerRunRef = useRef(0);
+  const reserveTokenRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
@@ -135,6 +139,7 @@ export default function MeetingsPage() {
 
   const runPlanner = useCallback(async () => {
     if (!planning) return;
+    const runId = ++plannerRunRef.current;
     setDrafting(true);
     setGoogleNote(null);
     try {
@@ -145,55 +150,50 @@ export default function MeetingsPage() {
       // Google free/busy as one more busy source (spec §5): the organizer's
       // own calendar plus teacher calendars already visible to them through
       // Google's sharing. Absent/broken connection or a failed lookup
-      // degrades to internal sources — never blocks planning.
+      // degrades to internal sources — never blocks planning. Skipped
+      // entirely when there is nothing to plan (also covers past or cleared
+      // horizon values, which would otherwise produce a bogus request).
       let googleBusy: Map<string, BusyBlock[]> | null = null;
-      try {
-        const emails = Array.from(
-          new Set(
-            inHorizon
-              .map(s => s.teacherEmail)
-              .filter((e): e is string => !!e)
-          )
-        );
-        const google = await fetchGoogleBusyBlocks({
-          from: todayStr(),
-          to: horizon,
-          emails,
-        });
-        if (google.connected) googleBusy = google.busyByCalendar;
-      } catch (err) {
-        console.error('Google availability lookup failed:', err);
-        setGoogleNote(
-          'Google Calendar availability was unavailable — these drafts use internal schedules only.'
-        );
+      let note: string | null = null;
+      if (inHorizon.length > 0) {
+        try {
+          // The engine never searches past a meeting's due date, so fetch
+          // busy data only through the latest in-horizon due date.
+          const fetchTo = inHorizon.reduce(
+            (max, s) => (s.dueDate! > max ? s.dueDate! : max),
+            todayStr()
+          );
+          const emails = Array.from(
+            new Set(
+              inHorizon
+                .map(s => s.teacherEmail)
+                .filter((e): e is string => !!e)
+            )
+          );
+          const google = await fetchGoogleBusyBlocks({
+            from: todayStr(),
+            to: fetchTo,
+            emails,
+          });
+          if (google.connected) {
+            googleBusy = google.busyByCalendar;
+          } else {
+            note =
+              'Google Calendar is not connected — these drafts use internal schedules only.';
+          }
+        } catch (err) {
+          console.error('Google availability lookup failed:', err);
+          note =
+            'Google Calendar availability was unavailable — these drafts use internal schedules only.';
+        }
       }
 
-      const requests = inHorizon.map(student => {
-        const attendees: AttendeeConstraints[] = [
-          {
-            key: 'organizer',
-            busy: [
-              ...planning.organizerBusy,
-              ...(googleBusy?.get('primary') ?? []),
-            ],
-          },
-        ];
-        const teacherPrefs = student.teacherProfileId
-          ? planning.teacherConstraints.get(student.teacherProfileId)
-          : undefined;
-        const teacherGoogleBusy = student.teacherEmail
-          ? (googleBusy?.get(student.teacherEmail) ?? [])
-          : [];
-        if (teacherPrefs || teacherGoogleBusy.length > 0) {
-          attendees.push({
-            key:
-              student.teacherProfileId ?? `email:${student.teacherEmail}`,
-            busy: [...(teacherPrefs?.busy ?? []), ...teacherGoogleBusy],
-            availableWindows: teacherPrefs?.availableWindows ?? null,
-          });
-        }
-        return { key: student.id, dueDate: student.dueDate, attendees };
-      });
+      // A newer run (or a reserve) started while we awaited Google: these
+      // results describe a stale world — discard them.
+      if (runId !== plannerRunRef.current) return;
+      setGoogleNote(note);
+
+      const requests = buildPlanRequests(inHorizon, planning, googleBusy);
       // No admin-configured windows yet? Case managers aren't blocked —
       // fall back to general school-day hours and say so in the UI.
       const site = planning.hasSiteRules
@@ -210,12 +210,14 @@ export default function MeetingsPage() {
       setSelected(new Set(planned.filter(r => r.slot).map(r => r.key)));
       setReservedCount(null);
     } finally {
-      setDrafting(false);
+      if (runId === plannerRunRef.current) setDrafting(false);
     }
   }, [planning, unscheduled, horizon]);
 
   const handleReserve = async () => {
-    if (!planning || !results || !schoolId) return;
+    // No reserving off a draft that is being recomputed — the visible
+    // results may describe a stale world.
+    if (!planning || !results || !schoolId || drafting || reserving) return;
     const drafts: MeetingDraft[] = results
       .filter(r => r.slot && selected.has(r.key))
       .map(r => ({
@@ -226,34 +228,25 @@ export default function MeetingsPage() {
     setReserving(true);
     setError(null);
     try {
-      const { reserved, attendeesFailed, meetingIds } = await reserveMeetings(
+      const { reserved, attendeesFailed, holdSync } = await reserveMeetings(
         schoolId,
         drafts,
         planning.leaRep
       );
+      // Invalidate any in-flight draft run: its results predate these
+      // reservations and must not repopulate the planner.
+      plannerRunRef.current += 1;
+      const reserveToken = ++reserveTokenRef.current;
       setReservedCount(reserved);
-      // Best-effort hold events on the organizer's Google Calendar
-      // (spec §2.1) — reservations stand regardless of Google, so this is
-      // fire-and-forget: many sequential event inserts on a slow Google day
-      // must never pin the reserve UX. The banner picks up the count
-      // whenever the sync lands.
       setHoldsCreated(0);
-      if (meetingIds.length > 0) {
-        void fetch('/api/calendar/google/meeting-events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'create', meetingIds }),
-        })
-          .then(res => (res.ok ? res.json().catch(() => null) : null))
-          .then(sync => {
-            if (sync?.connected && sync.created > 0) {
-              setHoldsCreated(sync.created);
-            }
-          })
-          .catch(syncErr =>
-            console.error('Calendar hold sync failed:', syncErr)
-          );
-      }
+      // Hold creation runs inside reserveMeetings (fire-and-forget); the
+      // banner picks up the count when it lands — unless a newer reserve
+      // has since taken over the banner.
+      void holdSync.then(count => {
+        if (reserveToken === reserveTokenRef.current && count > 0) {
+          setHoldsCreated(count);
+        }
+      });
       if (attendeesFailed) {
         setError(
           'Meetings were reserved, but some attendees could not be added — check each meeting and re-add missing team members.'
@@ -278,14 +271,8 @@ export default function MeetingsPage() {
     )
       return;
     try {
+      // Google-hold removal happens inside cancelMeeting.
       await cancelMeeting(meeting.id);
-      // Remove the Google Calendar hold if one exists — best-effort; the
-      // cancellation stands either way.
-      fetch('/api/calendar/google/meeting-events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel', meetingId: meeting.id }),
-      }).catch(syncErr => console.error('Hold removal failed:', syncErr));
       await load();
     } catch {
       setError('Failed to cancel meeting');
@@ -322,8 +309,13 @@ export default function MeetingsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Meetings</h1>
         <Button
           onClick={() => {
+            // Toggling resets ALL planner output state, including any
+            // in-flight draft run and a stale availability note.
+            plannerRunRef.current += 1;
             setPlannerOpen(o => !o);
             setResults(null);
+            setGoogleNote(null);
+            setDrafting(false);
           }}
         >
           {plannerOpen ? 'Close planner' : 'Plan meetings'}
@@ -342,7 +334,7 @@ export default function MeetingsPage() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700 mb-6">
           Reserved {reservedCount} meeting{reservedCount === 1 ? '' : 's'}.
           {holdsCreated > 0
-            ? ` ${holdsCreated === reservedCount ? 'Holds' : `${holdsCreated} hold${holdsCreated === 1 ? '' : 's'}`} added to your Google Calendar.`
+            ? ` ${holdsCreated} hold${holdsCreated === 1 ? '' : 's'} added to your Google Calendar.`
             : ''}{' '}
           Family confirmations come later — these are internal holds.
         </div>
@@ -527,7 +519,7 @@ export default function MeetingsPage() {
                     <Button
                       onClick={handleReserve}
                       isLoading={reserving}
-                      disabled={selected.size === 0}
+                      disabled={selected.size === 0 || drafting}
                     >
                       Reserve {selected.size} meeting
                       {selected.size === 1 ? '' : 's'}
