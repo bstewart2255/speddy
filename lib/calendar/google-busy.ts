@@ -82,6 +82,12 @@ export interface GoogleBusyResult {
   connected: boolean;
   /** Key 'primary' = the connected user; other keys = requested emails. */
   busyByCalendar: Map<string, BusyBlock[]>;
+  /**
+   * True when part of the Google range couldn't be fetched — the blocks are
+   * usable but not exhaustive, and callers should say so rather than present
+   * drafts as conflict-free.
+   */
+  incomplete: boolean;
 }
 
 /**
@@ -120,7 +126,7 @@ export async function fetchGoogleBusyBlocks(params: {
   }
   const body = await res.json();
   if (!body?.connected) {
-    return { connected: false, busyByCalendar: new Map() };
+    return { connected: false, busyByCalendar: new Map(), incomplete: false };
   }
   const busyByCalendar = new Map<string, BusyBlock[]>();
   for (const [id, intervals] of Object.entries(body.calendars ?? {})) {
@@ -129,5 +135,5 @@ export async function fetchGoogleBusyBlocks(params: {
       isoIntervalsToBusyBlocks(intervals as IsoInterval[])
     );
   }
-  return { connected: true, busyByCalendar };
+  return { connected: true, busyByCalendar, incomplete: Boolean(body.incomplete) };
 }

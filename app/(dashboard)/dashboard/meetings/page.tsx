@@ -177,6 +177,10 @@ export default function MeetingsPage() {
           });
           if (google.connected) {
             googleBusy = google.busyByCalendar;
+            if (google.incomplete) {
+              note =
+                'Some Google Calendar availability could not be fetched — these drafts may not reflect every conflict.';
+            }
           } else {
             note =
               'Google Calendar is not connected — these drafts use internal schedules only.';

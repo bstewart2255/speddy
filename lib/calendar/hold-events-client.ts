@@ -26,7 +26,11 @@ export async function syncHoldEvents(meetingIds: string[]): Promise<number> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create', meetingIds: batch }),
       });
-      const sync = res.ok ? await res.json().catch(() => null) : null;
+      if (!res.ok) {
+        console.error(`Calendar hold sync failed: HTTP ${res.status}`);
+        continue;
+      }
+      const sync = await res.json().catch(() => null);
       if (sync?.connected && typeof sync.created === 'number') {
         created += sync.created;
       }
@@ -43,5 +47,14 @@ export function removeHoldEvent(meetingId: string): void {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'cancel', meetingId }),
-  }).catch(err => console.error('Hold removal failed:', err));
+  })
+    .then(async res => {
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      // {removed:false} WITHOUT connected is the legitimate no-hold no-op;
+      // connected:true + removed:false means a hold event may survive.
+      if (!res.ok || (body?.connected && body.removed === false)) {
+        console.error(`Hold removal did not complete for meeting ${meetingId}`);
+      }
+    })
+    .catch(err => console.error('Hold removal failed:', err));
 }

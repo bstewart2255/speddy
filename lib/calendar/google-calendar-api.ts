@@ -21,6 +21,8 @@ const FREEBUSY_MAX_DAYS_PER_REQUEST = 42;
 const FREEBUSY_MAX_TOTAL_DAYS = 370;
 /** Google limits calendars per freeBusy request; batch and merge. */
 const FREEBUSY_MAX_CALENDARS_PER_REQUEST = 20;
+/** Long horizons × big caseloads fan out; keep concurrency polite. */
+const FREEBUSY_CONCURRENCY = 6;
 
 async function calendarRequest(
   accessToken: string,
@@ -100,22 +102,34 @@ function chunkList<T>(items: T[], size: number): T[][] {
   return batches;
 }
 
+export interface FreeBusyResult {
+  busyByCalendar: Record<string, IsoInterval[]>;
+  /**
+   * True when any slice (time chunk × calendar batch) failed: coverage has
+   * gaps. Callers must surface this — partial data presented as complete is
+   * how meetings get planned over real conflicts.
+   */
+  incomplete: boolean;
+}
+
 /**
  * freebusy.query over an arbitrary range and calendar count, for the user's
  * own calendar ('primary') plus any other calendar ids (colleague emails).
  * Both Google caps are handled here — the time span (chunked windows) and
  * the calendars-per-request limit (batched ids) — so callers never silently
- * lose coverage. Independent read-only requests run in parallel. Calendars
- * the token can't see come back with per-calendar errors from Google —
- * those are skipped, contributing no busy data, by design (spec §5:
- * sources are additive, never required).
+ * lose coverage. Independent read-only requests run with bounded
+ * concurrency, and one failed slice (429, timeout) only gaps that slice —
+ * flagged via `incomplete`, never thrown away silently. Calendars the token
+ * can't see come back with per-calendar errors from Google — those are
+ * skipped, contributing no busy data, by design (spec §5: sources are
+ * additive, never required).
  */
 export async function freeBusyQuery(params: {
   accessToken: string;
   timeMin: string;
   timeMax: string;
   calendarIds: string[];
-}): Promise<Record<string, IsoInterval[]>> {
+}): Promise<FreeBusyResult> {
   const busyByCalendar: Record<string, IsoInterval[]> = {};
   for (const id of params.calendarIds) busyByCalendar[id] = [];
 
@@ -131,8 +145,12 @@ export async function freeBusyQuery(params: {
     }
   }
 
-  await Promise.all(
-    requests.map(async ({ chunk, ids }) => {
+  let incomplete = false;
+  const fetchSlice = async ({
+    chunk,
+    ids,
+  }: (typeof requests)[number]): Promise<void> => {
+    try {
       const res = await calendarRequest(params.accessToken, '/freeBusy', {
         method: 'POST',
         body: {
@@ -156,9 +174,19 @@ export async function freeBusyQuery(params: {
           }
         }
       }
-    })
-  );
-  return busyByCalendar;
+    } catch (err) {
+      incomplete = true;
+      console.error(
+        `Free/busy slice failed (${chunk.timeMin}..${chunk.timeMax}, ${ids.length} calendars):`,
+        err instanceof Error ? err.message : 'unknown error'
+      );
+    }
+  };
+
+  for (let i = 0; i < requests.length; i += FREEBUSY_CONCURRENCY) {
+    await Promise.all(requests.slice(i, i + FREEBUSY_CONCURRENCY).map(fetchSlice));
+  }
+  return { busyByCalendar, incomplete };
 }
 
 /** Create an event on the user's primary calendar; returns the event id. */

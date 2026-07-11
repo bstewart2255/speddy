@@ -70,13 +70,13 @@ export async function POST(request: NextRequest) {
   if (token.response) return token.response;
 
   try {
-    const calendars = await freeBusyQuery({
+    const { busyByCalendar, incomplete } = await freeBusyQuery({
       accessToken: token.accessToken,
       timeMin,
       timeMax,
       calendarIds: ['primary', ...emails],
     });
-    return NextResponse.json({ connected: true, calendars });
+    return NextResponse.json({ connected: true, calendars: busyByCalendar, incomplete });
   } catch (err) {
     console.error(
       'Free/busy query failed:',

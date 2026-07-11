@@ -88,8 +88,9 @@ describe('freeBusyQuery', () => {
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(result.primary).toHaveLength(2);
-    expect(result['blocked@district.org']).toEqual([]);
+    expect(result.busyByCalendar.primary).toHaveLength(2);
+    expect(result.busyByCalendar['blocked@district.org']).toEqual([]);
+    expect(result.incomplete).toBe(false);
   });
 
   it('batches large calendar lists so nothing is silently dropped', async () => {
@@ -129,11 +130,13 @@ describe('freeBusyQuery', () => {
       expect(sent.items.length).toBeLessThanOrEqual(20);
     }
     // Every calendar got data — including those beyond the first batch.
-    expect(result['t24@d.org']).toHaveLength(1);
-    expect(Object.keys(result)).toHaveLength(26);
+    expect(result.busyByCalendar['t24@d.org']).toHaveLength(1);
+    expect(Object.keys(result.busyByCalendar)).toHaveLength(26);
+    expect(result.incomplete).toBe(false);
   });
 
-  it('throws a GoogleOAuthError shape on API failure without token material', async () => {
+  it('flags API failures as incomplete instead of throwing, without token material', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 403,
@@ -142,26 +145,60 @@ describe('freeBusyQuery', () => {
       }),
     }) as unknown as typeof fetch;
 
-    await expect(
-      freeBusyQuery({
-        accessToken: 'super-secret-access-token',
-        timeMin: '2026-09-01T00:00:00Z',
-        timeMax: '2026-09-02T00:00:00Z',
-        calendarIds: ['primary'],
-      })
-    ).rejects.toMatchObject({
-      name: 'GoogleOAuthError',
-      code: 'PERMISSION_DENIED',
-      status: 403,
+    const result = await freeBusyQuery({
+      accessToken: 'super-secret-access-token',
+      timeMin: '2026-09-01T00:00:00Z',
+      timeMax: '2026-09-02T00:00:00Z',
+      calendarIds: ['primary'],
     });
-    await expect(
-      freeBusyQuery({
-        accessToken: 'super-secret-access-token',
-        timeMin: '2026-09-01T00:00:00Z',
-        timeMax: '2026-09-02T00:00:00Z',
-        calendarIds: ['primary'],
-      }).catch(e => e.message)
-    ).resolves.not.toContain('super-secret');
+
+    expect(result.incomplete).toBe(true);
+    expect(result.busyByCalendar.primary).toEqual([]);
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls.flat().map(String).join(' ');
+    expect(logged).not.toContain('super-secret');
+    errorSpy.mockRestore();
+  });
+
+  it('keeps data from healthy slices when another slice fails', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const start = '2026-09-01T00:00:00Z';
+    const end = new Date(Date.parse(start) + 60 * DAY_MS).toISOString(); // 2 chunks
+    let call = 0;
+    global.fetch = jest.fn().mockImplementation(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({ error: { status: 'RESOURCE_EXHAUSTED' } }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          calendars: {
+            primary: {
+              busy: [
+                { start: '2026-10-05T09:00:00Z', end: '2026-10-05T10:00:00Z' },
+              ],
+            },
+          },
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    const result = await freeBusyQuery({
+      accessToken: 'token',
+      timeMin: start,
+      timeMax: end,
+      calendarIds: ['primary'],
+    });
+
+    expect(result.incomplete).toBe(true);
+    expect(result.busyByCalendar.primary).toHaveLength(1);
+    errorSpy.mockRestore();
   });
 });
 
