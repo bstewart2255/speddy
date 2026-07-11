@@ -7,9 +7,14 @@ import {
   type BusyBlock,
   type DayWindow,
   type DateRange,
+  type PlanRequest,
   type ProposedSlot,
   type SiteConstraints,
 } from '@/lib/iep-meetings/availability';
+import {
+  removeHoldEvent,
+  syncHoldEvents,
+} from '@/lib/calendar/hold-events-client';
 import type { SiteMeetingRules } from '@/src/types';
 
 export interface MeetingListItem extends IepMeeting {
@@ -30,6 +35,8 @@ export interface CaseloadStudent {
   teacher_id: string | null;
   teacherName: string | null;
   teacherProfileId: string | null;
+  /** For Google free/busy lookups via calendars shared with the organizer. */
+  teacherEmail: string | null;
   dueDate: string | null; // earlier of upcoming IEP / triennial
   meetingType: 'annual' | 'triennial';
   hasUpcomingMeeting: boolean;
@@ -105,7 +112,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       supabase
         .from('students')
         .select(
-          'id, initials, grade_level, teacher_id, teachers(id, account_id, first_name, last_name), student_details(upcoming_iep_date, upcoming_triennial_date)'
+          'id, initials, grade_level, teacher_id, teachers(id, account_id, first_name, last_name, email), student_details(upcoming_iep_date, upcoming_triennial_date)'
         )
         .eq('provider_id', user.id)
         .eq('school_id', schoolId),
@@ -187,6 +194,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       account_id: string | null;
       first_name: string | null;
       last_name: string | null;
+      email: string | null;
     } | null;
     student_details: {
       upcoming_iep_date: string | null;
@@ -218,6 +226,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
         ? [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || null
         : null,
       teacherProfileId: teacher?.account_id ?? null,
+      teacherEmail: teacher?.email ?? null,
       dueDate,
       meetingType,
       hasUpcomingMeeting: studentsWithMeetings.has(s.id),
@@ -278,6 +287,56 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
   };
 }
 
+/**
+ * Assemble the engine's PlanRequests from planning data plus optional
+ * Google busy blocks (spec §5: availability is the union of whatever
+ * sources exist). Lives in the query layer so every planning surface —
+ * the bulk planner today, the SPE-210 reschedule flow later — shares one
+ * merge, per the engine header's contract ("sources are assembled by the
+ * query layer").
+ */
+export function buildPlanRequests(
+  students: CaseloadStudent[],
+  planning: PlanningData,
+  googleBusy: Map<string, BusyBlock[]> | null
+): PlanRequest[] {
+  const organizer: AttendeeConstraints = {
+    key: 'organizer',
+    busy: [...planning.organizerBusy, ...(googleBusy?.get('primary') ?? [])],
+  };
+  // Several students share a teacher — merge each teacher's constraints once.
+  const teacherCache = new Map<string, AttendeeConstraints | null>();
+  return students.map(student => {
+    const attendees: AttendeeConstraints[] = [organizer];
+    const teacherKey =
+      student.teacherProfileId ??
+      (student.teacherEmail ? `email:${student.teacherEmail}` : null);
+    if (teacherKey) {
+      if (!teacherCache.has(teacherKey)) {
+        const prefs = student.teacherProfileId
+          ? planning.teacherConstraints.get(student.teacherProfileId)
+          : undefined;
+        const googleTeacherBusy = student.teacherEmail
+          ? (googleBusy?.get(student.teacherEmail) ?? [])
+          : [];
+        teacherCache.set(
+          teacherKey,
+          prefs || googleTeacherBusy.length > 0
+            ? {
+                key: teacherKey,
+                busy: [...(prefs?.busy ?? []), ...googleTeacherBusy],
+                availableWindows: prefs?.availableWindows ?? null,
+              }
+            : null
+        );
+      }
+      const teacher = teacherCache.get(teacherKey);
+      if (teacher) attendees.push(teacher);
+    }
+    return { key: student.id, dueDate: student.dueDate, attendees };
+  });
+}
+
 export interface MeetingDraft {
   student: CaseloadStudent;
   slot: ProposedSlot;
@@ -310,7 +369,13 @@ export async function reserveMeetings(
   schoolId: string,
   drafts: MeetingDraft[],
   leaRep: { admin_id: string; full_name: string } | null
-): Promise<{ reserved: number; attendeesFailed: boolean }> {
+): Promise<{
+  reserved: number;
+  attendeesFailed: boolean;
+  meetingIds: string[];
+  /** Best-effort Google hold creation; resolves to the created count. */
+  holdSync: Promise<number>;
+}> {
   const supabase = createClient<Database>();
   const {
     data: { user },
@@ -394,7 +459,19 @@ export async function reserveMeetings(
     }
   }
 
-  return { reserved: inserted?.length ?? 0, attendeesFailed };
+  const meetingIds = (inserted ?? []).map(m => m.id);
+  // Hold events belong to the reserve operation itself (spec §2.1) so no
+  // caller can forget them; fire-and-forget keeps Google latency out of the
+  // reserve UX. Callers may await holdSync for feedback, never for success.
+  const holdSync =
+    meetingIds.length > 0 ? syncHoldEvents(meetingIds) : Promise.resolve(0);
+
+  return {
+    reserved: inserted?.length ?? 0,
+    attendeesFailed,
+    meetingIds,
+    holdSync,
+  };
 }
 
 export async function cancelMeeting(meetingId: string): Promise<void> {
@@ -415,4 +492,7 @@ export async function cancelMeeting(meetingId: string): Promise<void> {
     console.error('Error cancelling meeting:', error);
     throw error;
   }
+  // Remove the Google hold as part of the cancel operation — a forgotten
+  // sync would leave a phantom busy block feeding future planning runs.
+  removeHoldEvent(meetingId);
 }

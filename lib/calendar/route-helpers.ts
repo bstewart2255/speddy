@@ -1,9 +1,13 @@
 /**
- * Shared helpers for the calendar OAuth route handlers (SPE-205).
+ * Shared helpers for the calendar route handlers (SPE-205/SPE-218).
  */
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/src/types/database';
+import {
+  CalendarReconnectRequiredError,
+  getValidGoogleAccessToken,
+} from './connections';
 
 /** CSRF state cookie, scoped to the OAuth routes only. */
 export const STATE_COOKIE = 'gcal_oauth_state';
@@ -38,4 +42,56 @@ export async function meetingsPathForUser(
   return data?.role === 'site_admin' || data?.role === 'district_admin'
     ? '/dashboard/admin/meetings'
     : '/dashboard/meetings';
+}
+
+/**
+ * Parsed JSON object body, or null for missing/malformed/non-object
+ * payloads (request.json() happily returns null or primitives — callers
+ * must not dereference those).
+ */
+export async function parseJsonObjectBody(
+  request: NextRequest
+): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The one token step every calendar data route shares, so the degraded-mode
+ * contract can't drift between routes: a reconnect-required connection is
+ * the NORMAL {connected:false} response (planner falls back to internal
+ * sources); anything else maps to a single 502 shape.
+ */
+export async function getCalendarAccessTokenOrResponse(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  unavailableMessage: string
+): Promise<
+  | { accessToken: string; response?: undefined }
+  | { accessToken?: undefined; response: NextResponse }
+> {
+  try {
+    return { accessToken: await getValidGoogleAccessToken(supabase, userId) };
+  } catch (err) {
+    if (err instanceof CalendarReconnectRequiredError) {
+      return { response: NextResponse.json({ connected: false }) };
+    }
+    console.error(
+      `${unavailableMessage}:`,
+      err instanceof Error ? err.message : 'unknown error'
+    );
+    return {
+      response: NextResponse.json(
+        { error: unavailableMessage },
+        { status: 502 }
+      ),
+    };
+  }
 }

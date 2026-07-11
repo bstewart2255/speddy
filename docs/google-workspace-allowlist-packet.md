@@ -51,13 +51,15 @@ available on request.
 Scheduling an IEP meeting means finding a time that works for the site
 administrator, the case manager, the general-education teacher, service
 providers, and the family. Speddy's calendar integration is rolling out in
-phases. **Staff calendar connections are live today.** In the next phase,
-the meeting scheduler will use those connections to read **availability**
-(free/busy) and deliver confirmed meetings as **ordinary Google Calendar
-invitations** sent from the organizer's own calendar; reminders, RSVPs, and
+phases. **Live today:** staff connect their calendars, the meeting
+scheduler reads **availability** (free/busy) to propose conflict-free
+times, and reserved meetings appear as **initials-only hold events on the
+organizer's own calendar** — no attendees are invited. **In a later
+confirmation phase**, confirmed meetings become ordinary Google Calendar
+invitations sent from the organizer's calendar; reminders, RSVPs, and
 reschedules then behave the way staff already expect from Google Calendar.
 The scopes below are what a staff member consents to when connecting;
-district approval is requested once, ahead of that rollout.
+district approval is requested once and covers both phases.
 
 ## 4. Exactly what access is requested, and why
 
@@ -66,7 +68,7 @@ Speddy requests the **minimum** Google OAuth scopes for the feature:
 | Scope | What it allows | Why Speddy needs it |
 |---|---|---|
 | `https://www.googleapis.com/auth/calendar.freebusy` | Busy/free times only — no event titles, descriptions, or attendees — for the connecting user's calendars and calendars already visible to them under Google's own sharing rules | Find meeting times that avoid existing commitments without exposing what those commitments are |
-| `https://www.googleapis.com/auth/calendar.events.owned` | Google's wording: "See, create, change, and **delete** events" on calendars the user **owns** (not calendars merely shared with them) | Read event information on the user's own calendar to detect scheduling conflicts (e.g., all-day absences); create the IEP meeting invitation from the organizer's calendar, update or delete it on reschedule/cancellation, and read RSVP responses. By design, Speddy modifies or deletes only events it created |
+| `https://www.googleapis.com/auth/calendar.events.owned` | Google's wording: "See, create, change, and **delete** events" on calendars the user **owns** (not calendars merely shared with them) | **Current use:** read event information on the user's own calendar to detect scheduling conflicts (e.g., all-day absences), and create/remove initials-only hold events for reserved meetings on the organizer's calendar. **Later confirmation phase:** send the meeting as an ordinary invitation, update or delete it on reschedule/cancellation, and read RSVP responses. By design, Speddy modifies or deletes only events it created |
 | `openid`, `email` (non-sensitive) | The connected account's email address | Show "Connected as name@district.org" and detect wrong-account connections |
 
 Deliberately **not** requested: `calendar` (full read/write of all calendars),
