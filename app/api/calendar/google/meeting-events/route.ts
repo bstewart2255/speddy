@@ -112,15 +112,21 @@ export async function POST(request: NextRequest) {
           startIso: meeting.scheduled_start,
           endIso: meeting.scheduled_end,
         });
-        const { error: updateError } = await supabase
+        // Claim the row atomically: only if it is STILL reserved and
+        // unclaimed. A cancellation or a concurrent create since the read
+        // above means the hold is unwanted — delete the fresh event rather
+        // than orphaning it or stamping a row that moved on.
+        const { data: claimed, error: updateError } = await supabase
           .from('iep_meetings')
           .update({ google_event_id: eventId })
-          .eq('id', meeting.id);
-        if (updateError) {
-          // Event exists but the link failed — delete the orphan so a retry
-          // doesn't double-book the hold.
+          .eq('id', meeting.id)
+          .eq('status', 'reserved')
+          .is('google_event_id', null)
+          .select('id');
+        if (updateError || !claimed?.length) {
           await deleteCalendarEvent({ accessToken, eventId }).catch(() => {});
-          throw updateError;
+          if (updateError) throw updateError;
+          continue; // row no longer needs a hold — neither created nor failed
         }
         created += 1;
       } catch (err) {

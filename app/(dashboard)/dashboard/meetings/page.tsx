@@ -233,22 +233,26 @@ export default function MeetingsPage() {
       );
       setReservedCount(reserved);
       // Best-effort hold events on the organizer's Google Calendar
-      // (spec §2.1) — reservations stand regardless of Google.
+      // (spec §2.1) — reservations stand regardless of Google, so this is
+      // fire-and-forget: many sequential event inserts on a slow Google day
+      // must never pin the reserve UX. The banner picks up the count
+      // whenever the sync lands.
       setHoldsCreated(0);
       if (meetingIds.length > 0) {
-        try {
-          const res = await fetch('/api/calendar/google/meeting-events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'create', meetingIds }),
-          });
-          const sync = res.ok ? await res.json().catch(() => null) : null;
-          if (sync?.connected && sync.created > 0) {
-            setHoldsCreated(sync.created);
-          }
-        } catch (syncErr) {
-          console.error('Calendar hold sync failed:', syncErr);
-        }
+        void fetch('/api/calendar/google/meeting-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create', meetingIds }),
+        })
+          .then(res => (res.ok ? res.json().catch(() => null) : null))
+          .then(sync => {
+            if (sync?.connected && sync.created > 0) {
+              setHoldsCreated(sync.created);
+            }
+          })
+          .catch(syncErr =>
+            console.error('Calendar hold sync failed:', syncErr)
+          );
       }
       if (attendeesFailed) {
         setError(
