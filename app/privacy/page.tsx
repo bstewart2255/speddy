@@ -141,7 +141,7 @@ export default function PrivacyPage() {
             </p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>We do not use Google user data for advertising of any kind</li>
-              <li>We do not sell Google user data, and we do not transfer it to third parties except as necessary to provide the scheduling features described here (for example, encrypted storage with the service providers listed in Section 4.3), for security purposes, or to comply with applicable law</li>
+              <li>We do not sell Google user data, and we do not transfer it to third parties except as necessary to provide the scheduling features described here (specifically, encrypted storage and application hosting with Supabase and Vercel, described in Section 4.3), for security purposes, or to comply with applicable law. Our other service providers — including Sentry, Help Scout, OpenAI, and Anthropic — do not receive Google user data</li>
               <li>Humans do not read Google user data unless we have your explicit permission, it is necessary for security or abuse investigation, it is required to comply with applicable law, or the data has been aggregated and anonymized for internal operations</li>
               <li>We do not use Google user data to develop, improve, or train generalized artificial intelligence or machine learning models</li>
             </ul>
