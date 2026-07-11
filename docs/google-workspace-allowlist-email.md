@@ -17,9 +17,11 @@ special-education provider in the district and also Speddy's developer, so
 happy to answer anything directly.]
 
 Speddy is a FERPA-positioned special-education service management platform
-(scheduling, IEP compliance). Its newest feature — rolling out now — helps
-case managers schedule IEP meetings by checking staff **free/busy
-availability** and sending meetings as normal Google Calendar invites. Per the district's
+(scheduling, IEP compliance). Its newest feature is rolling out in phases:
+staff first connect their Google Calendar (live today), and the meeting
+scheduler will then use those connections to check staff **free/busy
+availability** and send meetings as normal Google Calendar invites. We're
+requesting approval once, ahead of that rollout. Per the district's
 recent policy on unverified third-party connections, staff who try to
 connect their district Google account currently see Google's
 "Access blocked: admin_policy_enforced" screen.
