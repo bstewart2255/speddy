@@ -6,7 +6,7 @@ export default function TermsPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms and Conditions</h1>
-            <p className="text-gray-600">Last Updated: January 21, 2026</p>
+            <p className="text-gray-600">Last Updated: July 11, 2026</p>
           </div>
 
           {/* Content */}
@@ -74,6 +74,11 @@ export default function TermsPage() {
               <li>You will not share student information outside of your professional duties</li>
               <li>You understand your role as a "school official" under FERPA</li>
             </ul>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.2 Optional Google Calendar Integration</h3>
+            <p className="text-gray-700 mb-4">
+              Speddy offers an optional integration with Google Calendar for scheduling meetings. By connecting your Google account, you authorize Speddy to access your Google Calendar data as described in our Privacy Policy, including our compliance with the Google API Services User Data Policy and its Limited Use requirements. You may disconnect the integration at any time in Speddy or revoke access from your Google Account permissions page. Your use of Google Calendar remains subject to Google&apos;s own terms of service, and calendar-dependent features depend on the availability of Google&apos;s services.
+            </p>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Disclaimers</h2>
 
