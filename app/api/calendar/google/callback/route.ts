@@ -43,17 +43,27 @@ export async function GET(request: NextRequest) {
     return response;
   };
 
+  // Unsolicited/invalid callbacks must NOT clear the state cookie — a stray
+  // ?error=… hit would otherwise break a legitimate pending flow. Only a
+  // state-validated callback (Google round-trips state on error responses
+  // too) may consume it.
+  const redirectKeepingState = (flag: string) =>
+    NextResponse.redirect(new URL(`${meetingsPath}?calendar=${flag}`, origin));
+
   const params = request.nextUrl.searchParams;
+  const state = params.get('state');
+  const cookieState = request.cookies.get(STATE_COOKIE)?.value;
+  const stateIsValid = Boolean(state && cookieState && state === cookieState);
+
   const errorParam = params.get('error');
   if (errorParam) {
+    if (!stateIsValid) return redirectKeepingState('error');
     return redirectWithFlag(errorParam === 'access_denied' ? 'denied' : 'error');
   }
 
   const code = params.get('code');
-  const state = params.get('state');
-  const cookieState = request.cookies.get(STATE_COOKIE)?.value;
-  if (!code || !state || !cookieState || state !== cookieState) {
-    return redirectWithFlag('error');
+  if (!code || !stateIsValid) {
+    return redirectKeepingState('error');
   }
 
   const client = getGoogleOAuthClient();

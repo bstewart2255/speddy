@@ -28,7 +28,7 @@ export async function POST() {
         metadata: { provider: 'google', revoked_at_google: revoked },
       });
     }
-    return NextResponse.json({ ok: true, revoked });
+    return NextResponse.json({ ok: true, existed, revoked });
   } catch (err) {
     console.error(
       'Google Calendar disconnect failed:',

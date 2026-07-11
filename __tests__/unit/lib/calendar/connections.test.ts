@@ -134,4 +134,55 @@ describe('getValidGoogleAccessToken', () => {
       CalendarReconnectRequiredError
     );
   });
+
+  /** Ciphertext produced under a different (rotated-out) key. */
+  function encryptWithKey(key: string, value: string): string {
+    const previous = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY;
+    process.env.CALENDAR_TOKEN_ENCRYPTION_KEY = key;
+    const out = encryptToken(value);
+    process.env.CALENDAR_TOKEN_ENCRYPTION_KEY = previous;
+    return out;
+  }
+
+  it('falls back to a refresh when the cached access token is undecryptable (key rotation)', async () => {
+    const supabase = stubSupabase(
+      activeRow({
+        // Fresh expiry, so only the decryption failure forces the refresh path.
+        access_token_encrypted: encryptWithKey(
+          randomBytes(32).toString('base64'),
+          'sealed-under-old-key'
+        ),
+      })
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: 'fresh-access', expires_in: 3600 }),
+    }) as unknown as typeof fetch;
+
+    await expect(getValidGoogleAccessToken(supabase, 'p1')).resolves.toBe(
+      'fresh-access'
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats an undecryptable refresh token as revoked, with no network call', async () => {
+    const supabase = stubSupabase(
+      activeRow({
+        access_token_encrypted: null,
+        refresh_token_encrypted: encryptWithKey(
+          randomBytes(32).toString('base64'),
+          'sealed-under-old-key'
+        ),
+      })
+    );
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(getValidGoogleAccessToken(supabase, 'p1')).rejects.toThrow(
+      CalendarReconnectRequiredError
+    );
+    expect(supabase.updates).toContainEqual({ status: 'revoked' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

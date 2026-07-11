@@ -31,6 +31,14 @@ const BANNERS: Record<string, { style: string; text: string }> = {
     style: 'bg-gray-50 border-gray-200 text-gray-600',
     text: 'Google Calendar integration is not set up on this server yet.',
   },
+  disconnect_error: {
+    style: 'bg-red-50 border-red-200 text-red-700',
+    text: 'Disconnecting Google Calendar failed — your connection is unchanged. Please try again.',
+  },
+  disconnect_partial: {
+    style: 'bg-amber-50 border-amber-200 text-amber-800',
+    text: "Disconnected from Speddy, but Google may still list the old grant. You can remove it anytime from your Google Account's third-party access page (myaccount.google.com/permissions).",
+  },
 };
 
 const ALL_DAY_TIP =
@@ -39,15 +47,20 @@ const ALL_DAY_TIP =
 export function CalendarConnectionCard({ className }: { className?: string }) {
   const [loading, setLoading] = useState(true);
   const [conn, setConn] = useState<CalendarConnectionInfo | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setConn(await getMyCalendarConnection());
+      setLoadFailed(false);
     } catch (err) {
       console.error('Failed to load calendar connection:', err);
+      // Unknown status ≠ not connected: render a retry state, never the
+      // connect CTA, so a transient query failure can't prompt a re-connect.
       setConn(null);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -87,12 +100,17 @@ export function CalendarConnectionCard({ className }: { className?: string }) {
       const res = await fetch('/api/calendar/google/disconnect', {
         method: 'POST',
       });
-      if (!res.ok) throw new Error(`disconnect failed (${res.status})`);
-      setBanner(null);
+      const result = res.ok ? await res.json().catch(() => null) : null;
+      if (!result?.ok) throw new Error(`disconnect failed (${res.status})`);
+      // Local deletion always succeeded here; if the best-effort revoke at
+      // Google didn't, say so instead of implying a clean break.
+      setBanner(
+        result.existed && result.revoked === false ? 'disconnect_partial' : null
+      );
       await load();
     } catch (err) {
       console.error('Failed to disconnect calendar:', err);
-      setBanner('error');
+      setBanner('disconnect_error');
     } finally {
       setDisconnecting(false);
     }
@@ -114,7 +132,23 @@ export function CalendarConnectionCard({ className }: { className?: string }) {
         </div>
       )}
 
-      {conn?.connected ? (
+      {loadFailed ? (
+        <Card padding="sm">
+          <div className="flex flex-wrap items-center gap-3 px-2">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-semibold text-gray-900">
+                Google Calendar status unavailable
+              </p>
+              <p className="text-xs text-gray-500">
+                Couldn&apos;t load your calendar connection right now.
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={load}>
+              Retry
+            </Button>
+          </div>
+        </Card>
+      ) : conn?.connected ? (
         <Card padding="sm">
           <div className="flex flex-wrap items-center gap-3 px-2">
             <span

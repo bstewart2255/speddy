@@ -30,6 +30,8 @@ export const GOOGLE_CALENDAR_SCOPES = [
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
+/** A stalled Google endpoint must not hang the OAuth callback. */
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export class GoogleOAuthError extends Error {
   constructor(
@@ -89,11 +91,22 @@ export interface GoogleTokenResponse {
 async function tokenRequest(
   body: Record<string, string>
 ): Promise<GoogleTokenResponse> {
-  const res = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(body).toString(),
-  });
+  let res: Response;
+  try {
+    res = await fetch(TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body).toString(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // Network failure or timeout — same GoogleOAuthError shape as HTTP
+    // failures so callers handle one error type; nothing token-derived.
+    throw new GoogleOAuthError(
+      'Google token endpoint unreachable or timed out',
+      'network_error'
+    );
+  }
   let json: any = {};
   try {
     json = await res.json();
@@ -146,6 +159,7 @@ export async function revokeGoogleToken(token: string): Promise<boolean> {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     return res.ok;
   } catch {

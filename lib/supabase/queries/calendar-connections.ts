@@ -24,7 +24,13 @@ export async function getMyCalendarConnection(): Promise<CalendarConnectionInfo>
   const supabase = createClient<Database>();
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+  // A missing session is a legitimate "no connection"; any other auth
+  // failure is unknown status and must surface, not read as disconnected.
+  if (authError && authError.name !== 'AuthSessionMissingError') {
+    throw authError;
+  }
   if (!user) return NO_CONNECTION;
 
   const { data, error } = await supabase

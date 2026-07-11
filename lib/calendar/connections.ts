@@ -126,7 +126,11 @@ export async function getValidGoogleAccessToken(
 
   const expiresAt = row.token_expires_at ? Date.parse(row.token_expires_at) : 0;
   if (row.access_token_encrypted && expiresAt - Date.now() > EXPIRY_BUFFER_MS) {
-    return decryptToken(row.access_token_encrypted);
+    try {
+      return decryptToken(row.access_token_encrypted);
+    } catch {
+      // Undecryptable (e.g. key rotation) — fall through and refresh instead.
+    }
   }
 
   const client = getGoogleOAuthClient();
@@ -134,10 +138,25 @@ export async function getValidGoogleAccessToken(
     throw new Error('Google Calendar OAuth is not configured');
   }
 
+  // An undecryptable refresh token (key rotation) leaves nothing to try —
+  // same outcome as a revoked grant: reconnect. Keeps the documented
+  // "throws CalendarReconnectRequiredError" contract instead of leaking a
+  // raw crypto error.
+  let refreshTokenPlain: string;
+  try {
+    refreshTokenPlain = decryptToken(row.refresh_token_encrypted);
+  } catch {
+    await supabase
+      .from('calendar_connections')
+      .update({ status: 'revoked' })
+      .eq('id', row.id);
+    throw new CalendarReconnectRequiredError();
+  }
+
   let refreshed: GoogleTokenResponse;
   try {
     refreshed = await refreshAccessToken({
-      refreshToken: decryptToken(row.refresh_token_encrypted),
+      refreshToken: refreshTokenPlain,
       client,
     });
   } catch (err) {
