@@ -6,7 +6,7 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: June 12, 2026</p>
+            <p className="text-gray-600">Last Updated: July 11, 2026</p>
           </div>
 
           {/* Content */}
@@ -50,6 +50,11 @@ export default function PrivacyPage() {
               <li>Usage patterns and feature utilization</li>
               <li>Error reports and performance data</li>
             </ul>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">2.4 Google Calendar Data (Optional)</h3>
+            <p className="text-gray-700 mb-4">
+              If you choose to connect your Google account, we access limited Google Calendar data (availability information, calendar event details, and the ability to create and update events on your calendar) solely to provide meeting scheduling features. See Section 5 for a complete description of how we handle Google user data.
+            </p>
 
             <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">3. How We Use Information</h2>
 
@@ -106,7 +111,53 @@ export default function PrivacyPage() {
               <li><strong>Help Scout:</strong> Help desk and chat support (we share provider account info such as name, email, role, and school; Help Scout&apos;s chat widget may also collect technical data such as IP address and browser type via standard web requests; users should avoid sharing student data in chat messages)</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Data Security</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">5. Google User Data (Google Calendar Integration)</h2>
+            <p className="text-gray-700 mb-4">
+              Speddy offers an optional integration with Google Calendar that helps education teams schedule meetings (such as IEP meetings). This section explains how we access, use, store, and share Google user data when you choose to connect your Google account, and it applies in addition to the rest of this Privacy Policy.
+            </p>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.1 What We Access</h3>
+            <p className="text-gray-700 mb-4">
+              If you connect your Google account, Speddy requests only the minimum calendar permissions needed for scheduling:
+            </p>
+            <ul className="list-disc pl-6 mb-4 text-gray-700">
+              <li><strong>Availability (free/busy) information</strong> — for your calendar and, through Google&apos;s existing sharing rules, for calendars already shared with you — so meeting organizers can find times that work without contacting each attendee individually</li>
+              <li><strong>Calendar event information</strong> — to identify scheduling conflicts on your calendar that availability lookups can miss (for example, all-day events not marked &quot;busy&quot;)</li>
+              <li><strong>Event creation and updates on your calendar</strong> — so meetings scheduled in Speddy become ordinary Google Calendar invitations sent from the organizer&apos;s calendar, reschedules and cancellations stay in sync, and attendee RSVP responses for those meetings can be tracked</li>
+            </ul>
+            <p className="text-gray-700 mb-4">
+              Speddy never requests access to Gmail, Google Drive, Google Contacts, or any other Google service. Connecting Google Calendar is always optional: scheduling features fall back to manual entry if you do not connect an account.
+            </p>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.2 How We Use Google User Data</h3>
+            <p className="text-gray-700 mb-4">
+              We use Google user data solely to provide the user-facing scheduling features you request: checking availability, proposing meeting times, creating and updating calendar events for meetings scheduled through Speddy, and tracking attendee responses to those meetings. We do not use Google user data for any other purpose.
+            </p>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.3 Limited Use Disclosure</h3>
+            <p className="text-gray-700 mb-4">
+              Speddy&apos;s use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+              <a href="https://developers.google.com/terms/api-services-user-data-policy" className="text-blue-600 hover:text-blue-500 underline" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular:
+            </p>
+            <ul className="list-disc pl-6 mb-4 text-gray-700">
+              <li>We do not use Google user data for advertising of any kind</li>
+              <li>We do not sell Google user data, and we do not transfer it to third parties except as necessary to provide the scheduling features described here (for example, encrypted storage with the service providers listed in Section 4.3), for security purposes, or to comply with applicable law</li>
+              <li>Humans do not read Google user data unless we have your explicit permission, it is necessary for security or abuse investigation, it is required to comply with applicable law, or the data has been aggregated and anonymized for internal operations</li>
+              <li>We do not use Google user data to develop, improve, or train generalized artificial intelligence or machine learning models</li>
+            </ul>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.4 Storage and Security</h3>
+            <p className="text-gray-700 mb-4">
+              Google OAuth tokens are encrypted at rest, requested with the minimum necessary scopes, and never written to application logs. Availability (free/busy) data is processed transiently to compute open meeting times and is not retained as a copy of your calendar. What Speddy stores durably is the record of meetings scheduled through Speddy (such as the event identifier, meeting time, attendees, and their response status).
+            </p>
+
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">5.5 Retention, Disconnection, and Deletion</h3>
+            <p className="text-gray-700 mb-4">
+              You may disconnect your Google account in Speddy at any time, which deletes your stored tokens and ends all calendar access. You can also revoke Speddy&apos;s access from your{' '}
+              <a href="https://myaccount.google.com/permissions" className="text-blue-600 hover:text-blue-500 underline" target="_blank" rel="noopener noreferrer">Google Account permissions page</a>. Records of meetings scheduled through Speddy may be retained after disconnection as part of student educational records, under the retention terms in Section 7.
+            </p>
+
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Data Security</h2>
             <p className="text-gray-700 mb-4">We implement comprehensive security measures:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Encryption in transit (TLS) and at rest</li>
@@ -116,9 +167,9 @@ export default function PrivacyPage() {
               <li>Incident response procedures</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Data Retention</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Data Retention</h2>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.1 Student Data</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.1 Student Data</h3>
             <p className="text-gray-700 mb-4">Student educational data is retained:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>While you maintain an active account and continue serving the student</li>
@@ -127,7 +178,7 @@ export default function PrivacyPage() {
               <li>Until you or your school district requests deletion</li>
             </ul>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">6.2 Provider Data</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.2 Provider Data</h3>
             <p className="text-gray-700 mb-4">Your professional account data is retained:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>While your account is active</li>
@@ -135,24 +186,24 @@ export default function PrivacyPage() {
               <li>As required by applicable laws and professional regulations</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">7. Your Rights and Controls</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Your Rights and Controls</h2>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.1 Access and Portability</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.1 Access and Portability</h3>
             <p className="text-gray-700 mb-4">
               You have the right to access, export, and port your professional data. For student data, access rights are governed by FERPA and your school district's policies.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.2 Correction and Updates</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.2 Correction and Updates</h3>
             <p className="text-gray-700 mb-4">
               You can update your professional information through your account settings. You are responsible for maintaining accurate student data according to your professional obligations.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.3 Data Deletion</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.3 Data Deletion</h3>
             <p className="text-gray-700 mb-4">
               You may request deletion of your account and associated data. Student data deletion requests must comply with FERPA, school district policies, and applicable record retention requirements.
             </p>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">7.4 California Privacy Rights</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">8.4 California Privacy Rights</h3>
             <p className="text-gray-700 mb-4">California residents have additional rights under CCPA, including:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>Right to know what personal information is collected</li>
@@ -161,7 +212,7 @@ export default function PrivacyPage() {
               <li>Right to non-discrimination</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">8. Professional Responsibilities</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Professional Responsibilities</h2>
             <p className="text-gray-700 mb-4">As a provider using Speddy, you acknowledge:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
               <li>You are bound by professional codes of ethics regarding confidentiality</li>
@@ -171,32 +222,32 @@ export default function PrivacyPage() {
               <li>You should not access student data outside your professional responsibilities</li>
             </ul>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Children's Privacy</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Children's Privacy</h2>
             <p className="text-gray-700 mb-4">
               Speddy is designed for use by adult education professionals. We do not knowingly collect information directly from children under 18. Student data is provided by authorized education professionals, not directly from students. All student data handling complies with FERPA and applicable children's privacy laws.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. International Data Transfers</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">11. International Data Transfers</h2>
             <p className="text-gray-700 mb-4">
               If you access Speddy from outside the United States, your information may be transferred to and processed in the United States. By using Speddy, you consent to this transfer. We ensure appropriate safeguards are in place for international data transfers.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">11. Cookies and Tracking</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">12. Cookies and Tracking</h2>
             <p className="text-gray-700 mb-4">
               We currently use minimal tracking technologies for essential service functionality only. We do not use cookies for advertising or non-essential tracking. If this changes, we will update this policy and obtain appropriate consents.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">12. Third-Party Links</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">13. Third-Party Links</h2>
             <p className="text-gray-700 mb-4">
               Speddy may contain links to third-party websites or services. We are not responsible for the privacy practices of these external sites. We encourage you to review the privacy policies of any third-party services you access.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">13. Changes to This Policy</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">14. Changes to This Policy</h2>
             <p className="text-gray-700 mb-4">
               We may update this Privacy Policy periodically to reflect changes in our practices or legal requirements. Material changes become effective 30 days after posting. We will notify you of significant changes via email or Service notification.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">14. Contact Information</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">15. Contact Information</h2>
             <p className="text-gray-700 mb-4">
               For privacy-related questions or to exercise your rights, contact:
             </p>
@@ -211,9 +262,9 @@ export default function PrivacyPage() {
               For privacy complaints, you may also contact your local data protection authority.
             </p>
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">15. FERPA-Specific Provisions</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">16. FERPA-Specific Provisions</h2>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">15.1 Educational Records</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">16.1 Educational Records</h3>
             <p className="text-gray-700 mb-4">
               When handling student educational records, we acknowledge our responsibilities under FERPA and will:
             </p>
@@ -225,7 +276,7 @@ export default function PrivacyPage() {
               <li>Comply with record retention and destruction requirements</li>
             </ul>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">15.2 Provider as School Official</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">16.2 Provider as School Official</h3>
             <p className="text-gray-700 mb-4">
               When using Speddy, you may be designated as a "school official" under FERPA with legitimate educational interests. As such, you agree to:
             </p>
@@ -236,7 +287,7 @@ export default function PrivacyPage() {
               <li>Comply with your school district's FERPA policies</li>
             </ul>
 
-            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">15.3 Data Ownership</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">16.3 Data Ownership</h3>
             <p className="text-gray-700 mb-4">
               School districts retain ownership of all student educational records. We claim no ownership rights to educational records and acknowledge that districts have the right to control access, use, and disclosure of student data.
             </p>
