@@ -17,9 +17,9 @@ special-education provider in the district and also Speddy's developer, so
 happy to answer anything directly.]
 
 Speddy is a FERPA-positioned special-education service management platform
-(scheduling, IEP compliance). Its newest feature helps case managers
-schedule IEP meetings by checking staff **free/busy availability** and
-sending meetings as normal Google Calendar invites. Per the district's
+(scheduling, IEP compliance). Its newest feature — rolling out now — helps
+case managers schedule IEP meetings by checking staff **free/busy
+availability** and sending meetings as normal Google Calendar invites. Per the district's
 recent policy on unverified third-party connections, staff who try to
 connect their district Google account currently see Google's
 "Access blocked: admin_policy_enforced" screen.
@@ -34,9 +34,10 @@ Key points, detailed in the attached one-page packet:
 
 - **Per-user consent only** — no service account, no domain-wide delegation;
   trusting the app just lets individual staff choose to connect.
-- **Minimal scopes** — free/busy availability plus events on the user's own
-  calendar; no Gmail, Drive, or Contacts, and free/busy shows times only,
-  not event contents.
+- **Minimal scopes** — free/busy availability plus managing events on the
+  user's **own** calendar (Google's wording: see, create, change, delete);
+  no Gmail, Drive, or Contacts, and free/busy shows times only, not event
+  contents.
 - **Staff accounts only** — no student Google accounts are involved.
 - Tokens are encrypted at the application layer, never logged, and
   revocable by the user, by Speddy, or domain-wide by you at any time.
