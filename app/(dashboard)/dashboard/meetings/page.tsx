@@ -10,8 +10,10 @@ import {
   minutesToTime,
   planMeetings,
   type AttendeeConstraints,
+  type BusyBlock,
   type PlanResult,
 } from '@/lib/iep-meetings/availability';
+import { fetchGoogleBusyBlocks } from '@/lib/calendar/google-busy';
 import {
   cancelMeeting,
   getMyMeetings,
@@ -79,6 +81,9 @@ export default function MeetingsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reserving, setReserving] = useState(false);
   const [reservedCount, setReservedCount] = useState<number | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [googleNote, setGoogleNote] = useState<string | null>(null);
+  const [holdsCreated, setHoldsCreated] = useState<number>(0);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
@@ -128,36 +133,85 @@ export default function MeetingsPage() {
     return unscheduled.filter(s => s.dueDate! <= cutoffStr).length;
   }, [unscheduled]);
 
-  const runPlanner = useCallback(() => {
+  const runPlanner = useCallback(async () => {
     if (!planning) return;
-    // The horizon filters by DUE DATE (spec §2.1): "plan meetings due
-    // through [date]" — students due later wait for the next planning pass.
-    const inHorizon = unscheduled.filter(s => s.dueDate! <= horizon);
-    const requests = inHorizon.map(student => {
-      const attendees: AttendeeConstraints[] = [
-        { key: 'organizer', busy: planning.organizerBusy },
-      ];
-      if (student.teacherProfileId) {
-        const teacher = planning.teacherConstraints.get(student.teacherProfileId);
-        if (teacher) attendees.push(teacher);
+    setDrafting(true);
+    setGoogleNote(null);
+    try {
+      // The horizon filters by DUE DATE (spec §2.1): "plan meetings due
+      // through [date]" — students due later wait for the next planning pass.
+      const inHorizon = unscheduled.filter(s => s.dueDate! <= horizon);
+
+      // Google free/busy as one more busy source (spec §5): the organizer's
+      // own calendar plus teacher calendars already visible to them through
+      // Google's sharing. Absent/broken connection or a failed lookup
+      // degrades to internal sources — never blocks planning.
+      let googleBusy: Map<string, BusyBlock[]> | null = null;
+      try {
+        const emails = Array.from(
+          new Set(
+            inHorizon
+              .map(s => s.teacherEmail)
+              .filter((e): e is string => !!e)
+          )
+        );
+        const google = await fetchGoogleBusyBlocks({
+          from: todayStr(),
+          to: horizon,
+          emails,
+        });
+        if (google.connected) googleBusy = google.busyByCalendar;
+      } catch (err) {
+        console.error('Google availability lookup failed:', err);
+        setGoogleNote(
+          'Google Calendar availability was unavailable — these drafts use internal schedules only.'
+        );
       }
-      return { key: student.id, dueDate: student.dueDate, attendees };
-    });
-    // No admin-configured windows yet? Case managers aren't blocked —
-    // fall back to general school-day hours and say so in the UI.
-    const site = planning.hasSiteRules
-      ? planning.site
-      : { ...planning.site, windows: DEFAULT_MEETING_WINDOWS };
-    const planned = planMeetings(requests, {
-      from: todayStr(),
-      to: horizon,
-      durationMinutes: 60,
-      site,
-      existingMeetings: planning.existingMeetings,
-    });
-    setResults(planned);
-    setSelected(new Set(planned.filter(r => r.slot).map(r => r.key)));
-    setReservedCount(null);
+
+      const requests = inHorizon.map(student => {
+        const attendees: AttendeeConstraints[] = [
+          {
+            key: 'organizer',
+            busy: [
+              ...planning.organizerBusy,
+              ...(googleBusy?.get('primary') ?? []),
+            ],
+          },
+        ];
+        const teacherPrefs = student.teacherProfileId
+          ? planning.teacherConstraints.get(student.teacherProfileId)
+          : undefined;
+        const teacherGoogleBusy = student.teacherEmail
+          ? (googleBusy?.get(student.teacherEmail) ?? [])
+          : [];
+        if (teacherPrefs || teacherGoogleBusy.length > 0) {
+          attendees.push({
+            key:
+              student.teacherProfileId ?? `email:${student.teacherEmail}`,
+            busy: [...(teacherPrefs?.busy ?? []), ...teacherGoogleBusy],
+            availableWindows: teacherPrefs?.availableWindows ?? null,
+          });
+        }
+        return { key: student.id, dueDate: student.dueDate, attendees };
+      });
+      // No admin-configured windows yet? Case managers aren't blocked —
+      // fall back to general school-day hours and say so in the UI.
+      const site = planning.hasSiteRules
+        ? planning.site
+        : { ...planning.site, windows: DEFAULT_MEETING_WINDOWS };
+      const planned = planMeetings(requests, {
+        from: todayStr(),
+        to: horizon,
+        durationMinutes: 60,
+        site,
+        existingMeetings: planning.existingMeetings,
+      });
+      setResults(planned);
+      setSelected(new Set(planned.filter(r => r.slot).map(r => r.key)));
+      setReservedCount(null);
+    } finally {
+      setDrafting(false);
+    }
   }, [planning, unscheduled, horizon]);
 
   const handleReserve = async () => {
@@ -172,12 +226,30 @@ export default function MeetingsPage() {
     setReserving(true);
     setError(null);
     try {
-      const { reserved, attendeesFailed } = await reserveMeetings(
+      const { reserved, attendeesFailed, meetingIds } = await reserveMeetings(
         schoolId,
         drafts,
         planning.leaRep
       );
       setReservedCount(reserved);
+      // Best-effort hold events on the organizer's Google Calendar
+      // (spec §2.1) — reservations stand regardless of Google.
+      setHoldsCreated(0);
+      if (meetingIds.length > 0) {
+        try {
+          const res = await fetch('/api/calendar/google/meeting-events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create', meetingIds }),
+          });
+          const sync = res.ok ? await res.json().catch(() => null) : null;
+          if (sync?.connected && sync.created > 0) {
+            setHoldsCreated(sync.created);
+          }
+        } catch (syncErr) {
+          console.error('Calendar hold sync failed:', syncErr);
+        }
+      }
       if (attendeesFailed) {
         setError(
           'Meetings were reserved, but some attendees could not be added — check each meeting and re-add missing team members.'
@@ -203,6 +275,13 @@ export default function MeetingsPage() {
       return;
     try {
       await cancelMeeting(meeting.id);
+      // Remove the Google Calendar hold if one exists — best-effort; the
+      // cancellation stands either way.
+      fetch('/api/calendar/google/meeting-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', meetingId: meeting.id }),
+      }).catch(syncErr => console.error('Hold removal failed:', syncErr));
       await load();
     } catch {
       setError('Failed to cancel meeting');
@@ -258,6 +337,9 @@ export default function MeetingsPage() {
       {reservedCount !== null && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700 mb-6">
           Reserved {reservedCount} meeting{reservedCount === 1 ? '' : 's'}.
+          {holdsCreated > 0
+            ? ` ${holdsCreated === reservedCount ? 'Holds' : `${holdsCreated} hold${holdsCreated === 1 ? '' : 's'}`} added to your Google Calendar.`
+            : ''}{' '}
           Family confirmations come later — these are internal holds.
         </div>
       )}
@@ -349,10 +431,19 @@ export default function MeetingsPage() {
                     className="border border-gray-300 rounded-md px-3 py-2 text-sm"
                   />
                 </div>
-                <Button variant="secondary" onClick={runPlanner}>
+                <Button
+                  variant="secondary"
+                  onClick={runPlanner}
+                  isLoading={drafting}
+                >
                   Draft placements
                 </Button>
               </div>
+              {googleNote && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-gray-600 text-sm mb-4">
+                  {googleNote}
+                </div>
+              )}
 
               {results && (
                 <>

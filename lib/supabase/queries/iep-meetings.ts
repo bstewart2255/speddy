@@ -30,6 +30,8 @@ export interface CaseloadStudent {
   teacher_id: string | null;
   teacherName: string | null;
   teacherProfileId: string | null;
+  /** For Google free/busy lookups via calendars shared with the organizer. */
+  teacherEmail: string | null;
   dueDate: string | null; // earlier of upcoming IEP / triennial
   meetingType: 'annual' | 'triennial';
   hasUpcomingMeeting: boolean;
@@ -105,7 +107,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       supabase
         .from('students')
         .select(
-          'id, initials, grade_level, teacher_id, teachers(id, account_id, first_name, last_name), student_details(upcoming_iep_date, upcoming_triennial_date)'
+          'id, initials, grade_level, teacher_id, teachers(id, account_id, first_name, last_name, email), student_details(upcoming_iep_date, upcoming_triennial_date)'
         )
         .eq('provider_id', user.id)
         .eq('school_id', schoolId),
@@ -187,6 +189,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       account_id: string | null;
       first_name: string | null;
       last_name: string | null;
+      email: string | null;
     } | null;
     student_details: {
       upcoming_iep_date: string | null;
@@ -218,6 +221,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
         ? [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || null
         : null,
       teacherProfileId: teacher?.account_id ?? null,
+      teacherEmail: teacher?.email ?? null,
       dueDate,
       meetingType,
       hasUpcomingMeeting: studentsWithMeetings.has(s.id),
@@ -310,7 +314,11 @@ export async function reserveMeetings(
   schoolId: string,
   drafts: MeetingDraft[],
   leaRep: { admin_id: string; full_name: string } | null
-): Promise<{ reserved: number; attendeesFailed: boolean }> {
+): Promise<{
+  reserved: number;
+  attendeesFailed: boolean;
+  meetingIds: string[];
+}> {
   const supabase = createClient<Database>();
   const {
     data: { user },
@@ -394,7 +402,11 @@ export async function reserveMeetings(
     }
   }
 
-  return { reserved: inserted?.length ?? 0, attendeesFailed };
+  return {
+    reserved: inserted?.length ?? 0,
+    attendeesFailed,
+    meetingIds: (inserted ?? []).map(m => m.id),
+  };
 }
 
 export async function cancelMeeting(meetingId: string): Promise<void> {
