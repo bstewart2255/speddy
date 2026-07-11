@@ -164,6 +164,14 @@ describe('getValidGoogleAccessToken', () => {
       'fresh-access'
     );
     expect(global.fetch).toHaveBeenCalledTimes(1);
+    // The refreshed token must be re-encrypted under the CURRENT key and
+    // persisted — otherwise every call would re-refresh forever.
+    const persisted = supabase.updates.find(u => u.access_token_encrypted);
+    expect(persisted).toBeDefined();
+    expect(decryptToken(persisted!.access_token_encrypted as string)).toBe(
+      'fresh-access'
+    );
+    expect(persisted!.token_expires_at).toEqual(expect.any(String));
   });
 
   it('treats an undecryptable refresh token as revoked, with no network call', async () => {
