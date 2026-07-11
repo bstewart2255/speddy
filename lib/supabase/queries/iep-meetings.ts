@@ -341,6 +341,9 @@ export async function reserveMeetings(
     throw error;
   }
 
+  // Every row must carry rsvp_status explicitly: PostgREST multi-row inserts
+  // unify all rows' keys and send missing ones as NULL, which overrides the
+  // column DEFAULT and violates NOT NULL — the whole batch fails (SPE-217).
   const attendeeRows = (inserted ?? []).flatMap(meeting => {
     const draft = drafts.find(d => d.student.id === meeting.student_id);
     const rows: Database['public']['Tables']['iep_meeting_attendees']['Insert'][] =
@@ -358,6 +361,7 @@ export async function reserveMeetings(
         meeting_id: meeting.id,
         profile_id: leaRep.admin_id,
         attendee_role: 'lea_rep',
+        rsvp_status: 'pending',
       });
     }
     if (draft?.student.teacherProfileId) {
@@ -365,12 +369,14 @@ export async function reserveMeetings(
         meeting_id: meeting.id,
         profile_id: draft.student.teacherProfileId,
         attendee_role: 'teacher',
+        rsvp_status: 'pending',
       });
     } else if (draft?.student.teacherName) {
       rows.push({
         meeting_id: meeting.id,
         display_name: draft.student.teacherName,
         attendee_role: 'teacher',
+        rsvp_status: 'pending',
       });
     }
     return rows;
