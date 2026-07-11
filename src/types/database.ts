@@ -501,6 +501,7 @@ export type Database = {
         Row: {
           access_token_encrypted: string | null
           created_at: string | null
+          google_email: string | null
           id: string
           profile_id: string
           provider: string
@@ -513,6 +514,7 @@ export type Database = {
         Insert: {
           access_token_encrypted?: string | null
           created_at?: string | null
+          google_email?: string | null
           id?: string
           profile_id: string
           provider?: string
@@ -525,6 +527,7 @@ export type Database = {
         Update: {
           access_token_encrypted?: string | null
           created_at?: string | null
+          google_email?: string | null
           id?: string
           profile_id?: string
           provider?: string

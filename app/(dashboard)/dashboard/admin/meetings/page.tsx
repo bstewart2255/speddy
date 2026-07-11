@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
+import { CalendarConnectionCard } from '@/app/components/calendar/calendar-connection-card';
 import { getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 import {
   getSiteMeetingRules,
@@ -168,6 +169,8 @@ export default function AdminMeetingsPage() {
       )}
 
       <div className="space-y-6">
+        <CalendarConnectionCard />
+
         <Card>
           <h2 className="text-lg font-semibold text-gray-900 mb-1">
             Meeting windows

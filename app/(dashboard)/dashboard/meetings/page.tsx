@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
+import { CalendarConnectionCard } from '@/app/components/calendar/calendar-connection-card';
 import { useSchool } from '@/app/components/providers/school-context';
 import {
   DEFAULT_MEETING_WINDOWS,
@@ -260,6 +261,8 @@ export default function MeetingsPage() {
           Family confirmations come later — these are internal holds.
         </div>
       )}
+
+      <CalendarConnectionCard className="mb-8" />
 
       {/* Attention strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">

@@ -41,7 +41,7 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 
 ## B. Educator / provider / staff data (PII processed; not "student" data)
 
-_Entry: provider name / email / role are **Required** (account); teacher **phone** and **classroom** are **Optional**; sign-in IP / user agent are **auto-captured**._
+_Entry: provider name / email / role are **Required** (account); teacher **phone** and **classroom** are **Optional**; sign-in IP / user agent are **auto-captured**; Google Calendar connection is **Optional** (user-initiated)._
 
 | Element | Source |
 |---|---|
@@ -51,6 +51,7 @@ _Entry: provider name / email / role are **Required** (account); teacher **phone
 | Teacher name, email, **phone number**, classroom, grade | `teachers` |
 | Staff name, role, program, room | `staff` |
 | Extension API key (bcrypt **hash** only) | `api_keys` |
+| Google Calendar OAuth tokens (**AES-256-GCM app-layer encrypted**, key in env — ciphertext only in DB), connected Google account email, granted scopes | `calendar_connections` |
 | Marketing sign-up email | `landing_signups` |
 
 ## C. Technical / usage metadata
@@ -100,5 +101,6 @@ extension API key (`api_keys`); see [`offboarding-runbook.md`](./offboarding-run
 3. **Student work images** are stored (Supabase Storage, private buckets, served via short-lived signed URLs).
 4. **Minimization wins worth stating:** no SEIS ID (SSID) stored in the backend DB (it is held only in the provider's local browser storage by the Chrome extension — see Section A), no parent/guardian or student contact info, no SSN, no race/ethnicity/gender, no health data beyond special-ed status.
 5. **Provider IP addresses** are logged (`sign_in_logs`, `analytics_events`) — provider PII, not student.
+6. **Google Calendar tokens (SPE-205)** are provider credentials, not student data: stored app-layer encrypted (AES-256-GCM, key only in server env), owner-only RLS, never logged. Calendar **free/busy data is processed transiently** for scheduling and not retained as a copy of anyone's calendar; disconnect deletes the tokens and revokes the grant at Google. Google user data handling is disclosed in the public privacy policy §5 (Limited Use).
 
 _Related: SPE-59 (CITE NDPA), SPE-165 (subprocessor list), SPE-143 (deletion/retention — required to honor NDPA data-return/deletion obligations for the elements above)._
