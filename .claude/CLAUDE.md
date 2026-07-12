@@ -58,3 +58,14 @@ protection, never bypass hooks or commit signing, stay on the designated
 branch, and keep capturing deferred items in Linear. Report a brief summary
 when a batch merges or when escalating — keep me informed without making me a
 bottleneck.
+
+## Standing rule: deep self-review before any substantive PR
+
+Before marking any substantive PR ready for review (features, bug fixes,
+refactors — anything beyond trivial or docs-only diffs), run the `/code-review`
+skill at **high** effort on the branch diff, then fix its confirmed findings
+or state why one is deferred. Run it proactively — never treat external review
+bots (CodeRabbit/Codex) as the review layer: they rate-limit and can post
+"review finished" no-ops (seen on PR #704, where the deep self-review caught
+staleness races the gates missed). Bot findings remain a complementary layer —
+still read and address them when they arrive.
