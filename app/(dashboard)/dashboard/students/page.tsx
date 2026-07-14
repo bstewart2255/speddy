@@ -16,7 +16,6 @@ import { StudentDetailsModal } from '../../../components/students/student-detail
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
 import { useRouter } from 'next/navigation';
-import AIUploadButton from '../../../components/ai-upload/ai-upload-button';
 import { SeisUploadWizardModal } from '../../../components/students/seis-upload-wizard-modal';
 import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
 
@@ -333,12 +332,6 @@ export default function StudentsPage() {
                   File Upload
                 </Button>
               </LongHoverTooltip>
-              <div className="hidden">
-                <AIUploadButton
-                  uploadType="students"
-                  onSuccess={fetchStudents}
-                />
-              </div>
               <LongHoverTooltip content="Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.">
                 <Button
                   variant="primary"

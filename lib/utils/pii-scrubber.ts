@@ -1,9 +1,12 @@
 /**
  * PII Scrubber Utility
- * Uses Claude AI to intelligently detect and remove PII from IEP goals
+ * Removes PII (student names, specific dates, and IDs) from IEP goals using
+ * fast regex-based detection.
+ *
+ * NOTE: The AI-based scrubbing branch (behind a `useAI` flag no caller ever
+ * set) was removed as dead code in SPE-219. Full removal of at-rest scrubbing
+ * is tracked in SPE-238 (store imported goals verbatim).
  */
-
-import Anthropic from '@anthropic-ai/sdk';
 
 export interface ScrubbedGoal {
   original: string;
@@ -18,164 +21,29 @@ export interface ScrubResult {
 }
 
 /**
- * Scrub PII from IEP goals using Claude AI or regex fallback
+ * Scrub PII from IEP goals using regex-based detection
  */
 export async function scrubPIIFromGoals(
   goals: string[],
   studentFirstName: string,
-  studentLastName: string,
-  useAI: boolean = false // Default to fast regex-based scrubbing
+  studentLastName: string
 ): Promise<ScrubResult> {
-  // Use fast regex-based scrubbing by default (much faster than AI)
-  if (!useAI) {
-    const scrubbedGoals: ScrubbedGoal[] = [];
-    for (const goal of goals) {
-      const scrubbed = basicPIIScrub(goal, studentFirstName, studentLastName);
-      scrubbedGoals.push({
-        original: goal,
-        scrubbed: scrubbed.text,
-        piiDetected: scrubbed.removed,
-        confidence: scrubbed.removed.length > 0 ? 'medium' : 'high'
-      });
-    }
-    return { goals: scrubbedGoals, errors: [] };
-  }
-
-  // AI-based scrubbing (slower but more accurate)
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    return {
-      goals: goals.map(g => ({
-        original: g,
-        scrubbed: g,
-        piiDetected: [],
-        confidence: 'low'
-      })),
-      errors: ['AI service not configured - PII scrubbing unavailable']
-    };
-  }
-
-  const anthropic = new Anthropic({ apiKey });
   const scrubbedGoals: ScrubbedGoal[] = [];
-  const errors: string[] = [];
-
-  // Create the prompt for Claude
-  const systemPrompt = `You are a privacy-focused AI assistant that removes Personally Identifiable Information (PII) from IEP (Individualized Education Program) goals.
-
-Your task is to:
-1. Identify and remove student names (first, last, full names)
-2. Remove specific dates (e.g., "by March 2024", "by 3/15/24")
-3. Remove district IDs, case numbers, or student identifiers
-4. Preserve measurement goals, percentages, and performance metrics
-5. Maintain the educational meaning and structure of the goal
-
-KEEP (Do NOT remove):
-- Performance targets (e.g., "80% accuracy", "4 out of 5 trials")
-- Skill descriptions (e.g., "reading fluency", "math computation")
-- Time periods without specific dates (e.g., "by the end of the school year", "within 6 months")
-- General grade levels or age ranges
-
-Return a JSON array with this structure for each goal:
-{
-  "original": "the original goal text",
-  "scrubbed": "the goal with PII removed",
-  "piiDetected": ["list of PII items found"],
-  "confidence": "high|medium|low"
-}
-
-IMPORTANT:
-- Return ONLY valid JSON
-- NO markdown, NO explanations, NO text before or after the JSON
-- Start your response with [ and end with ]`;
-
-  const userPrompt = `Student name to scrub: ${studentFirstName} ${studentLastName}
-Initials: ${studentFirstName.charAt(0)}${studentLastName.charAt(0)}
-
-IEP Goals to scrub:
-${goals.map((g, i) => `${i + 1}. ${g}`).join('\n\n')}
-
-Please remove all PII while preserving the educational content and goals.`;
-
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 4000,
-      temperature: 0, // Deterministic for consistent PII detection
-      messages: [
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
+  for (const goal of goals) {
+    const scrubbed = basicPIIScrub(goal, studentFirstName, studentLastName);
+    scrubbedGoals.push({
+      original: goal,
+      scrubbed: scrubbed.text,
+      piiDetected: scrubbed.removed,
+      confidence: scrubbed.removed.length > 0 ? 'medium' : 'high'
     });
-
-    // Parse Claude's response
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-
-    try {
-      // Clean up the response
-      let jsonText = responseText.trim();
-
-      // Remove markdown code blocks if present
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-
-      // Find JSON array
-      const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[0];
-      }
-
-      // Parse the JSON
-      const parsed = JSON.parse(jsonText);
-
-      if (Array.isArray(parsed)) {
-        for (let i = 0; i < parsed.length && i < goals.length; i++) {
-          const item = parsed[i];
-          scrubbedGoals.push({
-            original: item.original || goals[i],
-            scrubbed: item.scrubbed || goals[i],
-            piiDetected: item.piiDetected || [],
-            confidence: item.confidence || 'medium'
-          });
-        }
-      } else {
-        throw new Error('Expected an array from Claude');
-      }
-    } catch (parseError: any) {
-      console.error('Failed to parse Claude response:', parseError);
-      errors.push(`Failed to parse AI response: ${parseError.message}`);
-
-      // Fallback: return goals with basic regex-based scrubbing
-      for (const goal of goals) {
-        const scrubbed = basicPIIScrub(goal, studentFirstName, studentLastName);
-        scrubbedGoals.push({
-          original: goal,
-          scrubbed: scrubbed.text,
-          piiDetected: scrubbed.removed,
-          confidence: 'low'
-        });
-      }
-    }
-  } catch (error: any) {
-    console.error('Error calling Claude API:', error);
-    errors.push(`AI service error: ${error.message}`);
-
-    // Fallback: return goals with basic regex-based scrubbing
-    for (const goal of goals) {
-      const scrubbed = basicPIIScrub(goal, studentFirstName, studentLastName);
-      scrubbedGoals.push({
-        original: goal,
-        scrubbed: scrubbed.text,
-        piiDetected: scrubbed.removed,
-        confidence: 'low'
-      });
-    }
   }
-
-  return { goals: scrubbedGoals, errors };
+  return { goals: scrubbedGoals, errors: [] };
 }
 
 /**
- * Basic PII scrubbing using regex (fallback when AI is unavailable)
+ * Basic PII scrubbing using regex: removes the student's name, specific dates,
+ * and ID-like tokens from a single goal string.
  */
 function basicPIIScrub(
   text: string,
