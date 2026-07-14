@@ -73,3 +73,27 @@ describe('parseCSVReport — Windows-1252 encoding', () => {
     expect(result).toMatchSnapshot();
   });
 });
+
+describe('parseCSVReport — target-student grade reconciliation (SPE-240)', () => {
+  // targetStudent.gradeLevel comes from students.grade_level. For rows written
+  // by the pre-SPE-240 parser that value can be a legacy string ('First', '18')
+  // that must still resolve to the CSV row, which now normalizes canonically.
+  it('matches a legacy "First" target grade against the row that normalizes to "1"', async () => {
+    const result = await parseCSVReport(readFixture('messy-values.csv'), {
+      targetStudent: { initials: 'AA', gradeLevel: 'First', schoolName: '' },
+    });
+    expect(result.metadata.targetStudentFound).toBe(true);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].lastName).toBe('Adams');
+    expect(result.students[0].gradeLevel).toBe('1');
+  });
+
+  it('matches a legacy "18" target grade against the row that normalizes to "TK"', async () => {
+    const result = await parseCSVReport(readFixture('messy-values.csv'), {
+      targetStudent: { initials: 'EE', gradeLevel: '18', schoolName: '' },
+    });
+    expect(result.metadata.targetStudentFound).toBe(true);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].gradeLevel).toBe('TK');
+  });
+});

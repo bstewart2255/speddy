@@ -179,8 +179,11 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             continue;
           }
 
-          // Check grade match
-          if (normalizedGrade !== targetStudent.gradeLevel) {
+          // Check grade match. Normalize the target's stored grade too: it
+          // comes straight from students.grade_level, which for rows written by
+          // the pre-SPE-240 parser can be a legacy value ('First', '18', '0')
+          // that must reconcile with the row's canonical grade (SPE-240).
+          if (normalizedGrade !== normalizeGradeLevel(targetStudent.gradeLevel)) {
             continue;
           }
 
