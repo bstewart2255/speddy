@@ -12,7 +12,7 @@ import {
   parseDeliveriesCSV,
   DeliveriesParseResult,
 } from '@/lib/parsers/deliveries-parser';
-import { readFixture } from './fixtures/builders';
+import { readFixture, DELIVERIES_EMBEDDED_NEWLINE_CSV } from './fixtures/builders';
 
 /**
  * Serialize a DeliveriesParseResult into a deterministic, snapshot-friendly
@@ -114,5 +114,24 @@ describe('parseDeliveriesCSV', () => {
   it('psychologist role (no service code) keeps all service rows', async () => {
     const result = await parseDeliveriesCSV(buffer(), { providerRole: 'psychologist' });
     expect(serialize(result)).toMatchSnapshot();
+  });
+});
+
+describe('parseDeliveriesCSV — newline inside a quoted field', () => {
+  it('keeps a row with an embedded newline as one row (no split) and imports it', async () => {
+    const result = await parseDeliveriesCSV(DELIVERIES_EMBEDDED_NEWLINE_CSV(), { providerRole: 'resource' });
+
+    // One clean row, not a valid row plus an orphaned fragment.
+    expect(result.deliveries.size).toBe(1);
+    expect(result.metadata.totalRows).toBe(1);
+
+    const delivery = Array.from(result.deliveries.values())[0];
+    expect(delivery.name).toBe('Young, Yara');
+    expect(delivery.sessionsFrequency).toBe('30 min Weekly');
+    expect(delivery.weeklyMinutes).toBe(30);
+
+    // The old split(/\r?\n/) reader would have cut the quoted Location in two and
+    // warned "fewer than expected columns" on the "(Portable B)",... remainder.
+    expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(false);
   });
 });

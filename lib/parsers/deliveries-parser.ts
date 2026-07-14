@@ -4,6 +4,7 @@
  * for service type codes based on provider role
  */
 
+import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
 import { isServiceCodeForRole, getServiceTypeCode } from './service-type-mapping';
 
@@ -138,40 +139,6 @@ function parseDate(dateStr: string): Date | null {
 }
 
 /**
- * Parse CSV line handling quoted fields
- */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote
-        current += '"';
-        i++;
-      } else {
-        // Toggle quote mode
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  // Add the last field
-  result.push(current.trim());
-
-  return result;
-}
-
-/**
  * Parse SEIS Deliveries CSV buffer
  * @param buffer - The CSV file buffer
  * @param options - Options including providerRole for service type filtering
@@ -180,9 +147,6 @@ export async function parseDeliveriesCSV(
   buffer: Buffer,
   options: DeliveriesParseOptions = {}
 ): Promise<DeliveriesParseResult> {
-  const content = buffer.toString('utf-8');
-  const lines = content.split(/\r?\n/).filter((line) => line.trim());
-
   const deliveries = new Map<string, DeliveryRecord>();
   const errors: Array<{ row: number; message: string }> = [];
   const warnings: Array<{ row: number; message: string }> = [];
@@ -194,21 +158,41 @@ export async function parseDeliveriesCSV(
   let totalRows = 0;
   let filteredServiceRows = 0;
 
+  // Parse with csv-parse so newlines inside quoted fields don't split one row
+  // into several. The previous split(/\r?\n/) + hand-rolled field parser broke
+  // any row whose quoted field (e.g. a multi-line note) contained a line break.
+  let records: string[][];
+  try {
+    records = parse(buffer, {
+      encoding: 'utf-8',
+      bom: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    errors.push({ row: 0, message: `Failed to parse CSV: ${message}` });
+    return {
+      deliveries,
+      errors,
+      warnings,
+      metadata: { totalRows, filteredServiceRows, uniqueStudents: 0, serviceTypeCode },
+    };
+  }
+
   // Expected columns (0-indexed):
   // 0: Name, 1: SEIS ID, 2: Service, 3: Delivery, 4: Start Date, 5: End Date,
   // 6: Sessions / Frequency, 7: Location, 8: Total Minutes, 9: Total Delivered, 10: Medi-Cal
 
   // Skip header row
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim()) continue;
+  for (let i = 1; i < records.length; i++) {
+    const fields = records[i];
+    if (fields.every((f) => !f || !f.trim())) continue;
 
     totalRows++;
     const rowNum = i + 1;
 
     try {
-      const fields = parseCSVLine(line);
-
       if (fields.length < 7) {
         warnings.push({ row: rowNum, message: 'Row has fewer than expected columns' });
         continue;
