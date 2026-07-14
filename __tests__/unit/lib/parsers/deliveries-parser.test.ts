@@ -176,3 +176,20 @@ describe('parseDeliveriesCSV — blank-line handling parity', () => {
     expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(true);
   });
 });
+
+describe('parseDeliveriesCSV — unrecoverable parse failure', () => {
+  it('propagates the error so the caller surfaces it, instead of importing zero rows silently', async () => {
+    // An opening quote that never closes runs to EOF (CSV_QUOTE_NOT_CLOSED),
+    // which relax_quotes does not recover. The import route catches this and
+    // surfaces it (400 / warning); swallowing it into an ignored errors array
+    // would hide a total-loss failure.
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '"Doe, Jane,2000040,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 1,1080,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    await expect(parseDeliveriesCSV(csv, { providerRole: 'resource' })).rejects.toThrow();
+  });
+});

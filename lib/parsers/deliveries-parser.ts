@@ -161,28 +161,20 @@ export async function parseDeliveriesCSV(
   // Parse with csv-parse so newlines inside quoted fields don't split one row
   // into several. The previous split(/\r?\n/) + hand-rolled field parser broke
   // any row whose quoted field (e.g. a multi-line note) contained a line break.
-  let allRecords: string[][];
-  try {
-    allRecords = parse(buffer, {
-      encoding: 'utf-8',
-      bom: true,
-      relax_column_count: true,
-      // Don't throw on a stray/unbalanced quote in one row — parse it leniently
-      // so a single malformed cell can't discard the entire caseload. The old
-      // hand-rolled reader never threw and always produced partial results.
-      relax_quotes: true,
-      skip_empty_lines: true,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    errors.push({ row: 0, message: `Failed to parse CSV: ${message}` });
-    return {
-      deliveries,
-      errors,
-      warnings,
-      metadata: { totalRows, filteredServiceRows, uniqueStudents: 0, serviceTypeCode },
-    };
-  }
+  //
+  // relax_quotes keeps a single stray/unbalanced quote in one row from
+  // discarding the rest of the file. A HARD parse failure (e.g. an unterminated
+  // quote that runs to EOF) is intentionally NOT caught here: it propagates to
+  // the caller, which surfaces it as an error. Swallowing it into the returned
+  // `errors` would import zero schedules silently, because callers only render
+  // `warnings`.
+  const allRecords: string[][] = parse(buffer, {
+    encoding: 'utf-8',
+    bom: true,
+    relax_column_count: true,
+    relax_quotes: true,
+    skip_empty_lines: true,
+  });
 
   // csv-parse's skip_empty_lines only drops truly-empty lines; the previous
   // reader also dropped whitespace-only lines BEFORE numbering rows. Such a line
