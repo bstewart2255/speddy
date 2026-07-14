@@ -181,15 +181,6 @@ export default function BellSchedulesPage() {
                 >
                   Import CSV
                 </Button>
-                {/* Hidden: AI Upload not working as intended
-                <AIUploadButton
-                  uploadType="bell_schedule"
-                  onSuccess={() => {
-                    // Refresh bell schedules
-                    window.location.reload();
-                  }}
-                />
-                */}
                 <Button
                   variant="primary"
                   onClick={() => {

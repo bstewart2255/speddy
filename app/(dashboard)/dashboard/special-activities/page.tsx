@@ -201,15 +201,6 @@ export default function SpecialActivitiesPage() {
                 >
                   Import CSV
                 </Button>
-                {/* Hidden: AI Upload not working as intended
-                <AIUploadButton
-                  uploadType="special_activities"
-                  onSuccess={() => {
-                    // Refresh special activities
-                    window.location.reload();
-                  }}
-                />
-                */}
                 <Button
                   variant="primary"
                   onClick={() => {

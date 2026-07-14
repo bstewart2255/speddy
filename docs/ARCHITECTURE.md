@@ -169,7 +169,7 @@ flowchart TD
 
 > **Known gap — SPE-187 (security, Medium):** the AI generation routes
 > (`app/api/lessons/generate`, `lessons/v2`, `exit-tickets/generate`,
-> `progress-check/generate`, `ai-upload`) are `aiGated` + rate-limited but have
+> `progress-check/generate`) are `aiGated` + rate-limited but have
 > **no role check**. Any authenticated user — including `sea` (lesson view-only)
 > and `teacher` — could call them once AI is enabled. Not exploitable today
 > because `AI_FEATURES_ENABLED` is off (routes 404). For a non-lesson role,
