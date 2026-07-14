@@ -73,4 +73,33 @@ describe('StudentImportPreviewModal — Select All excludes disabled skip rows (
     expect(checkboxes[1]).toBeChecked();
     expect(checkboxes[2]).not.toBeChecked(); // skip stays out of the selection
   });
+
+  // Legacy shape: a row with no `action`, only `matchStatus: 'duplicate'`. The
+  // effective-action fallback maps it to "skip", so the checkbox must be
+  // disabled AND the row must be excluded from Select All — the two now share
+  // one eligibility rule (getEffectiveAction) so they can't drift apart.
+  it('treats a legacy no-action "duplicate" row as a disabled skip, excluded from Select All', async () => {
+    const user = userEvent.setup();
+    const legacyData: ModalData = {
+      students: [
+        { firstName: 'Dave', lastName: 'Delta', initials: 'DD', gradeLevel: '2', action: 'insert' },
+        { firstName: 'Erin', lastName: 'Echo', initials: 'EE', gradeLevel: '3', matchStatus: 'duplicate' },
+      ],
+      summary: { total: 2, new: 1, duplicates: 1 },
+    };
+    render(<StudentImportPreviewModal isOpen data={legacyData} onClose={() => {}} />);
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0]).toBeChecked(); // insert — selectable
+    expect(checkboxes[1]).toBeDisabled(); // duplicate — checkbox disabled, not just unchecked
+    expect(checkboxes[1]).not.toBeChecked();
+    expect(screen.getByRole('button', { name: /Confirm 1 Student\b/i })).toBeInTheDocument();
+
+    // Select All must not pull the disabled duplicate into the selection.
+    await user.click(screen.getByRole('button', { name: 'Deselect All' }));
+    await user.click(screen.getByRole('button', { name: 'Select All' }));
+    expect(screen.getByRole('button', { name: /Confirm 1 Student\b/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[1]).not.toBeChecked();
+  });
 });
