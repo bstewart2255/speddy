@@ -171,13 +171,25 @@ export function StudentImportPreviewModal({
     });
   };
 
+  // A row is selectable unless it's a "no changes" skip. Mirror the action
+  // fallback used for the initial selection above until Phase 3 makes `action`
+  // always present on preview rows.
+  const selectableIndices = data.students.reduce<number[]>((acc, student, idx) => {
+    const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
+    if (action !== 'skip') acc.push(idx);
+    return acc;
+  }, []);
+  const allSelectableSelected =
+    selectableIndices.length > 0 && selectedStudents.size === selectableIndices.length;
+
   const toggleSelectAll = () => {
-    if (selectedStudents.size === data.students.length) {
+    if (allSelectableSelected) {
       // Deselect all
       setSelectedStudents(new Set());
     } else {
-      // Select all
-      setSelectedStudents(new Set(data.students.map((_, idx) => idx)));
+      // Select only selectable (insert/update) rows — never the disabled "no
+      // changes" skips, which the user otherwise can't individually clear.
+      setSelectedStudents(new Set(selectableIndices));
     }
   };
 
@@ -477,7 +489,7 @@ export function StudentImportPreviewModal({
                   size="sm"
                   onClick={toggleSelectAll}
                 >
-                  {selectedStudents.size === data.students.length ? 'Deselect All' : 'Select All'}
+                  {allSelectableSelected ? 'Deselect All' : 'Select All'}
                 </Button>
               </div>
 
