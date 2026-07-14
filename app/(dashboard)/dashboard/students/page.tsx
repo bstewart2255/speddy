@@ -306,7 +306,7 @@ export default function StudentsPage() {
                   Import CSV
                 </Button>
               </LongHoverTooltip>
-              <LongHoverTooltip content="Upload student data files using the guided import wizard. Supports various file formats.">
+              <LongHoverTooltip content="Upload student data from multiple source files (SEIS goals, deliveries, and an Aeries class list).">
                 <Button
                   variant="secondary"
                   onClick={() => setShowFileUploadModal(true)}
@@ -689,7 +689,7 @@ export default function StudentsPage() {
                             </>
                           ) : (
                             <>
-                              <LongHoverTooltip content="Edit this student's information including name, grade, teacher assignment, and service details.">
+                              <LongHoverTooltip content="Edit this student's service minutes — sessions per week and minutes per session.">
                                 <Button
                                   variant="secondary"
                                   size="sm"
