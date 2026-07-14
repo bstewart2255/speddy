@@ -278,10 +278,11 @@ async function workbookToBuffer(workbook: ExcelJS.Workbook): Promise<Buffer> {
 }
 
 /**
- * XLSX variant with the header on row 1. Because parseSEISReport skips
- * rowNumber <= 5, the first four data rows (rows 2–5) are silently dropped —
- * this pins the SPE-240 row-skip data-loss bug. It also pins the goal-column
- * trap: the detector treats every "Goal"/"Objective" header as a goal column.
+ * XLSX variant with the header on row 1 and seven data rows (rows 2–8). Pins
+ * the SPE-240 fixes: all seven rows import (parseSEISReport starts data on the
+ * row after the detected header, not a fixed `rowNumber <= 5`), and each yields
+ * exactly one goal (goal detection prefers the exact "Goal" column instead of
+ * treating every "Goal"/"Objective" header as a goal column).
  */
 export async function buildSeisXlsxHeaderRow1(): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -310,6 +311,25 @@ export async function buildSeisXlsxMetadataRows(): Promise<Buffer> {
   sheet.addRow(SEIS_HEADERS); // header now on row 6, outside the scan window
   for (const row of SEIS_XLSX_ROWS) {
     sheet.addRow(sparseToArray(row));
+  }
+  return workbookToBuffer(workbook);
+}
+
+/**
+ * XLSX variant with two title rows, the header on row 3, then data. Proves the
+ * row-skip fix generalizes beyond a row-1 header: detection finds the header
+ * within the 5-row window and data starts on the row AFTER it (row 4+), rather
+ * than at a fixed offset. The title rows carry no name/grade text, so they
+ * don't perturb header detection.
+ */
+export async function buildSeisXlsxTitleThenHeader(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Student Goals');
+  sheet.addRow(['SEIS Student Goals Report']); // row 1 title
+  sheet.addRow(['District: Example Unified']); // row 2 title
+  sheet.addRow(SEIS_HEADERS); // header on row 3
+  for (const row of SEIS_XLSX_ROWS.slice(0, 3)) {
+    sheet.addRow(sparseToArray(row)); // Alvarez, Bishop, Cho on rows 4-6
   }
   return workbookToBuffer(workbook);
 }
