@@ -62,10 +62,34 @@ describe('parseFrequency', () => {
     expect(parseFrequency('120 min x 6 Times = 720 min Weekly')).toEqual({ weeklyMinutes: 720, rawMinutes: 720, period: 'weekly' });
   });
 
-  it('returns zero for Monthly (currently unparsed) and junk input', () => {
-    expect(parseFrequency('120 min Monthly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+  it('parses spelled-out "minutes" and reversed "count x length" formats', () => {
+    expect(parseFrequency('30 minutes Weekly')).toEqual({ weeklyMinutes: 30, rawMinutes: 30, period: 'weekly' });
+    expect(parseFrequency('45 mins Weekly')).toEqual({ weeklyMinutes: 45, rawMinutes: 45, period: 'weekly' });
+    // "2 x 30 min Weekly" = 2 sessions of 30 min = 60 weekly.
+    expect(parseFrequency('2 x 30 min Weekly')).toEqual({ weeklyMinutes: 60, rawMinutes: 60, period: 'weekly' });
+    expect(parseFrequency('3 x 20 minutes Weekly')).toEqual({ weeklyMinutes: 60, rawMinutes: 60, period: 'weekly' });
+  });
+
+  it('recognizes Monthly but returns weekly 0 so the caller flags it for review', () => {
+    // Option C (SPE-246): don't guess the monthly->weekly conversion. The period
+    // is reported as 'monthly' (with the raw amount) so the caller can tell a
+    // Monthly row apart from unparseable junk and surface a review warning.
+    expect(parseFrequency('120 min Monthly')).toEqual({ weeklyMinutes: 0, rawMinutes: 120, period: 'monthly' });
+  });
+
+  it('returns zero with an empty period for junk input', () => {
     expect(parseFrequency('')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
     expect(parseFrequency('whenever')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+  });
+
+  it('does not match a cell with extra leading/trailing text (flag for review, not a partial import)', () => {
+    // Patterns are anchored at both ends: a cell that is more than one
+    // recognized shape is ambiguous and must fall through to "needs review"
+    // rather than import a confident-but-partial number.
+    expect(parseFrequency('30 min Weekly / monthly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('notes: 45 min Weekly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('see IEP: 60 min x 2 Times = 120 min Weekly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('60 min x 2 Times = 120 min Weekly (direct)')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
   });
 });
 
@@ -174,6 +198,75 @@ describe('parseDeliveriesCSV — blank-line handling parity', () => {
 
     expect(result.deliveries.has('alvarez_ana')).toBe(true);
     expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(true);
+  });
+});
+
+describe('parseDeliveriesCSV — frequency review flags (SPE-246)', () => {
+  const header =
+    'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent';
+
+  it('imports spelled-out and reversed frequency formats', async () => {
+    const csv = Buffer.from(
+      [
+        header,
+        '"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 minutes Weekly,Room 1,1080,0,Yes',
+        '"Bishop, Ben",2000002,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,2 x 30 min Weekly,Room 2,2160,0,No',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.deliveries.get('alvarez_ana')?.weeklyMinutes).toBe(30);
+    expect(result.deliveries.get('bishop_ben')?.weeklyMinutes).toBe(60);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('flags a Monthly row for review instead of importing zero minutes', async () => {
+    const csv = Buffer.from(
+      [
+        header,
+        '"Ito, Ken",2000009,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,120 min Monthly,Room 9,1440,0,No',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    // Not scheduled (no guessed number)...
+    expect(result.deliveries.has('ito_ken')).toBe(false);
+    // ...but explicitly surfaced for the user to set manually.
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(/monthly/i);
+    expect(result.warnings[0].message).toMatch(/review/i);
+  });
+
+  it('flags an unrecognized frequency that has a yearly total for review', async () => {
+    const csv = Buffer.from(
+      [
+        header,
+        '"Cho, Cora",2000003,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,as needed,Room 3,720,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.deliveries.has('cho_cora')).toBe(false);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(/yearly total is 720/i);
+    expect(result.warnings[0].message).toMatch(/review/i);
+  });
+
+  it('falls back to a generic warning when there is no usable signal at all', async () => {
+    const csv = Buffer.from(
+      [
+        header,
+        '"Diaz, Drew",2000004,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,as needed,Room 4,0,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(/could not parse frequency/i);
   });
 });
 

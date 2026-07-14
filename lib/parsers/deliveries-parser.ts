@@ -38,12 +38,54 @@ export interface DeliveriesParseOptions {
 }
 
 /**
+ * Convert a total-minutes amount for a given period into weekly minutes.
+ *
+ * `monthly` deliberately returns 0: a monthly total has no unambiguous weekly
+ * conversion (a school month is ~4 weeks by some rules, ~4.33 by others), and
+ * these drive compliance-relevant service minutes — so the caller flags the row
+ * for manual review instead of guessing a confident-looking wrong number
+ * (SPE-246, Option C). The recognized `period` is still returned so the caller
+ * can distinguish a Monthly row from truly unparseable junk.
+ */
+function toWeeklyMinutes(totalMinutes: number, period: string): number {
+  switch (period) {
+    case 'daily':
+      return totalMinutes * 5; // 5 school days
+    case 'yearly':
+      return Math.ceil(totalMinutes / 36); // ~36 instructional weeks in school year
+    case 'weekly':
+      return totalMinutes;
+    case 'monthly':
+    default:
+      return 0; // needs review — don't guess a compliance number
+  }
+}
+
+// "minutes" is spelled several ways in real SEIS exports: "min", "mins",
+// "minute", "minutes". Match any of them. Compiled once at module load (not per
+// call) since the same three shapes are matched for every row.
+const MIN_UNIT = 'min(?:ute)?s?';
+const PERIOD = '(Weekly|Daily|Yearly|Monthly)';
+// Each pattern is anchored at BOTH ends so it matches only when the whole
+// (trimmed) cell is exactly one recognized shape. A cell with extra leading or
+// trailing text — e.g. "30 min Weekly / monthly" or "60 min x 2 Times = 120 min
+// Weekly (direct)" — is ambiguous and must fall through to "needs review"
+// rather than import a confident but partial service-minutes number.
+const FREQ_REVERSED = new RegExp(`^(\\d+)\\s*x\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
+// Complex "N min x M Times = T min Period".
+const FREQ_COMPLEX = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*x\\s*(\\d+)\\s*Times?\\s*=\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
+// Simple "N min Period", incl. spelled-out unit.
+const FREQ_SIMPLE = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
+
+/**
  * Parse frequency string to extract weekly minutes
  * Handles patterns like:
- * - "45 min Weekly"
+ * - "45 min Weekly" / "30 minutes Weekly" (spelled-out unit)
  * - "60 min x 2 Times = 120 min Weekly"
  * - "60 min x 2 Times = 120 min Daily" (multiply by 5 for weekly)
- * - "300 min Yearly" (divide by 52 for weekly)
+ * - "300 min Yearly" (divide by ~36 instructional weeks)
+ * - "2 x 30 min Weekly" (reversed "count x length" order)
+ * - "120 min Monthly" (recognized but returned as weekly 0 → flagged for review)
  */
 export function parseFrequency(frequency: string): { weeklyMinutes: number; rawMinutes: number; period: string } {
   if (!frequency || typeof frequency !== 'string') {
@@ -52,36 +94,30 @@ export function parseFrequency(frequency: string): { weeklyMinutes: number; rawM
 
   const cleaned = frequency.trim();
 
-  // Pattern 1: Simple format "45 min Weekly" or "300 min Yearly"
-  const simpleMatch = cleaned.match(/^(\d+)\s*min\s*(Weekly|Daily|Yearly)/i);
-  if (simpleMatch) {
-    const minutes = parseInt(simpleMatch[1], 10);
-    const period = simpleMatch[2].toLowerCase();
-
-    let weeklyMinutes = minutes;
-    if (period === 'daily') {
-      weeklyMinutes = minutes * 5; // 5 school days
-    } else if (period === 'yearly') {
-      weeklyMinutes = Math.ceil(minutes / 36); // ~36 instructional weeks in school year
-    }
-
-    return { weeklyMinutes, rawMinutes: minutes, period };
+  // Pattern 1: Reversed "count x length" order, e.g. "2 x 30 min Weekly".
+  // Checked first so its leading "<n> x" isn't mistaken for a bare count. It
+  // cannot collide with the "= " complex form, which starts "<n> min x".
+  const reversedMatch = cleaned.match(FREQ_REVERSED);
+  if (reversedMatch) {
+    const total = parseInt(reversedMatch[1], 10) * parseInt(reversedMatch[2], 10);
+    const period = reversedMatch[3].toLowerCase();
+    return { weeklyMinutes: toWeeklyMinutes(total, period), rawMinutes: total, period };
   }
 
   // Pattern 2: Complex format "60 min x 2 Times = 120 min Weekly"
-  const complexMatch = cleaned.match(/(\d+)\s*min\s*x\s*(\d+)\s*Times?\s*=\s*(\d+)\s*min\s*(Weekly|Daily|Yearly)/i);
+  const complexMatch = cleaned.match(FREQ_COMPLEX);
   if (complexMatch) {
     const totalMinutes = parseInt(complexMatch[3], 10);
     const period = complexMatch[4].toLowerCase();
+    return { weeklyMinutes: toWeeklyMinutes(totalMinutes, period), rawMinutes: totalMinutes, period };
+  }
 
-    let weeklyMinutes = totalMinutes;
-    if (period === 'daily') {
-      weeklyMinutes = totalMinutes * 5; // 5 school days
-    } else if (period === 'yearly') {
-      weeklyMinutes = Math.ceil(totalMinutes / 36); // ~36 instructional weeks in school year
-    }
-
-    return { weeklyMinutes, rawMinutes: totalMinutes, period };
+  // Pattern 3: Simple format "45 min Weekly", "30 minutes Weekly", "300 min Yearly"
+  const simpleMatch = cleaned.match(FREQ_SIMPLE);
+  if (simpleMatch) {
+    const minutes = parseInt(simpleMatch[1], 10);
+    const period = simpleMatch[2].toLowerCase();
+    return { weeklyMinutes: toWeeklyMinutes(minutes, period), rawMinutes: minutes, period };
   }
 
   // If we can't parse, return 0
@@ -229,9 +265,30 @@ export async function parseDeliveriesCSV(
       }
 
       // Parse frequency
-      const { weeklyMinutes } = parseFrequency(sessionsFrequency);
+      const { weeklyMinutes, period, rawMinutes } = parseFrequency(sessionsFrequency);
       if (weeklyMinutes === 0) {
-        warnings.push({ row: rowNum, message: `Could not parse frequency: ${sessionsFrequency}` });
+        // Option C (SPE-246): parse the unambiguous formats, but flag the ones
+        // whose weekly conversion we'd have to guess. A confident-looking wrong
+        // service-minutes number is worse than an explicit "please verify".
+        if (period === 'monthly') {
+          warnings.push({
+            row: rowNum,
+            message: `Monthly service (${rawMinutes} min/month) needs review — enter the weekly minutes manually: ${sessionsFrequency}`,
+          });
+        } else {
+          // Unrecognized frequency. If the row still carries a yearly total,
+          // surface that number for review instead of importing zero silently.
+          const yearlyTotal =
+            fields.length > 8 ? parseInt(fields[8].replace(/[^\d]/g, ''), 10) : NaN;
+          if (Number.isFinite(yearlyTotal) && yearlyTotal > 0) {
+            warnings.push({
+              row: rowNum,
+              message: `Frequency "${sessionsFrequency}" not recognized; yearly total is ${yearlyTotal} min — needs review, enter the weekly minutes manually.`,
+            });
+          } else {
+            warnings.push({ row: rowNum, message: `Could not parse frequency: ${sessionsFrequency}` });
+          }
+        }
         continue;
       }
 

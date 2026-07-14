@@ -5,9 +5,10 @@
  * Pins: BOM handling (SPE-241, already landed), the full parsed result over a
  * 59-column fictional fixture, duplicate-student goal merging, the 5-of-6
  * detection boundary at the file level (column-shifted -> generic fallback),
- * and per-role goal filtering including the documented keyword
- * cross-contamination ("Handwriting" -> resource) and typo losses
- * ("Receptive Languge" -> not speech).
+ * and per-role goal filtering including word-boundary routing
+ * ("Handwriting" -> OT not resource, "Social/Emotional" -> counseling not OT),
+ * blank-metadata rows surfaced for review, and typo losses
+ * ("Receptive Languge" -> not speech). See SPE-247.
  */
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
@@ -62,9 +63,15 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(counts).toMatchSnapshot();
     });
 
-    it('keeps the "Handwriting" area for resource (writing-keyword cross-contamination)', async () => {
-      const result = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
-      expect(result.students.some((s) => s.lastName === 'Foster')).toBe(true);
+    it('routes the "Handwriting" goal to OT, not resource (word-boundary + OT keyword)', async () => {
+      // Pre-fix: `writing` matched inside "Handwriting", so a resource import
+      // swallowed Finn's OT handwriting goal and OT never saw it. Now it routes
+      // to OT only. See SPE-247.
+      const resource = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
+      expect(resource.students.some((s) => s.lastName === 'Foster')).toBe(false);
+
+      const ot = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'ot' });
+      expect(ot.students.some((s) => s.lastName === 'Foster')).toBe(true);
     });
 
     it('drops the "Receptive Languge" typo row for speech', async () => {
@@ -72,17 +79,23 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.students.some((s) => s.lastName === 'Hunt')).toBe(false);
     });
 
-    it('drops the blank Area-of-Need / Annual-Goal# row for resource', async () => {
+    it('surfaces the blank-metadata goal row for review instead of importing or dropping it silently', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
+      // Still not imported under a guessed role (blank metadata = no signal)...
       expect(result.students.some((s) => s.lastName === 'Gomez')).toBe(false);
+      // ...but surfaced as a review warning rather than vanishing entirely.
+      expect(result.warnings.some((w) => /review/i.test(w.message))).toBe(true);
     });
 
-    it('wrongly matches the Social/Emotional student to OT ("ot" is a substring of "emotional")', async () => {
-      // Cross-contamination bug: the 2-letter OT keyword matches "emOTional",
-      // so Diaz (a counseling student) is pulled into an OT import. SPE-240 is
-      // expected to change this; the snapshot counts above will shift with it.
+    it('no longer matches the Social/Emotional student to OT (word-boundary kills "ot" in "emotional")', async () => {
+      // Pre-fix the 2-letter OT keyword matched inside "emOTional", pulling Diaz
+      // (a counseling student) into OT imports. Word boundaries stop that; Diaz
+      // still routes to counseling.
       const ot = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'ot' });
-      expect(ot.students.some((s) => s.lastName === 'Diaz')).toBe(true);
+      expect(ot.students.some((s) => s.lastName === 'Diaz')).toBe(false);
+
+      const counseling = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'counseling' });
+      expect(counseling.students.some((s) => s.lastName === 'Diaz')).toBe(true);
     });
   });
 });

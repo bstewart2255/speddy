@@ -97,7 +97,7 @@ exports[`parseDeliveriesCSV matches the golden snapshot for the resource role (3
   },
   "warnings": [
     {
-      "message": "Could not parse frequency: 120 min Monthly",
+      "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
       "row": 10,
     },
   ],
@@ -249,7 +249,7 @@ exports[`parseDeliveriesCSV psychologist role (no service code) keeps all servic
   },
   "warnings": [
     {
-      "message": "Could not parse frequency: 120 min Monthly",
+      "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
       "row": 10,
     },
   ],
