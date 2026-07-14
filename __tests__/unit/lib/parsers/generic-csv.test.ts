@@ -9,12 +9,14 @@
  *  - Spelled-out grades ("First", "Kindergarten"), digit grades, and the SEIS
  *    18/0 special cases all normalize now (SPE-240 removed the destructive
  *    ordinal strip and merged the CSV/XLSX normalizer copies).
- *  - Windows-1252 accented names are decoded as UTF-8 first, so this pins the
- *    current mojibake behavior (SPE-240 will add encoding detection).
+ *  - Windows-1252 accented names now round-trip: parseCSVReport probes the raw
+ *    bytes for valid UTF-8 and decodes as latin1 when they aren't (SPE-240
+ *    added the encoding fallback), while a valid-UTF-8 file that merely
+ *    contains a U+FFFD character is left as UTF-8 (no false-positive re-decode).
  */
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
-import { readFixture, WINDOWS_1252_CSV } from './fixtures/builders';
+import { readFixture, WINDOWS_1252_CSV, UTF8_WITH_REPLACEMENT_CHAR_CSV } from './fixtures/builders';
 
 describe('parseCSVReport — roster template CSV (SPE-225 target)', () => {
   it('currently fails detection: no First/Last Name columns to key on', async () => {
@@ -66,11 +68,34 @@ describe('parseCSVReport — messy grade values (generic format)', () => {
 });
 
 describe('parseCSVReport — Windows-1252 encoding', () => {
-  it('parses three rows and pins the current decoding of accented names', async () => {
+  it('re-decodes accented names as latin1 instead of leaving U+FFFD mojibake (SPE-240)', async () => {
     const result = await parseCSVReport(WINDOWS_1252_CSV(), {});
     expect(result.metadata.formatDetected).toBe('generic');
     expect(result.students).toHaveLength(3);
+
+    // Names round-trip to their intended form instead of collapsing to
+    // "Mu�oz" / "Pe�a" / "Ib��ez".
+    const byInitials = Object.fromEntries(
+      result.students.map((s) => [s.initials, `${s.firstName} ${s.lastName}`]),
+    );
+    expect(byInitials['SM']).toBe('Sofía Muñoz');
+    expect(byInitials['JP']).toBe('José Peña');
+    expect(byInitials['RI']).toBe('Renée Ibáñez');
+    // No cell anywhere still carries the replacement character.
+    expect(JSON.stringify(result)).not.toContain('�');
+
     expect(result).toMatchSnapshot();
+  });
+
+  it('keeps valid UTF-8 as UTF-8 even when a cell legitimately contains U+FFFD (no false-positive retry)', async () => {
+    // The bytes are valid UTF-8, so the latin1 retry must NOT fire — otherwise
+    // the correctly-encoded name would be garbled to "SofÃ­a MuÃ±oz".
+    const result = await parseCSVReport(UTF8_WITH_REPLACEMENT_CHAR_CSV(), {});
+    expect(result.students).toHaveLength(1);
+    const student = result.students[0];
+    expect(`${student.firstName} ${student.lastName}`).toBe('Sofía Muñoz');
+    // The pre-existing replacement char in the goal text is preserved, not "fixed".
+    expect(student.goals[0]).toContain('�');
   });
 });
 

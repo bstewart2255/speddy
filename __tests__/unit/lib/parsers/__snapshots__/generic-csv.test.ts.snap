@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
-exports[`parseCSVReport — Windows-1252 encoding parses three rows and pins the current decoding of accented names 1`] = `
+exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as latin1 instead of leaving U+FFFD mojibake (SPE-240) 1`] = `
 {
   "errors": [],
   "metadata": {
@@ -18,38 +18,38 @@ exports[`parseCSVReport — Windows-1252 encoding parses three rows and pins the
   },
   "students": [
     {
-      "firstName": "Sof�a",
+      "firstName": "Sofía",
       "goals": [
         "The student will read 50 words per minute with 90% accuracy.",
       ],
       "gradeLevel": "2",
       "iepDate": undefined,
       "initials": "SM",
-      "lastName": "Mu�oz",
+      "lastName": "Muñoz",
       "rawRow": 2,
       "schoolOfAttendance": undefined,
     },
     {
-      "firstName": "Jos�",
+      "firstName": "José",
       "goals": [
         "The student will write a five-sentence paragraph with 80% accuracy.",
       ],
       "gradeLevel": "4",
       "iepDate": undefined,
       "initials": "JP",
-      "lastName": "Pe�a",
+      "lastName": "Peña",
       "rawRow": 3,
       "schoolOfAttendance": undefined,
     },
     {
-      "firstName": "Ren�e",
+      "firstName": "Renée",
       "goals": [
         "The student will identify rhyming words in 4 of 5 trials.",
       ],
       "gradeLevel": "K",
       "iepDate": undefined,
       "initials": "RI",
-      "lastName": "Ib��ez",
+      "lastName": "Ibáñez",
       "rawRow": 4,
       "schoolOfAttendance": undefined,
     },

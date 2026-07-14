@@ -243,9 +243,9 @@ export const SEIS_GOALS_SHIFTED_CSV = (): Buffer =>
  * A generic-format CSV whose accented names are encoded as Windows-1252.
  * For these code points (ñ = 0xF1, é = 0xE9, í = 0xED, á = 0xE1) Windows-1252
  * and latin1 are byte-identical, so latin1 serialization yields the correct
- * bytes. parseCSVReport decodes UTF-8 first, turning 0xF1 into U+FFFD — this
- * fixture pins that current mojibake behavior (SPE-240 will add encoding
- * detection).
+ * bytes. Those lone high bytes (e.g. 0xF1) are invalid UTF-8, so SPE-240's
+ * validity probe decodes the file as latin1 and the accented names round-trip
+ * (the snapshot shows the corrected decoding).
  *
  * A leading ID column keeps First/Last Name off index 0, where the current
  * generic detector's `!columnMapping.firstName` falsy-index check would reject
@@ -259,6 +259,22 @@ export const WINDOWS_1252_CSV = (): Buffer => {
     '3100003,Renée,Ibáñez,K,"The student will identify rhyming words in 4 of 5 trials."',
   ].join('\r\n');
   return Buffer.from(text, 'latin1');
+};
+
+/**
+ * A VALID UTF-8 generic CSV whose goal cell legitimately contains a U+FFFD
+ * replacement character, alongside genuinely UTF-8-encoded accented names.
+ * Pins the SPE-240 encoding probe against a false positive: because the bytes
+ * are valid UTF-8, the parser must keep decoding as UTF-8 (names stay intact)
+ * rather than re-decoding the whole file as latin1 — which would garble
+ * "Sofía Muñoz" into "SofÃ­a MuÃ±oz" just because a stray U+FFFD was present.
+ */
+export const UTF8_WITH_REPLACEMENT_CHAR_CSV = (): Buffer => {
+  const text = [
+    'Student ID,First Name,Last Name,Grade,Goal',
+    '3200001,Sofía,Muñoz,2,"The student will decode the � placeholder token with 90% accuracy."',
+  ].join('\r\n');
+  return Buffer.from(text, 'utf-8'); // valid UTF-8, including the literal U+FFFD
 };
 
 // ---------------------------------------------------------------------------
