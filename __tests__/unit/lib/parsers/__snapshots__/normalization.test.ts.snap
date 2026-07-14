@@ -1,0 +1,153 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`excelSerialToDate — both copies identical snapshots the serial-to-date matrix 1`] = `
+{
+  "-5": undefined,
+  "0": undefined,
+  "1": undefined,
+  "100000": undefined,
+  "2": "1900-01-01",
+  "45658": "2025-01-01",
+  "45824.5": "2025-06-16",
+}
+`;
+
+exports[`normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts) snapshots the full CSV-copy grade matrix 1`] = `
+{
+  ""  "": "",
+  """": "",
+  ""0"": "K",
+  ""02"": "2",
+  ""03"": "3",
+  ""1"": "1",
+  ""12"": "12",
+  ""13"": "13",
+  ""18"": "TK",
+  ""3rd"": "3",
+  ""5"": "5",
+  ""Fifth"": "Fifth",
+  ""First"": "First",
+  ""Fourth"": "Fourth",
+  ""Grade 4"": "4",
+  ""K"": "K",
+  ""Kinder"": "Kinder",
+  ""Kindergarten"": "Kindergarten",
+  ""Second"": "Second",
+  ""TK"": "TK",
+  ""Third"": "Third",
+  ""grade 10"": "10",
+}
+`;
+
+exports[`normalizeGradeLevel — XLSX copy (lib/parsers/seis-parser.ts) snapshots the full XLSX-copy grade matrix 1`] = `
+{
+  """": "",
+  ""0"": "0",
+  ""03"": "3",
+  ""1"": "1",
+  ""12"": "12",
+  ""13"": "13",
+  ""18"": "18",
+  ""3rd"": "3",
+  ""First"": "First",
+  ""K"": "K",
+  ""Kindergarten"": "Kindergarten",
+  ""TK"": "TK",
+}
+`;
+
+exports[`normalizeSchoolName — two divergent implementations snapshots both implementations across a shared input set 1`] = `
+[
+  {
+    "helper": "mt diablo elementary school",
+    "input": "Mt Diablo Elementary School",
+    "route": "mount diablo elementary",
+  },
+  {
+    "helper": "st mary school",
+    "input": "St Mary School",
+    "route": "saint mary",
+  },
+  {
+    "helper": "out  district mou",
+    "input": "Out of District- MOU",
+    "route": "out of district- mou",
+  },
+  {
+    "helper": "washington elementary",
+    "input": "Washington Elementary",
+    "route": "washington elementary",
+  },
+  {
+    "helper": "washington middle",
+    "input": "Washington Middle",
+    "route": "washington middle",
+  },
+  {
+    "helper": "bancroft elementary school",
+    "input": "Bancroft Elementary School",
+    "route": "bancroft elementary",
+  },
+]
+`;
+
+exports[`normalizeStudentName / parseStudentName / createNormalizedKey snapshots the name-normalization matrix 1`] = `
+[
+  {
+    "input": "Alvarez, Ana",
+    "normalized": "alvarez_ana",
+    "parsed": {
+      "firstName": "Ana",
+      "lastName": "Alvarez",
+    },
+  },
+  {
+    "input": ""Van Horn, Vera"",
+    "normalized": "vanhorn_vera",
+    "parsed": {
+      "firstName": "Vera",
+      "lastName": "Van Horn",
+    },
+  },
+  {
+    "input": "Ng-Patel, Nadia",
+    "normalized": "ng-patel_nadia",
+    "parsed": {
+      "firstName": "Nadia",
+      "lastName": "Ng-Patel",
+    },
+  },
+  {
+    "input": "Ana Alvarez",
+    "normalized": "alvarez_ana",
+    "parsed": {
+      "firstName": "Ana",
+      "lastName": "Alvarez",
+    },
+  },
+  {
+    "input": "Cher",
+    "normalized": "cher",
+    "parsed": {
+      "firstName": "",
+      "lastName": "Cher",
+    },
+  },
+  {
+    "input": "  Extra ,  Spaces  ",
+    "normalized": "extra_spaces",
+    "parsed": {
+      "firstName": "Spaces",
+      "lastName": "Extra",
+    },
+  },
+  {
+    "input": "",
+    "normalized": "",
+    "parsed": {
+      "firstName": "",
+      "lastName": "",
+    },
+  },
+]
+`;

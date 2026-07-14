@@ -17,6 +17,11 @@ const customJestConfig = {
     '^@/utils/(.*)$': '<rootDir>/utils/$1',
   },
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
+  // Only files with a .test/.spec suffix are test suites. This keeps fixture and
+  // helper modules colocated under __tests__/ (e.g. parsers/fixtures/builders.ts)
+  // from being collected as empty suites, without excluding whole directories
+  // (which would silently drop a real *.test.ts placed inside them).
+  testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
   transform: {
     // Use babel-jest to transpile tests with the next/babel preset
     // https://jestjs.io/docs/configuration#transform-objectstring-pathtotransformer--pathtotransformer-object

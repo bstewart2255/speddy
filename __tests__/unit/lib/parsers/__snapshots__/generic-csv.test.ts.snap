@@ -1,0 +1,201 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`parseCSVReport — Windows-1252 encoding parses three rows and pins the current decoding of accented names 1`] = `
+{
+  "errors": [],
+  "metadata": {
+    "columnsDetected": [
+      "Student ID",
+      "First Name",
+      "Last Name",
+      "Grade",
+      "Goal",
+    ],
+    "formatDetected": "generic",
+    "goalsFiltered": undefined,
+    "targetStudentFound": undefined,
+    "totalRows": 4,
+  },
+  "students": [
+    {
+      "firstName": "Sof�a",
+      "goals": [
+        "The student will read 50 words per minute with 90% accuracy.",
+      ],
+      "gradeLevel": "2",
+      "iepDate": undefined,
+      "initials": "SM",
+      "lastName": "Mu�oz",
+      "rawRow": 2,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Jos�",
+      "goals": [
+        "The student will write a five-sentence paragraph with 80% accuracy.",
+      ],
+      "gradeLevel": "4",
+      "iepDate": undefined,
+      "initials": "JP",
+      "lastName": "Pe�a",
+      "rawRow": 3,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Ren�e",
+      "goals": [
+        "The student will identify rhyming words in 4 of 5 trials.",
+      ],
+      "gradeLevel": "K",
+      "iepDate": undefined,
+      "initials": "RI",
+      "lastName": "Ib��ez",
+      "rawRow": 4,
+      "schoolOfAttendance": undefined,
+    },
+  ],
+  "warnings": [],
+}
+`;
+
+exports[`parseCSVReport — messy grade values (generic format) matches the golden snapshot 1`] = `
+{
+  "errors": [],
+  "metadata": {
+    "columnsDetected": [
+      "Student ID",
+      "First Name",
+      "Last Name",
+      "Grade",
+      "Goal",
+    ],
+    "formatDetected": "generic",
+    "goalsFiltered": undefined,
+    "targetStudentFound": undefined,
+    "totalRows": 9,
+  },
+  "students": [
+    {
+      "firstName": "Ava",
+      "goals": [
+        "The student will read 60 words per minute by year end with 90% accuracy.",
+      ],
+      "gradeLevel": "First",
+      "iepDate": undefined,
+      "initials": "AA",
+      "lastName": "Adams",
+      "rawRow": 2,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Ben",
+      "goals": [
+        "The student will identify all letter sounds by June with 80% accuracy.",
+      ],
+      "gradeLevel": "Kindergarten",
+      "iepDate": undefined,
+      "initials": "BB",
+      "lastName": "Brooks",
+      "rawRow": 3,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Cara",
+      "goals": [
+        "The student will solve two-digit addition problems with 80% accuracy.",
+      ],
+      "gradeLevel": "3",
+      "iepDate": undefined,
+      "initials": "CC",
+      "lastName": "Cole",
+      "rawRow": 4,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Dan",
+      "goals": [
+        "The student will write complete sentences with correct capitalization.",
+      ],
+      "gradeLevel": "3",
+      "iepDate": undefined,
+      "initials": "DD",
+      "lastName": "Dorsey",
+      "rawRow": 5,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Ella",
+      "goals": [
+        "The student will follow two-step directions in the classroom in 4 of 5 trials.",
+      ],
+      "gradeLevel": "TK",
+      "iepDate": undefined,
+      "initials": "EE",
+      "lastName": "Ellis",
+      "rawRow": 6,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Finn",
+      "goals": [
+        "The student will count to 20 with one-to-one correspondence in 4 of 5 trials.",
+      ],
+      "gradeLevel": "K",
+      "iepDate": undefined,
+      "initials": "FF",
+      "lastName": "Ford",
+      "rawRow": 7,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Grace",
+      "goals": [
+        "The student will decode CVC words with 85% accuracy across 3 sessions.",
+      ],
+      "gradeLevel": "2",
+      "iepDate": undefined,
+      "initials": " G",
+      "lastName": "Gould",
+      "rawRow": 8,
+      "schoolOfAttendance": undefined,
+    },
+    {
+      "firstName": "Will",
+      "goals": [
+        "The student will summarize a short passage in writing with 80% accuracy.",
+      ],
+      "gradeLevel": "4",
+      "iepDate": undefined,
+      "initials": "WI",
+      "lastName": "Iams",
+      "rawRow": 9,
+      "schoolOfAttendance": undefined,
+    },
+  ],
+  "warnings": [],
+}
+`;
+
+exports[`parseCSVReport — roster template CSV (SPE-225 target) currently fails detection: no First/Last Name columns to key on 1`] = `
+{
+  "errors": [
+    {
+      "message": "Could not detect student name or grade columns. Looking for columns like: First Name, Last Name, Grade, Student Name.",
+      "row": 0,
+    },
+  ],
+  "metadata": {
+    "columnsDetected": [
+      "Initials",
+      "Grade",
+      "Teacher",
+      "Sessions Per Week",
+      "Minutes Per Session",
+    ],
+    "formatDetected": "generic",
+    "totalRows": 6,
+  },
+  "students": [],
+  "warnings": [],
+}
+`;
