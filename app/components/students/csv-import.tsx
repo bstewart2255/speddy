@@ -158,7 +158,20 @@ GH,4,Garcia,3,30`;
             }
           } catch (err: any) {
             console.error('Import error:', err);
-            setError(err.message);
+            // Map Postgres unique-violation errors to a friendly message rather
+            // than surfacing the raw "duplicate key value violates unique
+            // constraint …" text (mirrors app/api/import-students/confirm/route.ts).
+            const rawText = `${err?.message || ''} ${err?.details || ''}`;
+            const isDuplicate =
+              err?.code === '23505' ||
+              rawText.includes('duplicate key') ||
+              rawText.includes('unique constraint') ||
+              rawText.includes('ux_students_provider_grade_initials');
+            setError(
+              isDuplicate
+                ? 'This file contains a student whose initials and grade match another student — either a duplicate row in the file or one already in your caseload. Remove the duplicate and upload again.'
+                : (err?.message || 'Failed to import students. Please try again.')
+            );
           } finally {
             setImporting(false);
           }
