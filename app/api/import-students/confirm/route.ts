@@ -11,6 +11,7 @@ import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
+import { mapUpsertResults, PendingUpsert, ImportResult } from '@/lib/import/upsert-result-mapper';
 
 export const runtime = 'nodejs';
 
@@ -32,14 +33,6 @@ interface StudentToImport {
   // UPSERT fields
   action?: 'insert' | 'update' | 'skip'; // Defaults to 'insert' for backward compatibility
   studentId?: string; // Required for 'update' action
-}
-
-interface ImportResult {
-  success: boolean;
-  studentId?: string;
-  initials: string;
-  action: 'inserted' | 'updated' | 'skipped' | 'error';
-  error?: string;
 }
 
 export const POST = withRoute({}, async ({ req: request, userId }) => {
@@ -109,7 +102,20 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // Track newly added students to detect duplicates within the same import batch
     const addedInThisBatch = new Set<string>();
 
-    // Import each student (validation is now O(1) per student)
+    // SPE-229: instead of one write RPC per student (a pre-select + RPC + session
+    // sync each — ~3 round trips per student), validate every student here and
+    // collect the inserts/updates into a SINGLE batched upsert_students_atomic
+    // call below. `batchPending[i]` mirrors `batchPayload[i]`, so the RPC's
+    // input-ordered results map straight back to the right student.
+    const batchPayload: Array<Record<string, unknown>> = [];
+    const batchPending: Array<
+      PendingUpsert & {
+        student: StudentToImport;
+        newRequirements: { sessions_per_week: number | null; minutes_per_session: number | null };
+      }
+    > = [];
+
+    // Phase 1: validate each student (O(1) per student) and queue the writes.
     for (const student of students) {
       try {
         // Determine action (default to 'insert' for backward compatibility)
@@ -154,10 +160,11 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           continue;
         }
 
-        // For inserts, check for duplicates
+        const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
+
+        // For inserts, check for duplicates (against existing DB rows and earlier
+        // rows in this same batch) - O(1) instead of a database query.
         if (action === 'insert') {
-          // Check for duplicate using Map - O(1) instead of database query
-          const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
           if (existingStudentMap.has(duplicateKey)) {
             results.push({
               success: false,
@@ -169,7 +176,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             continue;
           }
 
-          // Check for duplicate within the same import batch
           if (addedInThisBatch.has(duplicateKey)) {
             results.push({
               success: false,
@@ -226,7 +232,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         const districtId = student.districtId || userProfile?.district_id || null;
         const stateId = student.stateId || userProfile?.state_id || null;
 
-        log.info(`${action === 'update' ? 'Updating' : 'Creating'} student`, {
+        log.info(`${action === 'update' ? 'Queuing update for' : 'Queuing insert for'} student`, {
           userId,
           studentInitials: initialsNormalized,
           action,
@@ -234,298 +240,58 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           schoolSite
         });
 
+        // Queue the write. The single upsert_students_atomic call below handles
+        // insert vs update per element (each in its own subtransaction) and
+        // creates the unscheduled sessions for inserts. Updates still need their
+        // sessions synced afterward (the RPC deliberately leaves that to the API),
+        // so we capture the new requirements now.
         if (action === 'update') {
-          // UPDATE: Update existing student using upsert_students_atomic RPC
-
-          // Fetch current student requirements BEFORE the update (needed for session sync)
-          const { data: currentStudent } = await supabase
-            .from('students')
-            .select('sessions_per_week, minutes_per_session')
-            .eq('id', student.studentId)
-            .single();
-
-          const oldRequirements = {
-            sessions_per_week: currentStudent?.sessions_per_week ?? null,
-            minutes_per_session: currentStudent?.minutes_per_session ?? null
-          };
-
-          const { data: updateResult, error: updateError } = await supabase
-            .rpc('upsert_students_atomic', {
-              p_provider_id: userId,
-              p_students: [{
-                action: 'update',
-                studentId: student.studentId,
-                initials: initialsNormalized,
-                gradeLevel: student.gradeLevel,
-                firstName: student.firstName,
-                lastName: student.lastName,
-                goals: student.goals,
-                sessionsPerWeek: student.sessionsPerWeek || null,
-                minutesPerSession: student.minutesPerSession || null,
-                teacherId: student.teacherId || null,
-                teacherName: student.teacherName || null
-              }]
-            });
-
-          if (updateError) {
-            log.error('Failed to call upsert_students_atomic for update', updateError, {
-              userId,
-              studentId: student.studentId,
-              studentInitials: initialsNormalized
-            });
-
-            results.push({
-              success: false,
-              studentId: student.studentId,
-              initials: initialsNormalized,
-              action: 'error',
-              error: 'Failed to update student'
-            });
-            errorCount++;
-            continue;
-          }
-
-          // Check result
-          const upsertResult = updateResult as { updated?: number; errors?: number; results?: Array<{ success: boolean; error?: string }> };
-          if (upsertResult.errors && upsertResult.errors > 0) {
-            const errorMsg = upsertResult.results?.[0]?.error || 'Unknown error';
-            log.error('Failed to update student', null, {
-              userId,
-              studentId: student.studentId,
-              studentInitials: initialsNormalized,
-              error: errorMsg
-            });
-
-            results.push({
-              success: false,
-              studentId: student.studentId,
-              initials: initialsNormalized,
-              action: 'error',
-              error: errorMsg
-            });
-            errorCount++;
-            continue;
-          }
-
-          // Success - now sync sessions if schedule requirements were provided
-          const newRequirements = {
-            sessions_per_week: student.sessionsPerWeek ?? null,
-            minutes_per_session: student.minutesPerSession ?? null
-          };
-
-          // Check if schedule requirements changed and sync sessions accordingly
-          const requirementsChanged =
-            student.sessionsPerWeek !== undefined ||
-            student.minutesPerSession !== undefined;
-
-          if (requirementsChanged) {
-            try {
-              // IMPORTANT: Pass the server Supabase client to avoid RLS issues
-              // The browser client doesn't have auth context in server environments
-              const syncResult = await updateExistingSessionsForStudent(
-                student.studentId!,
-                oldRequirements,
-                newRequirements,
-                supabase
-              );
-
-              if (!syncResult.success) {
-                log.warn('Session sync had issues after student update', {
-                  userId,
-                  studentId: student.studentId,
-                  studentInitials: initialsNormalized,
-                  syncError: syncResult.error
-                });
-              } else {
-                log.info('Sessions synced successfully', {
-                  userId,
-                  studentId: student.studentId,
-                  studentInitials: initialsNormalized,
-                  conflictCount: syncResult.conflictCount || 0
-                });
-              }
-            } catch (syncError) {
-              log.error('Failed to sync sessions after update', syncError instanceof Error ? syncError : null, {
-                userId,
-                studentId: student.studentId,
-                studentInitials: initialsNormalized
-              });
-              // Don't fail the update - just log the sync error
-            }
-          }
-
-          log.info('Student updated successfully', {
-            userId,
-            studentId: student.studentId,
-            studentInitials: initialsNormalized,
-            goalsCount: student.goals?.length ?? 0
-          });
-
-          results.push({
-            success: true,
+          batchPayload.push({
+            action: 'update',
             studentId: student.studentId,
             initials: initialsNormalized,
-            action: 'updated'
+            gradeLevel: student.gradeLevel,
+            firstName: student.firstName,
+            lastName: student.lastName,
+            goals: student.goals,
+            sessionsPerWeek: student.sessionsPerWeek || null,
+            minutesPerSession: student.minutesPerSession || null,
+            teacherId: student.teacherId || null,
+            teacherName: student.teacherName || null
           });
-          updatedCount++;
         } else {
-          // INSERT: Create student and student_details atomically using RPC function
-          // This prevents orphaned student records if student_details insert fails
-          const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
-
-          const { data: importResult, error: importError } = await supabase
-            .rpc('import_student_atomic', {
-              p_provider_id: userId,
-              p_initials: initialsNormalized,
-              p_grade_level: student.gradeLevel,
-              p_school_site: schoolSite,
-              p_school_id: schoolId,
-              p_district_id: districtId,
-              p_state_id: stateId,
-              p_first_name: student.firstName,
-              p_last_name: student.lastName,
-              p_iep_goals: student.goals,
-              p_sessions_per_week: student.sessionsPerWeek || null,
-              p_minutes_per_session: student.minutesPerSession || null,
-              p_teacher_id: student.teacherId || null
-            })
-            .single();
-
-          // Check for RPC call errors
-          if (importError) {
-            log.error('Failed to call import_student_atomic', importError, {
-              userId,
-              studentInitials: initialsNormalized
-            });
-
-            results.push({
-              success: false,
-              initials: initialsNormalized,
-              action: 'error',
-              error: 'Failed to import student'
-            });
-            errorCount++;
-            continue;
-          }
-
-          // Check the result from the RPC function
-          if (!importResult || !(importResult as { success?: boolean }).success) {
-            const errorMessage = (importResult as { error_message?: string })?.error_message || 'Unknown error';
-
-            // Check if this is a unique constraint violation
-            const isDuplicate = errorMessage.includes('duplicate key') ||
-                               errorMessage.includes('unique constraint') ||
-                               errorMessage.includes('ux_students_provider_grade_initials');
-
-            if (isDuplicate) {
-              log.warn('Duplicate student detected during atomic insert', {
-                userId,
-                studentInitials: initialsNormalized,
-                gradeLevel: student.gradeLevel
-              });
-
-              results.push({
-                success: false,
-                initials: initialsNormalized,
-                action: 'error',
-                error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
-              });
-            } else {
-              log.error('Failed to create student atomically', null, {
-                userId,
-                studentInitials: initialsNormalized,
-                errorMessage
-              });
-
-              results.push({
-                success: false,
-                initials: initialsNormalized,
-                action: 'error',
-                error: errorMessage
-              });
-            }
-
-            errorCount++;
-            continue;
-          }
-
-          const newStudentId = (importResult as { student_id?: string }).student_id;
-
-          // Defensive guard: ensure we got a valid student ID back
-          if (!newStudentId) {
-            log.error('import_student_atomic succeeded but returned no student_id', null, {
-              userId,
-              studentInitials: initialsNormalized,
-            });
-            results.push({
-              success: false,
-              initials: initialsNormalized,
-              action: 'error',
-              error: 'Student created but could not be finalized (missing id)',
-            });
-            errorCount++;
-            continue;
-          }
-
-          const newStudent = { id: newStudentId };
-
-          // Success
-          log.info('Student created successfully', {
-            userId,
-            studentId: newStudent.id,
-            studentInitials: initialsNormalized,
-            goalsCount: student.goals?.length ?? 0
-          });
-
-          // Create initial sessions for the new student if schedule requirements provided
-          // Bug fix: import_student_atomic doesn't create sessions, so we call the sync function
-          if (student.sessionsPerWeek && student.sessionsPerWeek > 0) {
-            try {
-              const syncResult = await updateExistingSessionsForStudent(
-                newStudent.id,
-                { sessions_per_week: null, minutes_per_session: null }, // Old requirements (none)
-                {
-                  sessions_per_week: student.sessionsPerWeek,
-                  minutes_per_session: student.minutesPerSession ?? null
-                },
-                supabase
-              );
-
-              if (!syncResult.success) {
-                log.warn('Session creation had issues after student insert', {
-                  userId,
-                  studentId: newStudent.id,
-                  studentInitials: initialsNormalized,
-                  syncError: syncResult.error
-                });
-              } else {
-                log.info('Sessions created successfully for new student', {
-                  userId,
-                  studentId: newStudent.id,
-                  studentInitials: initialsNormalized
-                });
-              }
-            } catch (syncError) {
-              log.error('Failed to create sessions after insert', syncError instanceof Error ? syncError : null, {
-                userId,
-                studentId: newStudent.id,
-                studentInitials: initialsNormalized
-              });
-              // Don't fail the insert - just log the sync error
-            }
-          }
-
-          results.push({
-            success: true,
-            studentId: newStudent.id,
+          // Insert. `teacherName` is intentionally omitted to match the previous
+          // import_student_atomic behavior, which never wrote the deprecated
+          // teacher_name column on insert (teacher_id is the real link).
+          batchPayload.push({
+            action: 'insert',
             initials: initialsNormalized,
-            action: 'inserted'
+            gradeLevel: student.gradeLevel,
+            schoolSite,
+            schoolId,
+            districtId,
+            stateId,
+            sessionsPerWeek: student.sessionsPerWeek || null,
+            minutesPerSession: student.minutesPerSession || null,
+            teacherId: student.teacherId || null,
+            firstName: student.firstName,
+            lastName: student.lastName,
+            goals: student.goals
           });
-          insertedCount++;
-
-          // Track successful import for batch duplicate detection
           addedInThisBatch.add(duplicateKey);
         }
+
+        batchPending.push({
+          student,
+          initials: initialsNormalized,
+          gradeLevel: student.gradeLevel,
+          action,
+          studentId: student.studentId,
+          newRequirements: {
+            sessions_per_week: student.sessionsPerWeek ?? null,
+            minutes_per_session: student.minutesPerSession ?? null
+          }
+        });
       } catch (error: any) {
         const errorInitials = (student.initials || '').toUpperCase().replace(/[^A-Z]/g, '') ||
                              `${student.firstName?.[0] || ''}${student.lastName?.[0] || ''}`.toUpperCase();
@@ -542,6 +308,110 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           error: error.message || 'Unknown error occurred'
         });
         errorCount++;
+      }
+    }
+
+    // Phase 2: fetch current requirements for all queued UPDATES in one query
+    // (needed to sync sessions after the batched write).
+    const oldRequirementsById = new Map<string, { sessions_per_week: number | null; minutes_per_session: number | null }>();
+    const updateIds = batchPending
+      .filter((p) => p.action === 'update' && p.studentId)
+      .map((p) => p.studentId as string);
+    if (updateIds.length > 0) {
+      const { data: currentStudents } = await supabase
+        .from('students')
+        .select('id, sessions_per_week, minutes_per_session')
+        .in('id', updateIds);
+      for (const s of currentStudents || []) {
+        oldRequirementsById.set(s.id, {
+          sessions_per_week: s.sessions_per_week ?? null,
+          minutes_per_session: s.minutes_per_session ?? null
+        });
+      }
+    }
+
+    // Phase 3 + 4: one batched write, then map the per-element results back to
+    // per-student outcomes and sync sessions for the updated students.
+    if (batchPending.length > 0) {
+      const { data: upsertData, error: upsertError } = await supabase.rpc('upsert_students_atomic', {
+        p_provider_id: userId,
+        p_students: batchPayload
+      });
+
+      if (upsertError) {
+        // A hard RPC failure rolls back the whole batch — surface an error for
+        // every queued student (the previous path failed one student at a time).
+        log.error('Failed to call upsert_students_atomic (batch)', upsertError, {
+          userId,
+          batchSize: batchPending.length
+        });
+        for (const p of batchPending) {
+          results.push({
+            success: false,
+            studentId: p.action === 'update' ? p.studentId : undefined,
+            initials: p.initials,
+            action: 'error',
+            error: p.action === 'update' ? 'Failed to update student' : 'Failed to import student'
+          });
+          errorCount++;
+        }
+      } else {
+        const rpcResults =
+          (upsertData as { results?: Array<{ action?: string; studentId?: string; initials?: string; success?: boolean; error?: string }> })
+            ?.results || [];
+        const mapped = mapUpsertResults(batchPending, rpcResults);
+
+        for (let i = 0; i < mapped.length; i++) {
+          const { result, outcome } = mapped[i];
+          const p = batchPending[i];
+          results.push(result);
+
+          if (outcome === 'error') {
+            errorCount++;
+            continue;
+          }
+
+          if (outcome === 'updated') {
+            updatedCount++;
+
+            // The RPC updates the student row only; sync sessions here to match
+            // manual UI updates. Only sync when schedule requirements were sent.
+            const requirementsChanged =
+              p.student.sessionsPerWeek !== undefined ||
+              p.student.minutesPerSession !== undefined;
+            if (requirementsChanged) {
+              try {
+                // IMPORTANT: Pass the server Supabase client to avoid RLS issues.
+                const syncResult = await updateExistingSessionsForStudent(
+                  p.studentId!,
+                  oldRequirementsById.get(p.studentId!) ?? { sessions_per_week: null, minutes_per_session: null },
+                  p.newRequirements,
+                  supabase
+                );
+
+                if (!syncResult.success) {
+                  log.warn('Session sync had issues after student update', {
+                    userId,
+                    studentId: p.studentId,
+                    studentInitials: p.initials,
+                    syncError: syncResult.error
+                  });
+                }
+              } catch (syncError) {
+                log.error('Failed to sync sessions after update', syncError instanceof Error ? syncError : null, {
+                  userId,
+                  studentId: p.studentId,
+                  studentInitials: p.initials
+                });
+                // Don't fail the update - just log the sync error
+              }
+            }
+          } else {
+            // inserted: upsert_students_atomic already created the unscheduled
+            // sessions for the new student, so there is nothing to sync here.
+            insertedCount++;
+          }
+        }
       }
     }
 
