@@ -4,7 +4,7 @@
  */
 
 import * as ExcelJS from 'exceljs';
-import { getServiceTypeCode, isGoalForProviderByKeywords } from './service-type-mapping';
+import { getServiceTypeCode, isGoalForProviderByKeywords, isBlankGoalMetadata } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
 
 // ExcelJS cell value types for rich text and formula results
@@ -161,9 +161,11 @@ export async function parseSEISReport(
                   providerRole
                 );
 
-                if (!matchesProvider) {
+                // Goals with no provider signal at all (all metadata columns
+                // blank) are surfaced for review rather than dropped (SPE-247).
+                if (!matchesProvider && !isBlankGoalMetadata(areaOfNeed, goalType, personResponsible)) {
                   goalsFiltered++;
-                  continue; // Skip goals that don't match provider's type
+                  continue; // Skip goals that clearly belong to a different provider
                 }
               }
             }

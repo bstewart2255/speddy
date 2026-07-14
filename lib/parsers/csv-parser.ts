@@ -6,7 +6,7 @@
 import { parse } from 'csv-parse/sync';
 import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
-import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords } from './service-type-mapping';
+import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, isBlankGoalMetadata } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
 
 export interface ParsedStudent {
@@ -265,11 +265,17 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         for (const goalColIndex of columnMapping.goalColumns) {
           const goalText = row[goalColIndex] || '';
 
-          // For SEIS format, filter by provider role using multiple columns
+          // For SEIS format, filter by provider role using multiple columns.
+          // Goals with no provider signal at all (blank Area of Need, Annual
+          // Goal #, and Person Responsible) fall through and are surfaced for
+          // review rather than silently dropped (SPE-247).
           if (isSEISFormat && options.providerRole) {
-            if (!isGoalForProvider(areaOfNeed, goalType, personResponsible, options.providerRole)) {
+            if (
+              !isGoalForProvider(areaOfNeed, goalType, personResponsible, options.providerRole) &&
+              !isBlankGoalMetadata(areaOfNeed, goalType, personResponsible)
+            ) {
               goalsFiltered++;
-              continue; // Skip goals that don't match provider's type
+              continue; // Skip goals that clearly belong to a different provider
             }
           }
 

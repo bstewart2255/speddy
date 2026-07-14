@@ -412,8 +412,8 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
 exports[`parseCSVReport — SEIS Student Goals Report (CSV) per-role goal filtering snapshots kept-student and filtered-goal counts per role 1`] = `
 {
   "counseling": {
-    "goalsFiltered": 10,
-    "students": 1,
+    "goalsFiltered": 9,
+    "students": 2,
   },
   "ot": {
     "goalsFiltered": 8,
@@ -424,12 +424,12 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) per-role goal filter
     "students": 10,
   },
   "resource": {
-    "goalsFiltered": 5,
-    "students": 5,
+    "goalsFiltered": 4,
+    "students": 6,
   },
   "speech": {
-    "goalsFiltered": 10,
-    "students": 1,
+    "goalsFiltered": 9,
+    "students": 2,
   },
 }
 `;

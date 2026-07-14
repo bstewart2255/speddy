@@ -97,6 +97,7 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
     'gross motor',
     'occupational',
     'ot',
+    'handwriting',
   ],
   counseling: [
     'social',
@@ -110,27 +111,65 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
   ],
 };
 
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Precompiled word-boundary matchers, one per role, built from PROVIDER_KEYWORDS.
+ *
+ * Word boundaries (\b) are what make this correct: plain substring matching
+ * cross-contaminated roles — "writing" matched "Handwriting" (an OT goal), and
+ * the two-letter "ot" matched "emOTional" (a counseling goal). Requiring a word
+ * boundary on both sides of the keyword fixes both without hand-maintaining a
+ * stop-list. Multi-word keywords ("fine motor", "speech/language") still match
+ * because \b is only anchored at the two ends of the phrase.
+ */
+const PROVIDER_KEYWORD_MATCHERS: Record<string, RegExp> = Object.fromEntries(
+  Object.entries(PROVIDER_KEYWORDS).map(([role, keywords]) => [
+    role,
+    new RegExp(`\\b(?:${keywords.map(escapeRegExp).join('|')})\\b`, 'i'),
+  ]),
+);
+
 /**
  * Check if goal text matches a provider's keywords
  * Used for filtering SEIS Student Goals Report by provider type
  *
  * @param text - Text from Area of Need, Annual Goal #, or Person Responsible columns
  * @param providerRole - The provider's role (resource, speech, ot, counseling)
- * @returns true if the text contains keywords matching the provider's role
+ * @returns true if the text contains a whole-word keyword for the provider's role
  */
 export function doesTextMatchProvider(text: string, providerRole: string): boolean {
   if (!text) return false;
 
   const normalizedRole = providerRole.toLowerCase().trim();
-  const keywords = PROVIDER_KEYWORDS[normalizedRole];
+  const matcher = PROVIDER_KEYWORD_MATCHERS[normalizedRole];
 
   // If no keywords defined for this role (e.g., psychologist), don't filter
-  if (!keywords) return true;
+  if (!matcher) return true;
 
-  const lowerText = text.toLowerCase();
+  return matcher.test(text);
+}
 
-  // Check if any keyword is found in the text
-  return keywords.some(keyword => lowerText.includes(keyword));
+/**
+ * True when a goal row carries no provider signal at all — blank Area of Need,
+ * Annual Goal #, and Person Responsible. Such rows can't be attributed to any
+ * provider, so callers surface them for review instead of silently dropping
+ * them (SPE-247). Unrecognized-but-nonblank metadata (e.g. a "Receptive Languge"
+ * typo) is intentionally out of scope here — surfacing that belongs with the
+ * review screen (SPE-227), which can flag it as "needs review" rather than
+ * quietly mixing it into every role's import.
+ */
+export function isBlankGoalMetadata(
+  areaOfNeed: string | undefined,
+  goalNumber: string | undefined,
+  personResponsible: string | undefined,
+): boolean {
+  return [areaOfNeed, goalNumber, personResponsible].every(
+    (col) => !col || col.trim().length === 0,
+  );
 }
 
 /**

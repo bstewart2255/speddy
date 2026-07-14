@@ -5,9 +5,12 @@
  * Pins: BOM handling (SPE-241, already landed), the full parsed result over a
  * 59-column fictional fixture, duplicate-student goal merging, the 5-of-6
  * detection boundary at the file level (column-shifted -> generic fallback),
- * and per-role goal filtering including the documented keyword
- * cross-contamination ("Handwriting" -> resource) and typo losses
- * ("Receptive Languge" -> not speech).
+ * and per-role goal filtering with word-boundary keyword matching (SPE-247):
+ * "Handwriting" routes to OT (not resource via "writing"), "Social/Emotional"
+ * no longer leaks to OT via "emOTional", and a blank-metadata row surfaces for
+ * review instead of vanishing. A "Receptive Languge" typo row (unrecognized but
+ * non-blank) is still filtered — surfacing that is deferred to the review
+ * screen (SPE-227).
  */
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
@@ -62,27 +65,40 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(counts).toMatchSnapshot();
     });
 
-    it('keeps the "Handwriting" area for resource (writing-keyword cross-contamination)', async () => {
-      const result = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
-      expect(result.students.some((s) => s.lastName === 'Foster')).toBe(true);
+    it('routes the "Handwriting" student to OT (SPE-247)', async () => {
+      // Foster's Area of Need is "Handwriting". With word-boundary matching it no
+      // longer cross-contaminates the resource "writing" keyword; "handwriting"
+      // is now an OT keyword, and Person Responsible is an OT too.
+      const ot = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'ot' });
+      expect(ot.students.some((s) => s.lastName === 'Foster')).toBe(true);
     });
 
-    it('drops the "Receptive Languge" typo row for speech', async () => {
+    it('still keeps the Foster row for resource via its "Academic #3" goal, not the area', async () => {
+      // The Handwriting area no longer matches resource, but the Annual Goal #
+      // "Academic #3" legitimately does — so Foster still imports for resource.
+      const resource = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
+      expect(resource.students.some((s) => s.lastName === 'Foster')).toBe(true);
+    });
+
+    it('still filters the "Receptive Languge" typo row for speech (deferred to SPE-227)', async () => {
+      // Unrecognized-but-nonblank metadata is not surfaced yet; only truly blank
+      // rows are. This pins that the typo row stays filtered for now.
       const result = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'speech' });
       expect(result.students.some((s) => s.lastName === 'Hunt')).toBe(false);
     });
 
-    it('drops the blank Area-of-Need / Annual-Goal# row for resource', async () => {
+    it('surfaces the blank Area-of-Need / Annual-Goal# row for review instead of dropping it (SPE-247)', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'resource' });
-      expect(result.students.some((s) => s.lastName === 'Gomez')).toBe(false);
+      expect(result.students.some((s) => s.lastName === 'Gomez')).toBe(true);
     });
 
-    it('wrongly matches the Social/Emotional student to OT ("ot" is a substring of "emotional")', async () => {
-      // Cross-contamination bug: the 2-letter OT keyword matches "emOTional",
-      // so Diaz (a counseling student) is pulled into an OT import. SPE-240 is
-      // expected to change this; the snapshot counts above will shift with it.
+    it('no longer matches the Social/Emotional student to OT (word boundary fixes "emOTional")', async () => {
+      // Diaz is a counseling student; the old 2-letter "ot" substring wrongly
+      // pulled "emOTional" into OT. Word boundaries fix it.
       const ot = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'ot' });
-      expect(ot.students.some((s) => s.lastName === 'Diaz')).toBe(true);
+      expect(ot.students.some((s) => s.lastName === 'Diaz')).toBe(false);
+      const counseling = await parseCSVReport(SEIS_GOALS_CSV_BOM(), { providerRole: 'counseling' });
+      expect(counseling.students.some((s) => s.lastName === 'Diaz')).toBe(true);
     });
   });
 });
