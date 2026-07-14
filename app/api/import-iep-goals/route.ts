@@ -194,10 +194,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         lastName: targetDetails?.last_name || undefined
       };
 
+      // Log only non-PII identifiers — never the student's first/last name.
       log.info('Target student details fetched', {
         userId,
         targetStudentId,
-        targetStudent
+        initials: targetStudent.initials,
+        gradeLevel: targetStudent.gradeLevel
       });
     }
 

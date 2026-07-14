@@ -108,13 +108,8 @@ export default function StudentsPage() {
   }, [currentSchool]);
 
   const fetchStudents = useCallback(async () => {
-    console.log('fetchStudents called');
-    console.log('currentSchool:', currentSchool);
-    console.log('userRole:', userRole);
-
     try {
       if (!currentSchool) {
-        console.log('No currentSchool, returning early');
         setStudents([]);
         setLoading(false);
         return;
@@ -136,43 +131,33 @@ export default function StudentsPage() {
         currentRole = role; // Use the fresh role immediately
       }
 
-      console.log('Fetching students for school:', currentSchool.display_name || currentSchool.school_site);
-      console.log('Using role:', currentRole);
-
       // Use role-aware query for SEAs, standard query for others
       if (currentRole === 'sea') {
-        console.log('Loading students for SEA user:', user.id);
         const { data, error } = await loadStudentsForUser(user.id, currentRole, {
           currentSchool
         });
 
-        console.log('loadStudentsForUser response:', { data, error, hasData: !!data, hasError: !!error });
-
         if (error) {
           console.error('Error fetching SEA students:', {
-            error,
             errorMessage: error?.message,
             errorCode: error?.code,
             errorDetails: error?.details,
-            errorHint: error?.hint,
-            fullError: JSON.stringify(error, null, 2)
+            errorHint: error?.hint
           });
           setStudents([]);
         } else if (!Array.isArray(data)) {
-          console.error('Data fetched is not an array!', data);
+          console.error('SEA students data is not an array');
           setStudents([]);
         } else {
-          console.log('SEA students data received:', data);
           setStudents(data as Student[]);
         }
       } else {
         const data = await getStudents(currentSchool);
 
         if (!Array.isArray(data)) {
-          console.error('Data fetched is not an array!', data);
+          console.error('Students data is not an array');
           setStudents([]);
         } else {
-          console.log('Students data received:', data);
           setStudents(data);
         }
       }
@@ -186,9 +171,6 @@ export default function StudentsPage() {
 
   // Fetch students
   useEffect(() => {
-    console.log('Students page useEffect triggered');
-    console.log('currentSchool in useEffect:', currentSchool);
-    
     fetchStudents();
     checkUnscheduledSessions();
   }, [currentSchool, fetchStudents, checkUnscheduledSessions]);

@@ -51,11 +51,6 @@ GH,4,Garcia,3,30`;
       );
     });
 
-    if (missing.length > 0) {
-      console.log('Missing columns:', missing);
-      console.log('Found headers:', headers);
-    }
-
     return missing.length === 0;
   };
 
