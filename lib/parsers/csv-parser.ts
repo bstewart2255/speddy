@@ -70,8 +70,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
     try {
       // Try UTF-8 first
+      // bom: true is required — SEIS exports its Student Goals Report CSV with a
+      // UTF-8 BOM and a quoted first header cell; without stripping the BOM,
+      // csv-parse throws INVALID_OPENING_QUOTE and the whole file is rejected.
       records = parse(buffer, {
         encoding: 'utf-8',
+        bom: true,
         relax_column_count: true,
         skip_empty_lines: true,
         trim: true,
@@ -80,6 +84,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       // Fallback to latin1
       records = parse(buffer, {
         encoding: 'latin1',
+        bom: true,
         relax_column_count: true,
         skip_empty_lines: true,
         trim: true,
