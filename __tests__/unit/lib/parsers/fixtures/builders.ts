@@ -243,9 +243,9 @@ export const SEIS_GOALS_SHIFTED_CSV = (): Buffer =>
  * A generic-format CSV whose accented names are encoded as Windows-1252.
  * For these code points (ñ = 0xF1, é = 0xE9, í = 0xED, á = 0xE1) Windows-1252
  * and latin1 are byte-identical, so latin1 serialization yields the correct
- * bytes. parseCSVReport decodes UTF-8 first, turning 0xF1 into U+FFFD — this
- * fixture pins that current mojibake behavior (SPE-240 will add encoding
- * detection).
+ * bytes. parseCSVReport decodes UTF-8 first, turning 0xF1 into U+FFFD; SPE-240
+ * detects that replacement char and retries latin1, so the accented names now
+ * round-trip (the snapshot shows the corrected decoding).
  *
  * A leading ID column keeps First/Last Name off index 0, where the current
  * generic detector's `!columnMapping.firstName` falsy-index check would reject

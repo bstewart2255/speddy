@@ -69,27 +69,33 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     // Parse CSV with various encoding attempts
     let records: string[][];
 
+    // Shared across the UTF-8 attempt and both latin1 fallbacks below.
+    // bom: true is required — SEIS exports its Student Goals Report CSV with a
+    // UTF-8 BOM and a quoted first header cell; without stripping the BOM,
+    // csv-parse throws INVALID_OPENING_QUOTE and the whole file is rejected.
+    const parseOptions = {
+      bom: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+      trim: true,
+    };
+
     try {
-      // Try UTF-8 first
-      // bom: true is required — SEIS exports its Student Goals Report CSV with a
-      // UTF-8 BOM and a quoted first header cell; without stripping the BOM,
-      // csv-parse throws INVALID_OPENING_QUOTE and the whole file is rejected.
-      records = parse(buffer, {
-        encoding: 'utf-8',
-        bom: true,
-        relax_column_count: true,
-        skip_empty_lines: true,
-        trim: true,
-      });
+      // Try UTF-8 first.
+      records = parse(buffer, { encoding: 'utf-8', ...parseOptions });
+
+      // csv-parse does NOT throw on invalid UTF-8 — it substitutes U+FFFD (the
+      // replacement character), so the catch below never fires for a latin1 /
+      // Windows-1252 re-save (e.g. "Muñoz" saved with 0xF1). Detect the
+      // replacement character and re-decode as latin1, under which those single
+      // bytes map to the intended characters.
+      const REPLACEMENT_CHAR = '�';
+      if (records.some((row) => row.some((cell) => cell.includes(REPLACEMENT_CHAR)))) {
+        records = parse(buffer, { encoding: 'latin1', ...parseOptions });
+      }
     } catch (e) {
-      // Fallback to latin1
-      records = parse(buffer, {
-        encoding: 'latin1',
-        bom: true,
-        relax_column_count: true,
-        skip_empty_lines: true,
-        trim: true,
-      });
+      // Fallback to latin1 on a hard parse/decoding error.
+      records = parse(buffer, { encoding: 'latin1', ...parseOptions });
     }
 
     if (records.length === 0) {
