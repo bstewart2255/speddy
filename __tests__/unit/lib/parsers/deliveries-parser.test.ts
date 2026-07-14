@@ -81,6 +81,16 @@ describe('parseFrequency', () => {
     expect(parseFrequency('')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
     expect(parseFrequency('whenever')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
   });
+
+  it('does not match a cell with extra leading/trailing text (flag for review, not a partial import)', () => {
+    // Patterns are anchored at both ends: a cell that is more than one
+    // recognized shape is ambiguous and must fall through to "needs review"
+    // rather than import a confident-but-partial number.
+    expect(parseFrequency('30 min Weekly / monthly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('notes: 45 min Weekly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('see IEP: 60 min x 2 Times = 120 min Weekly')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+    expect(parseFrequency('60 min x 2 Times = 120 min Weekly (direct)')).toEqual({ weeklyMinutes: 0, rawMinutes: 0, period: '' });
+  });
 });
 
 describe('calculateSessions', () => {

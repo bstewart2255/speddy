@@ -66,12 +66,16 @@ function toWeeklyMinutes(totalMinutes: number, period: string): number {
 // call) since the same three shapes are matched for every row.
 const MIN_UNIT = 'min(?:ute)?s?';
 const PERIOD = '(Weekly|Daily|Yearly|Monthly)';
-// Reversed "count x length", e.g. "2 x 30 min Weekly".
-const FREQ_REVERSED = new RegExp(`^(\\d+)\\s*x\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}`, 'i');
+// Each pattern is anchored at BOTH ends so it matches only when the whole
+// (trimmed) cell is exactly one recognized shape. A cell with extra leading or
+// trailing text — e.g. "30 min Weekly / monthly" or "60 min x 2 Times = 120 min
+// Weekly (direct)" — is ambiguous and must fall through to "needs review"
+// rather than import a confident but partial service-minutes number.
+const FREQ_REVERSED = new RegExp(`^(\\d+)\\s*x\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
 // Complex "N min x M Times = T min Period".
-const FREQ_COMPLEX = new RegExp(`(\\d+)\\s*${MIN_UNIT}\\s*x\\s*(\\d+)\\s*Times?\\s*=\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}`, 'i');
+const FREQ_COMPLEX = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*x\\s*(\\d+)\\s*Times?\\s*=\\s*(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
 // Simple "N min Period", incl. spelled-out unit.
-const FREQ_SIMPLE = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}`, 'i');
+const FREQ_SIMPLE = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
 
 /**
  * Parse frequency string to extract weekly minutes
